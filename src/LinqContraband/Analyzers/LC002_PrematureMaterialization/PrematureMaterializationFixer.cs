@@ -25,8 +25,7 @@ namespace LinqContraband
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-            var invocation = root?.FindToken(diagnosticSpan.Start).Parent?.AncestorsAndSelf()
-                .OfType<InvocationExpressionSyntax>().FirstOrDefault();
+            var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
 
             if (invocation == null) return;
 
