@@ -1,20 +1,19 @@
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Testing;
-using Xunit;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<LinqContraband.PrematureMaterializationAnalyzer>;
+using VerifyCS =
+    Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
+        LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationAnalyzer>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC002_PrematureMaterialization;
+
+public class PrematureMaterializationTests
 {
-    public class PrematureMaterializationTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using TestNamespace;
 ";
 
-        private const string MockNamespace = @"
+    private const string MockNamespace = @"
 namespace TestNamespace
 {
     public class User
@@ -28,10 +27,10 @@ namespace TestNamespace
     }
 }";
 
-        [Fact]
-        public async Task TestCrime_ToListBeforeWhere_ShouldTriggerLC002()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestCrime_ToListBeforeWhere_ShouldTriggerLC002()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -42,17 +41,17 @@ class Program
 }
 " + MockNamespace;
 
-            var expected = VerifyCS.Diagnostic("LC002")
-                .WithSpan(12, 21, 12, 61) // Where call spans from 'db.Users...'
-                .WithArguments("Where");
+        var expected = VerifyCS.Diagnostic("LC002")
+            .WithSpan(12, 21, 12, 61) // Where call spans from 'db.Users...'
+            .WithArguments("Where");
 
-            await VerifyCS.VerifyAnalyzerAsync(test, expected);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 
-        [Fact]
-        public async Task TestInnocent_WhereBeforeToList_ShouldNotTrigger()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestInnocent_WhereBeforeToList_ShouldNotTrigger()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -63,13 +62,13 @@ class Program
 }
 " + MockNamespace;
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        [Fact]
-        public async Task TestMemory_ListWhere_ShouldNotTrigger()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestMemory_ListWhere_ShouldNotTrigger()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -80,8 +79,6 @@ class Program
 }
 " + MockNamespace;
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }
-

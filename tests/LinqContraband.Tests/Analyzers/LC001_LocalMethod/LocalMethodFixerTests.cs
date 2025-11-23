@@ -1,14 +1,16 @@
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
-using Xunit;
-using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<LinqContraband.LocalMethodAnalyzer, LinqContraband.LocalMethodFixer, Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+using CodeFixTest =
+    Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+        LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer,
+        LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodFixer,
+        Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC001_LocalMethod;
+
+public class LocalMethodFixerTests
 {
-    public class LocalMethodFixerTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Linq;
 using System.Linq.Expressions;
@@ -16,7 +18,7 @@ using System.Collections.Generic;
 using TestNamespace;
 ";
 
-        private const string MockNamespace = @"
+    private const string MockNamespace = @"
 namespace TestNamespace
 {
     public class User
@@ -31,10 +33,10 @@ namespace TestNamespace
     }
 }";
 
-        [Fact]
-        public async Task FixCrime_ExtractsToVariable_EvenIfInvalid()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task FixCrime_ExtractsToVariable_EvenIfInvalid()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -47,7 +49,7 @@ class Program
 }
 " + MockNamespace;
 
-            var fixedCode = Usings + @"
+        var fixedCode = Usings + @"
 class Program
 {
     void Main()
@@ -61,18 +63,17 @@ class Program
 }
 " + MockNamespace;
 
-            var testObj = new CodeFixTest
-            {
-                TestCode = test,
-                FixedCode = fixedCode,
-                CompilerDiagnostics = CompilerDiagnostics.None 
-            };
-            
-            testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
-                .WithSpan(13, 41, 13, 60)
-                .WithArguments("CalculateAge"));
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CompilerDiagnostics = CompilerDiagnostics.None
+        };
 
-            await testObj.RunAsync();
-        }
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithSpan(13, 41, 13, 60)
+            .WithArguments("CalculateAge"));
+
+        await testObj.RunAsync();
     }
 }

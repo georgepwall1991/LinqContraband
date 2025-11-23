@@ -9,87 +9,87 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Formatting;
 
-namespace LinqContraband
+namespace LinqContraband.Analyzers.LC003_AnyOverCount;
+
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AnyOverCountFixer))]
+[Shared]
+public class AnyOverCountFixer : CodeFixProvider
 {
-    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AnyOverCountFixer)), Shared]
-    public class AnyOverCountFixer : CodeFixProvider
+    public sealed override ImmutableArray<string> FixableDiagnosticIds =>
+        ImmutableArray.Create(AnyOverCountAnalyzer.DiagnosticId);
+
+    public sealed override FixAllProvider GetFixAllProvider()
     {
-        public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(AnyOverCountAnalyzer.DiagnosticId);
+        return WellKnownFixAllProviders.BatchFixer;
+    }
 
-        public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
+    {
+        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var diagnostic = context.Diagnostics.First();
+        var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
+        // Find the binary expression identified by the diagnostic.
+        var binaryExpr = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<BinaryExpressionSyntax>()
+            .First();
+
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                "Replace with Any()",
+                c => ApplyFixAsync(context.Document, binaryExpr, c),
+                "ReplaceCountWithAny"),
+            diagnostic);
+    }
+
+    private async Task<Document> ApplyFixAsync(Document document, BinaryExpressionSyntax binaryExpr,
+        CancellationToken cancellationToken)
+    {
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+
+        // Identify the invocation of Count/LongCount
+        InvocationExpressionSyntax? countInvocation = null;
+
+        if (binaryExpr.Left is InvocationExpressionSyntax leftInv)
+            // Check if it is the Count call (simplistic check, relying on analyzer to catch right nodes)
+            countInvocation = leftInv;
+        else if (binaryExpr.Right is InvocationExpressionSyntax rightInv) countInvocation = rightInv;
+
+        // If we have casts, unwrap them
+        if (countInvocation == null)
         {
-            var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
-            var diagnostic = context.Diagnostics.First();
-            var diagnosticSpan = diagnostic.Location.SourceSpan;
+            var potentialLeft = binaryExpr.Left;
+            while (potentialLeft is CastExpressionSyntax cast) potentialLeft = cast.Expression;
+            if (potentialLeft is InvocationExpressionSyntax l) countInvocation = l;
 
-            // Find the binary expression identified by the diagnostic.
-            var binaryExpr = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<BinaryExpressionSyntax>().First();
-
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: "Replace with Any()",
-                    createChangedDocument: c => ApplyFixAsync(context.Document, binaryExpr, c),
-                    equivalenceKey: "ReplaceCountWithAny"),
-                diagnostic);
+            var potentialRight = binaryExpr.Right;
+            while (potentialRight is CastExpressionSyntax cast) potentialRight = cast.Expression;
+            if (potentialRight is InvocationExpressionSyntax r) countInvocation = r;
         }
 
-        private async Task<Document> ApplyFixAsync(Document document, BinaryExpressionSyntax binaryExpr, CancellationToken cancellationToken)
+        if (countInvocation == null) return document;
+
+        // Get the member access to find 'query' (the expression on which Count is called)
+        if (countInvocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
-            var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+            var queryExpression = memberAccess.Expression;
+            var arguments = countInvocation.ArgumentList;
 
-            // Identify the invocation of Count/LongCount
-            InvocationExpressionSyntax? countInvocation = null;
+            // Create 'Any' identifier
+            var anyName = SyntaxFactory.IdentifierName("Any");
 
-            if (binaryExpr.Left is InvocationExpressionSyntax leftInv)
-            {
-                 // Check if it is the Count call (simplistic check, relying on analyzer to catch right nodes)
-                 countInvocation = leftInv;
-            }
-            else if (binaryExpr.Right is InvocationExpressionSyntax rightInv)
-            {
-                countInvocation = rightInv;
-            }
-            
-            // If we have casts, unwrap them
-            if (countInvocation == null)
-            {
-                var potentialLeft = binaryExpr.Left;
-                while (potentialLeft is CastExpressionSyntax cast) potentialLeft = cast.Expression;
-                if (potentialLeft is InvocationExpressionSyntax l) countInvocation = l;
-                
-                var potentialRight = binaryExpr.Right;
-                while (potentialRight is CastExpressionSyntax cast) potentialRight = cast.Expression;
-                if (potentialRight is InvocationExpressionSyntax r) countInvocation = r;
-            }
+            // Create new MemberAccess 'query.Any'
+            var newMemberAccess = memberAccess.WithName(anyName);
 
-            if (countInvocation == null) return document;
+            // Create Invocation 'query.Any(...)'
+            var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, arguments)
+                .WithLeadingTrivia(binaryExpr.GetLeadingTrivia())
+                .WithTrailingTrivia(binaryExpr.GetTrailingTrivia());
 
-            // Get the member access to find 'query' (the expression on which Count is called)
-            if (countInvocation.Expression is MemberAccessExpressionSyntax memberAccess)
-            {
-                var queryExpression = memberAccess.Expression;
-                var arguments = countInvocation.ArgumentList;
-
-                // Create 'Any' identifier
-                var anyName = SyntaxFactory.IdentifierName("Any");
-                
-                // Create new MemberAccess 'query.Any'
-                var newMemberAccess = memberAccess.WithName(anyName);
-
-                // Create Invocation 'query.Any(...)'
-                var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, arguments)
-                    .WithLeadingTrivia(binaryExpr.GetLeadingTrivia())
-                    .WithTrailingTrivia(binaryExpr.GetTrailingTrivia());
-
-                // Replace the binary expression with the new invocation
-                editor.ReplaceNode(binaryExpr, newInvocation);
-            }
-            
-            return editor.GetChangedDocument();
+            // Replace the binary expression with the new invocation
+            editor.ReplaceNode(binaryExpr, newInvocation);
         }
+
+        return editor.GetChangedDocument();
     }
 }

@@ -4,20 +4,20 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
-namespace LinqContraband.Analyzers.LC001_LocalMethod;
+namespace LinqContraband.Analyzers.LC004_GuidInQuery;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class LocalMethodAnalyzer : DiagnosticAnalyzer
+public class GuidInQueryAnalyzer : DiagnosticAnalyzer
 {
-    public const string DiagnosticId = "LC001";
+    public const string DiagnosticId = "LC004";
     private const string Category = "Performance";
-    private static readonly LocalizableString Title = "Client-side evaluation risk: Local method usage in IQueryable";
+    private static readonly LocalizableString Title = "Avoid Guid generation inside IQueryable";
 
     private static readonly LocalizableString MessageFormat =
-        "The method '{0}' cannot be translated to SQL and may cause client-side evaluation";
+        "Guid generation '{0}' inside IQueryable may fail translation or cause client-side evaluation";
 
     private static readonly LocalizableString Description =
-        "Methods invoked inside an IQueryable expression must be translatable to SQL.";
+        "Generate the Guid outside the query and pass it as a parameter.";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
@@ -35,23 +35,36 @@ public class LocalMethodAnalyzer : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterOperationAction(AnalyzeObjectCreation, OperationKind.ObjectCreation);
     }
 
     private void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
-        var methodSymbol = invocation.TargetMethod;
+        var method = invocation.TargetMethod;
 
-        // Constraint 3: Method defined in Source Code
-        // We use IsFrameworkMethod check as IsInSource can be unreliable in some test contexts
-        // and we want to exclude System/Microsoft methods explicitly.
-        if (methodSymbol.MethodKind != MethodKind.Ordinary ||
-            methodSymbol.IsImplicitlyDeclared ||
-            methodSymbol.IsFrameworkMethod())
-            return;
+        if (method.Name == "NewGuid" &&
+            method.ContainingType.Name == "Guid" &&
+            method.ContainingNamespace?.ToString() == "System")
+            if (IsInsideIQueryable(invocation))
+                context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), "Guid.NewGuid()"));
+    }
 
-        // Constraint 1: Inside a Lambda
-        var parent = invocation.Parent;
+    private void AnalyzeObjectCreation(OperationAnalysisContext context)
+    {
+        var creation = (IObjectCreationOperation)context.Operation;
+        var type = creation.Type;
+
+        if (type != null &&
+            type.Name == "Guid" &&
+            type.ContainingNamespace?.ToString() == "System")
+            if (IsInsideIQueryable(creation))
+                context.ReportDiagnostic(Diagnostic.Create(Rule, creation.Syntax.GetLocation(), "new Guid(...)"));
+    }
+
+    private bool IsInsideIQueryable(IOperation operation)
+    {
+        var parent = operation.Parent;
         IOperation? lambda = null;
 
         while (parent != null)
@@ -65,28 +78,23 @@ public class LocalMethodAnalyzer : DiagnosticAnalyzer
             parent = parent.Parent;
         }
 
-        if (lambda == null) return;
+        if (lambda == null) return false;
 
-        // Constraint 2: Lambda is argument to IQueryable extension method
         var current = lambda.Parent;
         while (current != null)
         {
             if (current is IInvocationOperation queryInvocation)
             {
-                // Handle both extension syntax (Instance populated) and static call syntax (Instance null, use first arg)
                 var type = queryInvocation.Instance?.Type;
                 if (type == null && queryInvocation.Arguments.Length > 0)
                     type = queryInvocation.Arguments[0].Value.Type;
 
-                if (type.IsIQueryable())
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
-                    return;
-                }
+                if (type.IsIQueryable()) return true;
             }
 
             current = current.Parent;
         }
+
+        return false;
     }
 }

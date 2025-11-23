@@ -1,23 +1,24 @@
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
-using Xunit;
-using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<LinqContraband.AnyOverCountAnalyzer, LinqContraband.AnyOverCountFixer, Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+using CodeFixTest =
+    Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+        LinqContraband.Analyzers.LC003_AnyOverCount.AnyOverCountAnalyzer,
+        LinqContraband.Analyzers.LC003_AnyOverCount.AnyOverCountFixer,
+        Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC003_AnyOverCount;
+
+public class AnyOverCountFixerTests
 {
-    public class AnyOverCountFixerTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Collections.Generic;
 using System.Linq;
 ";
 
-        [Fact]
-        public async Task CountGreaterThanZero_ShouldBeReplacedWithAny()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task CountGreaterThanZero_ShouldBeReplacedWithAny()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -31,7 +32,7 @@ namespace LinqContraband.Test
         }
     }
 }";
-            var fixedCode = Usings + @"
+        var fixedCode = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -46,13 +47,13 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyFix(test, fixedCode);
-        }
+        await VerifyFix(test, fixedCode);
+    }
 
-        [Fact]
-        public async Task CountWithPredicateGreaterThanZero_ShouldBeReplacedWithAnyPredicate()
-        {
-             var test = Usings + @"
+    [Fact]
+    public async Task CountWithPredicateGreaterThanZero_ShouldBeReplacedWithAnyPredicate()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -66,7 +67,7 @@ namespace LinqContraband.Test
         }
     }
 }";
-            var fixedCode = Usings + @"
+        var fixedCode = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -80,13 +81,13 @@ namespace LinqContraband.Test
         }
     }
 }";
-            await VerifyFix(test, fixedCode);
-        }
+        await VerifyFix(test, fixedCode);
+    }
 
-        [Fact]
-        public async Task ZeroLessThanCount_ShouldBeReplacedWithAny()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task ZeroLessThanCount_ShouldBeReplacedWithAny()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -100,7 +101,7 @@ namespace LinqContraband.Test
         }
     }
 }";
-            var fixedCode = Usings + @"
+        var fixedCode = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -114,24 +115,22 @@ namespace LinqContraband.Test
         }
     }
 }";
-            await VerifyFix(test, fixedCode);
-        }
+        await VerifyFix(test, fixedCode);
+    }
 
-        private async Task VerifyFix(string test, string fixedCode)
+    private static async Task VerifyFix(string test, string fixedCode)
+    {
+        var testObj = new CodeFixTest
         {
-            var testObj = new CodeFixTest
-            {
-                TestCode = test,
-                FixedCode = fixedCode,
-                CompilerDiagnostics = CompilerDiagnostics.None
-            };
+            TestCode = test,
+            FixedCode = fixedCode,
+            CompilerDiagnostics = CompilerDiagnostics.None
+        };
 
-            // VerifyCS handles constructing the diagnostic expectation if using the helper,
-            // but here we are using CodeFixTest directly.
-            // The {|LC003:..|} syntax in TestCode handles the location assertion.
-            
-            await testObj.RunAsync();
-        }
+        // VerifyCS handles constructing the diagnostic expectation if using the helper,
+        // but here we are using CodeFixTest directly.
+        // The {|LC003:..|} syntax in TestCode handles the location assertion.
+
+        await testObj.RunAsync();
     }
 }
-

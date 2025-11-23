@@ -1,17 +1,18 @@
-using System.Threading.Tasks;
-using Xunit;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<LinqContraband.AnyOverCountAnalyzer>;
+using VerifyCS =
+    Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
+        LinqContraband.Analyzers.LC003_AnyOverCount.AnyOverCountAnalyzer>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC003_AnyOverCount;
+
+public class AnyOverCountTests
 {
-    public class AnyOverCountTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Collections.Generic;
 using System.Linq;
 ";
-        private const string MockNamespace = @"
+
+    private const string MockNamespace = @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -24,10 +25,10 @@ namespace LinqContraband.Test
     }
 }";
 
-        [Fact]
-        public async Task CountGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task CountGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -42,13 +43,13 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        [Fact]
-        public async Task CountWithPredicateGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task CountWithPredicateGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -63,13 +64,13 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        [Fact]
-        public async Task LongCountGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task LongCountGreaterThanZero_OnIQueryable_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -84,13 +85,13 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
-        
-        [Fact]
-        public async Task ZeroLessThanCount_OnIQueryable_ShouldTriggerLC003()
-        {
-             var test = Usings + @"
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ZeroLessThanCount_OnIQueryable_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -104,13 +105,13 @@ namespace LinqContraband.Test
         }
     }
 }";
-             await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        [Fact]
-        public async Task CountGreaterThanZero_OnList_ShouldNotTrigger()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task CountGreaterThanZero_OnList_ShouldNotTrigger()
+    {
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -125,15 +126,15 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
-        
-        [Fact]
-        public async Task CountEqualsZero_ShouldNotTrigger_ForNow()
-        {
-            // Analyzer is specifically for Any() replacement which implies > 0. 
-            // == 0 would be !Any(), which is a valid extension but let's stick to the requirement first.
-            var test = Usings + @"
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CountEqualsZero_ShouldNotTrigger_ForNow()
+    {
+        // Analyzer is specifically for Any() replacement which implies > 0. 
+        // == 0 would be !Any(), which is a valid extension but let's stick to the requirement first.
+        var test = Usings + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -148,8 +149,6 @@ namespace LinqContraband.Test
     }
 }";
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }
-

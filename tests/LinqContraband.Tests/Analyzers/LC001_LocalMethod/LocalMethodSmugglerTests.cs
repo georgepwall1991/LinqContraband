@@ -1,13 +1,12 @@
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Testing;
-using Xunit;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<LinqContraband.LocalMethodAnalyzer>;
+using VerifyCS =
+    Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
+        LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC001_LocalMethod;
+
+public class LocalMethodSmugglerTests
 {
-    public class LocalMethodSmugglerTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Linq;
 using System.Linq.Expressions;
@@ -15,7 +14,7 @@ using System.Collections.Generic;
 using TestNamespace;
 ";
 
-        private const string MockNamespace = @"
+    private const string MockNamespace = @"
 namespace TestNamespace
 {
     public class User
@@ -30,10 +29,10 @@ namespace TestNamespace
     }
 }";
 
-        [Fact]
-        public async Task TestCrime_LocalMethodInWhere_ShouldTriggerLC001()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestCrime_LocalMethodInWhere_ShouldTriggerLC001()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -46,17 +45,17 @@ class Program
 }
 " + MockNamespace;
 
-            var expected = VerifyCS.Diagnostic("LC001")
-                .WithSpan(13, 41, 13, 60)
-                .WithArguments("CalculateAge");
+        var expected = VerifyCS.Diagnostic("LC001")
+            .WithSpan(13, 41, 13, 60)
+            .WithArguments("CalculateAge");
 
-            await VerifyCS.VerifyAnalyzerAsync(test, expected);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 
-        [Fact]
-        public async Task TestInnocent_PropertyAccess_ShouldNotTrigger()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestInnocent_PropertyAccess_ShouldNotTrigger()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -67,13 +66,13 @@ class Program
 }
 " + MockNamespace;
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        [Fact]
-        public async Task TestExempt_SystemMethod_ShouldNotTrigger()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task TestExempt_SystemMethod_ShouldNotTrigger()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -85,7 +84,6 @@ class Program
 }
 " + MockNamespace;
 
-            await VerifyCS.VerifyAnalyzerAsync(test);
-        }
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

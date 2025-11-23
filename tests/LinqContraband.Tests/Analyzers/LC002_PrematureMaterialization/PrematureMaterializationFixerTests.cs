@@ -1,21 +1,23 @@
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
-using Xunit;
-using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<LinqContraband.PrematureMaterializationAnalyzer, LinqContraband.PrematureMaterializationFixer, Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+using CodeFixTest =
+    Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+        LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationAnalyzer,
+        LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationFixer,
+        Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
-namespace LinqContraband.Tests
+namespace LinqContraband.Tests.Analyzers.LC002_PrematureMaterialization;
+
+public class PrematureMaterializationFixerTests
 {
-    public class PrematureMaterializationFixerTests
-    {
-        private const string Usings = @"
+    private const string Usings = @"
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using TestNamespace;
 ";
 
-        private const string MockNamespace = @"
+    private const string MockNamespace = @"
 namespace TestNamespace
 {
     public class User
@@ -29,10 +31,10 @@ namespace TestNamespace
     }
 }";
 
-        [Fact]
-        public async Task FixCrime_MovesWhereBeforeToList()
-        {
-            var test = Usings + @"
+    [Fact]
+    public async Task FixCrime_MovesWhereBeforeToList()
+    {
+        var test = Usings + @"
 class Program
 {
     void Main()
@@ -43,7 +45,7 @@ class Program
 }
 " + MockNamespace;
 
-            var fixedCode = Usings + @"
+        var fixedCode = Usings + @"
 class Program
 {
     void Main()
@@ -54,20 +56,19 @@ class Program
 }
 " + MockNamespace;
 
-            var testObj = new CodeFixTest
-            {
-                TestCode = test,
-                FixedCode = fixedCode,
-                // Number of iterations to apply fix (default 1 check usually fine)
-                NumberOfIncrementalIterations = 1,
-                NumberOfFixAllIterations = 1
-            };
-            
-            testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC002", DiagnosticSeverity.Warning)
-                .WithSpan(12, 21, 12, 61)
-                .WithArguments("Where"));
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            // Number of iterations to apply fix (default 1 check usually fine)
+            NumberOfIncrementalIterations = 1,
+            NumberOfFixAllIterations = 1
+        };
 
-            await testObj.RunAsync();
-        }
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC002", DiagnosticSeverity.Warning)
+            .WithSpan(12, 21, 12, 61)
+            .WithArguments("Where"));
+
+        await testObj.RunAsync();
     }
 }
