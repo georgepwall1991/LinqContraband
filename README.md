@@ -288,11 +288,23 @@ public class Product
 Define a primary key using the `Id` convention, `[Key]` attribute, or Fluent API.
 
 ```csharp
+// 1. Convention: Id or {ClassName}Id
 public class Product 
 {
-    public int Id { get; set; } // Conventionally recognized as Key
+    public int Id { get; set; } 
     public string Name { get; set; }
 }
+
+// 2. Attribute: [Key]
+public class Product 
+{
+    [Key]
+    public int ProductCode { get; set; }
+    public string Name { get; set; }
+}
+
+// 3. Fluent API (in OnModelCreating)
+modelBuilder.Entity<Product>().HasKey(p => p.ProductCode);
 ```
 
 ---
