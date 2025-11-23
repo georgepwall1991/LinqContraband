@@ -462,6 +462,41 @@ var user = db.Users.Where(u => u.Name == "john").FirstOrDefault();
 
 ---
 
+### LC015: Missing OrderBy Before Skip/Last
+
+Pagination (`Skip`/`Take`) and fetching the `Last` item rely on a specific sort order. If the query is unordered, the database can return results in any random order, making pagination unpredictable and `Last()` results non-deterministic.
+
+**👶 Explain it like I'm a ten year old:** Imagine a teacher asks you to "Skip the first 5 students and pick the next one." If the students are standing in a line, you know who to pick. But if they are running around the playground randomly, you have no idea who "the first 5" are, and you might pick a different person every time.
+
+**❌ The Crime:**
+
+```csharp
+// Randomly skips 10 rows. The result is unpredictable.
+var page2 = db.Users.Skip(10).Take(10).ToList();
+
+// Which user is "Last"? Random.
+var last = db.Users.Last();
+
+// Chunks of 10 users. But who is in the first chunk? Random.
+var chunks = db.Users.Chunk(10).ToList();
+```
+
+**✅ The Fix:**
+Explicitly sort the data first.
+
+```csharp
+// Defined order: Sort by ID, then skip.
+var page2 = db.Users.OrderBy(u => u.Id).Skip(10).Take(10).ToList();
+
+// Defined order: Sort by Date, then get last.
+var last = db.Users.OrderBy(u => u.CreatedAt).Last();
+
+// Defined order: Sort by Name, then chunk.
+var chunks = db.Users.OrderBy(u => u.Name).Chunk(10).ToList();
+```
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:

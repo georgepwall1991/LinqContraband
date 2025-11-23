@@ -12,6 +12,7 @@ using LinqContraband.Sample.Samples.LC010_SaveChangesInLoop;
 using LinqContraband.Sample.Samples.LC011_EntityMissingPrimaryKey;
 using LinqContraband.Sample.Samples.LC012_OptimizeRemoveRange;
 using LinqContraband.Sample.Samples.LC014_AvoidStringCaseConversion;
+using LinqContraband.Sample.Samples.LC015_MissingOrderBy;
 
 namespace LinqContraband.Sample
 {
@@ -41,6 +42,9 @@ namespace LinqContraband.Sample
             // LC014: AvoidStringCaseConversion
             using var db = new AppDbContext();
             AvoidStringCaseConversionSample.Run(db);
+            
+            // LC015: MissingOrderBy
+            MissingOrderBySample.Run(users);
         }
     }
 }
