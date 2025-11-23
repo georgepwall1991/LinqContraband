@@ -41,7 +41,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 When EF Core encounters a method it can't translate, it might switch to client-side evaluation (fetching all rows) or throw a runtime exception. This turns a fast SQL query into a massive memory leak.
 
-**👶 ELI10:** Imagine hiring a translator to translate a book into Spanish, but you used made-up slang words they don't know. They can't finish the job, so they hand you the *entire* dictionary and say "You figure it out." You have to read the whole dictionary just to find one word.
+**👶 Explain it like I'm a ten year old:** Imagine hiring a translator to translate a book into Spanish, but you used made-up slang words they don't know. They can't finish the job, so they hand you the *entire* dictionary and say "You figure it out." You have to read the whole dictionary just to find one word.
 
 **❌ The Crime:**
 
@@ -64,7 +64,7 @@ var query = db.Users.Where(u => u.Dob <= minDob);
 
 This is the "Select *" of EF Core. By materializing early, you transfer the entire table over the network, discard 99% of it in memory, and keep the Garbage Collector busy.
 
-**👶 ELI10:** Imagine you want a pepperoni pizza. Instead of ordering just pepperoni, you order a pizza with *every single topping in the restaurant*. When it arrives, you have to spend an hour picking off the anchovies, pineapple, and mushrooms before you can eat. It’s a waste of food and time.
+**👶 Explain it like I'm a ten year old:** Imagine you want a pepperoni pizza. Instead of ordering just pepperoni, you order a pizza with *every single topping in the restaurant*. When it arrives, you have to spend an hour picking off the anchovies, pineapple, and mushrooms before you can eat. It’s a waste of food and time.
 
 **❌ The Crime:**
 
@@ -88,7 +88,7 @@ var query = db.Users.Where(u => u.Age > 18).ToList();
 
 Count() > 0 forces the database to scan all matching rows to return a total number (e.g., 5000). Any() generates IF EXISTS (...), allowing the database to stop scanning after finding just one match.
 
-**👶 ELI10:** Imagine you want to know if there are any cookies left in the jar. Count() > 0 is like dumping the entire jar onto the table and counting 500 cookies one by one just to say "Yes". Any() is like opening the lid, seeing one cookie, and saying "Yes" immediately.
+**👶 Explain it like I'm a ten year old:** Imagine you want to know if there are any cookies left in the jar. Count() > 0 is like dumping the entire jar onto the table and counting 500 cookies one by one just to say "Yes". Any() is like opening the lid, seeing one cookie, and saying "Yes" immediately.
 
 **❌ The Crime:**
 
@@ -110,7 +110,7 @@ if (db.Users.Any()) { ... }
 
 SQL Server generates UUIDs differently (sequential vs random) than C#. Using NEWID() in SQL prevents index usage in some cases or forces client-side evaluation if the provider doesn't support translation.
 
-**👶 ELI10:** Imagine trying to sort books in a library alphabetically, but someone keeps running around and reshuffling the shelves while you're looking. C# and the Database don't agree on how "random" works, so they can't work together.
+**👶 Explain it like I'm a ten year old:** Imagine trying to sort books in a library alphabetically, but someone keeps running around and reshuffling the shelves while you're looking. C# and the Database don't agree on how "random" works, so they can't work together.
 
 **❌ The Crime:**
 
@@ -132,7 +132,7 @@ var query = db.Users.Where(u => u.Id == newId);
 
 This is a logic bug that acts like a performance bug. The second OrderBy completely ignores the first. The database creates a sorting plan for the first column, then discards it to sort by the second.
 
-**👶 ELI10:** Imagine telling someone to sort a deck of cards by Suit (Hearts, Spades...). As soon as they finish, you say "Actually, sort them by Number (2, 3, 4...) instead." They did all that work for the first sort for nothing because you changed the rules.
+**👶 Explain it like I'm a ten year old:** Imagine telling someone to sort a deck of cards by Suit (Hearts, Spades...). As soon as they finish, you say "Actually, sort them by Number (2, 3, 4...) instead." They did all that work for the first sort for nothing because you changed the rules.
 
 **❌ The Crime:**
 
@@ -154,7 +154,7 @@ var query = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age);
 
 If User has 10 Orders, and Order has 10 Items, fetching all creates 100 rows per User. With 1000 Users, that's 100,000 rows transferred. `AsSplitQuery` fetches Users, Orders, and Items in 3 separate, clean queries.
 
-**👶 ELI10:** Imagine a teacher asks 30 students what they ate. Instead of getting 30 answers, she asks every student to list every single fry they ate individually. You end up with thousands of answers ("I ate fry #1", "I ate fry #2") instead of just "I had fries".
+**👶 Explain it like I'm a ten year old:** Imagine a teacher asks 30 students what they ate. Instead of getting 30 answers, she asks every student to list every single fry they ate individually. You end up with thousands of answers ("I ate fry #1", "I ate fry #2") instead of just "I had fries".
 
 **❌ The Crime:**
 
@@ -177,7 +177,7 @@ var query = db.Users.Include(u => u.Orders).AsSplitQuery().Include(u => u.Roles)
 
 Database queries have high fixed overhead (latency, connection pooling). Executing 100 queries takes ~100x longer than executing 1 query that fetches 100 items.
 
-**👶 ELI10:** Imagine you need 10 eggs. You drive to the store, buy *one* egg, drive home. Drive back, buy *one* egg, drive home. You do this 10 times. You spend all day driving instead of just buying the carton at once.
+**👶 Explain it like I'm a ten year old:** Imagine you need 10 eggs. You drive to the store, buy *one* egg, drive home. Drive back, buy *one* egg, drive home. You do this 10 times. You spend all day driving instead of just buying the carton at once.
 
 **❌ The Crime:**
 
@@ -203,7 +203,7 @@ var users = db.Users.Where(u => ids.Contains(u.Id)).ToList();
 
 In web apps, threads are a limited resource. Blocking a thread to wait for SQL (I/O) means that thread can't serve other users. Under load, this causes "Thread Starvation", leading to 503 errors even if CPU is low.
 
-**👶 ELI10:** Imagine a waiter taking your order, then walking into the kitchen and staring at the chef for 20 minutes until the food is ready. No one else gets served. That's Sync-over-Async. Async means the waiter takes the order and goes to serve other tables while the food cooks.
+**👶 Explain it like I'm a ten year old:** Imagine a waiter taking your order, then walking into the kitchen and staring at the chef for 20 minutes until the food is ready. No one else gets served. That's Sync-over-Async. Async means the waiter takes the order and goes to serve other tables while the food cooks.
 
 **❌ The Crime:**
 
@@ -232,7 +232,7 @@ public async Task<List<User>> GetUsersAsync()
 
 EF Core takes a "snapshot" of every entity it fetches to detect changes. For a read-only dashboard, this snapshot process consumes CPU and doubles the memory usage for every row.
 
-**👶 ELI10:** Imagine you go to a museum. You promise not to touch anything. But security guards still follow you and take high-resolution photos of every painting you look at, just in case you decide to draw a mustache on one. It wastes their time and memory.
+**👶 Explain it like I'm a ten year old:** Imagine you go to a museum. You promise not to touch anything. But security guards still follow you and take high-resolution photos of every painting you look at, just in case you decide to draw a mustache on one. It wastes their time and memory.
 
 **❌ The Crime:**
 
@@ -261,7 +261,7 @@ public List<User> GetUsers()
 
 Opening and committing a database transaction is an expensive operation. Doing this inside a loop (e.g., for 100 items) means 100 separate transactions, which can be 1000x slower than a single batched commit.
 
-**👶 ELI10:** Imagine mailing 100 letters. Instead of putting them all in the mailbox at once, you put one in, wait for the mailman to pick it up, then put the next one in. It takes 100 days to mail your invites!
+**👶 Explain it like I'm a ten year old:** Imagine mailing 100 letters. Instead of putting them all in the mailbox at once, you put one in, wait for the mailman to pick it up, then put the next one in. It takes 100 days to mail your invites!
 
 **❌ The Crime:**
 
