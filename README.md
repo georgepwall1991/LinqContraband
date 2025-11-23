@@ -106,42 +106,6 @@ if (db.Users.Any()) { ... }
 
 ---
 
-### LC004: Guid.NewGuid() in Query
-
-Using `Guid.NewGuid()` inside a LINQ query often causes translation failures or forces client-side evaluation. It's commonly used for "random sorting" or generating IDs in projections, but C# methods don't always map to SQL functions like `NEWID()`.
-
-**👶 Explain it like I'm a ten year old:** You want to shuffle a deck of cards (Random Sort) or write a name tag for everyone (Projection). But you're asking the library database computer to do it, and it gets confused because it doesn't know how to use your specific shuffle machine or marker pen. It gives up and hands you the entire messy pile to sort out yourself.
-
-**❌ The Crime:**
-
-```csharp
-// 1. The "Random Sort" Hack (Fails translation or pulls all data)
-var randomUsers = db.Users.OrderBy(u => Guid.NewGuid()).Take(5);
-
-// 2. Generating IDs in Projection (Fails translation)
-var dtos = db.Users.Select(u => new UserDto { 
-    Id = Guid.NewGuid(), // <--- Crime!
-    Name = u.Name 
-});
-```
-
-**✅ The Fix:**
-
-```csharp
-// 1. For Random Sort: Use raw SQL if supported, or fetch IDs and shuffle in memory.
-var randomUsers = db.Users.FromSqlRaw("SELECT * FROM Users ORDER BY NEWID()").Take(5);
-
-// 2. For Projections: Generate IDs client-side after fetching.
-var dtos = db.Users.Select(u => new { u.Name })
-    .AsEnumerable() // Switch to client-side
-    .Select(u => new UserDto { 
-        Id = Guid.NewGuid(), 
-        Name = u.Name 
-    });
-```
-
----
-
 ### LC005: Multiple OrderBy Calls
 
 This is a logic bug that acts like a performance bug. The second OrderBy completely ignores the first. The database creates a sorting plan for the first column, then discards it to sort by the second.

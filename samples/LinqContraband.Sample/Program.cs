@@ -56,15 +56,6 @@ namespace LinqContraband.Sample
                 Console.WriteLine("Users exist");
             }
 
-            // LC004: Guid In Query
-            // Common mistake 1: "Random Sort" - forcing a shuffle by ordering by a new Guid.
-            Console.WriteLine("Testing LC004 (Random Sort)...");
-            var randomSortResult = users.OrderBy(u => Guid.NewGuid()).ToList();
-
-            // Common mistake 2: Generating IDs in projection
-            Console.WriteLine("Testing LC004 (Projection)...");
-            var projectionResult = users.Select(u => new { NewId = Guid.NewGuid(), u.Name }).ToList();
-
             // LC005: Multiple OrderBy
             // This calls OrderBy twice, resetting the first sort instead of chaining with ThenBy.
             Console.WriteLine("Testing LC005...");
