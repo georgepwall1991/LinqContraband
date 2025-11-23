@@ -80,3 +80,4 @@ public class GuidInQueryFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 }
+

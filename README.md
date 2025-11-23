@@ -108,22 +108,36 @@ if (db.Users.Any()) { ... }
 
 ### LC004: Guid.NewGuid() in Query
 
-SQL Server generates UUIDs differently (sequential vs random) than C#. Using NEWID() in SQL prevents index usage in some cases or forces client-side evaluation if the provider doesn't support translation.
+Using `Guid.NewGuid()` inside a LINQ query often causes translation failures or forces client-side evaluation. It's commonly used for "random sorting" or generating IDs in projections, but C# methods don't always map to SQL functions like `NEWID()`.
 
-**👶 Explain it like I'm a ten year old:** Imagine trying to sort books in a library alphabetically, but someone keeps running around and reshuffling the shelves while you're looking. C# and the Database don't agree on how "random" works, so they can't work together.
+**👶 Explain it like I'm a ten year old:** You want to shuffle a deck of cards (Random Sort) or write a name tag for everyone (Projection). But you're asking the library database computer to do it, and it gets confused because it doesn't know how to use your specific shuffle machine or marker pen. It gives up and hands you the entire messy pile to sort out yourself.
 
 **❌ The Crime:**
 
 ```csharp
-var query = db.Users.Where(u => u.Id == Guid.NewGuid());
+// 1. The "Random Sort" Hack (Fails translation or pulls all data)
+var randomUsers = db.Users.OrderBy(u => Guid.NewGuid()).Take(5);
+
+// 2. Generating IDs in Projection (Fails translation)
+var dtos = db.Users.Select(u => new UserDto { 
+    Id = Guid.NewGuid(), // <--- Crime!
+    Name = u.Name 
+});
 ```
 
 **✅ The Fix:**
-Generate the value client-side, then pass it in.
 
 ```csharp
-var newId = Guid.NewGuid();
-var query = db.Users.Where(u => u.Id == newId);
+// 1. For Random Sort: Use raw SQL if supported, or fetch IDs and shuffle in memory.
+var randomUsers = db.Users.FromSqlRaw("SELECT * FROM Users ORDER BY NEWID()").Take(5);
+
+// 2. For Projections: Generate IDs client-side after fetching.
+var dtos = db.Users.Select(u => new { u.Name })
+    .AsEnumerable() // Switch to client-side
+    .Select(u => new UserDto { 
+        Id = Guid.NewGuid(), 
+        Name = u.Name 
+    });
 ```
 
 ---

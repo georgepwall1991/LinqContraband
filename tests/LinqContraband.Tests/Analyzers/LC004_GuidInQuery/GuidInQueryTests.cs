@@ -86,4 +86,43 @@ namespace LinqContraband.Test
 }";
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task NewGuid_InsideOrderBy_ShouldTriggerLC004()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            // Common 'Random Sort' hack
+            var result = query.OrderBy(x => {|LC004:Guid.NewGuid()|});
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NewGuid_InsideSelectProjection_ShouldTriggerLC004()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            // Generating ID in projection
+            var result = query.Select(x => new { Id = {|LC004:Guid.NewGuid()|}, Val = x });
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
+

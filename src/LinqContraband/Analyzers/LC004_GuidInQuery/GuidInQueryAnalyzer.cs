@@ -98,3 +98,4 @@ public class GuidInQueryAnalyzer : DiagnosticAnalyzer
         return false;
     }
 }
+

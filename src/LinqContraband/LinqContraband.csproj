@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>2.1.0</Version>
+        <Version>2.1.1</Version>
         <Authors>George Wall</Authors>
         <Description>Stop smuggling bad queries into production. LinqContraband is a Roslyn Analyzer that catches EF Core performance killers (client-side evaluation, N+1 queries) at compile time.</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
