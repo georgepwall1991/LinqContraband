@@ -47,9 +47,13 @@ public class MissingAsNoTrackingFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
+        EnsureUsing(editor, "Microsoft.EntityFrameworkCore");
+
         var sourceExpression = GetSourceExpression(invocation);
 
         if (sourceExpression == null) return document;
+
+        if (IsInvocationOf(sourceExpression, "AsNoTracking")) return document;
 
         // sourceExpression is "db.Users"
         // We want to replace "db.Users" with "db.Users.AsNoTracking()"
@@ -60,6 +64,7 @@ public class MissingAsNoTrackingFixer : CodeFixProvider
             SyntaxFactory.IdentifierName("AsNoTracking"));
         
         var asNoTrackingInvocation = SyntaxFactory.InvocationExpression(asNoTracking)
+            .WithTriviaFrom(sourceExpression)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
         editor.ReplaceNode(sourceExpression, asNoTrackingInvocation);
@@ -89,5 +94,29 @@ public class MissingAsNoTrackingFixer : CodeFixProvider
         }
 
         return node; // Fallback for Identifiers or other expressions
+    }
+
+    private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)
+    {
+        if (expression is InvocationExpressionSyntax invocation &&
+            invocation.Expression is MemberAccessExpressionSyntax ma)
+        {
+            return ma.Name.Identifier.Text == methodName;
+        }
+
+        return false;
+    }
+
+    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
+    {
+        var root = editor.OriginalRoot as CompilationUnitSyntax;
+        if (root == null) return;
+        if (root.Usings.Any(u =>
+                u.Name?.ToString() == namespaceName ||
+                (u.Alias != null && u.Name?.ToString() == namespaceName)))
+            return;
+
+        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
+        editor.ReplaceNode(root, newRoot);
     }
 }

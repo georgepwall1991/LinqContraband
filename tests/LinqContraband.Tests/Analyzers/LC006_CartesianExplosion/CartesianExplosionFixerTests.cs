@@ -5,6 +5,8 @@ using CodeFixTest =
         LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionAnalyzer,
         LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionFixer,
         Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
+    LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionAnalyzer>;
 
 namespace LinqContraband.Tests.Analyzers.LC006_CartesianExplosion;
 
@@ -31,6 +33,11 @@ namespace Microsoft.EntityFrameworkCore
 
     public static class EntityFrameworkQueryableExtensions
     {
+        public static IQueryable<TEntity> Include<TEntity>(
+            this IQueryable<TEntity> source,
+            string navigationPropertyPath)
+            => source;
+
         public static IIncludableQueryable<TEntity, TProperty> Include<TEntity, TProperty>(
             this IQueryable<TEntity> source, 
             System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationPropertyPath) 
@@ -59,8 +66,9 @@ namespace TestNamespace
         public List<Role> Roles { get; set; }
     }
 
-    public class Order { }
+    public class Order { public List<Item> Items { get; set; } }
     public class Role { }
+    public class Item { }
 
     public class DbContext
     {
@@ -105,5 +113,22 @@ class Program
             .WithArguments("List<Role>"));
 
         await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task AnalyzerIgnoresStringIncludeChains()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(""Orders"").Include(""Roles"").ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

@@ -42,8 +42,8 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        // 1. Must be a materializer (ToList, etc.) or Find
-        if (!IsMaterializerOrFind(method)) return;
+        // 1. Must be a materializer (ToList, etc.) (Find/FindAsync ignored because tracking mods are ignored there)
+        if (!IsMaterializer(method)) return;
 
         // 2. Analyze the query chain
         var analysis = AnalyzeQueryChain(invocation);
@@ -61,11 +61,11 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
     }
 
-    private bool IsMaterializerOrFind(IMethodSymbol method)
+    private bool IsMaterializer(IMethodSymbol method)
     {
         // Quick check
-        if (method.Name.StartsWith("Find")) return true;
-        
+        if (method.Name.StartsWith("Find")) return false; // AsNoTracking has no effect on Find
+
         return method.Name == "ToList" || method.Name == "ToListAsync" ||
                method.Name == "ToArray" || method.Name == "ToArrayAsync" ||
                method.Name == "First" || method.Name == "FirstOrDefault" ||
@@ -100,7 +100,8 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
                 var method = prevInvocation.TargetMethod;
                 var ns = method.ContainingNamespace?.ToString();
 
-                if (method.Name == "AsNoTracking") result.HasAsNoTracking = true;
+                if (method.Name == "AsNoTracking" || method.Name == "AsNoTrackingWithIdentityResolution")
+                    result.HasAsNoTracking = true;
                 if (method.Name == "AsTracking") result.HasAsTracking = true;
                 if (method.Name == "Select") result.HasSelect = true; // Any projection invalidates need for AsNoTracking check
 
@@ -111,7 +112,7 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             else if (current is IPropertyReferenceOperation propRef)
             {
                 // Check if it's a DbSet
-                if (IsDbSet(propRef.Type))
+                if (propRef.Type.IsDbSet())
                 {
                     result.IsEfQuery = true;
                 }
@@ -120,82 +121,33 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             }
             else if (current is IFieldReferenceOperation fieldRef)
             {
-                 if (IsDbSet(fieldRef.Type)) result.IsEfQuery = true;
+                 if (fieldRef.Type.IsDbSet()) result.IsEfQuery = true;
                  break;
             }
             else if (current is IParameterReferenceOperation paramRef)
             {
                 // If it's a parameter of type IQueryable, assume it's EF-like
-                if (IsDbSet(paramRef.Type) || paramRef.Type.IsIQueryable()) 
+                if (paramRef.Type.IsDbSet() || paramRef.Type.IsIQueryable()) 
                 {
                     result.IsEfQuery = true;
                 }
                 break;
             }
+            else if (current is ILocalReferenceOperation localRef)
+            {
+                // Local typed as DbSet/IQueryable counts as EF query source
+                if (localRef.Type.IsDbSet() || localRef.Type.IsIQueryable())
+                    result.IsEfQuery = true;
+                break;
+            }
             else
             {
-                // Probably a local variable or parameter.
-                // If variable type is IQueryable, we assume it's EF related for now if we haven't proven otherwise?
-                // Safe to assume if we are in this analyzer context and already matched method names.
-                // BUT better to be strict.
-                if (IsDbSet(current.Type)) result.IsEfQuery = true;
-                
-                // Often we assign db.Users to a var.
-                // var users = db.Users;
-                // users.ToList();
-                // 'current' is ILocalReferenceOperation. We'd need to trace variable assignment. 
-                // That's complex. For now, let's stick to fluent chains or direct access.
-                
+                if (current.Type.IsDbSet()) result.IsEfQuery = true;
                 break;
             }
         }
 
         return result;
-    }
-
-    private bool IsDbSet(ITypeSymbol? type)
-    {
-        if (type == null) return false;
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbSet" && 
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            if (current.Name == "IQueryable" && // Allow IQueryable interfaces too? No, too broad.
-                current.ContainingNamespace?.ToString() == "System.Linq")
-            {
-                // Maybe?
-            }
-            current = current.BaseType;
-        }
-        // Interface check
-        foreach (var iface in type.AllInterfaces)
-        {
-             if (iface.Name == "IQueryable" && iface.ContainingNamespace?.ToString() == "System.Linq")
-             {
-                 // If it's IQueryable, it's potentially EF. 
-                 // But we want to be sure it's EF to avoid flagging Lists.
-                 // The method names (ToListAsync, AsNoTracking) usually give it away.
-                 // But we are checking the Source here.
-             }
-        }
-        
-        return false;
-    }
-
-    private bool IsDbContext(ITypeSymbol? type)
-    {
-        if (type == null) return false;
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbContext" && 
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-        return false;
     }
 
     private bool HasWriteOperations(IOperation operation)
@@ -239,7 +191,7 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
                 
                 if ((name == "Add" || name == "AddAsync" || 
                      name == "Update" || name == "Remove" || name == "RemoveRange" || name == "AddRange" || name == "AddRangeAsync") &&
-                    (IsDbSet(receiverType) || IsDbContext(receiverType)))
+                    (receiverType.IsDbSet() || receiverType.IsDbContext()))
                 {
                     hasWrite = true; 
                     break;

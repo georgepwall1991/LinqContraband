@@ -47,6 +47,8 @@ public class CartesianExplosionFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
+        EnsureUsing(editor, "Microsoft.EntityFrameworkCore");
+
         // Target: .Include(Roles)
         // We want to insert .AsSplitQuery() before this call.
         // Currently: Source.Include(Roles)
@@ -54,6 +56,8 @@ public class CartesianExplosionFixer : CodeFixProvider
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
         var source = memberAccess.Expression;
+
+        if (IsInvocationOf(source, "AsSplitQuery")) return document;
 
         // Create .AsSplitQuery() invocation
         var asSplitQuery = SyntaxFactory.MemberAccessExpression(
@@ -63,9 +67,33 @@ public class CartesianExplosionFixer : CodeFixProvider
 
         var asSplitQueryInvocation = SyntaxFactory.InvocationExpression(asSplitQuery);
 
-        // Replace 'source' in the original expression with 'source.AsSplitQuery()'
-        editor.ReplaceNode(source, asSplitQueryInvocation);
+        // Replace 'source' in the original expression with 'source.AsSplitQuery()', preserving trivia
+        editor.ReplaceNode(source, asSplitQueryInvocation.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)
+    {
+        if (expression is InvocationExpressionSyntax invocation &&
+            invocation.Expression is MemberAccessExpressionSyntax ma)
+        {
+            return ma.Name.Identifier.Text == methodName;
+        }
+
+        return false;
+    }
+
+    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
+    {
+        var root = editor.OriginalRoot as CompilationUnitSyntax;
+        if (root == null) return;
+        if (root.Usings.Any(u =>
+                u.Name?.ToString() == namespaceName ||
+                (u.Alias != null && u.Name?.ToString() == namespaceName)))
+            return;
+
+        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
+        editor.ReplaceNode(root, newRoot);
     }
 }

@@ -54,7 +54,7 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         var receiverOp = invocation.Instance ??
                          (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
 
-        while (receiverOp is IConversionOperation conversion) receiverOp = conversion.Operand;
+        receiverOp = Unwrap(receiverOp);
 
         if (receiverOp is IInvocationOperation previousInvocation)
             if (IsMaterializingMethod(previousInvocation.TargetMethod))
@@ -64,13 +64,21 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
                                (previousInvocation.Arguments.Length > 0 ? previousInvocation.Arguments[0].Value : null);
 
                 // Handle conversion on sourceOp too (e.g. implicit conversion from List to IEnumerable in chain)
-                while (sourceOp is IConversionOperation conversion) sourceOp = conversion.Operand;
+                sourceOp = Unwrap(sourceOp);
 
                 var sourceType = sourceOp?.Type;
                 if (sourceType.IsIQueryable())
                     context.ReportDiagnostic(
                         Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
             }
+    }
+
+    private IOperation? Unwrap(IOperation? op)
+    {
+        var current = op;
+        while (current is IConversionOperation conversion) current = conversion.Operand;
+        while (current is IAwaitOperation awaitOp) current = awaitOp.Operation;
+        return current;
     }
 
     private bool IsLinqOperator(IMethodSymbol method)
@@ -81,7 +89,19 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 
     private bool IsMaterializingMethod(IMethodSymbol method)
     {
-        return (method.Name == "ToList" || method.Name == "ToArray") &&
-               method.ContainingNamespace?.ToString() == "System.Linq";
+        var ns = method.ContainingNamespace?.ToString();
+        if (ns is not ("System.Linq" or "Microsoft.EntityFrameworkCore")) return false;
+
+        if (method.Name == "AsEnumerable") return true; // switches to client-side
+
+        return method.Name == "ToList" ||
+               method.Name == "ToListAsync" ||
+               method.Name == "ToArray" ||
+               method.Name == "ToArrayAsync" ||
+               method.Name == "ToDictionary" ||
+               method.Name == "ToDictionaryAsync" ||
+               method.Name == "ToHashSet" ||
+               method.Name == "ToHashSetAsync" ||
+               method.Name == "ToLookup";
     }
 }

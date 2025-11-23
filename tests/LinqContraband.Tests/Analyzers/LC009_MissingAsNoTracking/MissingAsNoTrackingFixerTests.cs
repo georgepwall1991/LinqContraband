@@ -42,6 +42,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsNoTrackingWithIdentityResolution<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsTracking<T>(this IQueryable<T> source) => source;
     }
 }

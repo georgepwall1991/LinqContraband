@@ -10,6 +10,7 @@ public class NPlusOneLooperTests
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using TestNamespace;
 ";
@@ -32,6 +33,11 @@ namespace Microsoft.EntityFrameworkCore
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
         
         public T Find(params object[] keyValues) => null;
+    }
+
+    public static class AsyncEnumerableExtensions
+    {
+        public static IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IQueryable<T> source) => null;
     }
 }
 
@@ -65,18 +71,8 @@ class Program
 }
 " + MockNamespace;
 
-        // Line calculation:
-        // Usings: 7 lines
-        // Class header: 3 lines
-        // Main body lines: 4 lines to foreach
-        // foreach line: 1
-        // brace: 1
-        // comment: 1
-        // var user ... : This is the line.
-        // 7 + 11 = 18.
-        
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(18, 24, 18, 78) 
+            .WithSpan(19, 24, 19, 78) 
             .WithArguments("ToList");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -101,9 +97,8 @@ class Program
 }
 " + MockNamespace;
 
-        // Line 10 in snippet + 7 usings = 17.
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(17, 24, 17, 40)
+            .WithSpan(18, 24, 18, 40)
             .WithArguments("Find");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -129,9 +124,8 @@ class Program
 }
 " + MockNamespace;
 
-        // Line 10 in snippet + 7 usings = 17.
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(17, 25, 17, 41)
+            .WithSpan(18, 25, 18, 41)
             .WithArguments("Count");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -160,6 +154,30 @@ class Program
 " + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_AwaitForeach_WithCount_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public async Task Run()
+    {
+        var db = new MyDbContext();
+        await foreach (var user in db.Users.AsAsyncEnumerable())
+        {
+            var count = db.Users.Count();
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007")
+            .WithSpan(16, 25, 16, 41)
+            .WithArguments("Count");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
     
     [Fact]
