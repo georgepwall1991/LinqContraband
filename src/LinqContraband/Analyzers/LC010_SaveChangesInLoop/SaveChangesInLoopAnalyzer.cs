@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -72,14 +73,6 @@ public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
 
     private bool IsInsideLoop(IOperation operation)
     {
-        var parent = operation.Parent;
-        while (parent != null)
-        {
-            if (parent.Kind == OperationKind.Loop) return true;
-            parent = parent.Parent;
-        }
-        return false;
+        return operation.IsInsideLoop();
     }
 }
-
-

@@ -121,18 +121,6 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 
     private bool IsInsideLoop(IOperation operation)
     {
-        var parent = operation.Parent;
-        while (parent != null)
-        {
-            if (parent.Kind == OperationKind.Loop) return true;
-            
-            // OperationKind.Loop covers For, ForEach, While, Do.
-            // But sometimes the specific operation wrappers might be different.
-            // Let's also check syntax nodes just to be safe, or rely on OperationKind.
-            // OperationKind.Loop is usually robust.
-            
-            parent = parent.Parent;
-        }
-        return false;
+        return operation.IsInsideLoop() || operation.IsInsideAsyncForEach();
     }
 }

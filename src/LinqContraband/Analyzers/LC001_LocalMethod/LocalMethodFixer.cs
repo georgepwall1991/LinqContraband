@@ -48,6 +48,8 @@ public class LocalMethodFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
+        EnsureUsing(editor, "System.Linq");
+
         // 1. Find the Lambda containing the local method call
         var lambda = invocation.FirstAncestorOrSelf<LambdaExpressionSyntax>();
         if (lambda == null) return document;
@@ -61,6 +63,8 @@ public class LocalMethodFixer : CodeFixProvider
 
         var source = memberAccess.Expression;
 
+        if (IsInvocationOf(source, "AsEnumerable")) return editor.GetChangedDocument();
+
         // 4. Create .AsEnumerable() call on the source
         // construct: source.AsEnumerable()
         var asEnumerable = SyntaxFactory.MemberAccessExpression(
@@ -70,9 +74,33 @@ public class LocalMethodFixer : CodeFixProvider
 
         var asEnumerableInvocation = SyntaxFactory.InvocationExpression(asEnumerable);
 
-        // 5. Replace the original source with the new source
-        editor.ReplaceNode(source, asEnumerableInvocation);
+        // 5. Replace the original source with the new source, preserving trivia
+        editor.ReplaceNode(source, asEnumerableInvocation.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)
+    {
+        if (expression is InvocationExpressionSyntax invocation &&
+            invocation.Expression is MemberAccessExpressionSyntax ma)
+        {
+            return ma.Name.Identifier.Text == methodName;
+        }
+
+        return false;
+    }
+
+    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
+    {
+        var root = editor.OriginalRoot as CompilationUnitSyntax;
+        if (root == null) return;
+        if (root.Usings.Any(u =>
+                u.Name?.ToString() == namespaceName ||
+                (u.Alias != null && u.Name?.ToString() == namespaceName)))
+            return;
+
+        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
+        editor.ReplaceNode(root, newRoot);
     }
 }

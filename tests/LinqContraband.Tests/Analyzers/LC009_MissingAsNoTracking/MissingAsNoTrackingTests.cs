@@ -38,6 +38,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsNoTrackingWithIdentityResolution<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsTracking<T>(this IQueryable<T> source) => source;
     }
 }
@@ -103,6 +104,23 @@ class Program
     {
         var db = new MyDbContext();
         return db.Users.AsNoTracking().Where(u => u.Id > 0).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ReadOnlyMethod_WithAsNoTrackingWithIdentityResolution_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public List<User> GetUsers()
+    {
+        var db = new MyDbContext();
+        return db.Users.AsNoTrackingWithIdentityResolution().ToList();
     }
 }
 " + MockNamespace;

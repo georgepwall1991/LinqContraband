@@ -42,13 +42,20 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        if (method.Name != "Include" || method.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
+        var methodName = method.Name;
+        if ((methodName != "Include" && methodName != "ThenInclude") ||
+            method.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
             return;
 
-        // Check if THIS Include is a collection include
-        // Include<T, TProperty>(...)
-        if (method.TypeArguments.Length < 2) return;
-        var propertyType = method.TypeArguments[1];
+        // We only flag top-level Include chaining. ThenInclude deep chains are considered valid.
+        if (methodName == "ThenInclude") return;
+
+        ITypeSymbol? propertyType = null;
+        if (method.TypeArguments.Length >= 2)
+            propertyType = method.TypeArguments[method.TypeArguments.Length - 1];
+
+        // For string-based Include (no type args), we can't determine collection vs scalar; avoid flagging to prevent false positives.
+        if (propertyType == null) return;
 
         if (!IsCollection(propertyType)) return;
 
@@ -78,13 +85,15 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
                     prevMethod.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
                 {
                     // Check if this previous include was ALSO a collection
+                    ITypeSymbol? prevPropType = null;
                     if (prevMethod.TypeArguments.Length >= 2)
                     {
-                        var prevPropType = prevMethod.TypeArguments[1];
-                        if (IsCollection(prevPropType))
-                        {
-                            previousCollectionIncludes++;
-                        }
+                        prevPropType = prevMethod.TypeArguments[prevMethod.TypeArguments.Length - 1];
+                    }
+
+                    if (prevPropType == null || IsCollection(prevPropType))
+                    {
+                        previousCollectionIncludes++;
                     }
                 }
 
@@ -103,8 +112,9 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         if (previousCollectionIncludes > 0)
         {
             // This is the 2nd (or later) collection include. Flag it.
+            var display = propertyType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "string";
             context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), propertyType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), display));
         }
     }
 

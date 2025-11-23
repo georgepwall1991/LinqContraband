@@ -72,6 +72,10 @@ This is the "Select *" of EF Core. By materializing early, you transfer the enti
 // ToList() executes the query (SELECT * FROM Users).
 // Where() then filters millions of rows in memory.
 var query = db.Users.ToList().Where(u => u.Age > 18);
+
+// Same crime with other materializers: AsEnumerable, ToDictionary, etc.
+var query2 = db.Users.AsEnumerable().Where(u => u.Age > 18);
+var query3 = db.Users.ToDictionary(u => u.Id).Where(kvp => kvp.Value.Age > 18);
 ```
 
 **✅ The Fix:**
@@ -80,6 +84,7 @@ Filter on the database, then materialize.
 ```csharp
 // SELECT * FROM Users WHERE Age > 18
 var query = db.Users.Where(u => u.Age > 18).ToList();
+var query2 = db.Users.Where(u => u.Age > 18).ToDictionary(u => u.Id);
 ```
 
 ---
@@ -197,6 +202,12 @@ foreach (var id in ids)
     // Executes 1 query per ID. Latency kills you here.
     var user = db.Users.Find(id);
 }
+
+// Also flags async streams that materialize inside the loop
+await foreach (var user in db.Users.AsAsyncEnumerable())
+{
+    var count = db.Users.Count();
+}
 ```
 
 **✅ The Fix:**
@@ -262,6 +273,9 @@ public List<User> GetUsers()
 {
     // Pure read. No tracking overhead.
     return db.Users.AsNoTracking().ToList();
+
+    // Or, if you need identity resolution without full tracking:
+    return db.Users.AsNoTrackingWithIdentityResolution().ToList();
 }
 ```
 
