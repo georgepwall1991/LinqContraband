@@ -20,9 +20,12 @@ jobs:
       
     - name: Build
       run: dotnet build -c Release --no-restore
-      
+
+    - name: Test
+      run: dotnet test -c Release --no-build --verbosity normal
+
     - name: Pack
       run: dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
       
     - name: Push to NuGet
-      run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
