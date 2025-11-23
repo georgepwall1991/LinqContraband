@@ -391,6 +391,39 @@ db.Users.Where(u => u.LastLogin < DateTime.Now.AddYears(-1)).ExecuteDelete();
 
 ---
 
+### LC013: Disposed Context Query
+
+EF Core queries are deferred, meaning they don't execute until you iterate them. If you build a query using a local `DbContext` that is disposed (via `using`) and return that query, it will explode when the caller tries to use it.
+
+**👶 Explain it like I'm a ten year old:** Imagine buying a ticket to a movie. But the ticket is only valid *inside* the ticket booth. As soon as you walk out to the theater (return the query), the ticket dissolves in your hand.
+
+**❌ The Crime:**
+
+```csharp
+public IQueryable<User> GetUsers()
+{
+    using var db = new AppDbContext();
+    // The context 'db' dies at the closing brace.
+    // The returned query is now a ticking time bomb.
+    return db.Users.Where(u => u.Age > 18);
+}
+```
+
+**✅ The Fix:**
+
+Materialize the results (e.g., `.ToList()`) while the context is still alive.
+
+```csharp
+public List<User> GetUsers()
+{
+    using var db = new AppDbContext();
+    // Executes the query immediately. Safe to return.
+    return db.Users.Where(u => u.Age > 18).ToList();
+}
+```
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:
