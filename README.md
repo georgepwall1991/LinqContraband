@@ -106,8 +106,8 @@ if (db.Users.Any()) { ... }
 
 ---
 
-### LC005: Multiple OrderBy Calls
 
+### LC005: Multiple OrderBy Calls
 This is a logic bug that acts like a performance bug. The second OrderBy completely ignores the first. The database creates a sorting plan for the first column, then discards it to sort by the second.
 
 **👶 Explain it like I'm a ten year old:** Imagine telling someone to sort a deck of cards by Suit (Hearts, Spades...). As soon as they finish, you say "Actually, sort them by Number (2, 3, 4...) instead." They did all that work for the first sort for nothing because you changed the rules.
@@ -264,6 +264,38 @@ foreach (var user in users)
 // One transaction, one roundtrip.
 db.SaveChanges();
 ```
+
+---
+
+### LC011: Entity Missing Primary Key
+
+Entities in EF Core require a Primary Key to track identity. If you don't define one, EF Core might throw a runtime exception or prevent you from updating the record later.
+
+**👶 Explain it like I'm a ten year old:** Imagine a library where books have no titles or ISBN numbers. You ask for a book, but because there's no unique way to identify it, the librarian can't find it, or worse, gives you the wrong one.
+
+**❌ The Crime:**
+
+```csharp
+public class Product 
+{
+    // No 'Id', 'ProductId', or [Key] attribute defined.
+    public string Name { get; set; }
+}
+```
+
+**✅ The Fix:**
+
+Define a primary key using the `Id` convention, `[Key]` attribute, or Fluent API.
+
+```csharp
+public class Product 
+{
+    public int Id { get; set; } // Conventionally recognized as Key
+    public string Name { get; set; }
+}
+```
+
+---
 
 ## ⚙️ Configuration
 
