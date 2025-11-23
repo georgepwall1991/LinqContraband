@@ -106,6 +106,38 @@ if (db.Users.Any()) { ... }
 
 ---
 
+### LC004: Deferred Execution Leak
+
+Passing `IQueryable<T>` to a method that takes `IEnumerable<T>` forces implicit materialization if the method iterates it. This prevents you from composing the query further (e.g., adding `.Where()` or `.Take()`) inside that method.
+
+**👶 Explain it like I'm a ten year old:** Imagine you have a coupon for "Build Your Own Burger". You give it to the chef, but instead of letting you choose toppings, he immediately hands you a plain burger and says "Too late, I already cooked it."
+
+**❌ The Crime:**
+
+```csharp
+public void ProcessUsers(IEnumerable<User> users) 
+{
+    // Iterates and fetches ALL users from DB immediately.
+    foreach(var u in users) { ... }
+}
+
+// Passing IQueryable to IEnumerable parameter.
+ProcessUsers(db.Users);
+```
+
+**✅ The Fix:**
+
+Change the parameter to `IQueryable<T>` to allow composition, or explicitly call `.ToList()` if you *intend* to fetch everything.
+
+```csharp
+public void ProcessUsers(IQueryable<User> users) 
+{
+    // Now we can filter! SELECT ... WHERE Age > 10
+    foreach(var u in users.Where(x => x.Age > 10)) { ... }
+}
+```
+
+---
 
 ### LC005: Multiple OrderBy Calls
 This is a logic bug that acts like a performance bug. The second OrderBy completely ignores the first. The database creates a sorting plan for the first column, then discards it to sort by the second.
@@ -315,6 +347,33 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
     }
 }
 ```
+
+---
+
+### LC012: Optimize Bulk Delete
+
+`RemoveRange()` fetches entities into memory before deleting them one by one (or in batches). `ExecuteDelete()` (EF Core 7+) performs a direct SQL DELETE, which is orders of magnitude faster.
+
+**👶 Explain it like I'm a ten year old:** Imagine you want to throw away a pile of old magazines. `RemoveRange` is like picking up each magazine, reading the cover, and then throwing it in the bin. `ExecuteDelete` is like dumping the whole box in the bin at once.
+
+**❌ The Crime:**
+
+```csharp
+var oldUsers = db.Users.Where(u => u.LastLogin < DateTime.Now.AddYears(-1));
+// Fetches all old users into memory, then deletes them.
+db.Users.RemoveRange(oldUsers);
+```
+
+**✅ The Fix:**
+
+Use `ExecuteDelete()` for direct SQL execution.
+
+```csharp
+// Executes: DELETE FROM Users WHERE LastLogin < ...
+db.Users.Where(u => u.LastLogin < DateTime.Now.AddYears(-1)).ExecuteDelete();
+```
+
+**⚠️ Warning:** `ExecuteDelete` bypasses EF Core Change Tracking, so `Deleted` events and client-side cascades won't fire.
 
 ---
 
