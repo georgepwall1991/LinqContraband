@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
@@ -60,7 +58,7 @@ namespace LinqContraband.Sample.Data
         {
             // Configure Fluent API Key for ValidFluentEntity
             modelBuilder.Entity<ValidFluentEntity>().HasKey(e => e.CodeKey);
-            
+
             // Apply separate configuration
             modelBuilder.ApplyConfiguration(new ValidConfigurationEntityConfiguration());
         }
@@ -70,21 +68,21 @@ namespace LinqContraband.Sample.Data
 
     public class User
     {
-        public Guid Id { get; set; }
+        public Guid Id { get; init; }
         public string Name { get; set; } = string.Empty;
-        public int Age { get; set; }
-        public List<Order> Orders { get; set; } = new();
-        public List<Role> Roles { get; set; } = new();
+        public int Age { get; init; }
+        public List<Order> Orders { get; init; } = [];
+        public List<Role> Roles { get; init; } = [];
     }
 
-    public class Order 
-    { 
-        public int Id { get; set; } 
+    public class Order
+    {
+        public int Id { get; set; }
     }
 
-    public class Role 
-    { 
-        public int Id { get; set; } 
+    public class Role
+    {
+        public int Id { get; set; }
     }
 
     // --- LC011 Test Entities ---
@@ -92,30 +90,30 @@ namespace LinqContraband.Sample.Data
     /// <summary>
     /// Entity missing any form of Primary Key.
     /// </summary>
-    public class Product 
-    { 
-        public string Name { get; set; } = string.Empty; 
+    public class Product
+    {
+        public string Name { get; set; } = string.Empty;
     }
 
-    public class ValidIdEntity 
-    { 
-        public int Id { get; set; } 
-    }
-    
-    public class ValidClassIdEntity 
-    { 
-        public int ValidClassIdEntityId { get; set; } 
+    public class ValidIdEntity
+    {
+        public int Id { get; set; }
     }
 
-    public class ValidKeyAttributeEntity 
-    { 
-        [Key] 
-        public int CustomKey { get; set; } 
+    public class ValidClassIdEntity
+    {
+        public int ValidClassIdEntityId { get; set; }
     }
 
-    public class ValidFluentEntity 
-    { 
-        public int CodeKey { get; set; } 
+    public class ValidKeyAttributeEntity
+    {
+        [Key]
+        public int CustomKey { get; set; }
+    }
+
+    public class ValidFluentEntity
+    {
+        public int CodeKey { get; set; }
     }
 
     #endregion
