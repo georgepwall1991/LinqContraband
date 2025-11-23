@@ -307,6 +307,8 @@ public class Product
 modelBuilder.Entity<Product>().HasKey(p => p.ProductCode);
 ```
 
+*Note: This analyzer currently does not detect primary keys configured in separate `IEntityTypeConfiguration<T>` classes. We are working on adding support for this soon.*
+
 ---
 
 ## ⚙️ Configuration
