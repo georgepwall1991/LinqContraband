@@ -44,10 +44,14 @@ jobs:
           mkdir -p .github/badges
           cp coverage-report/badge_linecoverage.svg .github/badges/coverage.svg
           
-          if [[ -n $(git status --porcelain) ]]; then
-            git config --global user.name 'github-actions'
-            git config --global user.email 'github-actions@github.com'
-            git add .github/badges/coverage.svg
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add .github/badges/coverage.svg
+          
+          # Check if there are staged changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
             git commit -m "Update coverage badge"
             git push
           fi
