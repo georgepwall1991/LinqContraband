@@ -184,6 +184,20 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
+    private bool IsDbContext(ITypeSymbol? type)
+    {
+        if (type == null) return false;
+        var current = type;
+        while (current != null)
+        {
+            if (current.Name == "DbContext" && 
+                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+                return true;
+            current = current.BaseType;
+        }
+        return false;
+    }
+
     private bool HasWriteOperations(IOperation operation)
     {
         // Find method body
@@ -221,9 +235,11 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
                 // So if they call Add(), we should assume tracking is needed.
                 
                 var name = inv.TargetMethod.Name;
+                var receiverType = inv.Instance?.Type ?? (inv.Arguments.Length > 0 ? inv.Arguments[0].Value.Type : null);
+                
                 if ((name == "Add" || name == "AddAsync" || 
                      name == "Update" || name == "Remove" || name == "RemoveRange" || name == "AddRange" || name == "AddRangeAsync") &&
-                    IsDbSet(inv.Instance?.Type ?? (inv.Arguments.Length > 0 ? inv.Arguments[0].Value.Type : null)))
+                    (IsDbSet(receiverType) || IsDbContext(receiverType)))
                 {
                     hasWrite = true; 
                     break;

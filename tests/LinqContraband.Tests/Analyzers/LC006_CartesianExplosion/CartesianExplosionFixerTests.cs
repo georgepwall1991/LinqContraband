@@ -102,7 +102,7 @@ class Program
         // The diagnostic is on the second Include. Line 14 in this file structure.
         testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
             .WithSpan(14, 21, 14, 74)
-            .WithArguments("List"));
+            .WithArguments("List<Role>"));
 
         await testObj.RunAsync();
     }

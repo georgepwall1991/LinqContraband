@@ -104,7 +104,7 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         {
             // This is the 2nd (or later) collection include. Flag it.
             context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), propertyType.Name));
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), propertyType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
         }
     }
 
