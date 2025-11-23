@@ -39,8 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ### LC001: The Local Method Smuggler
 
-Detects usage of local C# methods inside `IQueryable` expressions. EF Core cannot translate these to SQL, leading to
-runtime exceptions or massive data fetches.
+When EF Core encounters a method it can't translate, it might switch to client-side evaluation (fetching all rows) or throw a runtime exception. This turns a fast SQL query into a massive memory leak.
 
 **❌ The Crime:**
 
@@ -61,8 +60,7 @@ var query = db.Users.Where(u => u.Dob <= minDob);
 
 ### LC002: Premature Materialization
 
-Detects when you filter *after* fetching data. This pulls the entire table into memory before filtering, killing
-performance.
+This is the "Select *" of EF Core. By materializing early, you transfer the entire table over the network, discard 99% of it in memory, and keep the Garbage Collector busy.
 
 **❌ The Crime:**
 
@@ -84,8 +82,7 @@ var query = db.Users.Where(u => u.Age > 18).ToList();
 
 ### LC003: Prefer Any() over Count() > 0
 
-Detects inefficient existence checks. `Count()` iterates the entire result set, whereas `Any()` stops at the first
-match.
+Count() > 0 forces the database to scan all matching rows to return a total number (e.g., 5000). Any() generates IF EXISTS (...), allowing the database to stop scanning after finding just one match.
 
 **❌ The Crime:**
 
@@ -105,8 +102,7 @@ if (db.Users.Any()) { ... }
 
 ### LC004: Guid.NewGuid() in Query
 
-Detects `Guid.NewGuid()` inside queries. This often fails translation or causes client-side evaluation because SQL
-generates UUIDs differently than C#.
+SQL Server generates UUIDs differently (sequential vs random) than C#. Using NEWID() in SQL prevents index usage in some cases or forces client-side evaluation if the provider doesn't support translation.
 
 **❌ The Crime:**
 
@@ -126,8 +122,7 @@ var query = db.Users.Where(u => u.Id == newId);
 
 ### LC005: Multiple OrderBy Calls
 
-Detects consecutive `OrderBy` calls. The second call completely overwrites the first one, which is rarely what you
-intended.
+This is a logic bug that acts like a performance bug. The second OrderBy completely ignores the first. The database creates a sorting plan for the first column, then discards it to sort by the second.
 
 **❌ The Crime:**
 
@@ -147,7 +142,7 @@ var query = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age);
 
 ### LC006: Cartesian Explosion Risk
 
-Detects multiple collection inclusions in a single query. This causes a geometric explosion in the result set size (rows = Parents * Children1 * Children2), consuming massive memory and bandwidth.
+If User has 10 Orders, and Order has 10 Items, fetching all creates 100 rows per User. With 1000 Users, that's 100,000 rows transferred. `AsSplitQuery` fetches Users, Orders, and Items in 3 separate, clean queries.
 
 **❌ The Crime:**
 
@@ -168,7 +163,7 @@ var query = db.Users.Include(u => u.Orders).AsSplitQuery().Include(u => u.Roles)
 
 ### LC007: N+1 Looper
 
-Detects database queries executed inside loops. This kills performance by executing a separate database roundtrip for every iteration (e.g., 100 items = 100 queries).
+Database queries have high fixed overhead (latency, connection pooling). Executing 100 queries takes ~100x longer than executing 1 query that fetches 100 items.
 
 **❌ The Crime:**
 
@@ -192,7 +187,7 @@ var users = db.Users.Where(u => ids.Contains(u.Id)).ToList();
 
 ### LC008: Sync-over-Async
 
-Detects synchronous EF Core materialization methods (like `ToList`, `Count`, `SaveChanges`) used inside an `async` method. This causes thread pool starvation and reduces server throughput.
+In web apps, threads are a limited resource. Blocking a thread to wait for SQL (I/O) means that thread can't serve other users. Under load, this causes "Thread Starvation", leading to 503 errors even if CPU is low.
 
 **❌ The Crime:**
 
@@ -219,7 +214,7 @@ public async Task<List<User>> GetUsersAsync()
 
 ### LC009: The Tracking Tax
 
-Detects read-only queries (no `SaveChanges` called) that return entities without disabling change tracking. EF Core's change tracking snapshots consume significant CPU and memory for no benefit in read-only scenarios.
+EF Core takes a "snapshot" of every entity it fetches to detect changes. For a read-only dashboard, this snapshot process consumes CPU and doubles the memory usage for every row.
 
 **❌ The Crime:**
 
@@ -246,7 +241,7 @@ public List<User> GetUsers()
 
 ### LC010: SaveChanges Loop Tax
 
-Detects `SaveChanges` or `SaveChangesAsync` calls inside loops. This causes severe performance degradation by executing a separate database transaction for every iteration (N+1 Writes).
+Opening and committing a database transaction is an expensive operation. Doing this inside a loop (e.g., for 100 items) means 100 separate transactions, which can be 1000x slower than a single batched commit.
 
 **❌ The Crime:**
 
