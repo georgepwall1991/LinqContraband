@@ -18,17 +18,28 @@
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+
+        <!-- Analyzer Packaging Configuration -->
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     </PropertyGroup>
 
     <ItemGroup>
         <None Include="..\..\icon.png" Pack="true" PackagePath="\"/>
         <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
+        <!-- Include analyzer DLL in correct path for Roslyn -->
+        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0"/>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
         <PackageReference Include="System.Formats.Asn1" Version="10.0.0"/>
         <PackageReference Include="System.Net.Http" Version="4.3.4"/>
     </ItemGroup>
