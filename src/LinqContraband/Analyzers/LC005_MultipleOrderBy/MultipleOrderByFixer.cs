@@ -10,9 +10,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace LinqContraband.Analyzers.LC005_MultipleOrderBy;
 
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MultipleOrderByCodeFixProvider))]
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MultipleOrderByFixer))]
 [Shared]
-public class MultipleOrderByCodeFixProvider : CodeFixProvider
+public class MultipleOrderByFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MultipleOrderByAnalyzer.DiagnosticId);
@@ -37,7 +37,7 @@ public class MultipleOrderByCodeFixProvider : CodeFixProvider
                 CodeAction.Create(
                     "Replace with ThenBy/ThenByDescending",
                     c => ReplaceWithThenByAsync(context.Document, invocation, c),
-                    nameof(MultipleOrderByCodeFixProvider)),
+                    nameof(MultipleOrderByFixer)),
                 diagnostic);
         }
     }

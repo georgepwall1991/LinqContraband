@@ -1,6 +1,6 @@
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByAnalyzer,
-    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByCodeFixProvider>;
+    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByFixer>;
 
 namespace LinqContraband.Tests.Analyzers.LC005_MultipleOrderBy;
 
