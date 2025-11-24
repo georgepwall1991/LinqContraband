@@ -7,6 +7,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC014_AvoidStringCaseConversion;
 
+/// <summary>
+/// Analyzes LINQ queries for use of ToLower() or ToUpper() string methods that prevent index usage. Diagnostic ID: LC014
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Using ToLower() or ToUpper() in query predicates transforms column values before comparison,
+/// making the query non-sargable (Search ARGument ABLE). This prevents the database from using indexes and forces full table
+/// scans. Instead, use string.Equals with StringComparison options or EF.Functions.Collate to perform case-insensitive
+/// comparisons while maintaining index usability.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
 {

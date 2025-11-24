@@ -13,6 +13,9 @@ using Microsoft.CodeAnalysis.Formatting;
 
 namespace LinqContraband.Analyzers.LC009_MissingAsNoTracking;
 
+/// <summary>
+/// Provides code fixes for LC009. Adds AsNoTracking() to read-only Entity Framework queries to improve performance.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingAsNoTrackingFixer))]
 [Shared]
 public class MissingAsNoTrackingFixer : CodeFixProvider

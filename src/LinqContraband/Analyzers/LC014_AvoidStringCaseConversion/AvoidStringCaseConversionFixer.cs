@@ -12,6 +12,9 @@ using Microsoft.CodeAnalysis.Editing;
 
 namespace LinqContraband.Analyzers.LC014_AvoidStringCaseConversion;
 
+/// <summary>
+/// Provides code fixes for LC014. Replaces ToLower/ToUpper comparisons with string.Equals using StringComparison.OrdinalIgnoreCase.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidStringCaseConversionFixer))]
 [Shared]
 public class AvoidStringCaseConversionFixer : CodeFixProvider

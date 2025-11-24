@@ -5,6 +5,16 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 
+/// <summary>
+/// Analyzes Entity Framework queries that Include multiple collection navigations, causing Cartesian product data duplication. Diagnostic ID: LC006
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> When multiple collection navigations are loaded in a single query using Include(),
+/// Entity Framework generates a SQL query with multiple JOINs that creates a Cartesian product. This causes geometric
+/// data duplication where the result set size equals the product of all collection sizes (e.g., 10 Orders with 5 Items
+/// each and 3 Payments each returns 150 rows instead of 18). This wastes bandwidth, memory, and database resources.
+/// Use AsSplitQuery() to separate into distinct SQL queries or manually load collections separately.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
 {

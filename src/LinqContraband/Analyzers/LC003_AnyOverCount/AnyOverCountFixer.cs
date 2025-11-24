@@ -12,6 +12,9 @@ using Microsoft.CodeAnalysis.Editing;
 
 namespace LinqContraband.Analyzers.LC003_AnyOverCount;
 
+/// <summary>
+/// Provides code fixes for LC003. Replaces Count() comparisons with Any() for more efficient existence checks.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AnyOverCountFixer))]
 [Shared]
 public class AnyOverCountFixer : CodeFixProvider

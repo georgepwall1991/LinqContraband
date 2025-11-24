@@ -6,6 +6,14 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC010_SaveChangesInLoop;
 
+/// <summary>
+/// Analyzes code for SaveChanges or SaveChangesAsync calls inside loops (N+1 write problem). Diagnostic ID: LC010
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Calling SaveChanges inside a loop results in a separate database transaction and
+/// network roundtrip for every iteration, causing severe performance degradation. Instead, entities should be added to
+/// the context within the loop and SaveChanges should be called once after the loop completes, enabling batch processing.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
 {
@@ -47,27 +55,13 @@ public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
             return;
 
         // 2. Check containing type (DbContext)
-        if (!IsDbContext(method.ContainingType))
+        if (!method.ContainingType.IsDbContext())
             return;
 
         // 3. Check if inside a loop
         if (IsInsideLoop(invocation))
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
-    }
-
-    private bool IsDbContext(ITypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbContext" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
     }
 
     private bool IsInsideLoop(IOperation operation)

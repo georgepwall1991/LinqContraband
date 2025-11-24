@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC004_IQueryableLeak;
 
+/// <summary>
+/// Analyzes IQueryable instances being passed to methods that only accept IEnumerable, causing implicit materialization. Diagnostic ID: LC004
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> When an IQueryable is implicitly converted to IEnumerable (due to covariance), the query
+/// is executed immediately if the receiving method iterates it. This prevents further query composition and optimization,
+/// often causing all data to be loaded into memory unnecessarily. Methods should either accept IQueryable to preserve deferred
+/// execution, or callers should explicitly materialize (ToList/ToArray) to make the performance impact visible and intentional.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class IQueryableLeakAnalyzer : DiagnosticAnalyzer
 {

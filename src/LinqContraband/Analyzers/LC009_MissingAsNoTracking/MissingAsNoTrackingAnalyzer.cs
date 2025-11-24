@@ -6,6 +6,14 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC009_MissingAsNoTracking;
 
+/// <summary>
+/// Analyzes Entity Framework Core queries to detect missing AsNoTracking() calls in read-only operations. Diagnostic ID: LC009
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> When querying entities for read-only operations, EF Core creates change tracking snapshots
+/// by default, which consumes memory and CPU time. Using AsNoTracking() prevents unnecessary tracking overhead and improves
+/// performance in scenarios where entities are not being modified.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
 {
@@ -188,7 +196,7 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
                 if ((name == "Add" || name == "AddAsync" ||
                      name == "Update" || name == "Remove" || name == "RemoveRange" || name == "AddRange" ||
                      name == "AddRangeAsync") &&
-                    (receiverType.IsDbSet() || receiverType.IsDbContext()))
+                    (receiverType?.IsDbSet() == true || receiverType?.IsDbContext() == true))
                 {
                     hasWrite = true;
                     break;

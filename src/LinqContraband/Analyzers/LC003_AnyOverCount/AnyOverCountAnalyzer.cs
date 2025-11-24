@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC003_AnyOverCount;
 
+/// <summary>
+/// Analyzes existence checks using Count() instead of Any() on IQueryable collections. Diagnostic ID: LC003
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Using Count() > 0 on an IQueryable forces the database to count all matching records,
+/// even when you only need to know if at least one exists. The Any() method is optimized to return as soon as the first
+/// matching record is found, translating to SQL that uses EXISTS or TOP(1), which is significantly faster. This becomes
+/// especially critical with large result sets where Count() might scan millions of rows unnecessarily.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class AnyOverCountAnalyzer : DiagnosticAnalyzer
 {
@@ -119,7 +128,7 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
                 // Check if the source is IQueryable
                 var receiverType = invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value.Type : null;
 
-                if (receiverType.IsIQueryable())
+                if (receiverType?.IsIQueryable() == true)
                     context.ReportDiagnostic(Diagnostic.Create(Rule, binaryOp.Syntax.GetLocation()));
             }
         }

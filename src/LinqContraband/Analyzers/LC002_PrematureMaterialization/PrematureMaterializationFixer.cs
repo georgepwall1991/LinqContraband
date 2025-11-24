@@ -13,6 +13,9 @@ using Microsoft.CodeAnalysis.Formatting;
 
 namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
+/// <summary>
+/// Provides code fixes for LC002. Moves filtering operations before materialization to improve query performance.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PrematureMaterializationFixer))]
 [Shared]
 public class PrematureMaterializationFixer : CodeFixProvider

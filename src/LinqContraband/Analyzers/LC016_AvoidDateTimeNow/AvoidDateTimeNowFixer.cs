@@ -13,6 +13,9 @@ using Microsoft.CodeAnalysis.Formatting;
 
 namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 
+/// <summary>
+/// Provides code fixes for LC016. Extracts DateTime.Now/UtcNow to a local variable to prevent multiple evaluations in LINQ queries.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidDateTimeNowFixer))]
 [Shared]
 public class AvoidDateTimeNowFixer : CodeFixProvider

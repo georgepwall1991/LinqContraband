@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC005_MultipleOrderBy;
 
+/// <summary>
+/// Analyzes consecutive OrderBy or OrderByDescending calls that reset previous sorting. Diagnostic ID: LC005
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Calling OrderBy or OrderByDescending multiple times in a chain completely replaces
+/// the previous sort order rather than adding a secondary sort. This is almost always a bug where the developer intended
+/// to create a multi-level sort (e.g., by LastName then FirstName). Use ThenBy or ThenByDescending after the first OrderBy
+/// to create proper multi-level sorting that preserves the original sort while adding sub-sorting for ties.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MultipleOrderByAnalyzer : DiagnosticAnalyzer
 {

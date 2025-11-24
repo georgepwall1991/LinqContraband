@@ -7,6 +7,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC015_MissingOrderBy;
 
+/// <summary>
+/// Analyzes IQueryable operations (Skip, Last, Chunk) that require ordering but are called on unordered sequences. Diagnostic ID: LC015
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Operations like Skip, Last, and Chunk depend on a specific ordering to produce deterministic
+/// results. Without an explicit OrderBy or OrderByDescending, the database may return results in any order, leading to
+/// non-deterministic behavior in pagination, retrieval of last elements, or chunking operations. This can cause unpredictable
+/// application behavior and difficult-to-reproduce bugs.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MissingOrderByAnalyzer : DiagnosticAnalyzer
 {

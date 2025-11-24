@@ -1,9 +1,9 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Constants;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -14,34 +14,13 @@ using Microsoft.CodeAnalysis.Formatting;
 
 namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 
+/// <summary>
+/// Provides code fixes for LC008. Replaces synchronous blocking methods with their async/await equivalents in Entity Framework queries.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(SyncBlockerFixer))]
 [Shared]
 public class SyncBlockerFixer : CodeFixProvider
 {
-    private static readonly Dictionary<string, string> SyncToAsyncMap = new()
-    {
-        { "ToList", "ToListAsync" },
-        { "ToArray", "ToArrayAsync" },
-        { "ToDictionary", "ToDictionaryAsync" },
-        { "ToHashSet", "ToHashSetAsync" },
-        { "First", "FirstAsync" },
-        { "FirstOrDefault", "FirstOrDefaultAsync" },
-        { "Single", "SingleAsync" },
-        { "SingleOrDefault", "SingleOrDefaultAsync" },
-        { "Last", "LastAsync" },
-        { "LastOrDefault", "LastOrDefaultAsync" },
-        { "Count", "CountAsync" },
-        { "LongCount", "LongCountAsync" },
-        { "Any", "AnyAsync" },
-        { "All", "AllAsync" },
-        { "Min", "MinAsync" },
-        { "Max", "MaxAsync" },
-        { "Sum", "SumAsync" },
-        { "Average", "AverageAsync" },
-        { "SaveChanges", "SaveChangesAsync" },
-        { "Find", "FindAsync" }
-    };
-
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(SyncBlockerAnalyzer.DiagnosticId);
 
@@ -63,7 +42,7 @@ public class SyncBlockerFixer : CodeFixProvider
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
             var methodName = memberAccess.Name.Identifier.Text;
-            if (SyncToAsyncMap.TryGetValue(methodName, out var asyncMethodName))
+            if (SyncAsyncMappings.SyncToAsyncMap.TryGetValue(methodName, out var asyncMethodName))
                 context.RegisterCodeFix(
                     CodeAction.Create(
                         $"Use {asyncMethodName} and await",

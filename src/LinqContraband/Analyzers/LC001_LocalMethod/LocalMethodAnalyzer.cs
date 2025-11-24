@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC001_LocalMethod;
 
+/// <summary>
+/// Analyzes local method calls within IQueryable expressions that cannot be translated to SQL. Diagnostic ID: LC001
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Methods invoked inside an IQueryable expression must be translatable to SQL by the query provider.
+/// Local methods and custom user-defined methods cannot be translated, causing the entire query to be evaluated client-side,
+/// which results in fetching all data from the database into memory before filtering. This defeats the purpose of using IQueryable
+/// and can cause severe performance degradation and memory issues when working with large datasets.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class LocalMethodAnalyzer : DiagnosticAnalyzer
 {

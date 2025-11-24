@@ -7,6 +7,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC013_DisposedContextQuery;
 
+/// <summary>
+/// Analyzes deferred LINQ queries (IQueryable/IAsyncEnumerable) that are returned from disposed DbContext instances. Diagnostic ID: LC013
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> LINQ queries against DbContext are deferred and only execute when enumerated. Returning
+/// an unenumerated query from a method where the DbContext is disposed (using statement or using declaration) will cause
+/// runtime errors when the query is eventually executed. Queries should be materialized (ToList, ToArray, etc.) before
+/// the context is disposed.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
 {
@@ -170,10 +179,11 @@ public class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
 
             if (syntax is VariableDeclaratorSyntax declarator)
             {
-                // Case 1: using var x = ...; (LocalDeclarationStatement)
+                // Case 1: using var x = ...; or await using var x = ...; (LocalDeclarationStatement)
                 if (declarator.Parent is VariableDeclarationSyntax declaration &&
                     declaration.Parent is LocalDeclarationStatementSyntax localDecl)
-                    if (!localDecl.UsingKeyword.IsKind(SyntaxKind.None))
+                    if (!localDecl.UsingKeyword.IsKind(SyntaxKind.None) ||
+                        !localDecl.AwaitKeyword.IsKind(SyntaxKind.None))
                         return true;
 
                 // Case 2: using (var x = ...) { } (UsingStatement)

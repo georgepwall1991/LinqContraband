@@ -5,6 +5,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC012_OptimizeRemoveRange;
 
+/// <summary>
+/// Analyzes RemoveRange() calls that could be optimized using ExecuteDelete(). Diagnostic ID: LC012
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> RemoveRange() loads all entities into memory before deleting them, which is inefficient
+/// for bulk delete operations. ExecuteDelete() performs a direct SQL DELETE statement without loading entities, providing
+/// significantly better performance. Note that ExecuteDelete() bypasses change tracking and client-side cascades, so verify
+/// that these behaviors are not required before applying this optimization.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
 {

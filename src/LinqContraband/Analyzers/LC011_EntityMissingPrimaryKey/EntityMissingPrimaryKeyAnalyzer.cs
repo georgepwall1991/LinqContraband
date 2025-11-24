@@ -7,6 +7,15 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 
+/// <summary>
+/// Analyzes Entity Framework Core entities to detect missing primary key definitions. Diagnostic ID: LC011
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Entities in EF Core require a primary key for change tracking, relationship management,
+/// and identity resolution unless explicitly marked with [Keyless]. Missing primary keys can lead to runtime errors or
+/// unexpected behavior. This analyzer checks for conventional keys (Id, EntityNameId), [Key] attribute, [PrimaryKey] attribute,
+/// Fluent API configuration, or IEntityTypeConfiguration implementations.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
 {

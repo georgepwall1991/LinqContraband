@@ -12,6 +12,9 @@ using Microsoft.CodeAnalysis.Editing;
 
 namespace LinqContraband.Analyzers.LC001_LocalMethod;
 
+/// <summary>
+/// Provides code fixes for LC001. Switches LINQ queries to client-side evaluation using AsEnumerable() when local methods are called.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(LocalMethodFixer))]
 [Shared]
 public class LocalMethodFixer : CodeFixProvider

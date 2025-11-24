@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Constants;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -7,6 +7,16 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 
+/// <summary>
+/// Analyzes synchronous Entity Framework operations called within async methods, causing thread blocking. Diagnostic ID: LC008
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Calling synchronous database methods (ToList, SaveChanges, Find) inside async methods
+/// blocks threads while waiting for I/O, preventing them from handling other requests. This causes thread pool starvation
+/// in web applications, drastically reducing throughput and potentially causing request timeouts under load. Always use the
+/// async alternatives (ToListAsync, SaveChangesAsync, FindAsync) with await to release threads back to the pool while waiting
+/// for database operations, allowing the server to handle more concurrent requests with the same resources.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class SyncBlockerAnalyzer : DiagnosticAnalyzer
 {
@@ -29,33 +39,6 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
         true,
         Description);
 
-    private static readonly Dictionary<string, string> SyncToAsyncMap = new()
-    {
-        // Queryable extensions
-        { "ToList", "ToListAsync" },
-        { "ToArray", "ToArrayAsync" },
-        { "ToDictionary", "ToDictionaryAsync" },
-        { "ToHashSet", "ToHashSetAsync" }, // EF Core 6+?
-        { "First", "FirstAsync" },
-        { "FirstOrDefault", "FirstOrDefaultAsync" },
-        { "Single", "SingleAsync" },
-        { "SingleOrDefault", "SingleOrDefaultAsync" },
-        { "Last", "LastAsync" },
-        { "LastOrDefault", "LastOrDefaultAsync" },
-        { "Count", "CountAsync" },
-        { "LongCount", "LongCountAsync" },
-        { "Any", "AnyAsync" },
-        { "All", "AllAsync" },
-        { "Min", "MinAsync" },
-        { "Max", "MaxAsync" },
-        { "Sum", "SumAsync" },
-        { "Average", "AverageAsync" },
-
-        // DbContext / DbSet methods
-        { "SaveChanges", "SaveChangesAsync" },
-        { "Find", "FindAsync" }
-    };
-
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
@@ -71,7 +54,7 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
         var method = invocation.TargetMethod;
 
         // 1. Is it a banned sync method?
-        if (!SyncToAsyncMap.TryGetValue(method.Name, out var asyncMethodName)) return;
+        if (!SyncAsyncMappings.SyncToAsyncMap.TryGetValue(method.Name, out var asyncMethodName)) return;
 
         // 2. Is it an EF Core related method?
         if (!IsEfCoreMethod(method, invocation)) return;
@@ -88,10 +71,10 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
         // Case A: DbContext.SaveChanges
         if (method.Name == "SaveChanges")
             // Check if instance is DbContext
-            return IsDbContext(method.ContainingType);
+            return method.ContainingType.IsDbContext();
 
         // Case B: DbSet.Find
-        if (method.Name == "Find") return IsDbSet(method.ContainingType);
+        if (method.Name == "Find") return method.ContainingType.IsDbSet();
 
         // Case C: LINQ Extension methods on IQueryable
         // These are usually defined in System.Linq.Queryable OR Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
@@ -113,35 +96,7 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
             receiverType = argVal.Type;
         }
 
-        if (receiverType.IsIQueryable()) return true;
-
-        return false;
-    }
-
-    private bool IsDbContext(ITypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbContext" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
-    }
-
-    private bool IsDbSet(ITypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbSet" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
+        if (receiverType?.IsIQueryable() == true) return true;
 
         return false;
     }

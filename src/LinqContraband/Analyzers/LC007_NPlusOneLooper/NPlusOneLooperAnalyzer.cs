@@ -6,6 +6,16 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 
+/// <summary>
+/// Analyzes database query execution inside loops, causing N+1 query problems. Diagnostic ID: LC007
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Executing database queries inside a loop creates a separate database roundtrip for every
+/// loop iteration, resulting in N+1 total queries (1 query to get the collection + N queries inside the loop). Each database
+/// roundtrip adds network latency (typically 1-50ms), which multiplies catastrophically with large collections. For example,
+/// a loop over 1000 items with 10ms latency per query adds 10 seconds of pure waiting time. Always fetch required data in
+/// bulk outside the loop using techniques like Include(), joins, or dictionary lookups.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
@@ -54,7 +64,7 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
     private bool IsDbExecutionMethod(IMethodSymbol method, IInvocationOperation invocation)
     {
         // Case 1: DbSet.Find / FindAsync
-        if (method.Name.StartsWith("Find") && IsDbSet(method.ContainingType)) return true;
+        if (method.Name.StartsWith("Find") && method.ContainingType.IsDbSet()) return true;
 
         // Case 2: IQueryable materializers (ToList, Count, First, etc.)
         if (!IsMaterializer(method.Name)) return false;
@@ -75,23 +85,6 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         }
 
         return receiverType.IsIQueryable();
-    }
-
-    private bool IsDbSet(ITypeSymbol type)
-    {
-        // Check if type is DbSet<T> or inherits from it.
-        // Name check "DbSet" and namespace "Microsoft.EntityFrameworkCore"
-        // But checking base types is safer.
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbSet" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
     }
 
     private bool IsMaterializer(string name)

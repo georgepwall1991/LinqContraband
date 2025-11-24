@@ -10,6 +10,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace LinqContraband.Analyzers.LC005_MultipleOrderBy;
 
+/// <summary>
+/// Provides code fixes for LC005. Replaces subsequent OrderBy calls with ThenBy/ThenByDescending for correct multi-level sorting.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MultipleOrderByFixer))]
 [Shared]
 public class MultipleOrderByFixer : CodeFixProvider

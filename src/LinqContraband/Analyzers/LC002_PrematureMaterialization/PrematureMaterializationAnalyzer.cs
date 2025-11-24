@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
+/// <summary>
+/// Analyzes premature materialization of IQueryable collections before filtering operations. Diagnostic ID: LC002
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Materializing an IQueryable (using ToList, ToArray, etc.) before applying filters causes
+/// all data to be fetched from the database into memory before filtering occurs. This prevents the database from optimizing
+/// the query and can result in fetching thousands or millions of unnecessary records. Always apply filters (Where, Take, Skip)
+/// before materializing to leverage database-side query optimization and reduce network traffic and memory consumption.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 {

@@ -6,6 +6,15 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 
+/// <summary>
+/// Analyzes LINQ queries for use of DateTime.Now or DateTime.UtcNow that can hinder query plan caching and testing. Diagnostic ID: LC016
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> Using DateTime.Now or DateTime.UtcNow directly in LINQ queries introduces a constantly
+/// changing constant value, which can prevent database execution plan caching and reduce query performance. Additionally,
+/// it makes unit testing difficult as the system clock cannot be easily controlled. Store the current date/time in a local
+/// variable before the query to enable better caching and testability.</para>
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
 {

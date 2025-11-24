@@ -12,6 +12,9 @@ using Microsoft.CodeAnalysis.Editing;
 
 namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 
+/// <summary>
+/// Provides code fixes for LC006. Adds AsSplitQuery() to prevent cartesian explosion from multiple Include operations.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(CartesianExplosionFixer))]
 [Shared]
 public class CartesianExplosionFixer : CodeFixProvider
