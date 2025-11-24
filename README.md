@@ -497,6 +497,31 @@ var chunks = db.Users.OrderBy(u => u.Name).Chunk(10).ToList();
 
 ---
 
+### LC016: Avoid DateTime.Now in Queries
+
+Using `DateTime.Now` (or `UtcNow`) inside a LINQ query prevents the database execution plan from being cached efficiently because the constant value changes every millisecond. It also makes unit testing impossible without mocking the system clock.
+
+**👶 Explain it like I'm a ten year old:** Imagine baking a cake. If the recipe says "Bake for 30 minutes," you can use it every day. But if the recipe says "Bake until the clock shows exactly 4:03 PM on Tuesday," you can only use it once, and then you have to write a new recipe.
+
+**❌ The Crime:**
+
+```csharp
+// The value of DateTime.Now is baked into the SQL as a constant.
+// This constant changes every time, forcing a new query plan.
+var query = db.Users.Where(u => u.Dob < DateTime.Now);
+```
+
+**✅ The Fix:**
+Store the date in a variable before the query.
+
+```csharp
+// The variable is passed as a parameter (@p0). The plan is cached.
+var now = DateTime.Now;
+var query = db.Users.Where(u => u.Dob < now);
+```
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:
