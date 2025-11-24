@@ -70,130 +70,104 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         // Check if it belongs to System.String
         if (method.ContainingType.SpecialType != SpecialType.System_String) return;
 
-        // 2. Check if we are inside an IQueryable LINQ method
-        if (!IsInsideQueryableLambda(invocation)) return;
+        // 2. Find enclosing IQueryable Lambda and get its parameters
+        var lambdaParameters = GetEnclosingQueryableLambdaParameters(invocation);
+        if (lambdaParameters.IsEmpty) return;
 
-        // 3. Check if the receiver depends on a parameter (DB column)
-        if (!ReceiverDependsOnParameter(invocation.Instance)) return;
+        // 3. Check if the receiver depends on one of the lambda parameters
+        if (!ReceiverDependsOnParameter(invocation.Instance, lambdaParameters)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
     }
 
-    private bool IsInsideQueryableLambda(IOperation operation)
+    private ImmutableArray<IParameterSymbol> GetEnclosingQueryableLambdaParameters(IOperation operation)
     {
         var current = operation.Parent;
         while (current != null)
         {
-            if (current is IArgumentOperation argument)
+            if (current is IAnonymousFunctionOperation lambda)
             {
-                // We found an argument. Check the invocation that owns it.
-                if (argument.Parent is IInvocationOperation linqInvocation)
+                // Check if this lambda is passed to a Queryable method
+                // Lambda -> (Conversion) -> Argument -> Invocation
+                var parent = lambda.Parent;
+                while (parent is IConversionOperation) parent = parent.Parent;
+
+                if (parent is IArgumentOperation argument &&
+                    argument.Parent is IInvocationOperation linqInvocation)
                 {
-                    var method = linqInvocation.TargetMethod;
-                    // Must be one of the target LINQ methods (Where, etc.)
-                    if (TargetLinqMethods.Contains(method.Name))
-                    {
-                         // Must be on IQueryable
-                         if (method.ContainingType.Name == "Queryable" &&
-                             method.ContainingNamespace?.ToString() == "System.Linq")
-                         {
-                             return true;
-                         }
-                    }
-                    // If not a target LINQ method, we continue walking up!
-                    // We don't return false immediately, because this argument might be passed 
-                    // into a helper method inside the LINQ lambda.
+                     var method = linqInvocation.TargetMethod;
+                     if (TargetLinqMethods.Contains(method.Name) &&
+                         method.ContainingType.Name == "Queryable" &&
+                         method.ContainingNamespace?.ToString() == "System.Linq")
+                     {
+                         return lambda.Symbol.Parameters;
+                     }
                 }
             }
             current = current.Parent;
         }
-        return false;
+        return ImmutableArray<IParameterSymbol>.Empty;
     }
 
-    private bool ReceiverDependsOnParameter(IOperation? operation)
+    private bool ReceiverDependsOnParameter(IOperation? operation, ImmutableArray<IParameterSymbol> targetParameters)
     {
         if (operation == null) return false;
 
         // Unwrap conversions
         operation = operation.UnwrapConversions();
 
-        // If it's a parameter reference, it's the entity itself (e.g. x => x.ToLower() - unlikely for string but possible)
-        if (operation is IParameterReferenceOperation) return true;
+        // If it's a parameter reference, check if it matches our target lambda parameters
+        if (operation is IParameterReferenceOperation paramRef)
+        {
+            return targetParameters.Contains(paramRef.Parameter);
+        }
 
         // If it's a property reference, check the instance of the property
         if (operation is IPropertyReferenceOperation propRef)
         {
-            return ReceiverDependsOnParameter(propRef.Instance);
+            return ReceiverDependsOnParameter(propRef.Instance, targetParameters);
         }
 
         // If it's a method call (chained), check the instance
-        // e.g. x.Address.City.Trim().ToLower()
         if (operation is IInvocationOperation invocation)
         {
-             // Check instance
-             if (ReceiverDependsOnParameter(invocation.Instance)) return true;
+             return ReceiverDependsOnParameter(invocation.Instance, targetParameters);
         }
         
-        // If it's an array/indexer access?
-        // e.g. x.Tags[0].ToLower()
+        // If it's an array/indexer access
         if (operation is IPropertyReferenceOperation indexer && indexer.Arguments.Length > 0)
         {
-             return ReceiverDependsOnParameter(indexer.Instance);
+             return ReceiverDependsOnParameter(indexer.Instance, targetParameters);
         }
 
-        // Binary Operator (e.g. (x.Name + "suffix").ToLower())
+        // Binary Operator
         if (operation is IBinaryOperation binaryOp)
         {
-            return ReceiverDependsOnParameter(binaryOp.LeftOperand) || ReceiverDependsOnParameter(binaryOp.RightOperand);
+            return ReceiverDependsOnParameter(binaryOp.LeftOperand, targetParameters) || 
+                   ReceiverDependsOnParameter(binaryOp.RightOperand, targetParameters);
         }
         
-        // Coalesce Operator (e.g. (x.Name ?? "").ToLower())
+        // Coalesce Operator
         if (operation is ICoalesceOperation coalesce)
         {
-             return ReceiverDependsOnParameter(coalesce.Value) || ReceiverDependsOnParameter(coalesce.WhenNull);
+             return ReceiverDependsOnParameter(coalesce.Value, targetParameters) || 
+                    ReceiverDependsOnParameter(coalesce.WhenNull, targetParameters);
         }
         
-        if (operation.Kind == OperationKind.ConditionalAccess) // IConditionalAccessOperation
+        if (operation.Kind == OperationKind.ConditionalAccess)
         {
             var conditional = (IConditionalAccessOperation)operation;
-            return ReceiverDependsOnParameter(conditional.Operation);
+            return ReceiverDependsOnParameter(conditional.Operation, targetParameters);
         }
 
-        // Also handle if we are looking at the 'WhenTrue' part of a conditional access?
-        // When we call ToLower() on 'x?.Name?.ToLower()', the instance of ToLower is actually the Result of the previous chain?
-        // No, if we have `x?.ToLower()`, ToLower is the Operation of the ConditionalAccess? No.
-        // `x?.ToLower()` parses as ConditionalAccess.
-        // Operation: x
-        // WhenTrue: Invocation(ToLower) on Instance: ConditionalAccessInstance
-        
-        // BUT, my visitor visits IInvocationOperation. 
-        // If I write `x?.ToLower()`, the IInvocationOperation is inside the ConditionalAccess.
-        // Its Instance is IConditionalAccessInstanceOperation.
-        
         if (operation.Kind == OperationKind.ConditionalAccessInstance)
         {
-            // We need to find the PARENT ConditionalAccessOperation to see what it is operating on.
-            // BUT, operation.Parent might not be the ConditionalAccessOperation directly?
-            // The IConditionalAccessInstanceOperation is a leaf that refers to the value being checked.
-            // To find the source, we must walk up the parents of the *current* invocation until we find the ConditionalAccessOperation?
-            // No, the IConditionalAccessInstanceOperation itself doesn't link back easily without walking parents of the usage?
-            
-            // Actually, if I am verifying the Instance of ToLower, and it is IConditionalAccessInstance,
-            // it means ToLower is being called conditionally.
-            // So I should look at the Parent of the ToLower Invocation.
-            // The Parent of ToLower Invocation should be the IConditionalAccessOperation (or a conversion to it).
-            
-            // Wait, I don't have the 'parent' easily here inside ReceiverDependsOnParameter recursion unless I pass it or look at operation.Parent?
-            // But 'operation' here IS the Instance. Its parent is the Invocation (ToLower).
-            // The Invocation's Parent is likely the ConditionalAccessOperation.
-            
-            // Let's try:
-            var parent = operation.Parent; // This is the Invocation (ToLower)
-            var grandParent = parent?.Parent; // This should be ConditionalAccessOperation
+            var parent = operation.Parent; // Invocation (ToLower)
+            var grandParent = parent?.Parent; // ConditionalAccessOperation
             
             if (grandParent is IConditionalAccessOperation caOp)
             {
-                return ReceiverDependsOnParameter(caOp.Operation);
+                return ReceiverDependsOnParameter(caOp.Operation, targetParameters);
             }
         }
 

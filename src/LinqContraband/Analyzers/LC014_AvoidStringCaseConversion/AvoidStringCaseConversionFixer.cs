@@ -48,8 +48,19 @@ public class AvoidStringCaseConversionFixer : CodeFixProvider
 
     private bool CanFix(InvocationExpressionSyntax node)
     {
+        SyntaxNode? parent = node.Parent;
+
+        // Handle Conditional Access: u.Name?.ToLower()
+        // Parent is ConditionalAccessExpression. We need to look at ITS parent.
+        if (parent is ConditionalAccessExpressionSyntax)
+        {
+            parent = parent.Parent;
+        }
+
+        if (parent == null) return false;
+
         // Case 1: Binary Expression (== or !=)
-        if (node.Parent is BinaryExpressionSyntax binary &&
+        if (parent is BinaryExpressionSyntax binary &&
             (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression)))
         {
             return true;
@@ -57,7 +68,7 @@ public class AvoidStringCaseConversionFixer : CodeFixProvider
 
         // Case 2: .Equals() method call
         // structure: Invocation(MemberAccess(Expression=Invocation(ToLower), Name=Equals))
-        if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
+        if (parent is MemberAccessExpressionSyntax memberAccess &&
             memberAccess.Name.Identifier.Text == "Equals" &&
             memberAccess.Parent is InvocationExpressionSyntax equalsInvocation &&
             equalsInvocation.ArgumentList.Arguments.Count == 1)
@@ -79,23 +90,35 @@ public class AvoidStringCaseConversionFixer : CodeFixProvider
         ExpressionSyntax? right = null;
         bool isNotEquals = false;
 
-        // Extract the "Instance" that ToLower was called on.
-        // toLowerInvocation is `x.ToLower()`. Expression is `x.ToLower` (MemberAccess).
-        if (toLowerInvocation.Expression is not MemberAccessExpressionSyntax toLowerAccess) return document;
-        
-        left = toLowerAccess.Expression; // `x`
+        SyntaxNode? currentParent = toLowerInvocation.Parent;
+        SyntaxNode? comparisonNode = toLowerInvocation; // The node participating in comparison (Binary or Equals target)
 
-        // Identify parent structure
-        if (toLowerInvocation.Parent is BinaryExpressionSyntax binary)
+        // 1. Extract 'left' (the string instance)
+        if (currentParent is ConditionalAccessExpressionSyntax conditional)
+        {
+            // Case: u.Name?.ToLower()
+            left = conditional.Expression;
+            comparisonNode = conditional;
+            currentParent = conditional.Parent;
+        }
+        else if (toLowerInvocation.Expression is MemberAccessExpressionSyntax toLowerAccess)
+        {
+            // Case: u.Name.ToLower()
+            left = toLowerAccess.Expression;
+        }
+        else
+        {
+            return document;
+        }
+
+        if (currentParent == null) return document;
+
+        // 2. Identify comparison structure
+        if (currentParent is BinaryExpressionSyntax binary)
         {
             targetNode = binary;
-            // If toLowerInvocation is on the left, right is the other side.
-            // If toLowerInvocation is on the right, left is the other side (but we want to compare `x` vs `other`).
-            // Actually, `string.Equals(a, b)` is symmetric.
-            
-            // We found `left` as the thing ToLower was called on.
-            // We need the "other" operand of the binary expression.
-            var otherOperand = binary.Left == toLowerInvocation ? binary.Right : binary.Left;
+            // Determine which side is 'right' (the other operand)
+            var otherOperand = binary.Left == comparisonNode ? binary.Right : binary.Left;
             right = otherOperand;
 
             if (binary.IsKind(SyntaxKind.NotEqualsExpression))
@@ -103,12 +126,11 @@ public class AvoidStringCaseConversionFixer : CodeFixProvider
                 isNotEquals = true;
             }
         }
-        else if (toLowerInvocation.Parent is MemberAccessExpressionSyntax memberAccess &&
+        else if (currentParent is MemberAccessExpressionSyntax memberAccess &&
                  memberAccess.Parent is InvocationExpressionSyntax equalsInvocation)
         {
             targetNode = equalsInvocation;
             right = equalsInvocation.ArgumentList.Arguments[0].Expression;
-            // .Equals is usually equality.
         }
 
         if (targetNode == null || left == null || right == null) return document;
@@ -117,7 +139,6 @@ public class AvoidStringCaseConversionFixer : CodeFixProvider
         var stringType = generator.TypeExpression(SpecialType.System_String);
         
         // We want StringComparison.OrdinalIgnoreCase as a MemberAccessExpression, not QualifiedName.
-        // DottedName produces QualifiedName.
         var stringComparisonType = generator.IdentifierName("StringComparison");
         var stringComparison = generator.MemberAccessExpression(stringComparisonType, "OrdinalIgnoreCase");
         
