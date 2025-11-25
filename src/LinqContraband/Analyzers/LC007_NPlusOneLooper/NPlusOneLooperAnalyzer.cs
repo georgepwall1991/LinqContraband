@@ -61,13 +61,13 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
     }
 
-    private bool IsDbExecutionMethod(IMethodSymbol method, IInvocationOperation invocation)
+    private static bool IsDbExecutionMethod(IMethodSymbol method, IInvocationOperation invocation)
     {
         // Case 1: DbSet.Find / FindAsync
         if (method.Name.StartsWith("Find") && method.ContainingType.IsDbSet()) return true;
 
         // Case 2: IQueryable materializers (ToList, Count, First, etc.)
-        if (!IsMaterializer(method.Name)) return false;
+        if (!method.Name.IsMaterializerMethod()) return false;
 
         ITypeSymbol? receiverType = null;
 
@@ -85,27 +85,6 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         }
 
         return receiverType.IsIQueryable();
-    }
-
-    private bool IsMaterializer(string name)
-    {
-        // List of methods that execute the query
-        return name == "ToList" || name == "ToListAsync" ||
-               name == "ToArray" || name == "ToArrayAsync" ||
-               name == "ToDictionary" || name == "ToDictionaryAsync" ||
-               name == "ToHashSet" || name == "ToHashSetAsync" ||
-               name == "First" || name == "FirstOrDefault" ||
-               name == "FirstAsync" || name == "FirstOrDefaultAsync" ||
-               name == "Single" || name == "SingleOrDefault" ||
-               name == "SingleAsync" || name == "SingleOrDefaultAsync" ||
-               name == "Last" || name == "LastOrDefault" ||
-               name == "LastAsync" || name == "LastOrDefaultAsync" ||
-               name == "Count" || name == "LongCount" ||
-               name == "CountAsync" || name == "LongCountAsync" ||
-               name == "Any" || name == "All" ||
-               name == "AnyAsync" || name == "AllAsync" ||
-               name == "Sum" || name == "Average" || name == "Min" || name == "Max" ||
-               name == "SumAsync" || name == "AverageAsync" || name == "MinAsync" || name == "MaxAsync";
     }
 
     private bool IsInsideLoop(IOperation operation)

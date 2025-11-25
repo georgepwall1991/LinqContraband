@@ -232,4 +232,340 @@ namespace TestNamespace
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TestCrime_PrivateIdProperty_ShouldTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<PrivateKeyEntity> PrivateKeys { get; set; }
+    }
+
+    public class PrivateKeyEntity
+    {
+        private int Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC011")
+            .WithSpan(48, 40, 48, 51)
+            .WithArguments("PrivateKeyEntity");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_NavigationPropertyNamedId_ShouldTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<NavIdEntity> NavIdEntities { get; set; }
+    }
+
+    public class OtherEntity
+    {
+        public int Id { get; set; }
+    }
+
+    public class NavIdEntity
+    {
+        public OtherEntity Id { get; set; }  // Navigation property named Id - not a valid key
+        public string Name { get; set; }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC011")
+            .WithSpan(48, 35, 48, 48)
+            .WithArguments("NavIdEntity");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_HasNoKeyFluent_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace System.ComponentModel.DataAnnotations
+{
+    public class KeyAttribute : Attribute {}
+}
+namespace Microsoft.EntityFrameworkCore
+{
+    public class KeylessAttribute : Attribute {}
+    public class PrimaryKeyAttribute : Attribute
+    {
+        public PrimaryKeyAttribute(params string[] propertyNames) {}
+    }
+    public class DbContext : IDisposable
+    {
+        public void Dispose() {}
+        protected virtual void OnModelCreating(ModelBuilder modelBuilder) {}
+    }
+    public class DbSet<T> where T : class {}
+
+    public interface IEntityTypeConfiguration<T> where T : class
+    {
+        void Configure(EntityTypeBuilder<T> builder);
+    }
+
+    public class ModelBuilder
+    {
+        public EntityTypeBuilder<T> Entity<T>() where T : class => new EntityTypeBuilder<T>();
+    }
+
+    public class EntityTypeBuilder<T> where T : class
+    {
+        public EntityTypeBuilder<T> HasKey(params string[] propertyNames) => this;
+        public EntityTypeBuilder<T> HasKey(System.Linq.Expressions.Expression<Func<T, object>> keyExpression) => this;
+        public EntityTypeBuilder<T> HasNoKey() => this;
+    }
+}
+
+namespace TestNamespace
+{
+    public class MyDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public DbSet<NoKeyView> Views { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<NoKeyView>().HasNoKey();
+        }
+    }
+
+    public class NoKeyView
+    {
+        public string Name { get; set; }
+        public string Value { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_OwnedEntity_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace System.ComponentModel.DataAnnotations
+{
+    public class KeyAttribute : Attribute {}
+}
+namespace Microsoft.EntityFrameworkCore
+{
+    public class KeylessAttribute : Attribute {}
+    public class PrimaryKeyAttribute : Attribute
+    {
+        public PrimaryKeyAttribute(params string[] propertyNames) {}
+    }
+    public class DbContext : IDisposable
+    {
+        public void Dispose() {}
+        protected virtual void OnModelCreating(ModelBuilder modelBuilder) {}
+    }
+    public class DbSet<T> where T : class {}
+
+    public interface IEntityTypeConfiguration<T> where T : class
+    {
+        void Configure(EntityTypeBuilder<T> builder);
+    }
+
+    public class ModelBuilder
+    {
+        public EntityTypeBuilder<T> Entity<T>() where T : class => new EntityTypeBuilder<T>();
+    }
+
+    public class EntityTypeBuilder<T> where T : class
+    {
+        public EntityTypeBuilder<T> HasKey(params string[] propertyNames) => this;
+        public EntityTypeBuilder<T> HasKey(System.Linq.Expressions.Expression<Func<T, object>> keyExpression) => this;
+        public OwnedNavigationBuilder<T, TOwned> OwnsOne<TOwned>(System.Linq.Expressions.Expression<Func<T, TOwned>> navigationExpression) where TOwned : class => new OwnedNavigationBuilder<T, TOwned>();
+    }
+
+    public class OwnedNavigationBuilder<T, TOwned> where T : class where TOwned : class {}
+}
+
+namespace TestNamespace
+{
+    public class MyDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public DbSet<Customer> Customers { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Customer>().OwnsOne<Address>(c => c.Address);
+        }
+    }
+
+    public class Customer
+    {
+        public int Id { get; set; }
+        public Address Address { get; set; }
+    }
+
+    // Address is an owned type - does NOT need a primary key
+    public class Address
+    {
+        public string Street { get; set; }
+        public string City { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_HasKeyWithString_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<StringKeyEntity> StringKeyEntities { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<StringKeyEntity>().HasKey(""MyKey"");
+        }
+    }
+
+    public class StringKeyEntity
+    {
+        public int MyKey { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DbSetAsField_WithoutKey_ShouldTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<NoKeyFieldEntity> NoKeyFields;  // DbSet as field, not property
+    }
+
+    public class NoKeyFieldEntity
+    {
+        public string Name { get; set; }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC011")
+            .WithSpan(48, 40, 48, 51)
+            .WithArguments("NoKeyFieldEntity");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DbSetAsField_WithKey_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<ValidFieldEntity> ValidFields;  // DbSet as field, not property
+    }
+
+    public class ValidFieldEntity
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ConfigWithoutHasKey_ShouldTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<NoHasKeyConfigEntity> NoHasKeyConfigs { get; set; }
+    }
+
+    public class NoHasKeyConfigEntity
+    {
+        public int SomeProperty { get; set; }
+    }
+
+    // Config exists but does NOT define HasKey
+    public class NoHasKeyConfigEntityConfiguration : IEntityTypeConfiguration<NoHasKeyConfigEntity>
+    {
+        public void Configure(EntityTypeBuilder<NoHasKeyConfigEntity> builder)
+        {
+            // No HasKey call - should trigger warning
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC011")
+            .WithSpan(48, 44, 48, 59)
+            .WithArguments("NoHasKeyConfigEntity");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_GuidIdProperty_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<GuidEntity> GuidEntities { get; set; }
+    }
+
+    public class GuidEntity
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_NullableIntIdProperty_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<NullableIdEntity> NullableIdEntities { get; set; }
+    }
+
+    public class NullableIdEntity
+    {
+        public int? Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_LongIdProperty_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<LongIdEntity> LongIdEntities { get; set; }
+    }
+
+    public class LongIdEntity
+    {
+        public long Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_StringIdProperty_ShouldNotTrigger()
+    {
+        var test = Usings + MockAttributes + @"
+        public DbSet<StringIdEntity> StringIdEntities { get; set; }
+    }
+
+    public class StringIdEntity
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

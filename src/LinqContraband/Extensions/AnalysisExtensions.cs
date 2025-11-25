@@ -151,4 +151,37 @@ public static class AnalysisExtensions
 
         return false;
     }
+
+    /// <summary>
+    /// Determines whether the method name is a query materializer that triggers database execution.
+    /// </summary>
+    /// <param name="methodName">The method name to check.</param>
+    /// <returns><c>true</c> if the method is a materializer; otherwise, <c>false</c>.</returns>
+    /// <remarks>
+    /// Materializers are methods that execute the query and return results, such as ToList, First, Count, etc.
+    /// This includes both synchronous and asynchronous variants.
+    /// </remarks>
+    public static bool IsMaterializerMethod(this string methodName)
+    {
+        return methodName is
+            // Collection materializers
+            "ToList" or "ToListAsync" or
+            "ToArray" or "ToArrayAsync" or
+            "ToDictionary" or "ToDictionaryAsync" or
+            "ToHashSet" or "ToHashSetAsync" or
+            // Single element materializers
+            "First" or "FirstOrDefault" or
+            "FirstAsync" or "FirstOrDefaultAsync" or
+            "Single" or "SingleOrDefault" or
+            "SingleAsync" or "SingleOrDefaultAsync" or
+            "Last" or "LastOrDefault" or
+            "LastAsync" or "LastOrDefaultAsync" or
+            // Aggregate materializers
+            "Count" or "LongCount" or
+            "CountAsync" or "LongCountAsync" or
+            "Any" or "All" or
+            "AnyAsync" or "AllAsync" or
+            "Sum" or "Average" or "Min" or "Max" or
+            "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync";
+    }
 }

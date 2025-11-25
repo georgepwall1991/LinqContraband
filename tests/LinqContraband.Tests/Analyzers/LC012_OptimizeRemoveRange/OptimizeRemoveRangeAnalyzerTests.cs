@@ -11,20 +11,24 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TestNamespace;
+using Microsoft.EntityFrameworkCore;
 ";
 
     private const string MockNamespace = @"
 namespace TestNamespace
 {
     public class User { public int Id { get; set; } }
-    
-    public class DbContext : IDisposable 
-    { 
+}
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext : IDisposable
+    {
         public void Dispose() {}
         public DbSet<User> Users { get; set; }
         public void RemoveRange(IEnumerable<object> entities) {}
     }
-    
+
     public class DbSet<T> : IQueryable<T>
     {
         public Type ElementType => typeof(T);
@@ -35,13 +39,6 @@ namespace TestNamespace
 
         public void RemoveRange(IEnumerable<T> entities) {}
         public void RemoveRange(params T[] entities) {}
-    }
-
-    namespace Microsoft.EntityFrameworkCore
-    {
-        // Mock for detection of EF Core usage
-        public class DbContext {}
-        public class DbSet<T> {}
     }
 }
 ";

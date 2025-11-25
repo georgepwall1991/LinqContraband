@@ -101,37 +101,50 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private bool IsInsideAsyncMethod(IOperation operation)
+    /// <summary>
+    /// Determines if the operation is within an async context.
+    /// This includes being directly in an async method, or being inside a lambda/local function
+    /// that is itself within an async method.
+    /// </summary>
+    private static bool IsInsideAsyncMethod(IOperation operation)
     {
+        // Walk up the operation tree looking for async context
         var parent = operation.Parent;
         while (parent != null)
         {
-            if (parent is IMethodBodyOperation)
+            // Check for async local functions
+            if (parent is ILocalFunctionOperation localFunc)
             {
-                // We found the body, need the method symbol.
-                // Usually Operation structure for method body:
-                // Block -> ...
-                // Parent of Block is often null or the method declaration? 
-                // Actually, semantic model gives us the enclosing symbol.
-                // But we are in Operation context.
+                // If the local function is async, we're in async context
+                if (localFunc.Symbol.IsAsync) return true;
+                // Otherwise, continue checking parent scope
             }
 
-            if (parent is ILocalFunctionOperation localFunc) return localFunc.Symbol.IsAsync;
-
-            if (parent is IAnonymousFunctionOperation lambda) return lambda.Symbol.IsAsync;
+            // Check for async lambdas
+            if (parent is IAnonymousFunctionOperation lambda)
+            {
+                // If the lambda is async, we're in async context
+                if (lambda.Symbol.IsAsync) return true;
+                // Otherwise, continue checking parent scope (the lambda might be inside an async method)
+            }
 
             parent = parent.Parent;
         }
 
-        // Fallback: Use the SemanticModel to find the enclosing method symbol
-        // Note: context.ContainingSymbol works for the analyzer context
-        // But we need to walk up if we are in a lambda.
-        // Actually, Operation walking is safer for lambdas.
-        // If we didn't find a lambda or local function above, we check the owning symbol of the operation context.
-
-        // Wait, context.ContainingSymbol is the method containing the code.
+        // Fallback: Use SemanticModel to find the enclosing method symbol
+        // This handles the case where we're in a non-async lambda inside an async method
         if (operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart) is IMethodSymbol methodSymbol)
-            return methodSymbol.IsAsync;
+        {
+            // Walk up method containment to find if any enclosing method is async
+            var currentMethod = methodSymbol;
+            while (currentMethod != null)
+            {
+                if (currentMethod.IsAsync) return true;
+
+                // Get the containing symbol - could be another method (for local functions) or a type
+                currentMethod = currentMethod.ContainingSymbol as IMethodSymbol;
+            }
+        }
 
         return false;
     }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -53,40 +54,11 @@ public class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
         if (method.Name != "RemoveRange") return;
 
         // Check if it's DbSet.RemoveRange or DbContext.RemoveRange
+        // Use shared extension methods for type checking
         var type = method.ContainingType;
-        if (!IsDbSet(type) && !IsDbContext(type)) return;
+        if (!type.IsDbSet() && !type.IsDbContext()) return;
 
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
-    }
-
-    private bool IsDbSet(ITypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbSet" &&
-                (current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore" ||
-                 current.ContainingNamespace?.ToString() == "TestNamespace")) // Support mock in tests
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
-    }
-
-    private bool IsDbContext(ITypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbContext" &&
-                (current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore" ||
-                 current.ContainingNamespace?.ToString() == "TestNamespace")) // Support mock in tests
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
     }
 }

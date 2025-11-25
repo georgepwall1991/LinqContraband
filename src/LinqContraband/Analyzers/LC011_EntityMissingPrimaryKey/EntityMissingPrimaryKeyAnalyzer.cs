@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
@@ -12,9 +14,11 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 /// </summary>
 /// <remarks>
 /// <para><b>Why this matters:</b> Entities in EF Core require a primary key for change tracking, relationship management,
-/// and identity resolution unless explicitly marked with [Keyless]. Missing primary keys can lead to runtime errors or
-/// unexpected behavior. This analyzer checks for conventional keys (Id, EntityNameId), [Key] attribute, [PrimaryKey] attribute,
-/// Fluent API configuration, or IEntityTypeConfiguration implementations.</para>
+/// and identity resolution unless explicitly marked with [Keyless] or configured with HasNoKey(). Missing primary keys
+/// can lead to runtime errors or unexpected behavior.</para>
+/// <para><b>Detection methods:</b> Conventional keys (Id, EntityNameId), [Key] attribute, [PrimaryKey] attribute,
+/// [Keyless] attribute, HasKey() fluent API, HasNoKey() fluent API, OwnsOne/OwnsMany (owned types don't need keys),
+/// or IEntityTypeConfiguration implementations.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
@@ -24,10 +28,10 @@ public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Title = "Design: Entity missing Primary Key";
 
     private static readonly LocalizableString MessageFormat =
-        "Entity '{0}' does not have a primary key defined by convention (Id, {0}Id), attributes ([Key], [PrimaryKey]), [Keyless] opt-out, or IEntityTypeConfiguration<T>";
+        "Entity '{0}' does not have a primary key defined by convention (Id, {0}Id), attributes ([Key], [PrimaryKey]), [Keyless]/HasNoKey() opt-out, or Fluent API configuration";
 
     private static readonly LocalizableString Description =
-        "Entities in EF Core require a Primary Key unless marked as [Keyless]. Ensure the entity has a property named 'Id', '{EntityName}Id', a property decorated with [Key], is configured via Fluent API, or has an IEntityTypeConfiguration<T>.";
+        "Entities in EF Core require a Primary Key unless marked as [Keyless] or configured with HasNoKey(). Ensure the entity has a property named 'Id', '{EntityName}Id', a property decorated with [Key], or is configured via Fluent API.";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
@@ -51,41 +55,308 @@ public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
     {
         var namedType = (INamedTypeSymbol)context.Symbol;
 
-        // Must inherit from DbContext
-        if (!IsDbContext(namedType)) return;
+        // Must be a DbContext subclass (not the base class itself)
+        if (!namedType.IsDbContext()) return;
+        if (namedType.Name == "DbContext" &&
+            namedType.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+            return;
 
-        // Find all DbSet<T> properties
+        // Gather keyless and owned entities from OnModelCreating
+        var keylessEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var ownedEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        ScanOnModelCreating(namedType, keylessEntities, ownedEntities, context.Compilation);
+
+        // Gather configured entities from IEntityTypeConfiguration<T>
+        var configuredEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        ScanEntityTypeConfigurations(context.Compilation, configuredEntities, keylessEntities);
+
+        // Find all DbSet<T> members (properties AND explicit fields, not backing fields)
         foreach (var member in namedType.GetMembers())
-            if (member is IPropertySymbol property &&
-                property.Type is INamedTypeSymbol propType &&
-                IsDbSet(propType))
-            {
-                var entityType = propType.TypeArguments.Length > 0
-                    ? propType.TypeArguments[0] as INamedTypeSymbol
-                    : null;
-                if (entityType == null) continue;
+        {
+            ITypeSymbol? dbSetType = null;
+            Location? location = null;
 
-                if (IsMissingPrimaryKey(entityType, namedType, context.Compilation))
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(Rule, property.Locations[0], entityType.Name));
+            if (member is IPropertySymbol property)
+            {
+                dbSetType = property.Type;
+                location = property.Locations.FirstOrDefault();
             }
+            else if (member is IFieldSymbol field)
+            {
+                // Skip compiler-generated backing fields (they start with <)
+                if (field.IsImplicitlyDeclared || field.Name.StartsWith("<"))
+                    continue;
+
+                dbSetType = field.Type;
+                location = field.Locations.FirstOrDefault();
+            }
+
+            if (dbSetType is not INamedTypeSymbol propType || !propType.IsDbSet())
+                continue;
+
+            var entityType = propType.TypeArguments.Length > 0
+                ? propType.TypeArguments[0] as INamedTypeSymbol
+                : null;
+
+            if (entityType == null || location == null) continue;
+
+            // Check if entity is missing a primary key
+            if (IsMissingPrimaryKey(entityType, namedType, configuredEntities, keylessEntities, ownedEntities, context.Compilation))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(Rule, location, entityType.Name));
+            }
+        }
     }
 
-    private bool IsMissingPrimaryKey(INamedTypeSymbol entityType, INamedTypeSymbol dbContextType,
+    /// <summary>
+    /// Scans OnModelCreating for HasNoKey() and OwnsOne/OwnsMany configurations.
+    /// </summary>
+    private static void ScanOnModelCreating(
+        INamedTypeSymbol dbContextType,
+        HashSet<INamedTypeSymbol> keylessEntities,
+        HashSet<INamedTypeSymbol> ownedEntities,
         Compilation compilation)
     {
-        // Heuristic 1: Attributes (Class Level)
-        if (HasAttribute(entityType, "KeylessAttribute") || HasAttribute(entityType, "Keyless")) return false;
-        if (HasAttribute(entityType, "PrimaryKeyAttribute") || HasAttribute(entityType, "PrimaryKey")) return false;
+        var methods = dbContextType.GetMembers("OnModelCreating");
+        if (methods.IsEmpty) return;
 
-        // Heuristic 2: Properties (Hierarchy)
-        if (HasKeyProperty(entityType)) return false;
+        if (methods[0] is not IMethodSymbol onModelCreating) return;
 
-        // Heuristic 3: Fluent API (Basic)
-        if (HasFluentKeyConfiguration(dbContextType, entityType)) return false;
+        foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
+        {
+            var syntax = syntaxRef.GetSyntax();
+            var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
-        // Heuristic 4: IEntityTypeConfiguration<T>
-        if (HasEntityTypeConfigurationKey(compilation, entityType)) return false;
+            foreach (var invocation in invocations)
+            {
+                if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) continue;
+
+                var methodName = memberAccess.Name.Identifier.Text;
+
+                // Check for HasNoKey()
+                if (methodName == "HasNoKey")
+                {
+                    var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
+                    if (entityTypeName != null)
+                    {
+                        var entityType = FindTypeByName(compilation, entityTypeName);
+                        if (entityType != null)
+                            keylessEntities.Add(entityType);
+                    }
+                }
+
+                // Check for OwnsOne/OwnsMany - extract the owned type
+                if (methodName == "OwnsOne" || methodName == "OwnsMany")
+                {
+                    var ownedTypeName = ExtractOwnedTypeName(invocation);
+                    if (ownedTypeName != null)
+                    {
+                        var ownedType = FindTypeByName(compilation, ownedTypeName);
+                        if (ownedType != null)
+                            ownedEntities.Add(ownedType);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Scans for IEntityTypeConfiguration implementations and caches configured entities.
+    /// </summary>
+    private static void ScanEntityTypeConfigurations(
+        Compilation compilation,
+        HashSet<INamedTypeSymbol> configuredEntities,
+        HashSet<INamedTypeSymbol> keylessEntities)
+    {
+        var configInterface = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
+        if (configInterface == null) return;
+
+        // Search all types in the compilation
+        foreach (var type in GetAllTypes(compilation.GlobalNamespace))
+        {
+            if (type.AllInterfaces.IsEmpty) continue;
+
+            foreach (var iface in type.AllInterfaces)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, configInterface))
+                    continue;
+
+                if (iface.TypeArguments.Length > 0 &&
+                    iface.TypeArguments[0] is INamedTypeSymbol entityType)
+                {
+                    var (hasKey, hasNoKey) = CheckConfigureMethod(type);
+
+                    if (hasKey)
+                        configuredEntities.Add(entityType);
+
+                    if (hasNoKey)
+                        keylessEntities.Add(entityType);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
+    {
+        foreach (var type in ns.GetTypeMembers())
+        {
+            yield return type;
+            foreach (var nested in type.GetTypeMembers())
+                yield return nested;
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            foreach (var type in GetAllTypes(childNs))
+                yield return type;
+        }
+    }
+
+    private static (bool hasKey, bool hasNoKey) CheckConfigureMethod(INamedTypeSymbol configClass)
+    {
+        var configureMethod = configClass.GetMembers("Configure").FirstOrDefault() as IMethodSymbol;
+        if (configureMethod == null) return (false, false);
+
+        var hasKey = false;
+        var hasNoKey = false;
+
+        foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
+        {
+            var syntax = syntaxRef.GetSyntax();
+            var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
+
+            foreach (var invocation in invocations)
+            {
+                if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+                {
+                    var methodName = memberAccess.Name.Identifier.Text;
+                    if (methodName == "HasKey") hasKey = true;
+                    if (methodName == "HasNoKey") hasNoKey = true;
+                }
+            }
+        }
+
+        return (hasKey, hasNoKey);
+    }
+
+    private static string? ExtractEntityTypeNameFromChain(ExpressionSyntax expression)
+    {
+        var current = expression;
+
+        while (current != null)
+        {
+            if (current is InvocationExpressionSyntax invocation &&
+                invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name is GenericNameSyntax genericName &&
+                genericName.Identifier.Text == "Entity")
+            {
+                var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
+                if (typeArg != null)
+                    return typeArg.ToString();
+            }
+
+            current = current switch
+            {
+                InvocationExpressionSyntax inv => inv.Expression,
+                MemberAccessExpressionSyntax ma => ma.Expression,
+                _ => null
+            };
+        }
+
+        return null;
+    }
+
+    private static string? ExtractOwnedTypeName(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+            memberAccess.Name is GenericNameSyntax genericName)
+        {
+            var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
+            if (typeArg != null)
+                return typeArg.ToString();
+        }
+
+        return null;
+    }
+
+    private static INamedTypeSymbol? FindTypeByName(Compilation compilation, string typeName)
+    {
+        var type = compilation.GetTypeByMetadataName(typeName);
+        if (type != null) return type;
+
+        var simpleName = typeName.Contains('.') ? typeName.Substring(typeName.LastIndexOf('.') + 1) : typeName;
+        return FindTypeInNamespace(compilation.GlobalNamespace, simpleName, typeName);
+    }
+
+    private static INamedTypeSymbol? FindTypeInNamespace(INamespaceSymbol ns, string simpleName, string fullName)
+    {
+        foreach (var type in ns.GetTypeMembers())
+        {
+            if (type.Name == simpleName)
+            {
+                if (fullName.Contains('.'))
+                {
+                    var typeFullName = type.ToDisplayString();
+                    if (typeFullName.EndsWith(fullName, StringComparison.Ordinal) ||
+                        fullName.EndsWith(type.Name, StringComparison.Ordinal))
+                        return type;
+                }
+                else
+                {
+                    return type;
+                }
+            }
+
+            foreach (var nested in type.GetTypeMembers())
+            {
+                if (nested.Name == simpleName)
+                    return nested;
+            }
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            var found = FindTypeInNamespace(childNs, simpleName, fullName);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    private bool IsMissingPrimaryKey(
+        INamedTypeSymbol entityType,
+        INamedTypeSymbol dbContextType,
+        HashSet<INamedTypeSymbol> configuredEntities,
+        HashSet<INamedTypeSymbol> keylessEntities,
+        HashSet<INamedTypeSymbol> ownedEntities,
+        Compilation compilation)
+    {
+        // Check 1: Is entity marked as keyless?
+        if (HasAttribute(entityType, "KeylessAttribute") || HasAttribute(entityType, "Keyless"))
+            return false;
+        if (keylessEntities.Contains(entityType))
+            return false;
+
+        // Check 2: Is entity an owned type?
+        if (ownedEntities.Contains(entityType))
+            return false;
+
+        // Check 3: Has [PrimaryKey] attribute?
+        if (HasAttribute(entityType, "PrimaryKeyAttribute") || HasAttribute(entityType, "PrimaryKey"))
+            return false;
+
+        // Check 4: Has valid key property by convention or [Key] attribute?
+        if (HasValidKeyProperty(entityType))
+            return false;
+
+        // Check 5: Has fluent HasKey() in OnModelCreating?
+        if (HasFluentKeyConfiguration(dbContextType, entityType, compilation))
+            return false;
+
+        // Check 6: Has IEntityTypeConfiguration<T> with HasKey()?
+        if (configuredEntities.Contains(entityType))
+            return false;
 
         return true;
     }
@@ -96,30 +367,38 @@ public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         {
             if (attr.AttributeClass == null) continue;
             if (attr.AttributeClass.Name == attributeName) return true;
-            if (attributeName.EndsWith("Attribute") &&
-                attr.AttributeClass.Name == attributeName.Substring(0, attributeName.Length - 9)) return true;
+            if (attributeName.EndsWith("Attribute", StringComparison.Ordinal) &&
+                attr.AttributeClass.Name == attributeName.Substring(0, attributeName.Length - 9))
+                return true;
         }
 
         return false;
     }
 
-    private bool HasKeyProperty(INamedTypeSymbol entityType)
+    private bool HasValidKeyProperty(INamedTypeSymbol entityType)
     {
         var current = entityType;
         while (current != null && current.SpecialType != SpecialType.System_Object)
         {
             foreach (var member in current.GetMembers())
-                if (member is IPropertySymbol prop)
+            {
+                if (member is not IPropertySymbol prop) continue;
+
+                // Check for [Key] attribute
+                if (HasAttribute(prop, "KeyAttribute") || HasAttribute(prop, "Key"))
                 {
-                    // [Key] Attribute
-                    if (HasAttribute(prop, "KeyAttribute") || HasAttribute(prop, "Key")) return true;
-
-                    // Convention: Id
-                    if (prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)) return true;
-
-                    // Convention: {EntityName}Id
-                    if (prop.Name.Equals($"{entityType.Name}Id", StringComparison.OrdinalIgnoreCase)) return true;
+                    if (IsPublicProperty(prop) && IsValidKeyType(prop.Type))
+                        return true;
                 }
+
+                // Check for convention: Id or {EntityName}Id
+                if (prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+                    prop.Name.Equals($"{entityType.Name}Id", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (IsPublicProperty(prop) && IsValidKeyType(prop.Type))
+                        return true;
+                }
+            }
 
             current = current.BaseType;
         }
@@ -127,118 +406,72 @@ public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private bool HasFluentKeyConfiguration(INamedTypeSymbol dbContextType, INamedTypeSymbol entityType)
+    private static bool IsPublicProperty(IPropertySymbol prop)
     {
-        // Scan OnModelCreating method for .Entity<T>().HasKey(...)
+        return prop.DeclaredAccessibility == Accessibility.Public &&
+               prop.GetMethod?.DeclaredAccessibility == Accessibility.Public;
+    }
+
+    private static bool IsValidKeyType(ITypeSymbol type)
+    {
+        // Special types (int, long, string, etc.) are valid
+        if (type.SpecialType != SpecialType.None)
+            return true;
+
+        // Enums are valid
+        if (type.TypeKind == TypeKind.Enum)
+            return true;
+
+        // Struct types are generally valid (Guid, DateTime, custom value types)
+        if (type.TypeKind == TypeKind.Struct)
+            return true;
+
+        // Nullable value types are valid
+        if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            return true;
+
+        // Byte arrays are valid (for binary keys)
+        if (type is IArrayTypeSymbol arrayType && arrayType.ElementType.SpecialType == SpecialType.System_Byte)
+            return true;
+
+        // Reference types that are NOT entities/navigation properties are invalid
+        return false;
+    }
+
+    private bool HasFluentKeyConfiguration(INamedTypeSymbol dbContextType, INamedTypeSymbol entityType, Compilation compilation)
+    {
         var methods = dbContextType.GetMembers("OnModelCreating");
         if (methods.IsEmpty) return false;
 
-        var onModelCreating = methods[0] as IMethodSymbol;
-        if (onModelCreating == null) return false;
+        if (methods[0] is not IMethodSymbol onModelCreating) return false;
 
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
         {
             var syntax = syntaxRef.GetSyntax();
-            var text = syntax.ToString();
-            if (text.Contains($"Entity<{entityType.Name}>") && text.Contains("HasKey")) return true;
+            var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
+
+            foreach (var invocation in invocations)
+            {
+                if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) continue;
+
+                var methodName = memberAccess.Name.Identifier.Text;
+
+                if (methodName == "HasKey")
+                {
+                    var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
+                    if (entityTypeName != null)
+                    {
+                        var matchedType = FindTypeByName(compilation, entityTypeName);
+                        if (matchedType != null &&
+                            SymbolEqualityComparer.Default.Equals(matchedType, entityType))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
 
         return false;
-    }
-
-    private bool HasEntityTypeConfigurationKey(Compilation compilation, INamedTypeSymbol entityType)
-    {
-        // Find IEntityTypeConfiguration<T> symbol
-        var interfaceSymbol =
-            compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
-        if (interfaceSymbol == null) return false;
-
-        var genericInterface = interfaceSymbol.Construct(entityType);
-
-        // Scan types in the compilation that implement this interface
-        // Note: This is expensive on large solutions. We are visiting global namespace types.
-        // Optimization: Only check types that end in "Configuration" or are in same namespace? 
-        // For now, we do a broad search but limit depth or use a visitor if possible. 
-        // Roslyn doesn't have a quick "FindImplementations" without a workspace.
-        // We have to iterate symbols.
-
-        // Visitor approach to find types
-        var visitor = new TypeCollector();
-        visitor.Visit(compilation.GlobalNamespace);
-
-        foreach (var type in visitor.Types)
-        foreach (var iface in type.AllInterfaces)
-            if (SymbolEqualityComparer.Default.Equals(iface, genericInterface))
-                // Found a configuration class for this entity.
-                // Now check its Configure method for HasKey.
-                if (HasConfigureMethodKey(type))
-                    return true;
-
-        return false;
-    }
-
-    private bool HasConfigureMethodKey(INamedTypeSymbol configClass)
-    {
-        var configureMethod = configClass.GetMembers("Configure").FirstOrDefault() as IMethodSymbol;
-        if (configureMethod == null) return false;
-
-        foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
-        {
-            var syntax = syntaxRef.GetSyntax();
-            var text = syntax.ToString();
-            // Check for .HasKey(...) inside Configure method
-            if (text.Contains("HasKey")) return true;
-        }
-
-        return false;
-    }
-
-    private bool IsDbContext(INamedTypeSymbol type)
-    {
-        var current = type;
-        while (current != null)
-        {
-            if (current.Name == "DbContext" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
-    }
-
-    private bool IsDbSet(INamedTypeSymbol type)
-    {
-        if (type.Name == "DbSet" &&
-            type.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-            return true;
-
-        // Check base types just in case
-        var current = type.BaseType;
-        while (current != null)
-        {
-            if (current.Name == "DbSet" &&
-                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                return true;
-            current = current.BaseType;
-        }
-
-        return false;
-    }
-
-    private class TypeCollector : SymbolVisitor
-    {
-        public List<INamedTypeSymbol> Types { get; } = new();
-
-        public override void VisitNamespace(INamespaceSymbol symbol)
-        {
-            foreach (var member in symbol.GetMembers()) member.Accept(this);
-        }
-
-        public override void VisitNamedType(INamedTypeSymbol symbol)
-        {
-            Types.Add(symbol);
-            foreach (var member in symbol.GetTypeMembers()) member.Accept(this);
-        }
     }
 }

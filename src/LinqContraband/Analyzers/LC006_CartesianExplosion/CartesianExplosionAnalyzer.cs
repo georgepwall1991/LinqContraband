@@ -98,7 +98,9 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
                     if (prevMethod.TypeArguments.Length >= 2)
                         prevPropType = prevMethod.TypeArguments[prevMethod.TypeArguments.Length - 1];
 
-                    if (prevPropType == null || IsCollection(prevPropType)) previousCollectionIncludes++;
+                    // Only count as collection include if we can verify it's a collection type
+                    // When prevPropType is null (string-based Include), we can't determine, so skip counting
+                    if (prevPropType != null && IsCollection(prevPropType)) previousCollectionIncludes++;
                 }
 
                 // Move up the chain
@@ -123,7 +125,7 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private bool IsCollection(ITypeSymbol type)
+    private static bool IsCollection(ITypeSymbol type)
     {
         if (type.SpecialType == SpecialType.System_String) return false;
         // Arrays are collections
@@ -131,18 +133,25 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
 
         if (type is INamedTypeSymbol namedType)
         {
-            if (namedType.Name == "List" && namedType.IsGenericType) return true;
-            if (namedType.Name == "IList" && namedType.IsGenericType) return true;
-            if (namedType.Name == "IEnumerable" && namedType.IsGenericType) return true;
-            if (namedType.Name == "ICollection" && namedType.IsGenericType) return true;
-            if (namedType.Name == "HashSet" && namedType.IsGenericType) return true;
-            if (namedType.Name == "ISet" && namedType.IsGenericType) return true;
+            var ns = namedType.ContainingNamespace?.ToString();
+
+            // Check for System.Collections.Generic types with namespace verification
+            if (ns == "System.Collections.Generic" && namedType.IsGenericType)
+            {
+                return namedType.Name is "List" or "IList" or "IEnumerable" or "ICollection"
+                    or "HashSet" or "ISet" or "IReadOnlyList" or "IReadOnlyCollection";
+            }
         }
 
+        // Also check interfaces for IEnumerable<T> implementation
         foreach (var iface in type.AllInterfaces)
+        {
             if (iface.Name == "IEnumerable" && iface.IsGenericType &&
                 iface.ContainingNamespace?.ToString() == "System.Collections.Generic")
+            {
                 return true;
+            }
+        }
 
         return false;
     }

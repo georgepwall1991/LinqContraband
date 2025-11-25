@@ -69,19 +69,13 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
     }
 
-    private bool IsMaterializer(IMethodSymbol method)
+    private static bool IsMaterializer(IMethodSymbol method)
     {
-        // Quick check
-        if (method.Name.StartsWith("Find")) return false; // AsNoTracking has no effect on Find
+        // Find/FindAsync have no effect with AsNoTracking, so skip them
+        if (method.Name.StartsWith("Find")) return false;
 
-        return method.Name == "ToList" || method.Name == "ToListAsync" ||
-               method.Name == "ToArray" || method.Name == "ToArrayAsync" ||
-               method.Name == "First" || method.Name == "FirstOrDefault" ||
-               method.Name == "FirstAsync" || method.Name == "FirstOrDefaultAsync" ||
-               method.Name == "Single" || method.Name == "SingleOrDefault" ||
-               method.Name == "SingleAsync" || method.Name == "SingleOrDefaultAsync" ||
-               method.Name == "Last" || method.Name == "LastOrDefault" ||
-               method.Name == "LastAsync" || method.Name == "LastOrDefaultAsync";
+        // Use shared extension method for materializer check
+        return method.Name.IsMaterializerMethod();
     }
 
     private ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
