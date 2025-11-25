@@ -65,7 +65,9 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         if (root == null || semanticModel == null) return document;
 
-        var editor = new SyntaxEditor(root, document.Project.Solution.Services);
+#pragma warning disable CS0618 // Type or member is obsolete - Workspace constructor deprecated but Services not available in older Roslyn
+        var editor = new SyntaxEditor(root, document.Project.Solution.Workspace);
+#pragma warning restore CS0618
         var generator = editor.Generator;
 
         // 1. Determine variable name
