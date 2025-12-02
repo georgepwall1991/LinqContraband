@@ -15,8 +15,8 @@
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1"/>
 
         <!-- Force usage of Roslyn 4.3.0 to match the Analyzer project and resolve conflicts -->
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0" />
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.3.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
 
         <PackageReference Include="xunit" Version="2.4.2"/>
