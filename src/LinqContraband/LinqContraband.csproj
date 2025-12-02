@@ -40,10 +40,10 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0">
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.3.0">
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
 
