@@ -6,7 +6,7 @@ Thank you for your interest in contributing to LinqContraband! This document pro
 
 ### Prerequisites
 
-- .NET 10.0 SDK or later
+- .NET 8.0 SDK or later
 - An IDE with Roslyn support (Visual Studio 2022, JetBrains Rider, or VS Code with C# extension)
 
 ### Getting Started
