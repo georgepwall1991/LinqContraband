@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 /// variable before the query to enable better caching and testability.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
+public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC016";
     private const string Category = "Performance";

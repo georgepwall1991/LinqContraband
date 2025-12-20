@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC015_MissingOrderBy;
 /// application behavior and difficult-to-reproduce bugs.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class MissingOrderByAnalyzer : DiagnosticAnalyzer
+public sealed class MissingOrderByAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC015";
     private const string Category = "Reliability";

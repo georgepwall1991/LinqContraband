@@ -607,6 +607,168 @@ var names = db.Products
 
 ---
 
+### LC018: Avoid FromSqlRaw with Interpolation
+
+Using interpolated strings (`$"{var}"`) with `FromSqlRaw` is a major security risk. It embeds variables directly into
+the SQL string, bypassing parameterization and opening your database to SQL injection attacks.
+
+**👶 Explain it like I'm a ten year old:** Imagine a bank where you write your name on a slip to get money. If you use
+a special pen that lets you erase "Name: John" and write "Give John everything in the vault," you've just robbed the
+bank. `FromSqlRaw` with interpolated strings is like using that eraseable pen.
+
+**❌ The Crime:**
+
+```csharp
+// Potential SQL Injection!
+var users = db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'").ToList();
+```
+
+**✅ The Fix:**
+Use `FromSqlInterpolated` or `FromSql` (EF Core 7+), which automatically parameterize the string.
+
+```csharp
+// Safe: EF Core handles parameterization
+var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {name}").ToList();
+```
+
+---
+
+### LC020: StringComparison Smuggler
+
+Using `string.Contains`, `StartsWith`, or `EndsWith` with a `StringComparison` argument in a LINQ query often cannot be
+translated to SQL. This forces EF Core to pull all records from the database and filter them in your app's memory.
+
+**👶 Explain it like I'm a ten year old:** Imagine asking a robot to find all red blocks in a giant bin. But you give
+the robot a very complicated rule: "Find blocks that are red, but only if they are the exact shade of 'Sunset Crimson'
+from a specific 1990s crayon box." The robot gets confused and just hands you the *entire* bin to sort yourself.
+
+**❌ The Crime:**
+
+```csharp
+// Likely to cause client-side evaluation
+var users = db.Users.Where(u => u.Name.Contains("admin", StringComparison.OrdinalIgnoreCase)).ToList();
+```
+
+**✅ The Fix:**
+Use the simple overload. Databases are usually configured with a specific case-sensitivity (collation) anyway.
+
+```csharp
+// Translates to SQL LIKE
+var users = db.Users.Where(u => u.Name.Contains("admin")).ToList();
+```
+
+---
+
+### LC021: Avoid IgnoreQueryFilters
+
+Global query filters are often used for critical security and logic, like multi-tenancy or soft-deletes. Using
+`IgnoreQueryFilters()` bypasses these protections and can lead to data leaks.
+
+**👶 Explain it like I'm a ten year old:** Imagine a high-security building where every door has a lock. `IgnoreQueryFilters`
+is like a skeleton key that opens every single door at once. It's powerful, but if you use it by accident, you might
+end up somewhere you're not supposed to be.
+
+**❌ The Crime:**
+
+```csharp
+// Might accidentally see data from other tenants or deleted items
+var allUsers = db.Users.IgnoreQueryFilters().ToList();
+```
+
+**✅ The Fix:**
+Ensure that bypassing global filters is intentional and necessary for the specific task (e.g., admin tools).
+
+---
+
+### LC022: Explicit Loading N+1
+
+Calling `.Load()` or `.Collection().Load()` inside a loop triggers a new database round-trip for every single item.
+This is a classic performance killer that slows down as your data grows.
+
+**👶 Explain it like I'm a ten year old:** Imagine you are serving 50 people dinner. Instead of bringing all the plates
+out on a tray (Eager Loading), you walk to the kitchen, pick up ONE fork, walk back, give it to one person, and repeat
+this 50 times. You'll be exhausted, and everyone will be hungry!
+
+**❌ The Crime:**
+
+```csharp
+var users = db.Users.ToList();
+foreach (var user in users)
+{
+    // Hits the database once for EVERY user in the list
+    db.Entry(user).Collection(u => u.Orders).Load();
+}
+```
+
+**✅ The Fix:**
+Use `.Include()` to fetch the related data in the original query.
+
+```csharp
+// Fetches users and their orders in one (or few) efficient queries
+var usersWithOrders = db.Users.Include(u => u.Orders).ToList();
+```
+
+---
+
+### LC023: Suggest Find/FindAsync
+
+`FirstOrDefault(x => x.Id == id)` always goes to the database. `Find(id)` first checks if the entity is already loaded
+in your app's memory (the Change Tracker), which is much faster.
+
+**👶 Explain it like I'm a ten year old:** Imagine you want to know if you have a blue shirt. `FirstOrDefault` is like
+driving to the store to buy a new one just to check. `Find` is like looking in your closet first. If it's in the closet,
+you save a trip!
+
+**❌ The Crime:**
+
+```csharp
+// Always hits the database
+var user = db.Users.FirstOrDefault(u => u.Id == userId);
+```
+
+**✅ The Fix:**
+Use `Find` or `FindAsync` for primary key lookups.
+
+```csharp
+// Checks local memory first, then DB if not found
+var user = db.Users.Find(userId);
+```
+
+---
+
+### LC025: AsNoTracking with Update/Remove
+
+`AsNoTracking()` is great for speed, but it tells EF Core "I'm only reading this." If you then try to `Update()` or
+`Remove()` that entity, EF Core has to "guess" what changed, which leads to inefficient SQL that updates every single
+column.
+
+**👶 Explain it like I'm a ten year old:** Imagine you check out a library book but tell the librarian, "I'm just going
+to look at the pictures." Then you go home and rewrite three chapters. When you return it, the librarian has to re-read
+the *entire* book to figure out what you changed.
+
+**❌ The Crime:**
+
+```csharp
+// Fetches as read-only
+var user = db.Users.AsNoTracking().First(u => u.Id == id);
+user.Name = "New Name";
+// EF Core has to update ALL columns because it wasn't tracking changes
+db.Users.Update(user);
+```
+
+**✅ The Fix:**
+Remove `AsNoTracking()` if you plan to modify the entity.
+
+```csharp
+// Tracked by default
+var user = db.Users.First(u => u.Id == id);
+user.Name = "New Name";
+// EF Core knows exactly which column changed
+db.SaveChanges();
+```
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:

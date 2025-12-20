@@ -50,6 +50,34 @@ public static class AnalysisExtensions
     }
 
     /// <summary>
+    /// Gets the receiver operation for an invocation, handling both instance and extension-method syntax.
+    /// </summary>
+    /// <param name="invocation">The invocation operation.</param>
+    /// <param name="unwrapConversions">Whether to unwrap implicit conversions on the receiver.</param>
+    /// <returns>The receiver operation, or null if none.</returns>
+    public static IOperation? GetInvocationReceiver(this IInvocationOperation invocation, bool unwrapConversions = true)
+    {
+        var receiver = invocation.Instance ??
+                       (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
+
+        if (unwrapConversions && receiver != null)
+            receiver = receiver.UnwrapConversions();
+
+        return receiver;
+    }
+
+    /// <summary>
+    /// Gets the receiver type for an invocation, handling both instance and extension-method syntax.
+    /// </summary>
+    /// <param name="invocation">The invocation operation.</param>
+    /// <param name="unwrapConversions">Whether to unwrap implicit conversions on the receiver.</param>
+    /// <returns>The receiver type, or null if none.</returns>
+    public static ITypeSymbol? GetInvocationReceiverType(this IInvocationOperation invocation, bool unwrapConversions = true)
+    {
+        return invocation.GetInvocationReceiver(unwrapConversions)?.Type;
+    }
+
+    /// <summary>
     /// Unwraps conversion, parenthesized, and await operations to get the underlying operand.
     /// </summary>
     /// <param name="operation">The operation to unwrap.</param>
@@ -212,7 +240,7 @@ public static class AnalysisExtensions
                     if (attr.AttributeClass == null) continue;
                     if (attr.AttributeClass.Name == "KeyAttribute" ||
                         (attr.AttributeClass.Name == "Key" &&
-                         attr.AttributeClass.ContainingNamespace?.ToString().StartsWith("System.ComponentModel.DataAnnotations") == true))
+                         attr.AttributeClass.ContainingNamespace?.ToString().StartsWith("System.ComponentModel.DataAnnotations", StringComparison.Ordinal) == true))
                     {
                         return prop.Name;
                     }

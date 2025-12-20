@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -16,7 +17,7 @@ namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 /// before materializing to leverage database-side query optimization and reduce network traffic and memory consumption.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
+public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC002";
     private const string Category = "Performance";
@@ -51,8 +52,7 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
 
-        var receiverType = invocation.Instance?.Type ??
-                           (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value.Type : null);
+        var receiverType = invocation.GetInvocationReceiverType();
 
         if (receiverType == null) return;
 
@@ -60,23 +60,14 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 
         if (!IsLinqOperator(methodSymbol)) return;
 
-        var receiverOp = invocation.Instance ??
-                         (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
-
-        receiverOp = receiverOp?.UnwrapConversions();
+        var receiverOp = invocation.GetInvocationReceiver();
 
         if (receiverOp is IInvocationOperation previousInvocation)
         {
             if (IsMaterializingMethod(previousInvocation.TargetMethod))
             {
                 // Check *that* method's receiver. Was it IQueryable?
-                var sourceOp = previousInvocation.Instance ??
-                               (previousInvocation.Arguments.Length > 0 ? previousInvocation.Arguments[0].Value : null);
-
-                // Handle conversion on sourceOp too (e.g. implicit conversion from List to IEnumerable in chain)
-                sourceOp = sourceOp?.UnwrapConversions();
-
-                var sourceType = sourceOp?.Type;
+                var sourceType = previousInvocation.GetInvocationReceiverType();
                 if (sourceType.IsIQueryable())
                     context.ReportDiagnostic(
                         Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
@@ -122,7 +113,7 @@ public class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
                method.Name == "ToHashSet" ||
                method.Name == "ToHashSetAsync" ||
                method.Name == "ToLookup" ||
-               method.Name.StartsWith("ToImmutable");
+               method.Name.StartsWith("ToImmutable", StringComparison.Ordinal);
     }
 
     private bool IsMaterializingConstructor(IMethodSymbol constructor)

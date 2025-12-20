@@ -21,7 +21,7 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 /// or IEntityTypeConfiguration implementations.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
+public sealed class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC011";
     private const string Category = "Design";
@@ -84,7 +84,7 @@ public class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
             else if (member is IFieldSymbol field)
             {
                 // Skip compiler-generated backing fields (they start with <)
-                if (field.IsImplicitlyDeclared || field.Name.StartsWith("<"))
+                if (field.IsImplicitlyDeclared || field.Name.StartsWith("<", StringComparison.Ordinal))
                     continue;
 
                 dbSetType = field.Type;

@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC012_OptimizeRemoveRange;
 /// that these behaviors are not required before applying this optimization.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
+public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC012";
     private const string Category = "Performance";

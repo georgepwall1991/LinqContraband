@@ -13,6 +13,12 @@ using LinqContraband.Sample.Samples.LC011_EntityMissingPrimaryKey;
 using LinqContraband.Sample.Samples.LC012_OptimizeRemoveRange;
 using LinqContraband.Sample.Samples.LC014_AvoidStringCaseConversion;
 using LinqContraband.Sample.Samples.LC015_MissingOrderBy;
+using LinqContraband.Sample.Samples.LC018_AvoidFromSqlRawWithInterpolation;
+using LinqContraband.Sample.Samples.LC020_StringContainsWithComparison;
+using LinqContraband.Sample.Samples.LC021_AvoidIgnoreQueryFilters;
+using LinqContraband.Sample.Samples.LC022_ExplicitLoadingInLoop;
+using LinqContraband.Sample.Samples.LC023_FindInsteadOfFirstOrDefault;
+using LinqContraband.Sample.Samples.LC025_AsNoTrackingWithUpdate;
 
 namespace LinqContraband.Sample;
 
@@ -48,5 +54,13 @@ internal class Program
 
         // LC015: MissingOrderBy
         MissingOrderBySample.Run(users);
+
+        // New samples
+        AvoidFromSqlRawWithInterpolationSample.Run(db);
+        StringContainsWithComparisonSample.Run(db);
+        AvoidIgnoreQueryFiltersSample.Run(db);
+        ExplicitLoadingInLoopSample.Run(db);
+        FindInsteadOfFirstOrDefaultSample.Run(db);
+        AsNoTrackingWithUpdateSample.Run(db);
     }
 }

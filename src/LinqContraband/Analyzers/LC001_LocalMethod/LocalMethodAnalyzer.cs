@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC001_LocalMethod;
 /// and can cause severe performance degradation and memory issues when working with large datasets.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class LocalMethodAnalyzer : DiagnosticAnalyzer
+public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC001";
     private const string Category = "Performance";

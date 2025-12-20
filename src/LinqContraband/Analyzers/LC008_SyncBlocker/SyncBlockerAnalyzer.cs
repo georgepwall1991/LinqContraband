@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 /// for database operations, allowing the server to handle more concurrent requests with the same resources.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class SyncBlockerAnalyzer : DiagnosticAnalyzer
+public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC008";
     private const string Category = "Performance";
@@ -83,22 +83,9 @@ public class SyncBlockerAnalyzer : DiagnosticAnalyzer
         // BUT calling .ToList() on an IQueryable triggers DB execution synchronously.
         // So we need to check if the SOURCE is IQueryable.
 
-        ITypeSymbol? receiverType = null;
+        var receiverType = invocation.GetInvocationReceiverType();
 
-        if (invocation.Instance != null)
-        {
-            receiverType = invocation.Instance.Type;
-        }
-        else if (invocation.Arguments.Length > 0)
-        {
-            var argVal = invocation.Arguments[0].Value;
-            while (argVal is IConversionOperation conv) argVal = conv.Operand;
-            receiverType = argVal.Type;
-        }
-
-        if (receiverType?.IsIQueryable() == true) return true;
-
-        return false;
+        return receiverType?.IsIQueryable() == true;
     }
 
     /// <summary>

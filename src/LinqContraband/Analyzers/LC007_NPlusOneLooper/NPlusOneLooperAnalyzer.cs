@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -17,7 +18,7 @@ namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 /// bulk outside the loop using techniques like Include(), joins, or dictionary lookups.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
+public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC007";
     private const string Category = "Performance";
@@ -64,25 +65,12 @@ public class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
     private static bool IsDbExecutionMethod(IMethodSymbol method, IInvocationOperation invocation)
     {
         // Case 1: DbSet.Find / FindAsync
-        if (method.Name.StartsWith("Find") && method.ContainingType.IsDbSet()) return true;
+        if (method.Name.StartsWith("Find", StringComparison.Ordinal) && method.ContainingType.IsDbSet()) return true;
 
         // Case 2: IQueryable materializers (ToList, Count, First, etc.)
         if (!method.Name.IsMaterializerMethod()) return false;
 
-        ITypeSymbol? receiverType = null;
-
-        if (invocation.Instance != null)
-        {
-            receiverType = invocation.Instance.Type;
-        }
-        else if (invocation.Arguments.Length > 0)
-        {
-            // Extension method: The first argument is the receiver.
-            // It might be implicitly converted (e.g. IQueryable -> IEnumerable for ToList).
-            var argVal = invocation.Arguments[0].Value;
-            while (argVal is IConversionOperation conv) argVal = conv.Operand;
-            receiverType = argVal.Type;
-        }
+        var receiverType = invocation.GetInvocationReceiverType();
 
         return receiverType?.IsIQueryable() == true;
     }

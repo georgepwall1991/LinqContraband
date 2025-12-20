@@ -20,7 +20,7 @@ namespace LinqContraband.Analyzers.LC017_WholeEntityProjection;
 /// entities with 10+ properties where only 1-2 are accessed within local scope.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
+public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC017";
     private const string Category = "Performance";
@@ -111,8 +111,7 @@ public class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
     private QueryChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
     {
         var result = new QueryChainAnalysis();
-        var current = invocation.Instance ??
-                      (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
+        var current = invocation.GetInvocationReceiver();
 
         while (current != null)
         {
@@ -125,8 +124,7 @@ public class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
                 if (methodName == "Select") result.HasSelect = true;
 
                 // Move up the chain
-                current = prevInvocation.Instance ??
-                          (prevInvocation.Arguments.Length > 0 ? prevInvocation.Arguments[0].Value : null);
+                current = prevInvocation.GetInvocationReceiver(false);
             }
             else if (current is IPropertyReferenceOperation propRef)
             {

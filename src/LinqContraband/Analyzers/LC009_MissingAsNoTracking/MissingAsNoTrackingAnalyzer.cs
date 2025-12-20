@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -15,7 +16,7 @@ namespace LinqContraband.Analyzers.LC009_MissingAsNoTracking;
 /// performance in scenarios where entities are not being modified.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
+public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC009";
     private const string Category = "Performance";
@@ -72,7 +73,7 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
     private static bool IsMaterializer(IMethodSymbol method)
     {
         // Find/FindAsync have no effect with AsNoTracking, so skip them
-        if (method.Name.StartsWith("Find")) return false;
+        if (method.Name.StartsWith("Find", StringComparison.Ordinal)) return false;
 
         // Use shared extension method for materializer check
         return method.Name.IsMaterializerMethod();
@@ -81,8 +82,7 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
     private ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
     {
         var result = new ChainAnalysis();
-        var current = invocation.Instance ??
-                      (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
+        var current = invocation.GetInvocationReceiver();
 
         while (current != null)
         {
@@ -92,7 +92,6 @@ public class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             if (current is IInvocationOperation prevInvocation)
             {
                 var method = prevInvocation.TargetMethod;
-                var ns = method.ContainingNamespace?.ToString();
 
                 if (method.Name == "AsNoTracking" || method.Name == "AsNoTrackingWithIdentityResolution")
                     result.HasAsNoTracking = true;

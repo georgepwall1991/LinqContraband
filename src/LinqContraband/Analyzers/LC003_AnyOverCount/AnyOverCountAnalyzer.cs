@@ -147,7 +147,7 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
             if (isSyncCount || isAsyncCount)
             {
                 // Check if the source is IQueryable
-                var receiverType = invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value.Type : null;
+                var receiverType = invocation.GetInvocationReceiverType();
 
                 if (receiverType?.IsIQueryable() == true)
                     context.ReportDiagnostic(Diagnostic.Create(Rule, binaryOp.Syntax.GetLocation()));

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -16,7 +17,7 @@ namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 /// Use AsSplitQuery() to separate into distinct SQL queries or manually load collections separately.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
+public sealed class CartesianExplosionAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC006";
     private const string Category = "Performance";
@@ -69,7 +70,7 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         if (!IsCollection(propertyType)) return;
 
         // Now check the chain backwards. Handle extension method syntax.
-        var current = invocation.Instance ?? (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
+        var current = invocation.GetInvocationReceiver();
 
         var foundSplitQuery = false;
         var previousCollectionIncludes = 0;
@@ -104,8 +105,7 @@ public class CartesianExplosionAnalyzer : DiagnosticAnalyzer
                 }
 
                 // Move up the chain
-                current = prevInvocation.Instance ??
-                          (prevInvocation.Arguments.Length > 0 ? prevInvocation.Arguments[0].Value : null);
+                current = prevInvocation.GetInvocationReceiver(false);
             }
             else
             {

@@ -156,35 +156,6 @@ namespace LinqContraband.Test
     [Fact]
     public async Task CountAsync_GreaterThanZero_ShouldTriggerLC003()
     {
-        var test = Usings + @"
-using System.Threading.Tasks;
-namespace Microsoft.EntityFrameworkCore
-{
-    public static class EntityFrameworkQueryableExtensions
-    {
-        public static Task<int> CountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0);
-    }
-}
-namespace LinqContraband.Test
-{
-    public class TestClass
-    {
-        public async Task TestMethod()
-        {
-            var query = new List<int>().AsQueryable();
-            var count = await query.CountAsync();
-            if (count > 0)
-            {
-            }
-        }
-    }
-}
-";
-        // Wait, current analyzer handles binary expression.
-        // If I assigned to variable, it's harder.
-        // The pattern I want to catch is "await query.CountAsync() > 0" directly in expression if possible,
-        // or just the expression.
-        
         // Let's use direct expression:
         var test2 = Usings + @"
 using System.Threading.Tasks;

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -16,7 +17,7 @@ namespace LinqContraband.Analyzers.LC005_MultipleOrderBy;
 /// to create proper multi-level sorting that preserves the original sort while adding sub-sorting for ties.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class MultipleOrderByAnalyzer : DiagnosticAnalyzer
+public sealed class MultipleOrderByAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC005";
     private const string Category = "Performance";
@@ -53,11 +54,7 @@ public class MultipleOrderByAnalyzer : DiagnosticAnalyzer
 
         if (!IsOrderBy(method)) return;
 
-        var receiver = invocation.Instance ??
-                       (invocation.Arguments.Length > 0 ? invocation.Arguments[0].Value : null);
-
-        // Handle implicit conversions (e.g. boxing or interface casting)
-        while (receiver is IConversionOperation conversion) receiver = conversion.Operand;
+        var receiver = invocation.GetInvocationReceiver();
 
         if (receiver is IInvocationOperation previousInvocation)
         {

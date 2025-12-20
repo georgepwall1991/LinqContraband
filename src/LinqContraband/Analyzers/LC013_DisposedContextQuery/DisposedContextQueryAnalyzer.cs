@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC013_DisposedContextQuery;
 /// the context is disposed.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
+public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC013";
     private const string Category = "Reliability";
