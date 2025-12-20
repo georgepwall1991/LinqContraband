@@ -67,7 +67,7 @@ class Program {
 }";
 
         // Adjusted line number to 35 based on previous failure
-        var expected = VerifyCS.Diagnostic("LC015").WithLocation(35, 26).WithArguments("Skip");
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 26).WithArguments("Skip");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
@@ -112,7 +112,7 @@ class Program {
         // Skips test structure is identical to Last test structure (just different class/method names).
         // So 34 should be correct here too.
 
-        var expected = VerifyCS.Diagnostic("LC015").WithLocation(35, 29).WithArguments("Last");
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 29).WithArguments("Last");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
@@ -139,7 +139,7 @@ class Program {
         // Diagnostic is raised but no code fix should be applied (code remains unchanged)
         // since the entity has no Id, OrderLineId, or [Key] attribute property.
         // NumberOfFixAllIterations = 0 tells the test we expect NO fix to be applied.
-        var expected = VerifyCS.Diagnostic("LC015").WithLocation(36, 31).WithArguments("Skip");
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(36, 31).WithArguments("Skip");
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
     }
 
@@ -171,7 +171,7 @@ class Program {
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC015").WithLocation(35, 29).WithArguments("Last");
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 29).WithArguments("Last");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 }

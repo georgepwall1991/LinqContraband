@@ -1,6 +1,7 @@
 using VerifyCS =
     Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
         LinqContraband.Analyzers.LC015_MissingOrderBy.MissingOrderByAnalyzer>;
+using LinqContraband.Analyzers.LC015_MissingOrderBy;
 
 namespace LinqContraband.Tests.Analyzers.LC015_MissingOrderBy;
 
@@ -49,12 +50,16 @@ namespace TestApp
             using var db = new AppDbContext();
             
             // Trigger: Skip without OrderBy
-            var result = db.Users.{|LC015:Skip|}(10);
+            var result = db.Users.Skip(10);
         }
     }
 }" + MockNamespace;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(18, 35)
+            .WithArguments("Skip");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
@@ -72,12 +77,16 @@ namespace TestApp
             using var db = new AppDbContext();
             
             // Trigger: Last without OrderBy
-            var result = db.Users.{|LC015:Last|}();
+            var result = db.Users.Last();
         }
     }
 }" + MockNamespace;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(18, 35)
+            .WithArguments("Last");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
@@ -122,5 +131,67 @@ namespace TestApp
 }" + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task OrderBy_AfterSkip_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp 
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            
+            // Trigger: OrderBy after Skip
+            var result = db.Users.Skip(10).OrderBy(u => u.Name);
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(18, 35)
+            .WithArguments("Skip");
+
+        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(18, 44)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
+    }
+
+    [Fact]
+    public async Task OrderBy_AfterTake_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp 
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            
+            // Trigger: OrderBy after Take
+            var result = db.Users.Take(5).OrderBy(u => u.Name);
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(18, 35)
+            .WithArguments("Take");
+
+        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(18, 43)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
     }
 }

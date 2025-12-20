@@ -26,17 +26,26 @@ public class NPlusOneLooperSample
     /// <summary>
     ///     Runs the sample demonstrating the N+1 query pattern.
     /// </summary>
+    /// <param name="db">The database context.</param>
     /// <param name="users">The source queryable of users.</param>
-    public static void Run(IQueryable<User> users)
+    public static void Run(AppDbContext db, IQueryable<User> users)
     {
         Console.WriteLine("Testing LC007...");
         var targetIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
 
-        // VIOLATION: Iterating over a list and querying the DB for each item.
+        // VIOLATION 1: Iterating over a list and querying the DB for each item.
         foreach (var id in targetIds)
         {
             // This executes a separate SQL query for every iteration.
             var user = users.Where(u => u.Id == id).ToList();
+        }
+
+        // VIOLATION 2: Explicit loading inside a loop (Merged from LC022).
+        var materializedUsers = users.Take(10).ToList();
+        foreach (var user in materializedUsers)
+        {
+            // Triggers a database query for every user.
+            db.Entry(user).Collection(u => u.Configurations).Load();
         }
     }
 }

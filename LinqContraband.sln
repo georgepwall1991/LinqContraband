@@ -21,6 +21,36 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinqContraband.Sample", "samples\LinqContraband.Sample\LinqContraband.Sample.csproj", "{BE8C692E-90BD-4F68-A353-530F3DD4E036}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{04BE0F95-3C1D-438C-815E-230135A50FBB}"
+	ProjectSection(SolutionItems) = preProject
+		docs\LC029_RedundantIdentitySelect.md = docs\LC029_RedundantIdentitySelect.md
+		docs\LC030_DbContextInSingleton.md = docs\LC030_DbContextInSingleton.md
+		docs\LC026_MissingCancellationToken.md = docs\LC026_MissingCancellationToken.md
+		docs\LC016_AvoidDateTimeNow.md = docs\LC016_AvoidDateTimeNow.md
+		docs\LC014_AvoidStringCaseConversion.md = docs\LC014_AvoidStringCaseConversion.md
+		docs\LC013_DisposedContextQuery.md = docs\LC013_DisposedContextQuery.md
+		docs\LC012_OptimizeRemoveRange.md = docs\LC012_OptimizeRemoveRange.md
+		docs\LC011_EntityMissingPrimaryKey.md = docs\LC011_EntityMissingPrimaryKey.md
+		docs\LC010_SaveChangesInLoop.md = docs\LC010_SaveChangesInLoop.md
+		docs\LC009_MissingAsNoTracking.md = docs\LC009_MissingAsNoTracking.md
+		docs\LC008_SyncBlocker.md = docs\LC008_SyncBlocker.md
+		docs\LC007_NPlusOneLooper.md = docs\LC007_NPlusOneLooper.md
+		docs\LC006_CartesianExplosion.md = docs\LC006_CartesianExplosion.md
+		docs\LC005_MultipleOrderBy.md = docs\LC005_MultipleOrderBy.md
+		docs\LC004_IQueryableLeak.md = docs\LC004_IQueryableLeak.md
+		docs\LC003_AnyOverCount.md = docs\LC003_AnyOverCount.md
+		docs\LC002_PrematureMaterialization.md = docs\LC002_PrematureMaterialization.md
+		docs\LC001_LocalMethod.md = docs\LC001_LocalMethod.md
+		docs\LC025_AsNoTrackingWithUpdate.md = docs\LC025_AsNoTrackingWithUpdate.md
+		docs\LC023_FindInsteadOfFirstOrDefault.md = docs\LC023_FindInsteadOfFirstOrDefault.md
+		docs\LC021_AvoidIgnoreQueryFilters.md = docs\LC021_AvoidIgnoreQueryFilters.md
+		docs\LC020_StringContainsWithComparison.md = docs\LC020_StringContainsWithComparison.md
+		docs\LC018_AvoidFromSqlRawWithInterpolation.md = docs\LC018_AvoidFromSqlRawWithInterpolation.md
+		docs\LC017_WholeEntityProjection.md = docs\LC017_WholeEntityProjection.md
+		docs\LC015_MissingOrderBy.md = docs\LC015_MissingOrderBy.md
+		docs\adding_new_analyzer.md = docs\adding_new_analyzer.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

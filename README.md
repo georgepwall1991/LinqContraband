@@ -680,32 +680,6 @@ Ensure that bypassing global filters is intentional and necessary for the specif
 
 ---
 
-### LC022: Explicit Loading N+1
-
-Calling `.Load()` or `.Collection().Load()` inside a loop triggers a new database round-trip for every single item.
-This is a classic performance killer that slows down as your data grows.
-
-**👶 Explain it like I'm a ten year old:** Imagine you are serving 50 people dinner. Instead of bringing all the plates
-out on a tray (Eager Loading), you walk to the kitchen, pick up ONE fork, walk back, give it to one person, and repeat
-this 50 times. You'll be exhausted, and everyone will be hungry!
-
-**❌ The Crime:**
-
-```csharp
-var users = db.Users.ToList();
-foreach (var user in users)
-{
-    // Hits the database once for EVERY user in the list
-    db.Entry(user).Collection(u => u.Orders).Load();
-}
-```
-
-**✅ The Fix:**
-Use `.Include()` to fetch the related data in the original query.
-
-```csharp
-// Fetches users and their orders in one (or few) efficient queries
-var usersWithOrders = db.Users.Include(u => u.Orders).ToList();
 ```
 
 ---
@@ -802,58 +776,6 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 
 ---
 
-### LC027: OrderBy After Pagination
-
-Calling `OrderBy` after `Skip` or `Take` usually means you are sorting a small random slice of data rather than the
-whole list. It's almost always a mistake in logic.
-
-**👶 Explain it like I'm a ten year old:** Imagine a line of 100 kids. You say "Take the first 10 kids, then sort them by
-height." You only sorted those 10 kids! If you wanted the 10 shortest kids in the *whole line*, you should have sorted
-everyone by height first, and *then* picked the first 10.
-
-**❌ The Crime:**
-
-```csharp
-// Violation: Gets 10 random users, THEN sorts just those 10
-var users = db.Users.Take(10).OrderBy(u => u.Name).ToList();
-```
-
-**✅ The Fix:**
-Sort before you paginate.
-
-```csharp
-// Correct: Sorts everyone, then takes the top 10
-var users = db.Users.OrderBy(u => u.Name).Take(10).ToList();
-```
-
----
-
-### LC028: Redundant Materialization
-
-Calling `AsEnumerable()` right before `ToList()` is like packing your bags for a trip, then immediately unpacking them
-into another identical bag. It’s extra work for no reason.
-
-**👶 Explain it like I'm a ten year old:** Imagine you want to put your toys in a blue box. Instead of just putting them
-in the box, you first put them in a bag, then immediately dump the bag into the box. You did twice as much work to
-end up with the toys in the same place!
-
-**❌ The Crime:**
-
-```csharp
-// Violation: AsEnumerable() is redundant if you call ToList() next
-var users = db.Users.AsEnumerable().ToList();
-```
-
-**✅ The Fix:**
-Just call the final materializer.
-
-```csharp
-// Correct
-var users = db.Users.ToList();
-```
-
----
-
 ### LC029: Redundant Identity Select
 
 `Select(x => x)` tells the database "For every item, return that item." It's the default behavior, so writing it out
@@ -880,32 +802,6 @@ var users = db.Users.ToList();
 
 ---
 
-### LC030: DbContext in Singleton
-
-`DbContext` is not thread-safe and is designed to be used for one "job" (one web request) and then thrown away. If you
-put it in a `Singleton` service, it stays alive forever and will eventually crash or leak memory.
-
-**👶 Explain it like I'm a ten year old:** Imagine a toothbrush. It's great for one person to use (one request). But if
-you glue that toothbrush to the wall and make 1,000 people share it forever (Singleton), it's going to get very gross,
-break, and make everyone sick!
-
-**❌ The Crime:**
-
-```csharp
-// Violation: Shared context in a long-lived service
-public class MySingletonService
-{
-    private readonly AppDbContext _db;
-    public MySingletonService(AppDbContext db) => _db = db;
-}
-```
-
-**✅ The Fix:**
-Use a `IDbContextFactory` to create a fresh context whenever you need one.
-
-```csharp
-public class MySingletonService
-{
     private readonly IDbContextFactory<AppDbContext> _factory;
     public MySingletonService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
 

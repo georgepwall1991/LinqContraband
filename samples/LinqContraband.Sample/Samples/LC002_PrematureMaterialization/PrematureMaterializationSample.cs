@@ -41,5 +41,9 @@ public class PrematureMaterializationSample
         // VIOLATION 3: Materializing to a Dictionary first.
         // This fetches everything before filtering.
         var prematureDictionary = users.ToDictionary(u => u.Id).Where(kvp => kvp.Value.Age > 25).ToList();
+
+        // VIOLATION 4: Redundant materialization (Merged from LC028).
+        // Calling AsEnumerable() immediately followed by ToList() is redundant.
+        var redundant = users.AsEnumerable().ToList();
     }
 }

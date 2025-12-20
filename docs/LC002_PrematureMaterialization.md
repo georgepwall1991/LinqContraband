@@ -4,19 +4,24 @@
 Detect usage of LINQ operators (like `Where`, `Select`, `OrderBy`) called *after* a materializing method (like `ToList`, `ToArray`, `AsEnumerable`).
 
 ## The Problem
-Materializing methods execute the SQL query and bring the results into memory. If you apply filters *after* materializing, the database returns every row, and your application filters them in memory. This is highly inefficient.
+Materializing an `IQueryable` (using `ToList`, `ToArray`, `AsEnumerable`, etc.) before applying filters or other query operators causes all data to be fetched from the database into memory before processing occurs. 
 
-### Example Violation
+Additionally, this rule flags **redundant materialization** where multiple materializing methods are called in a row, adding unnecessary overhead and clutter.
+
+### Example Violations
 ```csharp
-// Fetches every user, then filters in memory
+// 1. Premature: Fetches every user, then filters in memory
 var users = db.Users.ToList().Where(u => u.IsActive);
+
+// 2. Redundant: AsEnumerable is redundant when followed by ToList
+var users2 = db.Users.AsEnumerable().ToList();
 ```
 
 ### The Fix
-Apply all filters before materializing the query.
+Apply all filters before materializing the query, and remove redundant materialization calls.
 
 ```csharp
-// Correct: Database filters the rows
+// Correct
 var users = db.Users.Where(u => u.IsActive).ToList();
 ```
 

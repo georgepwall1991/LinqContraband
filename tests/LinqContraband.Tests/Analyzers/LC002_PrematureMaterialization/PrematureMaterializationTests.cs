@@ -1,5 +1,6 @@
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationAnalyzer>;
+using LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
 namespace LinqContraband.Tests.Analyzers.LC002_PrematureMaterialization;
 
@@ -49,7 +50,7 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC002")
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
             .WithSpan(13, 21, 13, 61) // Where call spans from 'db.Users...'
             .WithArguments("Where");
 
@@ -104,7 +105,7 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC002")
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
             .WithSpan(13, 21, 13, 83)
             .WithArguments("Where");
 
@@ -125,7 +126,7 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC002")
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
             .WithSpan(13, 21, 13, 67)
             .WithArguments("Where");
 
@@ -150,9 +151,51 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC002")
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
              .WithSpan(15, 21, 15, 70)
              .WithArguments("Where");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task AsEnumerable_ThenToList_ShouldTriggerLC002_Redundant()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var result = db.Users.AsEnumerable().ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
+            .WithSpan(13, 22, 13, 54) 
+            .WithArguments("ToList", "AsEnumerable");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ToList_ThenToArray_ShouldTriggerLC002_Redundant()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var result = db.Users.ToList().ToArray();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
+            .WithSpan(13, 22, 13, 49)
+            .WithArguments("ToArray", "ToList");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }

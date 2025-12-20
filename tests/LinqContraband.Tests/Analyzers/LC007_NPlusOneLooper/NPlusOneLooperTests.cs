@@ -11,7 +11,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using TestNamespace;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 ";
 
     private const string MockNamespace = @"
@@ -21,6 +21,7 @@ namespace Microsoft.EntityFrameworkCore
     {
         public void Dispose() { }
         public DbSet<T> Set<T>() where T : class => new DbSet<T>();
+        public Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<T> Entry<T>(T entity) where T : class => null;
     }
 
     public class DbSet<T> : IQueryable<T> where T : class
@@ -40,20 +41,88 @@ namespace Microsoft.EntityFrameworkCore
     }
 }
 
+namespace Microsoft.EntityFrameworkCore.ChangeTracking
+{
+    public class EntityEntry<T> where T : class
+    {
+        public ReferenceEntry Reference(string name) => null;
+        public CollectionEntry Collection(string name) => null;
+    }
+    public class ReferenceEntry { public void Load() { } }
+    public class CollectionEntry { public void Load() { } }
+}
+
 namespace TestNamespace
 {
     public class User { public int Id { get; set; } }
     
-    public class MyDbContext : DbContext
+    public class MyDbContext : Microsoft.EntityFrameworkCore.DbContext
     {
-        public DbSet<User> Users { get; set; }
+        public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; }
     }
 }";
+
+    [Fact]
+    public async Task TestCrime_ForeachLoop_WithExplicitLoading_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+using TestNamespace;
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = new List<User>();
+
+        foreach (var user in users)
+        {
+            // Crime: Reference().Load() inside loop
+            db.Entry(user).Reference(""abc"").Load();
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007")
+            .WithLocation(20, 13)
+            .WithArguments("Reference");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ForeachLoop_WithCollectionLoading_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+using TestNamespace;
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = new List<User>();
+
+        foreach (var user in users)
+        {
+            // Crime: Collection().Load() inside loop
+            db.Entry(user).Collection(""abc"").Load();
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007")
+            .WithLocation(20, 13)
+            .WithArguments("Collection");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 
     [Fact]
     public async Task TestCrime_ForeachLoop_WithToList_TriggersDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     void Main()
@@ -71,7 +140,7 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(19, 24, 19, 78)
+            .WithLocation(20, 24)
             .WithArguments("ToList");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -81,6 +150,7 @@ class Program
     public async Task TestCrime_ForLoop_WithFind_TriggersDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     void Main()
@@ -97,7 +167,7 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(18, 24, 18, 40)
+            .WithLocation(19, 24)
             .WithArguments("Find");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -107,6 +177,7 @@ class Program
     public async Task TestCrime_WhileLoop_WithCount_TriggersDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     void Main()
@@ -124,7 +195,7 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(18, 25, 18, 41)
+            .WithLocation(19, 25)
             .WithArguments("Count");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -134,6 +205,7 @@ class Program
     public async Task TestInnocent_QueryOutsideLoop_NoDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     void Main()
@@ -159,6 +231,7 @@ class Program
     public async Task TestCrime_AwaitForeach_WithCount_TriggersDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     public async Task Run()
@@ -173,7 +246,7 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithSpan(16, 25, 16, 41)
+            .WithLocation(17, 25)
             .WithArguments("Count");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
@@ -183,6 +256,7 @@ class Program
     public async Task TestInnocent_DeferredExecution_InsideLoop_NoDiagnostic()
     {
         var test = Usings + @"
+using TestNamespace;
 class Program
 {
     void Main()

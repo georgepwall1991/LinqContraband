@@ -47,5 +47,9 @@ public class MissingOrderBySample
 
         // VIOLATION: Chunking data without order. The chunks might contain random items across executions.
         var chunks = users.Chunk(5).ToList();
+
+        // VIOLATION: Misplaced sorting (Merged from LC027).
+        // Sorting happens AFTER Skip/Take, so it only sorts the page, not the source.
+        var misplacedSort = users.Skip(10).Take(10).OrderBy(u => u.Name).ToList();
     }
 }

@@ -28,7 +28,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Description =
         "Ensure filtering happens before materialization (ToList, ToArray, etc).";
 
-    private static readonly DiagnosticDescriptor Rule = new(
+    public static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         Title,
         MessageFormat,
@@ -37,7 +37,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         true,
         Description);
 
-    private static readonly DiagnosticDescriptor RedundantRule = new(
+    public static readonly DiagnosticDescriptor RedundantRule = new(
         DiagnosticId,
         "Redundant materialization",
         RedundantMessageFormat,
@@ -60,15 +60,17 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
 
-        var receiverType = invocation.GetInvocationReceiverType();
-        if (receiverType == null) return;
-
         var receiverOp = invocation.GetInvocationReceiver();
+        if (receiverOp == null) return;
+
+        var unwrappedReceiver = receiverOp.UnwrapConversions();
+        var receiverType = receiverOp.Type;
+        if (receiverType == null) return;
 
         // 1. Check for double materialization (RedundantRule)
         if (IsMaterializingMethod(methodSymbol))
         {
-            if (receiverOp is IInvocationOperation previousInvocation && IsMaterializingMethod(previousInvocation.TargetMethod))
+            if (unwrappedReceiver is IInvocationOperation previousInvocation && IsMaterializingMethod(previousInvocation.TargetMethod))
             {
                 context.ReportDiagnostic(
                     Diagnostic.Create(RedundantRule, invocation.Syntax.GetLocation(), methodSymbol.Name, previousInvocation.TargetMethod.Name));
@@ -81,18 +83,18 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 
         if (!IsLinqOperator(methodSymbol)) return;
 
-        if (receiverOp is IInvocationOperation prevInv)
+        if (unwrappedReceiver is IInvocationOperation prevInv)
         {
             if (IsMaterializingMethod(prevInv.TargetMethod))
             {
                 // Check *that* method's receiver. Was it IQueryable?
                 var sourceType = prevInv.GetInvocationReceiverType();
-                if (sourceType.IsIQueryable())
+                if (sourceType != null && sourceType.IsIQueryable())
                     context.ReportDiagnostic(
                         Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
             }
         }
-        else if (receiverOp is IObjectCreationOperation objectCreation)
+        else if (unwrappedReceiver is IObjectCreationOperation objectCreation)
         {
             if (objectCreation.Constructor != null && IsMaterializingConstructor(objectCreation.Constructor))
             {
@@ -119,7 +121,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
     private bool IsMaterializingMethod(IMethodSymbol method)
     {
         var ns = method.ContainingNamespace?.ToString();
-        if (ns is not ("System.Linq" or "Microsoft.EntityFrameworkCore" or "System.Collections.Immutable")) return false;
+        if (ns is not ("System.Linq" or "Microsoft.EntityFrameworkCore" or "System.Collections.Immutable" or "System.Collections.Generic")) return false;
 
         if (method.Name == "AsEnumerable") return true;
 

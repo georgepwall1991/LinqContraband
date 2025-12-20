@@ -1,3 +1,8 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using LinqContraband.Analyzers.LC002_PrematureMaterialization;
+using Xunit;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationAnalyzer>;
 
@@ -5,73 +10,49 @@ namespace LinqContraband.Tests.Analyzers.LC002_PrematureMaterialization;
 
 public class PrematureMaterializationEdgeCasesTests
 {
-    private const string Usings = @"
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.EntityFrameworkCore; // Mock
-using TestNamespace;
-";
-
-    private const string MockClasses = @"
-namespace Microsoft.EntityFrameworkCore
-{
-    public class DbContext : IDisposable { public void Dispose() {} }
-    public class DbSet<T> : IQueryable<T>
-    {
-        public Type ElementType => typeof(T);
-        public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
-        public IQueryProvider Provider => null;
-        public IEnumerator<T> GetEnumerator() => null;
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
-    }
-}
-
-namespace TestNamespace
-{
-    public class User { public int Id { get; set; } public int Age { get; set; } }
-    public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext 
-    { 
-        public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; } 
-    }
-}";
-
     [Fact]
     public async Task NewList_ThenWhere_ShouldTriggerLC002()
     {
-        var test = Usings + MockClasses + @"
-namespace TestApp 
+        var test = @"
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
 {
-    public class Program
+    void Main()
     {
-        public void Main()
-        {
-            using var db = new AppDbContext();
-            
-            // Constructing a List eagerly, then filtering in memory.
-            var query = {|LC002:new List<User>(db.Users).Where(u => u.Age > 18)|};
-        }
+        var query = new List<int>().AsQueryable();
+        var result = new List<int>(query).Where(x => x > 0);
     }
 }";
-        await VerifyCS.VerifyAnalyzerAsync(test);
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithSpan(10, 22, 10, 60)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
     public async Task NewHashSet_ThenCount_ShouldTriggerLC002()
     {
-        var test = Usings + MockClasses + @"
-namespace TestApp 
+        var test = @"
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
 {
-    public class Program
+    void Main()
     {
-        public void Main()
-        {
-            using var db = new AppDbContext();
-            
-            var count = {|LC002:new HashSet<User>(db.Users).Count(u => u.Age > 18)|};
-        }
+        var query = new List<int>().AsQueryable();
+        var result = new HashSet<int>(query).Count();
     }
 }";
-        await VerifyCS.VerifyAnalyzerAsync(test);
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithSpan(10, 22, 10, 53)
+            .WithArguments("Count");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 }

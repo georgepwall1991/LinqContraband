@@ -82,6 +82,7 @@ public class User
     public int Age { get; init; }
     public List<Order> Orders { get; init; } = [];
     public List<Role> Roles { get; init; } = [];
+    public List<ConfigurationEntity> Configurations { get; init; } = [];
 }
 
 public class Order
