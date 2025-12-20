@@ -1,5 +1,8 @@
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateAnalyzer>;
+using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
+    LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateAnalyzer,
+    LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateFixer>;
 
 namespace LinqContraband.Tests.Analyzers.LC025_AsNoTrackingWithUpdate;
 
@@ -55,6 +58,48 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRemoveAsNoTracking()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = users.AsNoTracking().FirstOrDefault(x => x.Id == 1);
+            if (user != null)
+            {
+                users.Update({|LC025:user|});
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = users.FirstOrDefault(x => x.Id == 1);
+            if (user != null)
+            {
+                users.Update(user);
+            }
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]

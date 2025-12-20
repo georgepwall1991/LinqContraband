@@ -1,5 +1,8 @@
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault.FindInsteadOfFirstOrDefaultAnalyzer>;
+using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
+    LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault.FindInsteadOfFirstOrDefaultAnalyzer,
+    LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault.FindInsteadOfFirstOrDefaultFixer>;
 
 namespace LinqContraband.Tests.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 
@@ -76,6 +79,94 @@ namespace LinqContraband.Test
 ";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldReplaceFirstOrDefaultWithFind()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var result = {|LC023:users.FirstOrDefault(x => x.Id == 123)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var result = users.Find(123);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldReplaceSingleAsyncWithFindAsync()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;" + EFCoreMock + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<TSource> SingleAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
+    }
+}
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            var result = await {|LC023:users.SingleAsync(x => x.Id == 456)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;" + EFCoreMock + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<TSource> SingleAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
+    }
+}
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            var result = await users.FindAsync(456);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]

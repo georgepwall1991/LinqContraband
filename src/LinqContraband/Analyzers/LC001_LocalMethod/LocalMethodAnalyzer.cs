@@ -51,12 +51,13 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
 
-        // Constraint 3: Method defined in Source Code
-        // We use IsFrameworkMethod check as IsInSource can be unreliable in some test contexts
-        // and we want to exclude System/Microsoft methods explicitly.
+        // Constraint 3: Method defined in Source Code or untrusted library
         if (methodSymbol.MethodKind != MethodKind.Ordinary ||
-            methodSymbol.IsImplicitlyDeclared ||
-            methodSymbol.IsFrameworkMethod())
+            methodSymbol.IsImplicitlyDeclared)
+            return;
+
+        // Trust methods from specific namespaces known to be translatable
+        if (IsTrustedTranslatableMethod(methodSymbol))
             return;
 
         // Constraint 1: Inside a Lambda
@@ -97,5 +98,24 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
             current = current.Parent;
         }
+    }
+
+    private bool IsTrustedTranslatableMethod(IMethodSymbol method)
+    {
+        // System and Microsoft (Linq, EF Core base) are generally translatable
+        if (method.IsFrameworkMethod()) return true;
+
+        var ns = method.ContainingNamespace?.ToString();
+        if (ns == null) return false;
+
+        // Specific database provider functions that are often used in IQueryable
+        if (ns.StartsWith("Npgsql", System.StringComparison.Ordinal) ||
+            ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) ||
+            ns.StartsWith("NetTopologySuite", System.StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return false;
     }
 }

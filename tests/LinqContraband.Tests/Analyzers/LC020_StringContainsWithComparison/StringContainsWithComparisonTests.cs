@@ -1,5 +1,8 @@
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonAnalyzer>;
+using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
+    LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonAnalyzer,
+    LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonFixer>;
 
 namespace LinqContraband.Tests.Analyzers.LC020_StringContainsWithComparison;
 
@@ -28,6 +31,38 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRemoveStringComparison()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<string>().AsQueryable();
+            var result = query.Where(x => {|LC020:x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)|}).ToList();
+        }
+    }
+}";
+
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<string>().AsQueryable();
+            var result = query.Where(x => x.Contains(""abc"")).ToList();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]

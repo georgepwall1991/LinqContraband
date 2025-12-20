@@ -313,7 +313,8 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
                     {
                         accessedProperties.Add(propRef.Property.Name);
                     }
-                    else if (IsForEachVariableOver(localRef.Local, variable, root))
+                    else if (IsForEachVariableOver(localRef.Local, variable, root) || 
+                             IsManualIterationVariableOver(localRef.Local, variable, root))
                     {
                         accessedProperties.Add(propRef.Property.Name);
                     }
@@ -322,6 +323,41 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
         }
 
         return accessedProperties;
+    }
+
+    private static bool IsManualIterationVariableOver(ILocalSymbol iterationVar, ILocalSymbol collectionVar, IOperation root)
+    {
+        // Detect patterns like: var item = collection[i];
+        foreach (var descendant in root.Descendants())
+        {
+            if (descendant is IVariableDeclaratorOperation decl && 
+                SymbolEqualityComparer.Default.Equals(decl.Symbol, iterationVar))
+            {
+                if (decl.Initializer != null && IsIndexedAccessOf(decl.Initializer.Value, collectionVar))
+                    return true;
+            }
+            if (descendant is ISimpleAssignmentOperation assign && 
+                assign.Target is ILocalReferenceOperation localRef && 
+                SymbolEqualityComparer.Default.Equals(localRef.Local, iterationVar))
+            {
+                if (IsIndexedAccessOf(assign.Value, collectionVar))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsIndexedAccessOf(IOperation operation, ILocalSymbol collectionVar)
+    {
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped is IPropertyReferenceOperation propRef && propRef.Arguments.Length > 0)
+        {
+            var instance = propRef.Instance?.UnwrapConversions();
+            if (instance is ILocalReferenceOperation localRef && 
+                SymbolEqualityComparer.Default.Equals(localRef.Local, collectionVar))
+                return true;
+        }
+        return false;
     }
 
     private static bool IsForEachVariableOver(ILocalSymbol iterationVar, ILocalSymbol collectionVar, IOperation root)

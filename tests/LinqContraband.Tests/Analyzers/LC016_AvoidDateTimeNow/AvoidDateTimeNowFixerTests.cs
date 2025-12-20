@@ -1,4 +1,4 @@
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
+using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC016_AvoidDateTimeNow.AvoidDateTimeNowAnalyzer,
     LinqContraband.Analyzers.LC016_AvoidDateTimeNow.AvoidDateTimeNowFixer>;
 
@@ -6,113 +6,75 @@ namespace LinqContraband.Tests.Analyzers.LC016_AvoidDateTimeNow;
 
 public class AvoidDateTimeNowFixerTests
 {
-    [Fact]
-    public async Task FixDateTimeNow_InWhere()
-    {
-        var test = @"
+    private const string Usings = @"
 using System;
-using System.Linq;
 using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
-{
-    void Method(IQueryable<User> users)
-    {
-        var q = users.Where(u => u.Dob < {|LC016:DateTime.Now|});
-    }
-}";
-
-        var fix = @"
-using System;
 using System.Linq;
-using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
-{
-    void Method(IQueryable<User> users)
-    {
-        var now = DateTime.Now;
-        var q = users.Where(u => u.Dob < now);
-    }
-}";
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
-    }
+";
 
     [Fact]
-    public async Task FixDateTimeUtcNow_InWhere()
+    public async Task Fixer_ShouldExtractDateTimeNowToLocal()
     {
-        var test = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
+        var test = Usings + @"
+namespace LinqContraband.Test
 {
-    void Method(IQueryable<User> users)
+    public class TestClass
     {
-        var q = users.Where(u => u.Dob < {|LC016:DateTime.UtcNow|});
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var result = query.Where(x => x < {|LC016:DateTime.Now|}).ToList();
+        }
     }
 }";
 
-        var fix = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
 {
-    void Method(IQueryable<User> users)
+    public class TestClass
     {
-        var utcNow = DateTime.UtcNow;
-        var q = users.Where(u => u.Dob < utcNow);
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var now = DateTime.Now;
+            var result = query.Where(x => x < now).ToList();
+        }
     }
 }";
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]
-    public async Task FixNameCollision()
+    public async Task Fixer_ShouldExtractDateTimeUtcNowToLocal()
     {
-        var test = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
+        var test = Usings + @"
+namespace LinqContraband.Test
 {
-    void Method(IQueryable<User> users)
+    public class TestClass
     {
-        var now = 1;
-        var q = users.Where(u => u.Dob < {|LC016:DateTime.Now|});
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var result = query.Where(x => x < {|LC016:DateTime.UtcNow|}).ToList();
+        }
     }
 }";
 
-        var fix = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-
-class User { public DateTime Dob { get; set; } }
-
-class Test
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
 {
-    void Method(IQueryable<User> users)
+    public class TestClass
     {
-        var now = 1;
-        var now1 = DateTime.Now;
-        var q = users.Where(u => u.Dob < now1);
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var now = DateTime.UtcNow;
+            var result = query.Where(x => x < now).ToList();
+        }
     }
 }";
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 }

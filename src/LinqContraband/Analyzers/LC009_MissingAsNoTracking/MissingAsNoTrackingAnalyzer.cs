@@ -54,6 +54,14 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         // 1. Must be a materializer (ToList, etc.) (Find/FindAsync ignored because tracking mods are ignored there)
         if (!IsMaterializer(method)) return;
 
+        // NEW: Heuristic - if the containing method returns IQueryable, it's likely a repository helper
+        // where we want to let the CALLER decide on tracking.
+        var enclosingSymbol = context.Operation.SemanticModel?.GetEnclosingSymbol(invocation.Syntax.SpanStart);
+        if (enclosingSymbol is IMethodSymbol enclosingMethod)
+        {
+            if (enclosingMethod.ReturnType.IsIQueryable()) return;
+        }
+
         // 2. Analyze the query chain
         var analysis = AnalyzeQueryChain(invocation);
         if (!analysis.IsEfQuery) return;
