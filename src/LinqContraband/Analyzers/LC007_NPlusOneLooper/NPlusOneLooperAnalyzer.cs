@@ -67,7 +67,15 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         // Case 1: DbSet.Find / FindAsync
         if (method.Name.StartsWith("Find", StringComparison.Ordinal) && method.ContainingType.IsDbSet()) return true;
 
-        // Case 2: IQueryable materializers (ToList, Count, First, etc.)
+        // Case 2: Explicit loading entry points (might trigger lazy loading later or be used with .Load())
+        if (method.Name is "Reference" or "Collection")
+        {
+            var ns = method.ContainingType?.ContainingNamespace?.ToString();
+            if (ns == "Microsoft.EntityFrameworkCore" || ns == "Microsoft.EntityFrameworkCore.ChangeTracking")
+                return true;
+        }
+
+        // Case 3: IQueryable materializers (ToList, Count, First, etc.)
         if (!method.Name.IsMaterializerMethod()) return false;
 
         var receiverType = invocation.GetInvocationReceiverType();

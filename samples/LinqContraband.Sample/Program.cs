@@ -19,6 +19,11 @@ using LinqContraband.Sample.Samples.LC021_AvoidIgnoreQueryFilters;
 using LinqContraband.Sample.Samples.LC022_ExplicitLoadingInLoop;
 using LinqContraband.Sample.Samples.LC023_FindInsteadOfFirstOrDefault;
 using LinqContraband.Sample.Samples.LC025_AsNoTrackingWithUpdate;
+using LinqContraband.Sample.Samples.LC026_MissingCancellationToken;
+using LinqContraband.Sample.Samples.LC027_OrderByAfterPagination;
+using LinqContraband.Sample.Samples.LC028_RedundantMaterialization;
+using LinqContraband.Sample.Samples.LC029_RedundantIdentitySelect;
+using LinqContraband.Sample.Samples.LC030_DbContextInSingleton;
 
 namespace LinqContraband.Sample;
 
@@ -62,5 +67,12 @@ internal class Program
         ExplicitLoadingInLoopSample.Run(db);
         FindInsteadOfFirstOrDefaultSample.Run(db);
         AsNoTrackingWithUpdateSample.Run(db);
+
+        // LC026 - LC030
+        await MissingCancellationTokenSample.RunAsync(db, CancellationToken.None);
+        OrderByAfterPaginationSample.Run(users);
+        RedundantMaterializationSample.Run(users);
+        RedundantIdentitySelectSample.Run(users);
+        new DbContextInSingletonSample(db).Run();
     }
 }

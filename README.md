@@ -769,6 +769,156 @@ db.SaveChanges();
 
 ---
 
+### LC026: Missing CancellationToken
+
+Async database operations can take time. If a user cancels their request, the server should stop the query. If you don't
+pass a `CancellationToken`, the database keeps working for a user who is no longer there!
+
+**👶 Explain it like I'm a ten year old:** Imagine you ask a robot to go get you a ball from a very far away field.
+Halfway there, you change your mind and shout "Stop!" If the robot isn't listening for your shout (no CancellationToken),
+it will walk all the way to the field, get the ball, and walk all the way back, even though you don't want it anymore.
+It’s a waste of the robot's battery!
+
+**❌ The Crime:**
+
+```csharp
+public async Task<List<User>> GetUsers(CancellationToken ct)
+{
+    // Violation: CancellationToken is ignored
+    return await db.Users.ToListAsync();
+}
+```
+
+**✅ The Fix:**
+Pass the token to the async method.
+
+```csharp
+public async Task<List<User>> GetUsers(CancellationToken ct)
+{
+    // Correct: Robot is listening!
+    return await db.Users.ToListAsync(ct);
+}
+```
+
+---
+
+### LC027: OrderBy After Pagination
+
+Calling `OrderBy` after `Skip` or `Take` usually means you are sorting a small random slice of data rather than the
+whole list. It's almost always a mistake in logic.
+
+**👶 Explain it like I'm a ten year old:** Imagine a line of 100 kids. You say "Take the first 10 kids, then sort them by
+height." You only sorted those 10 kids! If you wanted the 10 shortest kids in the *whole line*, you should have sorted
+everyone by height first, and *then* picked the first 10.
+
+**❌ The Crime:**
+
+```csharp
+// Violation: Gets 10 random users, THEN sorts just those 10
+var users = db.Users.Take(10).OrderBy(u => u.Name).ToList();
+```
+
+**✅ The Fix:**
+Sort before you paginate.
+
+```csharp
+// Correct: Sorts everyone, then takes the top 10
+var users = db.Users.OrderBy(u => u.Name).Take(10).ToList();
+```
+
+---
+
+### LC028: Redundant Materialization
+
+Calling `AsEnumerable()` right before `ToList()` is like packing your bags for a trip, then immediately unpacking them
+into another identical bag. It’s extra work for no reason.
+
+**👶 Explain it like I'm a ten year old:** Imagine you want to put your toys in a blue box. Instead of just putting them
+in the box, you first put them in a bag, then immediately dump the bag into the box. You did twice as much work to
+end up with the toys in the same place!
+
+**❌ The Crime:**
+
+```csharp
+// Violation: AsEnumerable() is redundant if you call ToList() next
+var users = db.Users.AsEnumerable().ToList();
+```
+
+**✅ The Fix:**
+Just call the final materializer.
+
+```csharp
+// Correct
+var users = db.Users.ToList();
+```
+
+---
+
+### LC029: Redundant Identity Select
+
+`Select(x => x)` tells the database "For every item, return that item." It's the default behavior, so writing it out
+just makes your code harder to read.
+
+**👶 Explain it like I'm a ten year old:** Imagine you ask a friend to go to the store and buy apples. But then you say,
+"And for every apple you find, make sure the apple you bring back is an apple." Your friend will look at you funny
+because they were already going to do that!
+
+**❌ The Crime:**
+
+```csharp
+// Violation: Does nothing
+var users = db.Users.Select(u => u).ToList();
+```
+
+**✅ The Fix:**
+Remove the redundant Select.
+
+```csharp
+// Correct
+var users = db.Users.ToList();
+```
+
+---
+
+### LC030: DbContext in Singleton
+
+`DbContext` is not thread-safe and is designed to be used for one "job" (one web request) and then thrown away. If you
+put it in a `Singleton` service, it stays alive forever and will eventually crash or leak memory.
+
+**👶 Explain it like I'm a ten year old:** Imagine a toothbrush. It's great for one person to use (one request). But if
+you glue that toothbrush to the wall and make 1,000 people share it forever (Singleton), it's going to get very gross,
+break, and make everyone sick!
+
+**❌ The Crime:**
+
+```csharp
+// Violation: Shared context in a long-lived service
+public class MySingletonService
+{
+    private readonly AppDbContext _db;
+    public MySingletonService(AppDbContext db) => _db = db;
+}
+```
+
+**✅ The Fix:**
+Use a `IDbContextFactory` to create a fresh context whenever you need one.
+
+```csharp
+public class MySingletonService
+{
+    private readonly IDbContextFactory<AppDbContext> _factory;
+    public MySingletonService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
+
+    public void DoWork()
+    {
+        using var db = _factory.CreateDbContext();
+        // ...
+    }
+}
+```
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:

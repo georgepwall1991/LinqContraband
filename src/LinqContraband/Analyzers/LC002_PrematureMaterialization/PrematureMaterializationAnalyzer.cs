@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -10,12 +12,6 @@ namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 /// <summary>
 /// Analyzes premature materialization of IQueryable collections before filtering operations. Diagnostic ID: LC002
 /// </summary>
-/// <remarks>
-/// <para><b>Why this matters:</b> Materializing an IQueryable (using ToList, ToArray, etc.) before applying filters causes
-/// all data to be fetched from the database into memory before filtering occurs. This prevents the database from optimizing
-/// the query and can result in fetching thousands or millions of unnecessary records. Always apply filters (Where, Take, Skip)
-/// before materializing to leverage database-side query optimization and reduce network traffic and memory consumption.</para>
-/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 {
@@ -25,6 +21,9 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 
     private static readonly LocalizableString MessageFormat =
         "Calling '{0}' on materialized collection but source was IQueryable. This fetches all data before filtering.";
+
+    private static readonly LocalizableString RedundantMessageFormat =
+        "The call to '{0}' is redundant because the sequence was already materialized by '{1}'";
 
     private static readonly LocalizableString Description =
         "Ensure filtering happens before materialization (ToList, ToArray, etc).";
@@ -38,7 +37,16 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         true,
         Description);
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    private static readonly DiagnosticDescriptor RedundantRule = new(
+        DiagnosticId,
+        "Redundant materialization",
+        RedundantMessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description);
+
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule, RedundantRule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -53,21 +61,32 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         var methodSymbol = invocation.TargetMethod;
 
         var receiverType = invocation.GetInvocationReceiverType();
-
         if (receiverType == null) return;
 
+        var receiverOp = invocation.GetInvocationReceiver();
+
+        // 1. Check for double materialization (RedundantRule)
+        if (IsMaterializingMethod(methodSymbol))
+        {
+            if (receiverOp is IInvocationOperation previousInvocation && IsMaterializingMethod(previousInvocation.TargetMethod))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(RedundantRule, invocation.Syntax.GetLocation(), methodSymbol.Name, previousInvocation.TargetMethod.Name));
+                return;
+            }
+        }
+
+        // 2. Existing logic: filtering after materialization (Rule)
         if (receiverType.IsIQueryable()) return;
 
         if (!IsLinqOperator(methodSymbol)) return;
 
-        var receiverOp = invocation.GetInvocationReceiver();
-
-        if (receiverOp is IInvocationOperation previousInvocation)
+        if (receiverOp is IInvocationOperation prevInv)
         {
-            if (IsMaterializingMethod(previousInvocation.TargetMethod))
+            if (IsMaterializingMethod(prevInv.TargetMethod))
             {
                 // Check *that* method's receiver. Was it IQueryable?
-                var sourceType = previousInvocation.GetInvocationReceiverType();
+                var sourceType = prevInv.GetInvocationReceiverType();
                 if (sourceType.IsIQueryable())
                     context.ReportDiagnostic(
                         Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
@@ -102,7 +121,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         var ns = method.ContainingNamespace?.ToString();
         if (ns is not ("System.Linq" or "Microsoft.EntityFrameworkCore" or "System.Collections.Immutable")) return false;
 
-        if (method.Name == "AsEnumerable") return true; // switches to client-side
+        if (method.Name == "AsEnumerable") return true;
 
         return method.Name == "ToList" ||
                method.Name == "ToListAsync" ||
