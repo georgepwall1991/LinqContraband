@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-02-05
+
+### Added
+- **LC019**: Conditional Include Expression — detects ternary/null-coalescing inside Include/ThenInclude (always throws at runtime)
+- **LC022**: ToList/ToArray Inside Select Projection — detects collection materializers inside Select on IQueryable (forces client evaluation)
+- **LC022 Fixer**: Removes the redundant materializer call inside the projection
+- **LC024**: GroupBy Non-Translatable Projection — detects non-aggregate access to group elements in GroupBy().Select()
+- **LC027**: Missing Explicit Foreign Key Property — detects navigation properties without corresponding FK properties (Info severity)
+- **LC027 Fixer**: Inserts an explicit FK property above the navigation, inferring type from the entity's PK
+- **LC028**: Deep ThenInclude Chain — detects ThenInclude chains deeper than 3 levels (over-fetching indicator)
+- **LC031**: Unbounded Query Materialization — detects ToList/ToArray on DbSet chains without Take/First/Single bounds (Info severity)
+- Sample projects for all 6 new analyzers
+
 ## [3.1.0] - 2026-02-05
 
 ### Fixed

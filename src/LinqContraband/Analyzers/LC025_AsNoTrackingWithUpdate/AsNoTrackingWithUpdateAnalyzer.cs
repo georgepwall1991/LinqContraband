@@ -54,7 +54,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
         foreach (var arg in invocation.Arguments)
         {
             var value = arg.Value.UnwrapConversions();
-            
+
             // If it's a local variable reference
             if (value is ILocalReferenceOperation localRef)
             {
@@ -77,24 +77,24 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
         var descendants = root.Descendants().ToList();
         var allOps = new List<IOperation>(descendants) { root };
-        
+
         foreach (var op in allOps)
         {
             // 1. Standard Assignments
-            if (op is ISimpleAssignmentOperation assignment && 
+            if (op is ISimpleAssignmentOperation assignment &&
                 assignment.Target is ILocalReferenceOperation targetLocal &&
                 SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
             {
                 if (IsAsNoTrackingQuery(assignment.Value)) return true;
             }
-            
+
             // 2. Variable Declarations
             if (op is IVariableDeclarationOperation decl)
             {
                 foreach (var declarator in decl.Declarators)
                 {
-                    if (SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) && 
-                        declarator.Initializer != null && 
+                    if (SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
+                        declarator.Initializer != null &&
                         IsAsNoTrackingQuery(declarator.Initializer.Value))
                     {
                         return true;
@@ -126,7 +126,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
     private bool IsAsNoTrackingQuery(IOperation operation)
     {
         var current = operation.UnwrapConversions();
-        
+
         if (current is IInvocationOperation invocation)
         {
             if (invocation.TargetMethod.Name.IsMaterializerMethod())
@@ -134,7 +134,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
                 var receiver = invocation.GetInvocationReceiver();
                 if (receiver != null) return HasAsNoTrackingInChain(receiver);
             }
-            
+
             if (invocation.TargetMethod.Name == "AsNoTracking") return true;
         }
 
@@ -147,7 +147,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
         while (current is IInvocationOperation inv)
         {
             if (inv.TargetMethod.Name == "AsNoTracking") return true;
-            
+
             var next = inv.GetInvocationReceiver();
             if (next == null) break;
             current = next.UnwrapConversions();

@@ -75,7 +75,7 @@ public class MissingOrderByFixer : CodeFixProvider
 
         // Generate: .OrderBy(x => x.{keyName})
         var generator = editor.Generator;
-        
+
         // Lambda: x => x.Id
         var lambdaParamName = "x";
         var lambda = generator.ValueReturningLambdaExpression(
@@ -95,7 +95,7 @@ public class MissingOrderByFixer : CodeFixProvider
         // sourceExpression = db.Users
         // invocation = db.Users.Skip(10)
         // We want: db.Users.OrderBy(x => x.Id).Skip(10)
-        
+
         // If we replace sourceExpression, we are modifying the tree correctly.
         editor.ReplaceNode(sourceExpression, orderByInvocation);
 

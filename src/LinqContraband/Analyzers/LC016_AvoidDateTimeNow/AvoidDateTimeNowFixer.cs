@@ -53,14 +53,14 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         if (root == null) return document;
 
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        
+
         // Find the statement containing the expression
         var statement = memberAccess.AncestorsAndSelf().OfType<StatementSyntax>().FirstOrDefault();
         if (statement == null) return document;
 
         // Create a unique variable name
         var variableName = GetUniqueVariableName(memberAccess);
-        
+
         // Create the variable declaration: var now = DateTime.Now;
         var newVariable = SyntaxFactory.LocalDeclarationStatement(
             SyntaxFactory.VariableDeclaration(
@@ -77,7 +77,7 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
 
         // Replace the member access with the variable reference
         editor.ReplaceNode(memberAccess, SyntaxFactory.IdentifierName(variableName).WithTriviaFrom(memberAccess));
-        
+
         // Insert the declaration before the statement
         editor.InsertBefore(statement, newVariable);
 

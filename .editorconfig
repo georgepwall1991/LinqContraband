@@ -143,5 +143,23 @@ indent_size = 2
 # LC029: Redundant Identity Select - Pointless Select(x => x) projection
 # dotnet_diagnostic.LC029.severity = warning
 
+# LC019: Conditional Include Expression - Ternary/coalesce in Include throws at runtime
+# dotnet_diagnostic.LC019.severity = warning
+
+# LC022: ToList Inside Select Projection - Collection materializer in Select forces client eval
+# dotnet_diagnostic.LC022.severity = warning
+
+# LC024: GroupBy Non-Translatable Projection - Non-aggregate access to group elements
+# dotnet_diagnostic.LC024.severity = warning
+
+# LC027: Missing Explicit Foreign Key Property - Navigation without FK property creates shadow FK
+# dotnet_diagnostic.LC027.severity = info
+
+# LC028: Deep ThenInclude Chain - ThenInclude depth exceeds 3 levels
+# dotnet_diagnostic.LC028.severity = warning
+
 # LC030: DbContext in Singleton - Potential lifetime mismatch
 # dotnet_diagnostic.LC030.severity = warning
+
+# LC031: Unbounded Query Materialization - ToList/ToArray on DbSet without Take/First bounding
+# dotnet_diagnostic.LC031.severity = info

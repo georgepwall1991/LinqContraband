@@ -46,8 +46,8 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         if (!IsEfCoreMethod(method)) return;
 
         // Check if the method accepts a CancellationToken
-        var ctParameter = method.Parameters.FirstOrDefault(p => 
-            p.Type.Name == "CancellationToken" && 
+        var ctParameter = method.Parameters.FirstOrDefault(p =>
+            p.Type.Name == "CancellationToken" &&
             p.Type.ContainingNamespace?.ToString() == "System.Threading");
 
         if (ctParameter == null) return;
@@ -64,14 +64,14 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
     private bool IsEfCoreMethod(IMethodSymbol method)
     {
         var ns = method.ContainingNamespace?.ToString();
-        return ns != null && (ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) || 
+        return ns != null && (ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) ||
                              ns.StartsWith("System.Data.Entity", System.StringComparison.Ordinal));
     }
 
     private bool IsUsingDefault(IOperation operation)
     {
         var unwrapped = operation.UnwrapConversions();
-        return unwrapped.Kind == OperationKind.DefaultValue || 
+        return unwrapped.Kind == OperationKind.DefaultValue ||
                (unwrapped is IPropertyReferenceOperation propRef && propRef.Property.Name == "None" && propRef.Property.ContainingType.Name == "CancellationToken");
     }
 }

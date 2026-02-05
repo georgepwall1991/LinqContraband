@@ -48,8 +48,8 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
         if (!TargetMethods.Contains(method.Name)) return;
 
         // Check if any argument is StringComparison
-        var hasStringComparison = invocation.Arguments.Any(arg => 
-            arg.Value.Type?.Name == "StringComparison" && 
+        var hasStringComparison = invocation.Arguments.Any(arg =>
+            arg.Value.Type?.Name == "StringComparison" &&
             arg.Value.Type.ContainingNamespace?.ToString() == "System");
 
         if (!hasStringComparison) return;
@@ -80,14 +80,14 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
                 {
                     var parentMethod = parentInvocation.TargetMethod;
                     // Check if the method is called on IQueryable or returns IQueryable
-                    if (parentInvocation.GetInvocationReceiverType().IsIQueryable() || 
+                    if (parentInvocation.GetInvocationReceiverType().IsIQueryable() ||
                         parentMethod.ReturnType.IsIQueryable())
                     {
                         return true;
                     }
                 }
             }
-            
+
             current = current.Parent;
         }
 

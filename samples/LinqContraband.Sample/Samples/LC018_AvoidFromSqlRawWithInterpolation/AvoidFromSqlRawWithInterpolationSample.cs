@@ -10,7 +10,7 @@ public class AvoidFromSqlRawWithInterpolationSample
         Console.WriteLine("Testing LC018...");
 
         var name = "admin";
-        
+
         // VIOLATION: Potential SQL Injection using interpolated string
         var users1 = db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'").ToList();
 

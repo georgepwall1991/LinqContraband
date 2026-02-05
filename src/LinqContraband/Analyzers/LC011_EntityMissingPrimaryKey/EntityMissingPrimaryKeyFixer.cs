@@ -69,7 +69,7 @@ public class EntityMissingPrimaryKeyFixer : CodeFixProvider
         if (entityDocument == null) return document;
 
         var editor = await DocumentEditor.CreateAsync(entityDocument, cancellationToken).ConfigureAwait(false);
-        
+
         var idProperty = SyntaxFactory.PropertyDeclaration(
             SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword)),
             SyntaxFactory.Identifier("Id"))

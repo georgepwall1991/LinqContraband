@@ -36,14 +36,14 @@ internal class Program
         AnyOverCountSample.Run(users);
         IQueryableLeakSample.Run();
         MultipleOrderBySample.Run(users);
-        
+
         // LC006 - LC010
         CartesianExplosionSample.Run(users);
         NPlusOneLooperSample.Run(db, users);
         await SyncBlockerSample.RunAsync(users);
         MissingAsNoTrackingSample.Run(users);
         SaveChangesInLoopSample.Run(users);
-        
+
         EntityMissingPrimaryKeySample.Run();
         OptimizeRemoveRangeSample.Run();
 

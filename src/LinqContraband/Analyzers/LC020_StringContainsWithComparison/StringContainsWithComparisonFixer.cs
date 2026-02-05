@@ -49,14 +49,14 @@ public class StringContainsWithComparisonFixer : CodeFixProvider
     private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        
+
         if (invocation.ArgumentList.Arguments.Count > 1)
         {
             // Remove the second argument (the StringComparison)
             var newArguments = invocation.ArgumentList.Arguments.RemoveAt(1);
             var newArgumentList = invocation.ArgumentList.WithArguments(newArguments);
             var newInvocation = invocation.WithArgumentList(newArgumentList);
-            
+
             editor.ReplaceNode(invocation, newInvocation);
         }
 

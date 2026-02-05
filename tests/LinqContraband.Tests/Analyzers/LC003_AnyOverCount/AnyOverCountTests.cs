@@ -183,27 +183,27 @@ namespace LinqContraband.Test
 }
 ";
 
-         // Line calculation:
-         // Usings (6 lines)
-         // L7: using System.Threading.Tasks;
-         // L8: namespace MF...
-         // L9: {
-         // L10: public static...
-         // L11:     public static...
-         // L12: }
-         // L13: }
-         // L14: namespace LC.Test
-         // L15: {
-         // L16: class
-         // L17: {
-         // L18: method
-         // L19: {
-         // L20: var query...
-         // L21: if (await query.CountAsync() > 0)
-         
+        // Line calculation:
+        // Usings (6 lines)
+        // L7: using System.Threading.Tasks;
+        // L8: namespace MF...
+        // L9: {
+        // L10: public static...
+        // L11:     public static...
+        // L12: }
+        // L13: }
+        // L14: namespace LC.Test
+        // L15: {
+        // L16: class
+        // L17: {
+        // L18: method
+        // L19: {
+        // L20: var query...
+        // L21: if (await query.CountAsync() > 0)
+
         var expected = VerifyCS.Diagnostic("LC003")
             .WithSpan(23, 17, 23, 45);
-            
+
         await VerifyCS.VerifyAnalyzerAsync(test2, expected);
     }
 

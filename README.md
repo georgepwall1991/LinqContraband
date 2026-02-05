@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **Note:** Some rule IDs (LC019, LC022, LC024, LC027, LC028) are reserved for future use.
+> **30 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ### LC001: The Local Method Smuggler
 
@@ -635,6 +635,36 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 
 ---
 
+### LC019: Conditional Include Expression
+
+Using a conditional (ternary or null-coalescing) expression inside `Include()` or `ThenInclude()` **always** throws
+`InvalidOperationException` at runtime. EF Core does not support conditional navigation loading.
+
+**👶 Explain it like I'm a ten year old:** Imagine you're at a restaurant and you tell the waiter "If it's Tuesday,
+bring me pizza; otherwise bring me pasta" — but this waiter only understands one order at a time. He gets confused and
+drops your plate on the floor every single time.
+
+**❌ The Crime:**
+
+```csharp
+// ALWAYS throws InvalidOperationException at runtime
+var orders = db.Orders.Include(o => useCustomer ? o.Customer : o.Supplier).ToList();
+```
+
+**✅ The Fix:**
+Split into separate conditional Include calls.
+
+```csharp
+var query = db.Orders.AsQueryable();
+if (useCustomer)
+    query = query.Include(o => o.Customer);
+else
+    query = query.Include(o => o.Supplier);
+var orders = query.ToList();
+```
+
+---
+
 ### LC020: StringComparison Smuggler
 
 Using `string.Contains`, `StartsWith`, or `EndsWith` with a `StringComparison` argument in a LINQ query often cannot be
@@ -682,6 +712,29 @@ Ensure that bypassing global filters is intentional and necessary for the specif
 
 ---
 
+### LC022: ToList Inside Select Projection
+
+Calling `ToList()`, `ToArray()`, or similar collection materializers inside a `Select()` projection on an IQueryable
+forces client-side evaluation or throws in EF Core 3+. EF Core handles collection projections natively.
+
+**👶 Explain it like I'm a ten year old:** Imagine you ask a baker to put frosting on 100 cupcakes. But for each
+cupcake, you tell them "First, put all the frosting in a separate bowl, then frost the cupcake from the bowl." The baker
+gets frustrated because they could just frost the cupcake directly — the extra bowl step is pointless and slows
+everything down.
+
+**❌ The Crime:**
+
+```csharp
+// Forces client-side evaluation of the sub-collection
+var result = db.Users.Select(u => u.Orders.ToList()).ToList();
+```
+
+**✅ The Fix:**
+Remove the materializer from the projection. EF Core handles it.
+
+```csharp
+// EF Core projects the collection natively
+var result = db.Users.Select(u => u.Orders).ToList();
 ```
 
 ---
@@ -708,6 +761,34 @@ Use `Find` or `FindAsync` for primary key lookups.
 ```csharp
 // Checks local memory first, then DB if not found
 var user = db.Users.Find(userId);
+```
+
+---
+
+### LC024: GroupBy with Non-Translatable Projection
+
+EF Core can only translate `g.Key` and aggregate functions (`Count`, `Sum`, `Average`, `Min`, `Max`) inside a
+`GroupBy().Select()` projection. Accessing group elements directly (e.g., `g.ToList()`, `g.Where()`, `g.First()`)
+forces client-side evaluation or throws.
+
+**👶 Explain it like I'm a ten year old:** Imagine a teacher asks "How many students are in each class?" That's easy —
+just count the names on the list. But if the teacher says "For each class, tell me every single thing every student had
+for lunch," the teacher has to go ask every student individually. The counting is quick; the lunch survey is not.
+
+**❌ The Crime:**
+
+```csharp
+// g.ToList() can't be translated to SQL
+var result = db.Orders.GroupBy(o => o.CustomerId)
+    .Select(g => new { Key = g.Key, Items = g.ToList() }).ToList();
+```
+
+**✅ The Fix:**
+Use only Key and aggregate functions in GroupBy projections.
+
+```csharp
+var result = db.Orders.GroupBy(o => o.CustomerId)
+    .Select(g => new { Key = g.Key, Count = g.Count(), Total = g.Sum(o => o.Amount) }).ToList();
 ```
 
 ---
@@ -778,6 +859,76 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 
 ---
 
+### LC027: Missing Explicit Foreign Key Property
+
+A navigation property (e.g., `public Customer Customer { get; set; }`) without a corresponding FK property causes EF
+Core to create a "shadow property" behind the scenes. Shadow FKs make it harder to set relationships without loading the
+navigation entity, produce less efficient API serialization, and can cause subtle performance issues.
+
+**👶 Explain it like I'm a ten year old:** Imagine you have a friend's phone number written on a secret sticky note
+hidden under your desk. When someone asks "What's your friend's number?", you have to crawl under the desk to find it.
+If you just wrote the number in your address book (an explicit FK), anyone could look it up instantly.
+
+**❌ The Crime:**
+
+```csharp
+public class Order
+{
+    public int Id { get; set; }
+    // No CustomerId — EF creates a shadow FK
+    public Customer Customer { get; set; }
+}
+```
+
+**✅ The Fix:**
+Add an explicit FK property.
+
+```csharp
+public class Order
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; }
+}
+```
+
+---
+
+### LC028: Deep ThenInclude Chain
+
+`ThenInclude` chains deeper than 3 levels generate complex SQL with many LEFT JOINs. This is usually a sign of
+over-fetching — loading deeply nested data that should be projected with `Select` instead.
+
+**👶 Explain it like I'm a ten year old:** Imagine asking your friend to bring their mom, who brings their grandma, who
+brings their great-grandma, who brings their great-great-grandma. At some point, the car is full and everyone is
+uncomfortable. It's better to just ask for the specific people you actually need.
+
+**❌ The Crime:**
+
+```csharp
+// 4 levels deep — complex JOIN query
+var orders = db.Orders
+    .Include(o => o.Customer)
+    .ThenInclude(c => c.Address)
+    .ThenInclude(a => a.Country)
+    .ThenInclude(c => c.Region)
+    .ThenInclude(r => r.Continent)
+    .ToList();
+```
+
+**✅ The Fix:**
+Use `Select` projection to load only the needed nested data.
+
+```csharp
+var orders = db.Orders.Select(o => new {
+    o.Id,
+    CustomerName = o.Customer.Name,
+    Country = o.Customer.Address.Country.Name
+}).ToList();
+```
+
+---
+
 ### LC029: Redundant Identity Select
 
 `Select(x => x)` tells the database "For every item, return that item." It's the default behavior, so writing it out
@@ -838,6 +989,33 @@ public class MySingletonService
         // ...
     }
 }
+```
+
+---
+
+### LC031: Unbounded Query Materialization
+
+Calling `.ToList()` or `.ToArray()` on an IQueryable chain from a `DbSet` without any `Take()`, `First()`, `Single()`,
+or similar bounding method risks loading an entire table into memory — the most common cause of out-of-memory errors in
+production EF Core apps.
+
+**👶 Explain it like I'm a ten year old:** Imagine you go to a library and say "Give me every book." The librarian
+starts piling books onto a cart — thousands and thousands of them. Your arms break. You only needed the first 10! You
+should have said "Give me the first 10 books" instead.
+
+**❌ The Crime:**
+
+```csharp
+// Could load millions of rows into memory
+var users = db.Users.Where(u => u.IsActive).ToList();
+```
+
+**✅ The Fix:**
+Add a bound to the query.
+
+```csharp
+// Loads at most 1000 rows
+var users = db.Users.Where(u => u.IsActive).Take(1000).ToList();
 ```
 
 ---

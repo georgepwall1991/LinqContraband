@@ -94,7 +94,7 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
                 // Ensure strict direction for inequalities
                 if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThan && binaryOp.LeftOperand != countInvocation) return; // 0 > Count (False)
                 if (binaryOp.OperatorKind == BinaryOperatorKind.LessThan && binaryOp.RightOperand != countInvocation) return;   // Count < 0 (False)
-                
+
                 isMatch = true;
             }
         }
@@ -107,7 +107,7 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
                 // Ensure direction
                 // Count >= 1
                 if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThanOrEqual && binaryOp.LeftOperand == countInvocation) isMatch = true;
-                
+
                 // 1 <= Count
                 if (binaryOp.OperatorKind == BinaryOperatorKind.LessThanOrEqual && binaryOp.RightOperand == countInvocation) isMatch = true;
             }
@@ -135,11 +135,11 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
         if (countInvocation is IInvocationOperation invocation)
         {
             var method = invocation.TargetMethod;
-            
+
             var isSyncCount = (method.Name == "Count" || method.Name == "LongCount") &&
                               method.ContainingType.Name == "Queryable" &&
                               method.ContainingNamespace?.ToString() == "System.Linq";
-            
+
             var isAsyncCount = (method.Name == "CountAsync" || method.Name == "LongCountAsync") &&
                                method.ContainingType.Name == "EntityFrameworkQueryableExtensions" &&
                                method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
