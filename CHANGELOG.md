@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-02-05
+
+### Fixed
+- LC030 fixer: rewrites method/property usages from stored `DbContext` member access to short-lived contexts created via `IDbContextFactory<T>.CreateDbContext()`
+- LC030 fixer: converts expression-bodied methods that use the flagged member into block bodies with scoped context creation
+- LC030 fixer: targets the exact flagged field declarator when multiple variables share one field declaration
+- LC030 fixer: ensures `using Microsoft.EntityFrameworkCore;` is added even when the file previously had no `using` directives
+
+### Added
+- LC030 fixer tests for end-to-end usage rewrites in block-bodied methods, expression-bodied methods, and property-based usage scenarios
+
 ## [3.0.0] - 2026-02-05
 
 ### Added

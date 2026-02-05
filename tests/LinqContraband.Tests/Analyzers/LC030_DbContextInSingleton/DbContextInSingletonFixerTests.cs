@@ -9,6 +9,8 @@ namespace LinqContraband.Tests.Analyzers.LC030_DbContextInSingleton;
 public class DbContextInSingletonFixerTests
 {
     private const string EFCoreMock = @"
+using Microsoft.EntityFrameworkCore;
+
 namespace Microsoft.EntityFrameworkCore
 {
     public class DbContext { }
@@ -137,6 +139,170 @@ public class MyService
 public class MyService
 {
     private readonly IDbContextFactory<Microsoft.EntityFrameworkCore.DbContext> _dbFactory;
+}
+";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRewriteMethodBodyToUseCreatedContext()
+    {
+        var test = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    private readonly AppDbContext {|LC030:_db|};
+
+    public MyService(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    public int CountUsers()
+    {
+        return _db.Users.Count;
+    }
+}
+";
+
+        var fixedCode = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+
+    public MyService(IDbContextFactory<AppDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    public int CountUsers()
+    {
+        using var db = _dbFactory.CreateDbContext();
+        return db.Users.Count;
+    }
+}
+";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRewriteExpressionBodiedMethodToUseCreatedContext()
+    {
+        var test = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    private readonly AppDbContext {|LC030:_db|};
+
+    public MyService(AppDbContext db) => _db = db;
+
+    public int CountUsers() => _db.Users.Count;
+}
+";
+
+        var fixedCode = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+
+    public MyService(IDbContextFactory<AppDbContext> dbFactory) => _dbFactory = dbFactory;
+
+    public int CountUsers()
+    {
+        using var db = _dbFactory.CreateDbContext();
+        return db.Users.Count;
+    }
+}
+";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRewritePropertyUsagesToCreateContext()
+    {
+        var test = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    public AppDbContext {|LC030:Db|} { get; set; } = null!;
+
+    public int CountUsers()
+    {
+        return Db.Users.Count;
+    }
+}
+";
+
+        var fixedCode = EFCoreMock + @"
+public class AppDbContext : DbContext
+{
+    public UserSet Users { get; } = new();
+}
+
+public class UserSet
+{
+    public int Count => 42;
+}
+
+public class MyService
+{
+    public IDbContextFactory<AppDbContext> Db { get; set; } = null!;
+
+    public int CountUsers()
+    {
+        using var db = Db.CreateDbContext();
+        return db.Users.Count;
+    }
 }
 ";
 
