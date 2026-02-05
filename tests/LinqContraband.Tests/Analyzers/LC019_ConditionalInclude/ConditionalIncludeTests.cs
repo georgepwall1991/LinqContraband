@@ -108,6 +108,28 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ThenInclude_WithTernary_ShouldTriggerLC019()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public Customer Customer { get; set; } }
+    public class Customer { public int Id { get; set; } public Address BillingAddress { get; set; } public Address ShippingAddress { get; set; } }
+    public class Address { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders, bool useBilling)
+        {
+            var result = {|LC019:orders.Include(o => o.Customer).ThenInclude(c => useBilling ? c.BillingAddress : c.ShippingAddress)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ThenInclude_Normal_ShouldNotTrigger()
     {
         var test = EFCoreMock + @"

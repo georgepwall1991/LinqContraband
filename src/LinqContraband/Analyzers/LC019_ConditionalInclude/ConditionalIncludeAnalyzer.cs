@@ -78,6 +78,12 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
                     }
                 }
             }
+            else if (IsConditionalExpression(body))
+            {
+                // Non-block lambda body (expression lambda directly)
+                context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
+                return;
+            }
         }
     }
 

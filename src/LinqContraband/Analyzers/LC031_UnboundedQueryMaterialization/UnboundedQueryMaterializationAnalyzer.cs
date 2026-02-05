@@ -54,6 +54,7 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
     {
         return methodName is
             "Take" or "TakeWhile" or
+            "Chunk" or
             "First" or "FirstOrDefault" or "FirstAsync" or "FirstOrDefaultAsync" or
             "Single" or "SingleOrDefault" or "SingleAsync" or "SingleOrDefaultAsync" or
             "Last" or "LastOrDefault" or "LastAsync" or "LastOrDefaultAsync" or
@@ -121,10 +122,10 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
             }
             else
             {
-                if (current.Type.IsDbSet())
+                if (current.Type?.IsDbSet() == true)
                 {
                     foundDbSet = true;
-                    dbSetName = current.Type?.Name ?? "DbSet";
+                    dbSetName = current.Type.Name;
                 }
                 break;
             }

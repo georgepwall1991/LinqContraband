@@ -123,6 +123,30 @@ class TestClass
     }
 
     [Fact]
+    public async Task Fixer_ShouldRemoveToArray()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => {|LC022:u.Orders.ToArray()|});
+    }
+}" + MockNamespaces;
+
+        var fixedCode = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => u.Orders);
+    }
+}" + MockNamespaces;
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldRemoveToList()
     {
         var test = Usings + @"

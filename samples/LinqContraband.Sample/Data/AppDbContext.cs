@@ -37,6 +37,21 @@ public class AppDbContext : DbContext
 
     #endregion
 
+    #region LC027 - Missing Explicit Foreign Key Test Cases
+
+    /// <summary>
+    ///     VIOLATION: Navigation without explicit FK property.
+    ///     Should trigger LC027.
+    /// </summary>
+    public DbSet<Customer> Customers { get; set; } = null!;
+
+    public DbSet<ShippingAddress> ShippingAddresses { get; set; } = null!;
+    public DbSet<ShippingCountry> ShippingCountries { get; set; } = null!;
+    public DbSet<ShippingRegion> ShippingRegions { get; set; } = null!;
+    public DbSet<Continent> Continents { get; set; } = null!;
+
+    #endregion
+
     #region LC011 - Entity Missing Primary Key Test Cases
 
     /// <summary>
@@ -144,6 +159,55 @@ public class LargeEntity
     public string Country { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public int Quantity { get; set; }
+}
+
+// --- LC027/LC028 Test Entities ---
+
+/// <summary>
+///     Customer entity with no FK for its ShippingAddress navigation (LC027 violation).
+/// </summary>
+public class Customer
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public ShippingAddress ShippingAddress { get; set; } = null!;
+}
+
+/// <summary>
+///     Address entity for testing LC028 Include chain depth.
+/// </summary>
+public class ShippingAddress
+{
+    public int Id { get; set; }
+    public string Street { get; set; } = string.Empty;
+    public ShippingCountry ShippingCountry { get; set; } = null!;
+}
+
+public class ShippingCountry
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public ShippingRegion ShippingRegion { get; set; } = null!;
+}
+
+public class ShippingRegion
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public Continent Continent { get; set; } = null!;
+}
+
+public class Continent
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public Planet Planet { get; set; } = null!;
+}
+
+public class Planet
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
 }
 
 #endregion

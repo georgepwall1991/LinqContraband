@@ -1,5 +1,10 @@
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC027_MissingExplicitForeignKey.MissingExplicitForeignKeyAnalyzer>;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC027_MissingExplicitForeignKey.MissingExplicitForeignKeyAnalyzer,
+    LinqContraband.Analyzers.LC027_MissingExplicitForeignKey.MissingExplicitForeignKeyFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
 namespace LinqContraband.Tests.Analyzers.LC027_MissingExplicitForeignKey;
 
@@ -161,5 +166,53 @@ namespace TestApp
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldAddForeignKeyProperty()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer {|LC027:Customer|} { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public int CustomerId { get; set; }
+        public Customer Customer { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        }.RunAsync();
     }
 }

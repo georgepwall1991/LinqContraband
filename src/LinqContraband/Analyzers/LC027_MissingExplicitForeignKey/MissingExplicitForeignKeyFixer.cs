@@ -84,9 +84,9 @@ public class MissingExplicitForeignKeyFixer : CodeFixProvider
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)),
                 SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))
-            .WithLeadingTrivia(navProperty.GetLeadingTrivia())
             .NormalizeWhitespace()
-            .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
+            .WithLeadingTrivia(navProperty.GetLeadingTrivia())
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine("\n"));
 
         editor.InsertBefore(navProperty, fkProperty);
 
