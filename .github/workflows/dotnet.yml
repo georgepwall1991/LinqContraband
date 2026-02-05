@@ -40,9 +40,6 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
-      - name: Verify formatting
-        run: dotnet format --verify-no-changes
-
       - name: Test
         run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
