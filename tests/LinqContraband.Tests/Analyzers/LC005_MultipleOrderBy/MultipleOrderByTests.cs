@@ -123,4 +123,52 @@ class Test
 }";
         await VerifyCS.VerifyCodeFixAsync(test, fix);
     }
+
+    [Fact]
+    public async Task Diagnostic_OrderByOrderBy_WithAsyncMaterializer()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => Task.FromResult(source.ToList());
+    }
+}
+
+class Test
+{
+    async Task Method()
+    {
+        var q = await new List<int>().AsQueryable().OrderBy(x => x).{|LC005:OrderBy|}(x => x).ToListAsync();
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => Task.FromResult(source.ToList());
+    }
+}
+
+class Test
+{
+    async Task Method()
+    {
+        var q = await new List<int>().AsQueryable().OrderBy(x => x).ThenBy(x => x).ToListAsync();
+    }
+}";
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
 }

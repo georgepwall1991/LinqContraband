@@ -39,6 +39,8 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
+> **Note:** Some rule IDs (LC019, LC022, LC024, LC027, LC028) are reserved for future use.
+
 ### LC001: The Local Method Smuggler
 
 When EF Core encounters a method it can't translate, it might switch to client-side evaluation (fetching all rows) or
@@ -802,6 +804,31 @@ var users = db.Users.ToList();
 
 ---
 
+### LC030: DbContext in Singleton
+
+Holding a `DbContext` in a Singleton service causes threading issues and memory leaks. `DbContext` is not thread-safe
+and is designed to be short-lived. Instead, inject `IDbContextFactory<T>` and create short-lived instances.
+
+**👶 Explain it like I'm a ten year old:** Imagine you have one paintbrush (DbContext) that everyone in the class has
+to share at the same time. Paint gets mixed up, bristles break, and everyone makes a mess! Instead, give each person
+their own paintbrush from a box (IDbContextFactory) when they need one, and put it back when they're done.
+
+**❌ The Crime:**
+
+```csharp
+public class MySingletonService
+{
+    private readonly AppDbContext _db; // Bad: DbContext held as field
+    public MySingletonService(AppDbContext db) => _db = db;
+}
+```
+
+**✅ The Fix:**
+Use `IDbContextFactory` to create short-lived instances.
+
+```csharp
+public class MySingletonService
+{
     private readonly IDbContextFactory<AppDbContext> _factory;
     public MySingletonService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
 

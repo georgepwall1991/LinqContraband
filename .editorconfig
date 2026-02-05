@@ -118,3 +118,30 @@ indent_size = 2
 
 # LC016: Avoid DateTime.Now in Queries - Breaks query plan caching
 # dotnet_diagnostic.LC016.severity = warning
+
+# LC017: Whole Entity Projection - Loading entire entity when few properties accessed
+# dotnet_diagnostic.LC017.severity = warning
+
+# LC018: Avoid FromSqlRaw with Interpolation - SQL injection risk from interpolated strings
+# dotnet_diagnostic.LC018.severity = warning
+
+# LC020: String Contains with Comparison - Missing StringComparison argument
+# dotnet_diagnostic.LC020.severity = warning
+
+# LC021: Avoid IgnoreQueryFilters - Bypassing critical global filters
+# dotnet_diagnostic.LC021.severity = warning
+
+# LC023: Find Instead of FirstOrDefault - Using FirstOrDefault when Find is more efficient
+# dotnet_diagnostic.LC023.severity = warning
+
+# LC025: AsNoTracking with Update - Conflicting tracking/update intent
+# dotnet_diagnostic.LC025.severity = warning
+
+# LC026: Missing CancellationToken - Async operations without cancellation support
+# dotnet_diagnostic.LC026.severity = warning
+
+# LC029: Redundant Identity Select - Pointless Select(x => x) projection
+# dotnet_diagnostic.LC029.severity = warning
+
+# LC030: DbContext in Singleton - Potential lifetime mismatch
+# dotnet_diagnostic.LC030.severity = warning

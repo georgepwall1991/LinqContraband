@@ -194,4 +194,45 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
     }
+
+    [Fact]
+    public async Task Skip_Take_WithToListAsync_WithoutOrderBy_ShouldTrigger()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => Task.FromResult(source.ToList());
+    }
+}
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public async Task Main()
+        {
+            using var db = new AppDbContext();
+
+            // Trigger: Skip/Take without OrderBy, materialized with ToListAsync
+            var result = await db.Users.Skip(10).Take(5).ToListAsync();
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(28, 41)
+            .WithArguments("Skip");
+
+        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(28, 50)
+            .WithArguments("Take");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
+    }
 }
