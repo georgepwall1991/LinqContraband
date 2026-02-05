@@ -70,7 +70,7 @@ public class DbContextInSingletonFixer : CodeFixProvider
         var newDeclaration = fieldDecl.Declaration.WithType(factoryType.WithTriviaFrom(oldType));
         var newFieldDecl = fieldDecl.WithDeclaration(newDeclaration);
 
-        // Rename variable to add Factory suffix
+        // Rename variable to add Factory suffix, preserving all declarators
         var variable = fieldDecl.Declaration.Variables.First();
         var oldName = variable.Identifier.Text;
         var newName = AddFactorySuffix(oldName);
@@ -79,9 +79,10 @@ public class DbContextInSingletonFixer : CodeFixProvider
         {
             var newVariable = variable.WithIdentifier(
                 SyntaxFactory.Identifier(newName).WithTriviaFrom(variable.Identifier));
+            var newVariables = newFieldDecl.Declaration.Variables.Replace(
+                newFieldDecl.Declaration.Variables.First(), newVariable);
             newFieldDecl = newFieldDecl.WithDeclaration(
-                newFieldDecl.Declaration.WithVariables(
-                    SyntaxFactory.SingletonSeparatedList(newVariable)));
+                newFieldDecl.Declaration.WithVariables(newVariables));
         }
 
         editor.ReplaceNode(fieldDecl, newFieldDecl);
@@ -91,6 +92,8 @@ public class DbContextInSingletonFixer : CodeFixProvider
         {
             UpdateConstructorParameters(editor, classDecl, oldType, factoryType, oldName, newName);
         }
+
+        EnsureUsingDirective(editor);
 
         return editor.GetChangedDocument();
     }
@@ -106,6 +109,8 @@ public class DbContextInSingletonFixer : CodeFixProvider
 
         var newPropDecl = propDecl.WithType(factoryType.WithTriviaFrom(oldType));
         editor.ReplaceNode(propDecl, newPropDecl);
+
+        EnsureUsingDirective(editor);
 
         return editor.GetChangedDocument();
     }
@@ -150,31 +155,60 @@ public class DbContextInSingletonFixer : CodeFixProvider
     private static void UpdateConstructorBody(DocumentEditor editor, ConstructorDeclarationSyntax constructor,
         string oldFieldName, string newFieldName, string oldParamName, string newParamName)
     {
+        // Handle expression-bodied constructors: MySvc(AppDbContext db) => _db = db;
         if (constructor.ExpressionBody != null)
         {
             if (constructor.ExpressionBody.Expression is AssignmentExpressionSyntax assignment)
             {
-                var newAssignment = assignment;
-
-                if (assignment.Left is IdentifierNameSyntax leftId && leftId.Identifier.Text == oldFieldName &&
-                    oldFieldName != newFieldName)
-                {
-                    newAssignment = newAssignment.WithLeft(
-                        SyntaxFactory.IdentifierName(newFieldName).WithTriviaFrom(leftId));
-                }
-
-                if (assignment.Right is IdentifierNameSyntax rightId && rightId.Identifier.Text == oldParamName &&
-                    oldParamName != newParamName)
-                {
-                    newAssignment = newAssignment.WithRight(
-                        SyntaxFactory.IdentifierName(newParamName).WithTriviaFrom(rightId));
-                }
-
-                if (newAssignment != assignment)
-                {
-                    editor.ReplaceNode(assignment, newAssignment);
-                }
+                RenameAssignment(editor, assignment, oldFieldName, newFieldName, oldParamName, newParamName);
             }
+            return;
+        }
+
+        // Handle block-bodied constructors: MySvc(AppDbContext db) { _db = db; }
+        if (constructor.Body == null) return;
+
+        foreach (var statement in constructor.Body.Statements)
+        {
+            if (statement is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax assignment })
+            {
+                RenameAssignment(editor, assignment, oldFieldName, newFieldName, oldParamName, newParamName);
+            }
+        }
+    }
+
+    private static void RenameAssignment(DocumentEditor editor, AssignmentExpressionSyntax assignment,
+        string oldFieldName, string newFieldName, string oldParamName, string newParamName)
+    {
+        var newAssignment = assignment;
+
+        if (assignment.Left is IdentifierNameSyntax leftId && leftId.Identifier.Text == oldFieldName &&
+            oldFieldName != newFieldName)
+        {
+            newAssignment = newAssignment.WithLeft(
+                SyntaxFactory.IdentifierName(newFieldName).WithTriviaFrom(leftId));
+        }
+        // Also handle `this._db = db` pattern
+        else if (assignment.Left is MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name: IdentifierNameSyntax memberId }
+                 && memberId.Identifier.Text == oldFieldName && oldFieldName != newFieldName)
+        {
+            newAssignment = newAssignment.WithLeft(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.ThisExpression(),
+                    SyntaxFactory.IdentifierName(newFieldName)).WithTriviaFrom(assignment.Left));
+        }
+
+        if (assignment.Right is IdentifierNameSyntax rightId && rightId.Identifier.Text == oldParamName &&
+            oldParamName != newParamName)
+        {
+            newAssignment = newAssignment.WithRight(
+                SyntaxFactory.IdentifierName(newParamName).WithTriviaFrom(rightId));
+        }
+
+        if (newAssignment != assignment)
+        {
+            editor.ReplaceNode(assignment, newAssignment);
         }
     }
 
@@ -183,5 +217,23 @@ public class DbContextInSingletonFixer : CodeFixProvider
         if (name.EndsWith("Factory"))
             return name;
         return name + "Factory";
+    }
+
+    private static void EnsureUsingDirective(DocumentEditor editor)
+    {
+        const string requiredNamespace = "Microsoft.EntityFrameworkCore";
+        var root = editor.OriginalRoot;
+
+        if (root is CompilationUnitSyntax compilationUnit)
+        {
+            var alreadyHasUsing = compilationUnit.Usings.Any(u => u.Name?.ToString() == requiredNamespace);
+            if (!alreadyHasUsing && compilationUnit.Usings.Any())
+            {
+                var usingDirective = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(requiredNamespace))
+                    .NormalizeWhitespace()
+                    .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+                editor.InsertAfter(compilationUnit.Usings.Last(), new[] { usingDirective });
+            }
+        }
     }
 }
