@@ -194,7 +194,7 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithSpan(13, 22, 13, 54) 
+            .WithSpan(13, 22, 13, 54)
             .WithArguments("ToList", "AsEnumerable");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);

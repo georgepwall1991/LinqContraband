@@ -48,7 +48,7 @@ public sealed class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
 
         // Check if there is a predicate
         if (invocation.Arguments.Length < (method.IsExtensionMethod ? 2 : 1)) return;
-        
+
         var predicateArg = method.IsExtensionMethod ? invocation.Arguments[1] : invocation.Arguments[0];
         var lambda = predicateArg.Value.UnwrapConversions() as IAnonymousFunctionOperation;
         if (lambda == null) return;

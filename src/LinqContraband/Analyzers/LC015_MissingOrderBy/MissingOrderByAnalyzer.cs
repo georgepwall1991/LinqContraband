@@ -102,7 +102,7 @@ public sealed class MissingOrderByAnalyzer : DiagnosticAnalyzer
         while (current is IInvocationOperation inv)
         {
             if (PaginationMethods.Contains(inv.TargetMethod.Name)) return true;
-            
+
             var next = inv.GetInvocationReceiver();
             if (next == null) break;
             current = next.UnwrapConversions();

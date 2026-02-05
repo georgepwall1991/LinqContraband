@@ -76,7 +76,7 @@ public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
 
                     var newMemberAccess = memberAccess.WithName(SyntaxFactory.IdentifierName(newMethodName));
                     var newArguments = SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(valueExpression)));
-                    
+
                     var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, newArguments)
                         .WithLeadingTrivia(invocation.GetLeadingTrivia())
                         .WithTrailingTrivia(invocation.GetTrailingTrivia());

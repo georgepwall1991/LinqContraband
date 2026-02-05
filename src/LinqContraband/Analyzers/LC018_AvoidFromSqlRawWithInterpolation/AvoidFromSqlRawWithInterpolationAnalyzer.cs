@@ -53,7 +53,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
         // but it is NOT included in the 'Parameters' list of the method if we look at it from the perspective of the call?
         // Actually, IInvocationOperation.Arguments aligns with Method.Parameters for extension methods too
         // IF it's an extension method call.
-        
+
         if (sqlParameterIndex >= invocation.Arguments.Length) return;
 
         var sqlArgument = invocation.Arguments[sqlParameterIndex].Value;
@@ -72,7 +72,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
     private bool IsPotentiallyUnsafe(IOperation operation)
     {
         var current = operation;
-        
+
         // Handle conversion to RawSqlString or other string-like types
         if (current is IConversionOperation conversion)
         {
@@ -106,7 +106,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
     private bool IsUnsafeSide(IOperation operation)
     {
         var current = operation.UnwrapConversions();
-        
+
         // If it's a constant, it's safe
         if (current.ConstantValue.HasValue) return false;
 

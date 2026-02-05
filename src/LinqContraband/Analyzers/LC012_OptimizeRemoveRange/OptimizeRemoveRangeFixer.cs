@@ -49,12 +49,12 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
     private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        
+
         // RemoveRange(query) -> query.ExecuteDelete()
         if (invocation.ArgumentList.Arguments.Count > 0)
         {
             var queryExpression = invocation.ArgumentList.Arguments[0].Expression;
-            
+
             // Handle ExecuteDeleteAsync if needed, but for now we focus on the basic transformation
             var executeDeleteName = SyntaxFactory.IdentifierName("ExecuteDelete");
             var memberAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, queryExpression, executeDeleteName);

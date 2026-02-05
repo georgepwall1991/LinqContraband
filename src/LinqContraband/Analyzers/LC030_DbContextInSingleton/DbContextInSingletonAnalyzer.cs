@@ -78,7 +78,7 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
             var ns = current.ContainingNamespace?.ToString();
 
             // ASP.NET Core Controllers
-            if (name.EndsWith("Controller", System.StringComparison.Ordinal) || 
+            if (name.EndsWith("Controller", System.StringComparison.Ordinal) ||
                 name.EndsWith("ViewComponent", System.StringComparison.Ordinal) ||
                 name.EndsWith("PageModel", System.StringComparison.Ordinal))
                 return true;
