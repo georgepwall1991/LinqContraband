@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -58,7 +59,7 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         if (statement == null) return document;
 
         // Create a unique variable name
-        var variableName = "now";
+        var variableName = GetUniqueVariableName(memberAccess);
         
         // Create the variable declaration: var now = DateTime.Now;
         var newVariable = SyntaxFactory.LocalDeclarationStatement(
@@ -81,5 +82,30 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         editor.InsertBefore(statement, newVariable);
 
         return editor.GetChangedDocument();
+    }
+
+    private static string GetUniqueVariableName(SyntaxNode node)
+    {
+        var existingNames = new HashSet<string>();
+
+        var block = node.AncestorsAndSelf().OfType<BlockSyntax>().FirstOrDefault();
+        if (block != null)
+        {
+            foreach (var descendant in block.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+            {
+                existingNames.Add(descendant.Identifier.Text);
+            }
+        }
+
+        const string baseName = "now";
+        if (!existingNames.Contains(baseName)) return baseName;
+
+        for (var i = 1; i < 100; i++)
+        {
+            var candidate = baseName + i;
+            if (!existingNames.Contains(candidate)) return candidate;
+        }
+
+        return baseName;
     }
 }

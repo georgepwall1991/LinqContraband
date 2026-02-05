@@ -126,37 +126,17 @@ public sealed class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
         {
             var syntax = syntaxRef.GetSyntax();
-            var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
-            foreach (var invocation in invocations)
+            foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) continue;
 
                 var methodName = memberAccess.Name.Identifier.Text;
 
-                // Check for HasNoKey()
                 if (methodName == "HasNoKey")
-                {
-                    var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
-                    if (entityTypeName != null)
-                    {
-                        var entityType = FindTypeByName(compilation, entityTypeName);
-                        if (entityType != null)
-                            keylessEntities.Add(entityType);
-                    }
-                }
-
-                // Check for OwnsOne/OwnsMany - extract the owned type
-                if (methodName == "OwnsOne" || methodName == "OwnsMany")
-                {
-                    var ownedTypeName = ExtractOwnedTypeName(invocation);
-                    if (ownedTypeName != null)
-                    {
-                        var ownedType = FindTypeByName(compilation, ownedTypeName);
-                        if (ownedType != null)
-                            ownedEntities.Add(ownedType);
-                    }
-                }
+                    TryAddResolvedType(ExtractEntityTypeNameFromChain(memberAccess.Expression), compilation, keylessEntities);
+                else if (methodName is "OwnsOne" or "OwnsMany")
+                    TryAddResolvedType(ExtractOwnedTypeName(invocation), compilation, ownedEntities);
             }
         }
     }
@@ -172,8 +152,8 @@ public sealed class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         var configInterface = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
         if (configInterface == null) return;
 
-        // Search all types in the compilation
-        foreach (var type in GetAllTypes(compilation.GlobalNamespace))
+        // Search types in the source assembly only (not referenced assemblies) for performance
+        foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
         {
             if (type.AllInterfaces.IsEmpty) continue;
 
@@ -195,6 +175,13 @@ public sealed class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
                 }
             }
         }
+    }
+
+    private static void TryAddResolvedType(string? typeName, Compilation compilation, HashSet<INamedTypeSymbol> targetSet)
+    {
+        if (typeName == null) return;
+        var resolved = FindTypeByName(compilation, typeName);
+        if (resolved != null) targetSet.Add(resolved);
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
@@ -471,27 +458,18 @@ public sealed class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
         {
             var syntax = syntaxRef.GetSyntax();
-            var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
-            foreach (var invocation in invocations)
+            foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) continue;
+                if (memberAccess.Name.Identifier.Text != "HasKey") continue;
 
-                var methodName = memberAccess.Name.Identifier.Text;
+                var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
+                if (entityTypeName == null) continue;
 
-                if (methodName == "HasKey")
-                {
-                    var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
-                    if (entityTypeName != null)
-                    {
-                        var matchedType = FindTypeByName(compilation, entityTypeName);
-                        if (matchedType != null &&
-                            SymbolEqualityComparer.Default.Equals(matchedType, entityType))
-                        {
-                            return true;
-                        }
-                    }
-                }
+                var matchedType = FindTypeByName(compilation, entityTypeName);
+                if (matchedType != null && SymbolEqualityComparer.Default.Equals(matchedType, entityType))
+                    return true;
             }
         }
 

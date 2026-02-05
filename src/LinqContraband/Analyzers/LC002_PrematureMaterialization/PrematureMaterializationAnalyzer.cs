@@ -80,36 +80,40 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
 
         // 2. Existing logic: filtering after materialization (Rule)
         if (receiverType.IsIQueryable()) return;
-
         if (!IsLinqOperator(methodSymbol)) return;
 
-        if (unwrappedReceiver is IInvocationOperation prevInv)
-        {
-            if (IsMaterializingMethod(prevInv.TargetMethod))
-            {
-                // Check *that* method's receiver. Was it IQueryable?
-                var sourceType = prevInv.GetInvocationReceiverType();
-                if (sourceType != null && sourceType.IsIQueryable())
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
-            }
-        }
-        else if (unwrappedReceiver is IObjectCreationOperation objectCreation)
-        {
-            if (objectCreation.Constructor != null && IsMaterializingConstructor(objectCreation.Constructor))
-            {
-                // Check constructor argument (usually the first one is the source collection)
-                if (objectCreation.Arguments.Length > 0)
-                {
-                    var sourceOp = objectCreation.Arguments[0].Value;
-                    sourceOp = sourceOp.UnwrapConversions();
-                    
-                    if (sourceOp?.Type != null && sourceOp.Type.IsIQueryable())
-                         context.ReportDiagnostic(
-                             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
-                }
-            }
-        }
+        if (CheckFilterAfterMaterializedInvocation(context, invocation, unwrappedReceiver, methodSymbol)) return;
+        CheckFilterAfterMaterializedConstructor(context, invocation, unwrappedReceiver, methodSymbol);
+    }
+
+    private static bool CheckFilterAfterMaterializedInvocation(
+        OperationAnalysisContext context, IInvocationOperation invocation,
+        IOperation unwrappedReceiver, IMethodSymbol methodSymbol)
+    {
+        if (unwrappedReceiver is not IInvocationOperation prevInv) return false;
+        if (!IsMaterializingMethod(prevInv.TargetMethod)) return false;
+
+        var sourceType = prevInv.GetInvocationReceiverType();
+        if (sourceType == null || !sourceType.IsIQueryable()) return false;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
+        return true;
+    }
+
+    private static void CheckFilterAfterMaterializedConstructor(
+        OperationAnalysisContext context, IInvocationOperation invocation,
+        IOperation unwrappedReceiver, IMethodSymbol methodSymbol)
+    {
+        if (unwrappedReceiver is not IObjectCreationOperation objectCreation) return;
+        if (objectCreation.Constructor == null || !IsMaterializingConstructor(objectCreation.Constructor)) return;
+        if (objectCreation.Arguments.Length == 0) return;
+
+        var sourceOp = objectCreation.Arguments[0].Value.UnwrapConversions();
+        if (sourceOp?.Type == null || !sourceOp.Type.IsIQueryable()) return;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
     }
 
     private bool IsLinqOperator(IMethodSymbol method)
@@ -118,7 +122,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
                method.ContainingNamespace?.ToString() == "System.Linq";
     }
 
-    private bool IsMaterializingMethod(IMethodSymbol method)
+    private static bool IsMaterializingMethod(IMethodSymbol method)
     {
         var ns = method.ContainingNamespace?.ToString();
         if (ns is not ("System.Linq" or "Microsoft.EntityFrameworkCore" or "System.Collections.Immutable" or "System.Collections.Generic")) return false;
@@ -137,7 +141,7 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
                method.Name.StartsWith("ToImmutable", StringComparison.Ordinal);
     }
 
-    private bool IsMaterializingConstructor(IMethodSymbol constructor)
+    private static bool IsMaterializingConstructor(IMethodSymbol constructor)
     {
         var type = constructor.ContainingType;
         if (type.ContainingNamespace?.ToString() != "System.Collections.Generic") return false;

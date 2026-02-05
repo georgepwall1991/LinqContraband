@@ -133,7 +133,28 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
-    // Async materialization coverage is TODO; current analyzer focuses on sync and awaits unwrapped cases.
+    [Fact]
+    public async Task TestCrime_AwaitToListAsyncBeforeWhere_ShouldTriggerLC002()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+
+class Program
+{
+    async Task Main()
+    {
+        var db = new DbContext();
+        var query = (await db.Users.ToListAsync()).Where(x => x.Age > 18);
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithSpan(15, 21, 15, 74)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 
     [Fact]
     public async Task TestCrime_ToImmutableListBeforeWhere_ShouldTriggerLC002()

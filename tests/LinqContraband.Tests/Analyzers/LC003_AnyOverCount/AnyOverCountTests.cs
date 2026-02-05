@@ -206,4 +206,39 @@ namespace LinqContraband.Test
             
         await VerifyCS.VerifyAnalyzerAsync(test2, expected);
     }
+
+    [Fact]
+    public async Task ZeroLessThanCountAsync_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<int> CountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+}
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async Task TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if (0 < await query.CountAsync())
+            {
+            }
+        }
+    }
+}
+";
+
+        var expected = VerifyCS.Diagnostic("LC003")
+            .WithSpan(23, 17, 23, 45);
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }

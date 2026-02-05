@@ -108,7 +108,7 @@ public static class AnalysisExtensions
             break;
         }
 
-        return current!;
+        return current ?? operation;
     }
 
     /// <summary>
@@ -203,6 +203,7 @@ public static class AnalysisExtensions
             "ToArray" or "ToArrayAsync" or
             "ToDictionary" or "ToDictionaryAsync" or
             "ToHashSet" or "ToHashSetAsync" or
+            "AsEnumerable" or
             // Single element materializers
             "First" or "FirstOrDefault" or
             "FirstAsync" or "FirstOrDefaultAsync" or
@@ -216,7 +217,13 @@ public static class AnalysisExtensions
             "Any" or "All" or
             "AnyAsync" or "AllAsync" or
             "Sum" or "Average" or "Min" or "Max" or
-            "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync";
+            "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync" or
+            // Execution materializers
+            "Load" or "LoadAsync" or
+            "ForEachAsync" or
+            // Bulk operation materializers
+            "ExecuteDelete" or "ExecuteDeleteAsync" or
+            "ExecuteUpdate" or "ExecuteUpdateAsync";
     }
 
     /// <summary>

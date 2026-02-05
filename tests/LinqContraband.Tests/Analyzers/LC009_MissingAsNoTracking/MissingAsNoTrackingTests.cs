@@ -186,6 +186,35 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    [Fact]
+    public async Task TestCrime_ReadOnlyMethod_ToListAsync_WithoutAsNoTracking_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class AsyncExtensions
+    {
+        public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => Task.FromResult(source.ToList());
+    }
+}
+
+class Program
+{
+    public async Task<List<User>> GetUsersAsync()
+    {
+        var db = new MyDbContext();
+        return await db.Users.Where(u => u.Id > 0).ToListAsync();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC009")
+            .WithSpan(22, 22, 22, 65)
+            .WithArguments("GetUsersAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
     /// <summary>
     /// Tests that DbSet parameters STILL trigger a diagnostic since DbSet is
     /// a concrete EF type we can confidently identify.

@@ -119,43 +119,33 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
 
             if (current is IInvocationOperation prevInvocation)
             {
-                var methodName = prevInvocation.TargetMethod.Name;
-
-                if (methodName == "Select") result.HasSelect = true;
-
-                // Move up the chain
+                if (prevInvocation.TargetMethod.Name == "Select") result.HasSelect = true;
                 current = prevInvocation.GetInvocationReceiver(false);
+                continue;
             }
-            else if (current is IPropertyReferenceOperation propRef)
-            {
-                if (propRef.Type.IsDbSet())
-                {
-                    result.IsEfQuery = true;
-                    result.EntityType = GetElementType(propRef.Type);
-                }
-                break;
-            }
-            else if (current is IFieldReferenceOperation fieldRef)
-            {
-                if (fieldRef.Type.IsDbSet())
-                {
-                    result.IsEfQuery = true;
-                    result.EntityType = GetElementType(fieldRef.Type);
-                }
-                break;
-            }
-            else
-            {
-                if (current.Type.IsDbSet())
-                {
-                    result.IsEfQuery = true;
-                    result.EntityType = GetElementType(current.Type);
-                }
-                break;
-            }
+
+            // Terminal node: check if the source is a DbSet
+            TryExtractDbSetInfo(current, result);
+            break;
         }
 
         return result;
+    }
+
+    private static void TryExtractDbSetInfo(IOperation operation, QueryChainAnalysis result)
+    {
+        var type = operation switch
+        {
+            IPropertyReferenceOperation propRef => propRef.Type,
+            IFieldReferenceOperation fieldRef => fieldRef.Type,
+            _ => operation.Type
+        };
+
+        if (type != null && type.IsDbSet())
+        {
+            result.IsEfQuery = true;
+            result.EntityType = GetElementType(type);
+        }
     }
 
     private static ITypeSymbol? GetElementType(ITypeSymbol? type)

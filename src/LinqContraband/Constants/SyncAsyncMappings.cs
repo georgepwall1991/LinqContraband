@@ -43,6 +43,8 @@ public static class SyncAsyncMappings
 
         // DbContext / DbSet methods
         { "SaveChanges", "SaveChangesAsync" },
-        { "Find", "FindAsync" }
+        { "Find", "FindAsync" },
+        { "ExecuteUpdate", "ExecuteUpdateAsync" },
+        { "ExecuteDelete", "ExecuteDeleteAsync" }
     };
 }
