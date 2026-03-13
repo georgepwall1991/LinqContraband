@@ -22,7 +22,7 @@ Pass the available `CancellationToken` to the async method.
 public async Task<List<User>> GetUsers(CancellationToken ct)
 {
     // Correct: The query will stop if the token is cancelled
-    return await db.ToListAsync(ct);
+    return await db.Users.ToListAsync(ct);
 }
 ```
 
@@ -30,12 +30,13 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 
 ### ID: `LC026`
 ### Category: `Reliability`
-### Severity: `Warning`
+### Severity: `Info`
 
 ### Algorithm
 1.  **Target Methods**: Intercept invocations of methods ending in `Async` that belong to `Microsoft.EntityFrameworkCore`.
 2.  **Parameter Check**: Check if the method signature accepts a `CancellationToken`.
-3.  **Argument Check**: Check if an argument is actually passed for that parameter.
+3.  **Scope Check**: Only report when a non-default `CancellationToken` is available in the local method/lambda scope.
+4.  **Argument Check**: Check if an argument is actually passed for that parameter.
     -   *Note*: If the argument is `default` or `CancellationToken.None`, we should still warn if there is a `CancellationToken` available in the method scope.
 
 ## Test Cases
@@ -50,6 +51,7 @@ await db.SaveChangesAsync(); // Missing
 ```csharp
 await db.Users.ToListAsync(cancellationToken);
 await db.SaveChangesAsync(ct);
+await db.Users.ToListAsync(); // No token available in scope, so this stays silent
 ```
 
 ## Implementation Plan

@@ -18,13 +18,13 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Title = "Potential DbContext lifetime mismatch";
 
     private static readonly LocalizableString MessageFormat =
-        "The class '{0}' holds a 'DbContext' in field '{1}'. Ensure this class is registered with a Scoped lifetime, not Singleton, to avoid threading and memory issues.";
+        "The class '{0}' stores a 'DbContext' in member '{1}'. This is safe for scoped types, but risky for long-lived services. Review the lifetime before keeping it as a field or property.";
 
     private static readonly LocalizableString Description =
-        "DbContext is not thread-safe and should be short-lived. Holding it in a Singleton service leads to crashes and memory leaks.";
+        "DbContext is not thread-safe and is intended to be short-lived. Storing it on a long-lived type can be risky, so review the service lifetime and prefer factories when the lifetime is uncertain.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC030_DbContextInSingleton.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC030_DbContextInSingleton.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

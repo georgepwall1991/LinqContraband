@@ -30,4 +30,4 @@ public List<User> GetActiveUsers()
 
 ### ID: `LC009`
 ### Category: `Performance`
-### Severity: `Warning`
+### Severity: `Info`

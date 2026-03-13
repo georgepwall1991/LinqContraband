@@ -28,6 +28,13 @@ namespace Microsoft.EntityFrameworkCore
         public System.Collections.IEnumerator GetEnumerator() => null;
         System.Collections.Generic.IEnumerator<TEntity> System.Collections.Generic.IEnumerable<TEntity>.GetEnumerator() => null;
     }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<TSource> FirstOrDefaultAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
+        public static Task<TSource> SingleOrDefaultAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
+        public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
+    }
 }
 ";
 
@@ -38,9 +45,10 @@ namespace Microsoft.EntityFrameworkCore
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
-        public void TestMethod(Microsoft.EntityFrameworkCore.DbSet<User> users)
+        public void TestMethod(DbSet<User> users)
         {
             var result = {|LC023:users.FirstOrDefault(x => x.Id == 1)|};
         }
@@ -51,32 +59,22 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task SingleAsync_WithId_ShouldTriggerLC023()
+    public async Task SingleOrDefaultAsync_WithId_ShouldTriggerLC023()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
-using System.Threading.Tasks;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;" + EFCoreMock + @"
-namespace Microsoft.EntityFrameworkCore
-{
-    public static class EntityFrameworkQueryableExtensions
-    {
-        public static Task<TSource> SingleAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
-    }
-}
+using System.Threading.Tasks;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
-        public async Task TestMethod(Microsoft.EntityFrameworkCore.DbSet<User> users)
+        public async Task TestMethod(DbSet<User> users)
         {
-            var result = await {|LC023:users.SingleAsync(x => x.Id == 1)|};
+            var result = await {|LC023:users.SingleOrDefaultAsync(x => x.Id == 1)|};
         }
     }
-}
-";
+}";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -84,11 +82,11 @@ namespace LinqContraband.Test
     [Fact]
     public async Task Fixer_ShouldReplaceFirstOrDefaultWithFind()
     {
-        var test = @"using Microsoft.EntityFrameworkCore;
-using System.Linq;" + EFCoreMock + @"
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
         public void TestMethod(DbSet<User> users)
@@ -98,11 +96,11 @@ namespace LinqContraband.Test
     }
 }";
 
-        var fixedCode = @"using Microsoft.EntityFrameworkCore;
-using System.Linq;" + EFCoreMock + @"
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
         public void TestMethod(DbSet<User> users)
@@ -116,47 +114,29 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task Fixer_ShouldReplaceSingleAsyncWithFindAsync()
+    public async Task Fixer_ShouldReplaceSingleOrDefaultAsyncWithFindAsync()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
-using System.Threading.Tasks;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;" + EFCoreMock + @"
-namespace Microsoft.EntityFrameworkCore
-{
-    public static class EntityFrameworkQueryableExtensions
-    {
-        public static Task<TSource> SingleAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
-    }
-}
+using System.Threading.Tasks;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
         public async Task TestMethod(DbSet<User> users)
         {
-            var result = await {|LC023:users.SingleAsync(x => x.Id == 456)|};
+            var result = await {|LC023:users.SingleOrDefaultAsync(x => x.Id == 456)|};
         }
     }
 }";
 
         var fixedCode = @"using Microsoft.EntityFrameworkCore;
-using System.Threading.Tasks;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;" + EFCoreMock + @"
-namespace Microsoft.EntityFrameworkCore
-{
-    public static class EntityFrameworkQueryableExtensions
-    {
-        public static Task<TSource> SingleAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult(default(TSource));
-    }
-}
+using System.Threading.Tasks;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
         public async Task TestMethod(DbSet<User> users)
@@ -170,17 +150,19 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task FirstOrDefault_WithNonId_ShouldNotTrigger()
+    public async Task First_WithId_ShouldNotTrigger()
     {
-        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
-    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class User { public int Id { get; set; } }
+
     public class TestClass
     {
-        public void TestMethod(Microsoft.EntityFrameworkCore.DbSet<User> users)
+        public User TestMethod(DbSet<User> users)
         {
-            var result = users.FirstOrDefault(x => x.Name == ""abc"");
+            return users.First(x => x.Id == 1);
         }
     }
 }";
@@ -189,18 +171,40 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task FirstOrDefault_OnQueryable_ShouldNotTrigger()
+    public async Task FirstOrDefault_WithAsNoTracking_ShouldNotTrigger()
     {
-        // Find only works on DbSet
-        var test = @"using System.Linq;" + EFCoreMock + @"
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
 namespace LinqContraband.Test
 {
     public class User { public int Id { get; set; } }
+
     public class TestClass
     {
-        public void TestMethod(System.Collections.Generic.IEnumerable<User> users)
+        public User TestMethod(DbSet<User> users)
         {
-            var result = users.AsQueryable().Where(x => x.Id > 0).FirstOrDefault(x => x.Id == 1);
+            return users.AsNoTracking().FirstOrDefault(x => x.Id == 1);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FirstOrDefault_WithNonId_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public User TestMethod(DbSet<User> users)
+        {
+            return users.FirstOrDefault(x => x.Name == ""abc"");
         }
     }
 }";

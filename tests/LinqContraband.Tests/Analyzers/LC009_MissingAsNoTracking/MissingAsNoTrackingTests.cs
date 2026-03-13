@@ -216,11 +216,11 @@ class Program
     }
 
     /// <summary>
-    /// Tests that DbSet parameters STILL trigger a diagnostic since DbSet is
-    /// a concrete EF type we can confidently identify.
+    /// Tests that DbSet parameters do NOT trigger a diagnostic because the
+    /// tracking policy belongs to the caller when the query source is supplied externally.
     /// </summary>
     [Fact]
-    public async Task TestCrime_DbSetParameter_TriggersDiagnostic()
+    public async Task TestInnocent_DbSetParameter_NoDiagnostic()
     {
         var test = Usings + @"
 class Program
@@ -232,10 +232,23 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC009")
-            .WithSpan(13, 16, 13, 51)
-            .WithArguments("FilterUsers");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    [Fact]
+    public async Task TestInnocent_CountAggregate_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public int CountUsers()
+    {
+        var db = new MyDbContext();
+        return db.Users.Count();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

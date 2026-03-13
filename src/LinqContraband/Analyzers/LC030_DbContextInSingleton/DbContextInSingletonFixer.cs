@@ -21,7 +21,7 @@ namespace LinqContraband.Analyzers.LC030_DbContextInSingleton;
 public class DbContextInSingletonFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
-        ImmutableArray.Create(DbContextInSingletonAnalyzer.DiagnosticId);
+        ImmutableArray<string>.Empty;
 
     public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 

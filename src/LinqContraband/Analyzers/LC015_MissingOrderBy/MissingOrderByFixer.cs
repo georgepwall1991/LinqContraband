@@ -99,21 +99,8 @@ public class MissingOrderByFixer : CodeFixProvider
         // If we replace sourceExpression, we are modifying the tree correctly.
         editor.ReplaceNode(sourceExpression, orderByInvocation);
 
-        EnsureUsing(editor, "System.Linq");
+        editor.EnsureUsing("System.Linq");
 
         return editor.GetChangedDocument();
-    }
-
-    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
-    {
-        var root = editor.OriginalRoot as CompilationUnitSyntax;
-        if (root == null) return;
-        if (root.Usings.Any(u =>
-                u.Name?.ToString() == namespaceName ||
-                (u.Alias != null && u.Name?.ToString() == namespaceName)))
-            return;
-
-        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
-        editor.ReplaceNode(root, newRoot);
     }
 }

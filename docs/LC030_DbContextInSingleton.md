@@ -1,26 +1,27 @@
-# Spec: LC030 - Avoid DbContext in Singleton Services
+# Spec: LC030 - Review DbContext Lifetime Mismatches
 
 ## Goal
-Detect usage of `DbContext` (or derived types) when injected into a service that is likely to be a `Singleton`.
+Flag classes that store a `DbContext` in a field or property so the lifetime can be reviewed.
 
 ## The Problem
-`DbContext` is NOT thread-safe and is designed to be short-lived (Scoped). If you inject it into a `Singleton` service, that single `DbContext` instance will be shared across all users and all threads for the lifetime of the application. This leads to:
+`DbContext` is NOT thread-safe and is designed to be short-lived (Scoped). Storing it on a long-lived service is risky and can lead to:
 1.  **Threading Crashes**: Two concurrent requests try to use the context at the same time, causing an `InvalidOperationException`.
 2.  **Memory Leaks**: The Change Tracker keeps every entity ever fetched in memory forever.
 3.  **Data Corruption**: Stale data from previous requests persists in the context.
 
 ### Example Violation
 ```csharp
-// Violation: Singleton service holding a DbContext
-public class MySingletonService
+// Review needed: this may be fine for scoped types, risky for long-lived services
+public class MyService
 {
     private readonly AppDbContext _db;
-    public MySingletonService(AppDbContext db) => _db = db;
+    public MyService(AppDbContext db) => _db = db;
 }
 ```
 
 ### The Fix
-Inject `IDbContextFactory<T>` instead and create a short-lived context when needed, or make the service `Scoped`.
+Review the service lifetime first. If the type is long-lived, inject `IDbContextFactory<T>` instead or move the `DbContext`
+usage to a scoped component.
 
 ```csharp
 // Correct
@@ -41,15 +42,14 @@ public class MyService
 
 ### ID: `LC030`
 ### Category: `Architecture`
-### Severity: `Warning`
+### Severity: `Info`
 
 ### Algorithm
 1.  **Target Classes**: Inspect classes that are NOT `DbContext` themselves.
 2.  **Lifetime Heuristic**: 
-    -   Check for classes with `[Singleton]` attributes (from common libraries like `Microsoft.Extensions.DependencyInjection` if applicable, though usually registration is in `Startup.cs`).
-    -   *Robust approach*: Since registration is usually elsewhere, we can look for specific naming conventions (e.g., `...Singleton...`) or focus on fields/properties of type `DbContext` in classes that don't look like they are scoped.
-    -   *Even Better*: Warn on ANY field/property of type `DbContext` in a class that is NOT a `Controller`, `Middleware`, or `DbContext` unless it's properly disposed? 
-    -   *Decision for MVP*: Focus on detecting `DbContext` in fields of classes that are likely to be singletons, or simply warn about `DbContext` as a long-lived field in *any* class, as it's a risky pattern.
+    -   This rule is intentionally heuristic. It does **not** prove singleton registration.
+    -   It skips obvious scoped MVC types such as controllers and page models.
+    -   Treat the result as a review hint, not an automatic architecture rewrite.
 
 ## Test Cases
 

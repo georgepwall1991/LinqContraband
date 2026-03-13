@@ -24,7 +24,7 @@ public sealed class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
         "Select(x => x) returns the object itself and is redundant. Removing it simplifies the query and improves readability.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC029_RedundantIdentitySelect.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC029_RedundantIdentitySelect.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

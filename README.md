@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **30 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **31 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ### LC001: The Local Method Smuggler
 
@@ -957,8 +957,9 @@ var users = db.Users.ToList();
 
 ### LC030: DbContext in Singleton
 
-Holding a `DbContext` in a Singleton service causes threading issues and memory leaks. `DbContext` is not thread-safe
-and is designed to be short-lived. Instead, inject `IDbContextFactory<T>` and create short-lived instances.
+Holding a `DbContext` as a field or property is a lifetime smell. It may be fine for scoped types, but it is risky in
+long-lived services because `DbContext` is not thread-safe and is designed to be short-lived. Review the lifetime
+before keeping it around, and prefer `IDbContextFactory<T>` for long-lived services.
 
 **👶 Explain it like I'm a ten year old:** Imagine you have one paintbrush (DbContext) that everyone in the class has
 to share at the same time. Paint gets mixed up, bristles break, and everyone makes a mess! Instead, give each person
@@ -967,10 +968,10 @@ their own paintbrush from a box (IDbContextFactory) when they need one, and put 
 **❌ The Crime:**
 
 ```csharp
-public class MySingletonService
+public class MyService
 {
     private readonly AppDbContext _db; // Bad: DbContext held as field
-    public MySingletonService(AppDbContext db) => _db = db;
+    public MyService(AppDbContext db) => _db = db;
 }
 ```
 
@@ -1030,6 +1031,9 @@ dotnet_diagnostic.LC001.severity = error
 dotnet_diagnostic.LC002.severity = error
 dotnet_diagnostic.LC003.severity = warning
 ```
+
+Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, and `LC031` default to `Info`
+so they surface as hints without drowning out higher-confidence warnings.
 
 ## 🤝 Contributing
 

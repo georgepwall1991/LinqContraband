@@ -270,7 +270,7 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         // Replace the source expression with the Select invocation
         editor.ReplaceNode(sourceExpression, selectInvocation);
 
-        EnsureUsing(editor, "System.Linq");
+        editor.EnsureUsing("System.Linq");
 
         return editor.GetChangedDocument();
     }
@@ -283,18 +283,5 @@ public class WholeEntityProjectionFixer : CodeFixProvider
                 SyntaxKind.SimpleMemberAccessExpression,
                 SyntaxFactory.IdentifierName(paramName),
                 SyntaxFactory.IdentifierName(propertyName)));
-    }
-
-    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
-    {
-        var root = editor.OriginalRoot as CompilationUnitSyntax;
-        if (root == null) return;
-        if (root.Usings.Any(u =>
-                u.Name?.ToString() == namespaceName ||
-                (u.Alias != null && u.Name?.ToString() == namespaceName)))
-            return;
-
-        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
-        editor.ReplaceNode(root, newRoot);
     }
 }

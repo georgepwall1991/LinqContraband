@@ -38,12 +38,46 @@ public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
         var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null) return;
 
+        if (!await CanApplyFixAsync(context.Document, invocation, context.CancellationToken).ConfigureAwait(false))
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Use Find/FindAsync",
                 c => ApplyFixAsync(context.Document, invocation, c),
                 "UseFind"),
             diagnostic);
+    }
+
+    private static async Task<bool> CanApplyFixAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return false;
+
+        var methodName = memberAccess.Name.Identifier.Text;
+        if (methodName is not ("FirstOrDefault" or "SingleOrDefault" or "FirstOrDefaultAsync" or "SingleOrDefaultAsync"))
+            return false;
+
+        if (invocation.ArgumentList.Arguments.Count == 0)
+            return false;
+
+        if (invocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda)
+            return false;
+
+        if (lambda.Body is not BinaryExpressionSyntax binary || !binary.IsKind(SyntaxKind.EqualsExpression))
+            return false;
+
+        if (binary.Left is not MemberAccessExpressionSyntax && binary.Right is not MemberAccessExpressionSyntax)
+            return false;
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel == null)
+            return false;
+
+        return semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type?.Name == "DbSet";
     }
 
     private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
