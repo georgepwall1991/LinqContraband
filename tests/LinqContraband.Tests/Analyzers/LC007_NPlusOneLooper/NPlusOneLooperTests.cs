@@ -48,8 +48,17 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         public ReferenceEntry Reference(string name) => null;
         public CollectionEntry Collection(string name) => null;
     }
-    public class ReferenceEntry { public void Load() { } }
-    public class CollectionEntry { public void Load() { } }
+    public class ReferenceEntry
+    {
+        public void Load() { }
+        public Task LoadAsync() => Task.CompletedTask;
+    }
+    public class CollectionEntry
+    {
+        public void Load() { }
+        public Task LoadAsync() => Task.CompletedTask;
+        public IQueryable<T> Query<T>() => null;
+    }
 }
 
 namespace TestNamespace
@@ -63,7 +72,7 @@ namespace TestNamespace
 }";
 
     [Fact]
-    public async Task TestCrime_ForeachLoop_WithExplicitLoading_TriggersDiagnostic()
+    public async Task TestInnocent_ForeachLoop_WithReferenceAccessorOnly_NoDiagnostic()
     {
         var test = Usings + @"
 using TestNamespace;
@@ -76,22 +85,17 @@ class Program
 
         foreach (var user in users)
         {
-            // Crime: Reference().Load() inside loop
-            db.Entry(user).Reference(""abc"").Load();
+            db.Entry(user).Reference(""abc"");
         }
     }
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC007")
-            .WithLocation(20, 13)
-            .WithArguments("Reference");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task TestCrime_ForeachLoop_WithCollectionLoading_TriggersDiagnostic()
+    public async Task TestInnocent_ForeachLoop_WithCollectionAccessorOnly_NoDiagnostic()
     {
         var test = Usings + @"
 using TestNamespace;
@@ -104,7 +108,29 @@ class Program
 
         foreach (var user in users)
         {
-            // Crime: Collection().Load() inside loop
+            db.Entry(user).Collection(""abc"");
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ForeachLoop_WithCollectionLoad_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+using TestNamespace;
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = new List<User>();
+
+        foreach (var user in users)
+        {
             db.Entry(user).Collection(""abc"").Load();
         }
     }
@@ -112,8 +138,35 @@ class Program
 " + MockNamespace;
 
         var expected = VerifyCS.Diagnostic("LC007")
-            .WithLocation(20, 13)
-            .WithArguments("Collection");
+            .WithLocation(19, 13)
+            .WithArguments("Load");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ForeachLoop_WithCollectionLoadAsync_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+using TestNamespace;
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = new List<User>();
+
+        foreach (var user in users)
+        {
+            await db.Entry(user).Collection(""abc"").LoadAsync();
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007")
+            .WithLocation(19, 19)
+            .WithArguments("LoadAsync");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
@@ -248,6 +301,33 @@ class Program
         var expected = VerifyCS.Diagnostic("LC007")
             .WithLocation(17, 25)
             .WithArguments("Count");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ForeachLoop_WithCollectionQueryMaterialization_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+using TestNamespace;
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = new List<User>();
+
+        foreach (var user in users)
+        {
+            var roles = db.Entry(user).Collection(""abc"").Query<User>().ToList();
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007")
+            .WithLocation(19, 25)
+            .WithArguments("ToList");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }

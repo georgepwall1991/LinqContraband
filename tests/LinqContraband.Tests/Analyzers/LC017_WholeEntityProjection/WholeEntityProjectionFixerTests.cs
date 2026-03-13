@@ -257,4 +257,25 @@ class Program
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
+    [Fact]
+    public async Task ExplicitlyTypedCollection_HasNoFix()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        List<LargeEntity> entities = db.LargeEntities.ToList();
+        foreach (var e in entities)
+        {
+            Console.WriteLine(e.Name);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 38).WithArguments("LargeEntity", "1", "12");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
 }

@@ -83,7 +83,9 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         if (!IsLinqOperator(methodSymbol)) return;
 
         if (CheckFilterAfterMaterializedInvocation(context, invocation, unwrappedReceiver, methodSymbol)) return;
-        CheckFilterAfterMaterializedConstructor(context, invocation, unwrappedReceiver, methodSymbol);
+        if (CheckFilterAfterMaterializedConstructor(context, invocation, unwrappedReceiver, methodSymbol)) return;
+
+        CheckFilterAfterMaterializedLocal(context, invocation, unwrappedReceiver, methodSymbol);
     }
 
     private static bool CheckFilterAfterMaterializedInvocation(
@@ -101,19 +103,116 @@ public sealed class PrematureMaterializationAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
-    private static void CheckFilterAfterMaterializedConstructor(
+    private static bool CheckFilterAfterMaterializedConstructor(
         OperationAnalysisContext context, IInvocationOperation invocation,
         IOperation unwrappedReceiver, IMethodSymbol methodSymbol)
     {
-        if (unwrappedReceiver is not IObjectCreationOperation objectCreation) return;
-        if (objectCreation.Constructor == null || !IsMaterializingConstructor(objectCreation.Constructor)) return;
-        if (objectCreation.Arguments.Length == 0) return;
+        if (unwrappedReceiver is not IObjectCreationOperation objectCreation) return false;
+        if (objectCreation.Constructor == null || !IsMaterializingConstructor(objectCreation.Constructor)) return false;
+        if (objectCreation.Arguments.Length == 0) return false;
 
         var sourceOp = objectCreation.Arguments[0].Value.UnwrapConversions();
-        if (sourceOp?.Type == null || !sourceOp.Type.IsIQueryable()) return;
+        if (sourceOp?.Type == null || !sourceOp.Type.IsIQueryable()) return false;
 
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
+        return true;
+    }
+
+    private static bool CheckFilterAfterMaterializedLocal(
+        OperationAnalysisContext context,
+        IInvocationOperation invocation,
+        IOperation unwrappedReceiver,
+        IMethodSymbol methodSymbol)
+    {
+        if (unwrappedReceiver is not ILocalReferenceOperation localReference) return false;
+
+        var root = context.Operation.FindOwningExecutableRoot();
+        if (root == null) return false;
+
+        if (!TryResolveAssignedValue(root, localReference.Local, invocation.Syntax.SpanStart, new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default), out var assignedValue))
+            return false;
+
+        if (assignedValue is IInvocationOperation materializedInvocation &&
+            IsMaterializingMethod(materializedInvocation.TargetMethod))
+        {
+            var sourceType = materializedInvocation.GetInvocationReceiverType();
+            if (sourceType?.IsIQueryable() == true)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
+                return true;
+            }
+        }
+
+        if (assignedValue is IObjectCreationOperation objectCreation &&
+            objectCreation.Constructor != null &&
+            IsMaterializingConstructor(objectCreation.Constructor) &&
+            objectCreation.Arguments.Length > 0)
+        {
+            var sourceValue = objectCreation.Arguments[0].Value.UnwrapConversions();
+            if (sourceValue.Type?.IsIQueryable() == true)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveAssignedValue(
+        IOperation root,
+        ILocalSymbol local,
+        int position,
+        HashSet<ILocalSymbol> visited,
+        out IOperation? value)
+    {
+        value = null;
+        if (!visited.Add(local)) return false;
+
+        IOperation? latestValue = null;
+        var latestPosition = -1;
+        var assignmentCount = 0;
+
+        foreach (var descendant in root.Descendants())
+        {
+            if (descendant.Syntax.SpanStart >= position) continue;
+
+            switch (descendant)
+            {
+                case IVariableDeclaratorOperation declarator when
+                    SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
+                    declarator.Initializer != null &&
+                    declarator.Syntax.SpanStart > latestPosition:
+                    latestValue = declarator.Initializer.Value;
+                    latestPosition = declarator.Syntax.SpanStart;
+                    assignmentCount++;
+                    break;
+
+                case ISimpleAssignmentOperation assignment when
+                    assignment.Target is ILocalReferenceOperation targetLocal &&
+                    SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
+                    assignment.Syntax.SpanStart > latestPosition:
+                    latestValue = assignment.Value;
+                    latestPosition = assignment.Syntax.SpanStart;
+                    assignmentCount++;
+                    break;
+            }
+        }
+
+        if (latestValue == null) return false;
+        if (assignmentCount != 1) return false;
+
+        var resolved = latestValue.UnwrapConversions();
+        if (resolved is ILocalReferenceOperation referencedLocal)
+        {
+            return TryResolveAssignedValue(root, referencedLocal.Local, position, visited, out value);
+        }
+
+        value = resolved;
+        return true;
     }
 
     private bool IsLinqOperator(IMethodSymbol method)

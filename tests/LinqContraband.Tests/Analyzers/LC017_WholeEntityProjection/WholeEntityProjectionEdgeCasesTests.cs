@@ -85,7 +85,7 @@ namespace TestNamespace
     /// The analyzer doesn't track through conditional access.
     /// </summary>
     [Fact]
-    public async Task TestInnocent_NullConditionalPropertyAccess_NoDiagnostic()
+    public async Task TestCrime_NullConditionalPropertyAccess_TriggersDiagnostic()
     {
         var test = Usings + @"
 class Program
@@ -102,9 +102,11 @@ class Program
 }
 " + MockNamespace;
 
-        // Null-conditional changes the operation tree - property access is wrapped
-        // The analyzer doesn't currently track through IConditionalAccessOperation
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic("LC017")
+            .WithSpan(14, 24, 14, 49)
+            .WithArguments("LargeEntity", 1, 13);
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     /// <summary>
@@ -199,7 +201,7 @@ class Program
     /// Innocent: For loop with indexer - analyzer only tracks foreach iteration variables.
     /// </summary>
     [Fact]
-    public async Task TestInnocent_ForLoopWithIndexer_NoDiagnostic()
+    public async Task TestCrime_ForLoopWithIndexer_TriggersDiagnostic()
     {
         var test = Usings + @"
 class Program
@@ -216,16 +218,18 @@ class Program
 }
 " + MockNamespace;
 
-        // For loop with indexer: property access is on indexer element, not iteration variable
-        // The analyzer conservatively doesn't track indexer access patterns
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic("LC017")
+            .WithSpan(14, 24, 14, 49)
+            .WithArguments("LargeEntity", 1, 13);
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     /// <summary>
     /// Innocent: Direct indexer access - analyzer only tracks foreach iteration variables.
     /// </summary>
     [Fact]
-    public async Task TestInnocent_DirectIndexerAccess_NoDiagnostic()
+    public async Task TestCrime_DirectIndexerAccess_TriggersDiagnostic()
     {
         var test = Usings + @"
 class Program
@@ -242,8 +246,11 @@ class Program
 }
 " + MockNamespace;
 
-        // Direct indexer access: not tracked by the analyzer (conservative)
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic("LC017")
+            .WithSpan(14, 24, 14, 49)
+            .WithArguments("LargeEntity", 1, 13);
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     #endregion

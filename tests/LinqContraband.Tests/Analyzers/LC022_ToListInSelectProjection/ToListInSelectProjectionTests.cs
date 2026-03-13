@@ -123,7 +123,22 @@ class TestClass
     }
 
     [Fact]
-    public async Task Fixer_ShouldRemoveToArray()
+    public async Task Select_WithUnrelatedMaterializerInsideLambda_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => new List<int>().ToList());
+    }
+}" + MockNamespaces;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRemoveToArray_WhenTypesWouldChange()
     {
         var test = Usings + @"
 class TestClass
@@ -134,16 +149,7 @@ class TestClass
     }
 }" + MockNamespaces;
 
-        var fixedCode = Usings + @"
-class TestClass
-{
-    void TestMethod(DbSet<User> users)
-    {
-        var result = users.Select(u => u.Orders);
-    }
-}" + MockNamespaces;
-
-        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
@@ -168,5 +174,25 @@ class TestClass
 }" + MockNamespaces;
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRemoveToList_InsideObjectInitializer()
+    {
+        var test = Usings + @"
+class UserDto
+{
+    public List<Order> Items { get; set; }
+}
+
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => new UserDto { Items = {|LC022:u.Orders.ToList()|} });
+    }
+}" + MockNamespaces;
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 }

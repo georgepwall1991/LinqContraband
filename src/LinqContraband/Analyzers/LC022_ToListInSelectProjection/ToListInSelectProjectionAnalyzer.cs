@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -88,7 +89,12 @@ public sealed class ToListInSelectProjectionAnalyzer : DiagnosticAnalyzer
                 if (selectInvocation.TargetMethod.Name == "Select")
                 {
                     var receiverType = selectInvocation.GetInvocationReceiverType();
-                    if (receiverType.IsIQueryable())
+                    var lambdaParameter = lambda.Symbol.Parameters.FirstOrDefault();
+                    var materializerReceiver = invocation.GetInvocationReceiver();
+                    if (receiverType.IsIQueryable() &&
+                        lambdaParameter != null &&
+                        materializerReceiver != null &&
+                        materializerReceiver.ReferencesParameter(lambdaParameter))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));

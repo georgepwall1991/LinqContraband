@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -76,21 +77,13 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
         var variableInfo = FindVariableAssignment(invocation);
         if (variableInfo == null) return;
 
-        // 5. Check if entity is returned from method (can't track usage)
-        if (IsEntityReturned(invocation, variableInfo.Value.Symbol)) return;
-
-        // 6. Check if entity is passed to external methods
-        if (IsPassedToMethod(invocation, variableInfo.Value.Symbol)) return;
-
-        // 7. Check if entity is used in lambda/delegate
-        if (IsUsedInLambda(invocation, variableInfo.Value.Symbol)) return;
-
-        // 8. Count actual property accesses
-        var accessedProperties = CountPropertyAccesses(invocation, variableInfo.Value.Symbol, analysis.EntityType);
+        // 5. Analyze usage in a single pass to avoid repeated full-body scans
+        var usage = AnalyzeVariableUsage(invocation, variableInfo.Value.Symbol, analysis.EntityType);
+        if (usage.HasEscapingUsage) return;
 
         // 9. Conservative: only flag if 1-2 properties accessed
-        if (accessedProperties.Count > MaxAccessedProperties) return;
-        if (accessedProperties.Count == 0) return; // No properties accessed, might be passed somewhere
+        if (usage.AccessedProperties.Count > MaxAccessedProperties) return;
+        if (usage.AccessedProperties.Count == 0) return; // No properties accessed, might be passed somewhere
 
         // Report diagnostic
         context.ReportDiagnostic(
@@ -98,7 +91,7 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
                 Rule,
                 invocation.Syntax.GetLocation(),
                 analysis.EntityType.Name,
-                accessedProperties.Count,
+                usage.AccessedProperties.Count,
                 properties.Count));
     }
 
@@ -208,111 +201,216 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
         return null;
     }
 
-    private static bool IsEntityReturned(IInvocationOperation invocation, ILocalSymbol variable)
-    {
-        // Find containing method body
-        var root = FindMethodBody(invocation);
-        if (root == null) return true; // Conservative: can't analyze, assume returned
-
-        // Check for return statements using this variable
-        foreach (var descendant in root.Descendants())
-        {
-            if (descendant is IReturnOperation returnOp &&
-                returnOp.ReturnedValue != null)
-            {
-                if (ReferencesVariable(returnOp.ReturnedValue, variable))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsPassedToMethod(IInvocationOperation invocation, ILocalSymbol variable)
-    {
-        var root = FindMethodBody(invocation);
-        if (root == null) return true;
-
-        foreach (var descendant in root.Descendants())
-        {
-            if (descendant is IInvocationOperation call && call != invocation)
-            {
-                foreach (var arg in call.Arguments)
-                {
-                    if (ReferencesVariable(arg.Value, variable))
-                        return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsUsedInLambda(IInvocationOperation invocation, ILocalSymbol variable)
-    {
-        var root = FindMethodBody(invocation);
-        if (root == null) return true;
-
-        foreach (var descendant in root.Descendants())
-        {
-            if (descendant is IAnonymousFunctionOperation lambda)
-            {
-                foreach (var lambdaDescendant in lambda.Descendants())
-                {
-                    if (lambdaDescendant is ILocalReferenceOperation localRef &&
-                        SymbolEqualityComparer.Default.Equals(localRef.Local, variable))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static HashSet<string> CountPropertyAccesses(
+    private static VariableUsageAnalysis AnalyzeVariableUsage(
         IInvocationOperation invocation,
         ILocalSymbol variable,
         ITypeSymbol entityType)
     {
-        var accessedProperties = new HashSet<string>();
+        var result = new VariableUsageAnalysis();
         var root = FindMethodBody(invocation);
-        if (root == null) return accessedProperties;
+        if (root == null)
+        {
+            result.HasEscapingUsage = true;
+            return result;
+        }
 
-        // Find property accesses on the variable or its elements (in foreach)
+        var foreachLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        var manualIterationLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+
         foreach (var descendant in root.Descendants())
         {
-            if (descendant is IPropertyReferenceOperation propRef)
+            switch (descendant)
             {
-                // Check if this is a property of the entity type
-                if (!SymbolEqualityComparer.Default.Equals(propRef.Property.ContainingType, entityType) &&
-                    !entityType.AllInterfaces.Contains(propRef.Property.ContainingType, SymbolEqualityComparer.Default) &&
-                    !InheritsFrom(entityType, propRef.Property.ContainingType))
-                {
-                    continue;
-                }
+                case IForEachLoopOperation forEach when
+                    forEach.Collection.UnwrapConversions() is ILocalReferenceOperation collectionRef &&
+                    SymbolEqualityComparer.Default.Equals(collectionRef.Local, variable):
+                    foreach (var local in forEach.Locals)
+                        foreachLocals.Add(local);
+                    break;
 
-                // Check if accessed on our variable or a foreach iteration variable
-                var instance = propRef.Instance?.UnwrapConversions();
+                case IVariableDeclaratorOperation declarator when
+                    declarator.Initializer != null &&
+                    IsIndexedAccessOf(declarator.Initializer.Value, variable):
+                    manualIterationLocals.Add(declarator.Symbol);
+                    break;
 
-                if (instance is ILocalReferenceOperation localRef)
-                {
-                    // Direct access on variable or foreach variable iterating over our collection
-                    if (SymbolEqualityComparer.Default.Equals(localRef.Local, variable))
-                    {
-                        accessedProperties.Add(propRef.Property.Name);
-                    }
-                    else if (IsForEachVariableOver(localRef.Local, variable, root) ||
-                             IsManualIterationVariableOver(localRef.Local, variable, root))
-                    {
-                        accessedProperties.Add(propRef.Property.Name);
-                    }
-                }
+                case ISimpleAssignmentOperation assignment when
+                    assignment.Target is ILocalReferenceOperation targetLocal &&
+                    IsIndexedAccessOf(assignment.Value, variable):
+                    manualIterationLocals.Add(targetLocal.Local);
+                    break;
             }
         }
 
-        return accessedProperties;
+        foreach (var descendant in root.Descendants())
+        {
+            switch (descendant)
+            {
+                case IReturnOperation returnOperation when
+                    returnOperation.ReturnedValue != null &&
+                    IsDirectVariableEscape(returnOperation.ReturnedValue, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IInvocationOperation call when call != invocation &&
+                    call.Arguments.Any(arg => IsDirectVariableEscape(arg.Value, variable, foreachLocals, manualIterationLocals)):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IAnonymousFunctionOperation lambda when
+                    LambdaDirectlyReferences(lambda, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IPropertyReferenceOperation propertyReference when
+                    IsPropertyOfType(propertyReference.Property, entityType) &&
+                    IsTrackedEntityReference(propertyReference.Instance, variable, foreachLocals, manualIterationLocals):
+                    result.AccessedProperties.Add(propertyReference.Property.Name);
+                    break;
+            }
+
+            if (result.HasEscapingUsage) return result;
+        }
+
+        CollectSyntaxBasedPropertyAccesses(invocation, variable, entityType, foreachLocals, manualIterationLocals, result.AccessedProperties);
+        return result;
+    }
+
+    private static bool IsTrackedEntityReference(
+        IOperation? operation,
+        ILocalSymbol variable,
+        HashSet<ILocalSymbol> foreachLocals,
+        HashSet<ILocalSymbol> manualIterationLocals)
+    {
+        if (operation == null) return false;
+
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped is ILocalReferenceOperation localReference)
+        {
+            return SymbolEqualityComparer.Default.Equals(localReference.Local, variable) ||
+                   foreachLocals.Contains(localReference.Local) ||
+                   manualIterationLocals.Contains(localReference.Local);
+        }
+
+        return false;
+    }
+
+    private static bool IsDirectVariableEscape(
+        IOperation operation,
+        ILocalSymbol variable,
+        HashSet<ILocalSymbol> foreachLocals,
+        HashSet<ILocalSymbol> manualIterationLocals)
+    {
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped is not ILocalReferenceOperation localReference) return false;
+
+        return SymbolEqualityComparer.Default.Equals(localReference.Local, variable) ||
+               foreachLocals.Contains(localReference.Local) ||
+               manualIterationLocals.Contains(localReference.Local);
+    }
+
+    private static bool LambdaDirectlyReferences(
+        IAnonymousFunctionOperation lambda,
+        ILocalSymbol variable,
+        HashSet<ILocalSymbol> foreachLocals,
+        HashSet<ILocalSymbol> manualIterationLocals)
+    {
+        foreach (var descendant in lambda.Descendants())
+        {
+            if (descendant is not ILocalReferenceOperation localReference) continue;
+
+            if (SymbolEqualityComparer.Default.Equals(localReference.Local, variable) ||
+                foreachLocals.Contains(localReference.Local) ||
+                manualIterationLocals.Contains(localReference.Local))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPropertyOfType(IPropertySymbol property, ITypeSymbol entityType)
+    {
+        if (SymbolEqualityComparer.Default.Equals(property.ContainingType, entityType)) return true;
+        if (entityType.AllInterfaces.Contains(property.ContainingType, SymbolEqualityComparer.Default)) return true;
+        return InheritsFrom(entityType, property.ContainingType);
+    }
+
+    private static void CollectSyntaxBasedPropertyAccesses(
+        IInvocationOperation invocation,
+        ILocalSymbol variable,
+        ITypeSymbol entityType,
+        HashSet<ILocalSymbol> foreachLocals,
+        HashSet<ILocalSymbol> manualIterationLocals,
+        HashSet<string> accessedProperties)
+    {
+        var semanticModel = invocation.SemanticModel;
+        if (semanticModel == null) return;
+
+        var scope = invocation.Syntax.FirstAncestorOrSelf<MethodDeclarationSyntax>() as SyntaxNode ??
+                    invocation.Syntax.FirstAncestorOrSelf<LocalFunctionStatementSyntax>() ??
+                    invocation.Syntax.FirstAncestorOrSelf<AnonymousFunctionExpressionSyntax>() as SyntaxNode;
+        if (scope == null) return;
+
+        foreach (var conditionalAccess in scope.DescendantNodes().OfType<ConditionalAccessExpressionSyntax>())
+        {
+            if (!IsTrackedEntitySyntax(conditionalAccess.Expression, variable, foreachLocals, manualIterationLocals, semanticModel))
+                continue;
+
+            if (conditionalAccess.WhenNotNull is MemberBindingExpressionSyntax memberBinding &&
+                semanticModel.GetSymbolInfo(memberBinding).Symbol is IPropertySymbol property &&
+                IsPropertyOfType(property, entityType))
+            {
+                accessedProperties.Add(property.Name);
+            }
+        }
+
+        foreach (var memberAccess in scope.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        {
+            if (memberAccess.Expression is not ElementAccessExpressionSyntax elementAccess) continue;
+            if (!IsCollectionElementAccess(elementAccess, variable, semanticModel)) continue;
+
+            if (semanticModel.GetSymbolInfo(memberAccess).Symbol is IPropertySymbol property &&
+                IsPropertyOfType(property, entityType))
+            {
+                accessedProperties.Add(property.Name);
+            }
+        }
+    }
+
+    private static bool IsTrackedEntitySyntax(
+        ExpressionSyntax expression,
+        ILocalSymbol variable,
+        HashSet<ILocalSymbol> foreachLocals,
+        HashSet<ILocalSymbol> manualIterationLocals,
+        SemanticModel semanticModel)
+    {
+        if (expression is ElementAccessExpressionSyntax elementAccess)
+            return IsCollectionElementAccess(elementAccess, variable, semanticModel);
+
+        var symbol = semanticModel.GetSymbolInfo(expression).Symbol as ILocalSymbol;
+        if (symbol == null) return false;
+
+        return SymbolEqualityComparer.Default.Equals(symbol, variable) ||
+               foreachLocals.Contains(symbol) ||
+               manualIterationLocals.Contains(symbol);
+    }
+
+    private static bool IsCollectionElementAccess(
+        ElementAccessExpressionSyntax elementAccess,
+        ILocalSymbol variable,
+        SemanticModel semanticModel)
+    {
+        var symbol = semanticModel.GetSymbolInfo(elementAccess.Expression).Symbol as ILocalSymbol;
+        return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, variable);
+    }
+
+    private sealed class VariableUsageAnalysis
+    {
+        public HashSet<string> AccessedProperties { get; } = new();
+
+        public bool HasEscapingUsage { get; set; }
     }
 
     private static bool IsManualIterationVariableOver(ILocalSymbol iterationVar, ILocalSymbol collectionVar, IOperation root)
@@ -381,25 +479,6 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
                 return true;
             current = current.BaseType;
         }
-        return false;
-    }
-
-    private static bool ReferencesVariable(IOperation operation, ILocalSymbol variable)
-    {
-        var unwrapped = operation.UnwrapConversions();
-
-        if (unwrapped is ILocalReferenceOperation localRef &&
-            SymbolEqualityComparer.Default.Equals(localRef.Local, variable))
-        {
-            return true;
-        }
-
-        foreach (var child in operation.ChildOperations)
-        {
-            if (ReferencesVariable(child, variable))
-                return true;
-        }
-
         return false;
     }
 

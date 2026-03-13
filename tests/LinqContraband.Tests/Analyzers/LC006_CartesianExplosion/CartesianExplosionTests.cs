@@ -42,6 +42,7 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsSplitQuery<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsSingleQuery<T>(this IQueryable<T> source) => source;
     }
 }
 
@@ -91,7 +92,7 @@ class Program
         // The usage `db.Users...` starts at column 21.
         var expected = VerifyCS.Diagnostic("LC006")
             .WithSpan(15, 21, 15, 74)
-            .WithArguments("List<Role>");
+            .WithArguments("Roles");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
@@ -148,5 +149,43 @@ class Program
 " + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_WithTrailingAsSplitQuery_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(u => u.Orders).Include(u => u.Roles).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_WithAsSingleQuery_StillTriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSingleQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 14, 90)
+            .WithArguments("Roles");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 }
