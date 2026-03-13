@@ -14,94 +14,214 @@ using Microsoft.CodeAnalysis.Formatting;
 namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
 /// <summary>
-/// Provides code fixes for LC002. Moves filtering operations before materialization to improve query performance.
+/// Provides safe LC002 code fixes only for analyzer-proven inline rewrites.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PrematureMaterializationFixer))]
 [Shared]
-public class PrematureMaterializationFixer : CodeFixProvider
+public sealed class PrematureMaterializationFixer : CodeFixProvider
 {
+    private static readonly ImmutableHashSet<string> SequenceContinuationMethods = ImmutableHashSet.Create(
+        "Where",
+        "Select",
+        "OrderBy",
+        "OrderByDescending",
+        "ThenBy",
+        "ThenByDescending",
+        "Skip",
+        "Take"
+    );
+
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(PrematureMaterializationAnalyzer.DiagnosticId);
 
-    public sealed override FixAllProvider GetFixAllProvider()
-    {
-        return WellKnownFixAllProviders.BatchFixer;
-    }
+    public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
-        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
         var diagnostic = context.Diagnostics.First();
-        var diagnosticSpan = diagnostic.Location.SourceSpan;
+        if (!diagnostic.Properties.TryGetValue(PrematureMaterializationAnalyzer.FixKindKey, out var fixKind))
+        {
+            return;
+        }
 
-        var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
+        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var invocation = root?
+            .FindNode(diagnostic.Location.SourceSpan)
+            .FirstAncestorOrSelf<InvocationExpressionSyntax>();
 
         if (invocation == null) return;
 
-        context.RegisterCodeFix(
-            CodeAction.Create(
-                "Move filtering before materialization",
-                c => MoveFilterBeforeMaterializationAsync(context.Document, invocation, c),
-                "MoveFilterBeforeMaterialization"),
-            diagnostic);
-    }
-
-    private async Task<Document> MoveFilterBeforeMaterializationAsync(Document document,
-        InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
-    {
-        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-
-        if (!(invocation.Expression is MemberAccessExpressionSyntax memberAccess)) return document;
-        if (!(memberAccess.Expression is InvocationExpressionSyntax materializeInvocation)) return document;
-        if (!(materializeInvocation.Expression is MemberAccessExpressionSyntax materializeMemberAccess))
-            return document;
-
-        // Check if the PARENT of the Filter is ALSO a Materializer (e.g. ToList/ToArray)
-        var parentIsMaterializer = false;
-        if (invocation.Parent is MemberAccessExpressionSyntax parentMemberAccess &&
-            parentMemberAccess.Parent is InvocationExpressionSyntax)
+        if (fixKind == PrematureMaterializationAnalyzer.MoveBeforeMaterializationFixKind &&
+            IsInlineMaterializerReceiver(invocation))
         {
-            var name = parentMemberAccess.Name.Identifier.Text;
-            if (name == "ToList" || name == "ToArray") parentIsMaterializer = true;
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Move query operator before materialization",
+                    c => MoveBeforeMaterializationAsync(context.Document, invocation, diagnostic, c),
+                    PrematureMaterializationAnalyzer.MoveBeforeMaterializationFixKind),
+                diagnostic);
+            return;
         }
 
-        var source = materializeMemberAccess.Expression;
-
-        var newFilterInvocation = invocation.WithExpression(
-            memberAccess.WithExpression(source)
-        );
-
-        SyntaxNode newRoot;
-
-        if (parentIsMaterializer)
+        if (fixKind == PrematureMaterializationAnalyzer.RemoveRedundantMaterializationFixKind &&
+            IsInlineMaterializerReceiver(invocation))
         {
-            // If parent is materializer, we don't need to append another one.
-            // Just return the filter invocation: source.Where(...)
-            // The outer parent will handle the materialization.
-            newRoot = newFilterInvocation
-                .WithLeadingTrivia(invocation.GetLeadingTrivia())
-                .WithTrailingTrivia(invocation.GetTrailingTrivia());
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Remove redundant materialization",
+                    c => RemoveRedundantMaterializationAsync(context.Document, invocation, c),
+                    PrematureMaterializationAnalyzer.RemoveRedundantMaterializationFixKind),
+                diagnostic);
+        }
+    }
+
+    private static async Task<Document> MoveBeforeMaterializationAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        Diagnostic diagnostic,
+        CancellationToken cancellationToken)
+    {
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel == null) return document;
+
+        if (!TryGetInlineMaterializerParts(invocation, out var currentMemberAccess, out var materializerInvocation, out var materializerMemberAccess))
+        {
+            return document;
+        }
+
+        var materializerSource = materializerMemberAccess.Expression.WithoutTrivia();
+        var rewrittenCurrentInvocation = invocation.WithExpression(
+                currentMemberAccess.WithExpression(materializerSource))
+            .WithTriviaFrom(invocation)
+            .WithAdditionalAnnotations(Formatter.Annotation);
+
+        var currentMethodName = diagnostic.Properties.TryGetValue(PrematureMaterializationAnalyzer.CurrentMethodKey, out var methodName) &&
+                                methodName != null
+            ? methodName
+            : currentMemberAccess.Name.Identifier.Text;
+
+        SyntaxNode replacement = rewrittenCurrentInvocation;
+
+        if (SequenceContinuationMethods.Contains(currentMethodName))
+        {
+            if (!IsInsideOuterMaterialization(invocation, semanticModel, cancellationToken))
+            {
+                replacement = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            rewrittenCurrentInvocation.WithoutTrivia(),
+                            materializerMemberAccess.Name.WithoutTrivia()))
+                    .WithArgumentList(materializerInvocation.ArgumentList)
+                    .WithTriviaFrom(invocation)
+                    .WithAdditionalAnnotations(Formatter.Annotation);
+            }
+        }
+
+        editor.ReplaceNode(invocation, replacement);
+        return editor.GetChangedDocument();
+    }
+
+    private static async Task<Document> RemoveRedundantMaterializationAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        if (!TryGetInlineMaterializerParts(invocation, out var currentMemberAccess, out var previousInvocation, out var previousMemberAccess))
+        {
+            return document;
+        }
+
+        SyntaxNode replacement;
+        var currentMaterializer = currentMemberAccess.Name.Identifier.Text;
+
+        if (currentMaterializer == "AsEnumerable")
+        {
+            replacement = previousInvocation
+                .WithTriviaFrom(invocation)
+                .WithAdditionalAnnotations(Formatter.Annotation);
         }
         else
         {
-            var materializeName = materializeMemberAccess.Name;
-
-            newRoot = SyntaxFactory.InvocationExpression(
-                    SyntaxFactory.MemberAccessExpression(
-                        SyntaxKind.SimpleMemberAccessExpression,
-                        newFilterInvocation,
-                        materializeName
-                    )
-                ).WithArgumentList(materializeInvocation.ArgumentList)
-                .WithLeadingTrivia(invocation.GetLeadingTrivia())
-                .WithTrailingTrivia(invocation.GetTrailingTrivia());
+            replacement = invocation.WithExpression(
+                    currentMemberAccess.WithExpression(previousMemberAccess.Expression.WithoutTrivia()))
+                .WithTriviaFrom(invocation)
+                .WithAdditionalAnnotations(Formatter.Annotation);
         }
 
-        // Add Formatting annotation manually if not working via factory
-        newRoot = newRoot.WithAdditionalAnnotations(Formatter.Annotation);
-
-        editor.ReplaceNode(invocation, newRoot);
-
+        editor.ReplaceNode(invocation, replacement);
         return editor.GetChangedDocument();
+    }
+
+    private static bool IsInlineMaterializerReceiver(InvocationExpressionSyntax invocation)
+    {
+        return TryGetInlineMaterializerParts(invocation, out _, out _, out _);
+    }
+
+    private static bool TryGetInlineMaterializerParts(
+        InvocationExpressionSyntax invocation,
+        out MemberAccessExpressionSyntax currentMemberAccess,
+        out InvocationExpressionSyntax previousInvocation,
+        out MemberAccessExpressionSyntax previousMemberAccess)
+    {
+        currentMemberAccess = null!;
+        previousInvocation = null!;
+        previousMemberAccess = null!;
+
+        if (invocation.Expression is not MemberAccessExpressionSyntax currentAccess) return false;
+        if (currentAccess.Expression is not InvocationExpressionSyntax previousCall) return false;
+        if (previousCall.Expression is not MemberAccessExpressionSyntax previousAccess) return false;
+
+        currentMemberAccess = currentAccess;
+        previousInvocation = previousCall;
+        previousMemberAccess = previousAccess;
+        return true;
+    }
+
+    private static bool IsInsideOuterMaterialization(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.Parent is MemberAccessExpressionSyntax parentMemberAccess &&
+            parentMemberAccess.Parent is InvocationExpressionSyntax parentInvocation)
+        {
+            var parentSymbol = semanticModel.GetSymbolInfo(parentInvocation, cancellationToken).Symbol as IMethodSymbol;
+            return parentSymbol != null && IsMaterializingMethod(parentSymbol.Name);
+        }
+
+        if (invocation.Parent is ArgumentSyntax argument &&
+            argument.Parent?.Parent is ObjectCreationExpressionSyntax objectCreation)
+        {
+            var constructor = semanticModel.GetSymbolInfo(objectCreation, cancellationToken).Symbol as IMethodSymbol;
+            return constructor != null && IsMaterializingConstructor(constructor.ContainingType.Name);
+        }
+
+        return false;
+    }
+
+    private static bool IsMaterializingMethod(string methodName)
+    {
+        return methodName == "AsEnumerable" ||
+               methodName == "ToList" ||
+               methodName == "ToArray" ||
+               methodName == "ToDictionary" ||
+               methodName == "ToHashSet" ||
+               methodName == "ToLookup" ||
+               methodName.StartsWith("ToImmutable");
+    }
+
+    private static bool IsMaterializingConstructor(string typeName)
+    {
+        return typeName is
+            "List" or
+            "HashSet" or
+            "Dictionary" or
+            "SortedDictionary" or
+            "SortedList" or
+            "LinkedList" or
+            "Queue" or
+            "Stack";
     }
 }

@@ -1,36 +1,64 @@
-# Spec: LC002 - Premature Materialization
+# LC002: Premature Materialization
 
 ## Goal
-Detect usage of LINQ operators (like `Where`, `Select`, `OrderBy`) called *after* a materializing method (like `ToList`, `ToArray`, `AsEnumerable`).
+Catch query work that moves from the provider to LINQ-to-Objects only because an `IQueryable` was materialized too early, and catch redundant second materializers layered on top of an already materialized query.
 
-## The Problem
-Materializing an `IQueryable` (using `ToList`, `ToArray`, `AsEnumerable`, etc.) before applying filters or other query operators causes all data to be fetched from the database into memory before processing occurs. 
+## What LC002 Reports
 
-Additionally, this rule flags **redundant materialization** where multiple materializing methods are called in a row, adding unnecessary overhead and clutter.
-
-### Example Violations
-```csharp
-// 1. Premature: Fetches every user, then filters in memory
-var users = db.Users.ToList().Where(u => u.IsActive);
-
-// 2. Redundant: AsEnumerable is redundant when followed by ToList
-var users2 = db.Users.AsEnumerable().ToList();
-```
-
-### The Fix
-Apply all filters before materializing the query, and remove redundant materialization calls.
+### 1. Premature query continuation
+LC002 reports approved `Enumerable` operators that run after a materializer sourced from `IQueryable`.
 
 ```csharp
-// Correct
-var users = db.Users.Where(u => u.IsActive).ToList();
+var users = db.Users.ToList().Where(u => u.Age > 18);
+var count = db.Users.ToArray().Count();
+var ordered = db.Users.AsEnumerable().OrderBy(u => u.Name);
 ```
 
-## Analyzer Logic
+The rule also follows single-assignment local hops and collection-constructor materialization when the `IQueryable` origin is still provable.
 
-### ID: `LC002`
-### Category: `Performance`
-### Severity: `Warning`
+```csharp
+var materialized = db.Users.ToList();
+var adults = materialized.Where(u => u.Age > 18);
 
-### Algorithm
-1.  **Target**: Invocations of common LINQ operators (`Where`, `Select`, etc.).
-2.  **Receiver**: Check if the method is called on a materialized collection (e.g., `List`, `Array`, `IEnumerable`) that originated from an `IQueryable`.
+var set = new HashSet<User>(db.Users);
+var count = set.Count();
+```
+
+### 2. Redundant materialization
+LC002 reports a second materializer when the sequence was already materialized from `IQueryable`.
+
+```csharp
+var users = db.Users.AsEnumerable().ToList();
+var usersAgain = db.Users.ToArray().ToList();
+```
+
+## What LC002 Intentionally Ignores
+- Ambiguous provenance such as multiple local assignments or control-flow-dependent sources
+- Field/property provenance and other shapes where the analyzer cannot prove the query origin safely
+- Overloads that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors or comparer-based overloads
+- Pure in-memory sequences that never came from `IQueryable`
+
+## Fixer Behavior
+The fixer is intentionally conservative.
+
+- It offers `Move query operator before materialization` only for analyzer-proven inline chains where the rewrite is explicit.
+- It offers `Remove redundant materialization` only for direct redundant materializer pairs.
+- It does not offer a fix for local-hop, constructor, ambiguous, or shape-changing cases such as `ToDictionary(...).Where(...)`.
+
+## Example Fixes
+
+```csharp
+// Before
+var adults = db.Users.ToList().Where(u => u.Age >= 18);
+
+// After
+var adults = db.Users.Where(u => u.Age >= 18).ToList();
+```
+
+```csharp
+// Before
+var usersAgain = db.Users.ToArray().ToList();
+
+// After
+var usersAgain = db.Users.ToList();
+```

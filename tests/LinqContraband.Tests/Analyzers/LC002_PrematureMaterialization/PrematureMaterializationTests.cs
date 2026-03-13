@@ -1,223 +1,257 @@
+using LinqContraband.Analyzers.LC002_PrematureMaterialization;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC002_PrematureMaterialization.PrematureMaterializationAnalyzer>;
-using LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
 namespace LinqContraband.Tests.Analyzers.LC002_PrematureMaterialization;
 
 public class PrematureMaterializationTests
 {
-    private const string Usings = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-using TestNamespace;
-using Microsoft.EntityFrameworkCore;
-";
+    private const string CommonUsings = """
+        using System;
+        using System.Collections.Generic;
+        using System.Collections.Immutable;
+        using System.Linq;
+        using System.Threading.Tasks;
+        using TestNamespace;
+        using Microsoft.EntityFrameworkCore;
+        """;
 
-    private const string MockNamespace = @"
-namespace TestNamespace
-{
-    public class User
-    {
-        public int Age { get; set; }
-    }
+    private const string MockTypes = """
+        namespace TestNamespace
+        {
+            public class User
+            {
+                public int Id { get; set; }
+                public int Age { get; set; }
+                public string Name { get; set; } = "";
+            }
 
-    public class DbContext
-    {
-        public IQueryable<User> Users => new List<User>().AsQueryable();
-    }
-}
+            public class DbContext
+            {
+                public IQueryable<User> Users => new List<User>().AsQueryable();
+            }
+        }
 
-namespace Microsoft.EntityFrameworkCore
-{
-    public static class AsyncExtensions
-    {
-        public static System.Threading.Tasks.Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => System.Threading.Tasks.Task.FromResult(source.ToList());
-    }
-}";
+        namespace Microsoft.EntityFrameworkCore
+        {
+            public static class AsyncExtensions
+            {
+                public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) =>
+                    Task.FromResult(source.ToList());
+            }
+        }
+        """;
 
     [Fact]
-    public async Task TestCrime_ToListBeforeWhere_ShouldTriggerLC002()
+    public async Task Reports_WhenWhereRunsAfterToList()
     {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var query = db.Users.ToList().Where(x => x.Age > 18);
-    }
-}
-" + MockNamespace;
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var query = {|#0:db.Users.ToList().Where(x => x.Age > 18)|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithSpan(13, 21, 13, 61) // Where call spans from 'db.Users...'
+            .WithLocation(0)
             .WithArguments("Where");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task TestInnocent_WhereBeforeToList_ShouldNotTrigger()
+    public async Task Reports_WhenCountRunsAfterToArray()
     {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var query = db.Users.Where(x => x.Age > 18).ToList();
-    }
-}
-" + MockNamespace;
+        var test = CommonUsings + """
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestMemory_ListWhere_ShouldNotTrigger()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var list = new List<User>();
-        var query = list.ToList().Where(x => x.Age > 18);
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestCrime_ToDictionaryBeforeWhere_ShouldTriggerLC002()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var query = db.Users.ToDictionary(x => x.Age).Where(u => u.Value.Age > 18);
-    }
-}
-" + MockNamespace;
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var count = {|#0:db.Users.ToArray().Count()|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithSpan(13, 21, 13, 83)
+            .WithLocation(0)
+            .WithArguments("Count");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Reports_WhenOrderByRunsAfterAsEnumerable()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var ordered = {|#0:db.Users.AsEnumerable().OrderBy(x => x.Name)|};
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Reports_WhenToDictionaryFeedsWhere()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var filtered = {|#0:db.Users.ToDictionary(x => x.Id).Where(x => x.Value.Age > 18)|};
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
             .WithArguments("Where");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task TestCrime_AsEnumerableBeforeWhere_ShouldTriggerLC002()
+    public async Task Reports_WhenToImmutableListFeedsWhere()
     {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var query = db.Users.AsEnumerable().Where(u => u.Age > 18);
-    }
-}
-" + MockNamespace;
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var filtered = {|#0:db.Users.ToImmutableList().Where(x => x.Age > 18)|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithSpan(13, 21, 13, 67)
+            .WithLocation(0)
             .WithArguments("Where");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task TestCrime_AwaitToListAsyncBeforeWhere_ShouldTriggerLC002()
+    public async Task Reports_WhenAwaitedToListAsyncFeedsWhere()
     {
-        var test = Usings + @"
-using System.Threading.Tasks;
+        var test = CommonUsings + """
 
-class Program
-{
-    async Task Main()
-    {
-        var db = new DbContext();
-        var query = (await db.Users.ToListAsync()).Where(x => x.Age > 18);
-    }
-}
-" + MockNamespace;
+            class Program
+            {
+                async Task Main()
+                {
+                    var db = new DbContext();
+                    var filtered = {|#0:(await db.Users.ToListAsync()).Where(x => x.Age > 18)|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithSpan(15, 21, 15, 74)
+            .WithLocation(0)
             .WithArguments("Where");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task TestCrime_ToImmutableListBeforeWhere_ShouldTriggerLC002()
+    public async Task Reports_Redundant_AsEnumerableThenToList()
     {
-        var test = Usings + @"
-using System.Collections.Immutable;
+        var test = CommonUsings + """
 
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var query = db.Users.ToImmutableList().Where(x => x.Age > 18);
-    }
-}
-" + MockNamespace;
-
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-             .WithSpan(15, 21, 15, 70)
-             .WithArguments("Where");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task AsEnumerable_ThenToList_ShouldTriggerLC002_Redundant()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var result = db.Users.AsEnumerable().ToList();
-    }
-}
-" + MockNamespace;
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var users = {|#0:db.Users.AsEnumerable().ToList()|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithSpan(13, 22, 13, 54)
+            .WithLocation(0)
             .WithArguments("ToList", "AsEnumerable");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task ToList_ThenToArray_ShouldTriggerLC002_Redundant()
+    public async Task Reports_Redundant_LocalMaterializedThenToList()
     {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new DbContext();
-        var result = db.Users.ToList().ToArray();
-    }
-}
-" + MockNamespace;
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var materialized = db.Users.ToList();
+                    var users = {|#0:materialized.ToList()|};
+                }
+            }
+            """ + MockTypes;
 
         var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithSpan(13, 22, 13, 49)
-            .WithArguments("ToArray", "ToList");
+            .WithLocation(0)
+            .WithArguments("ToList", "ToList");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_WhenWhereRunsBeforeToList()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var query = db.Users.Where(x => x.Age > 18).ToList();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_ForPureInMemoryEnumerable()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var users = new List<User>();
+                    var filtered = users.ToList().Where(x => x.Age > 18);
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }
