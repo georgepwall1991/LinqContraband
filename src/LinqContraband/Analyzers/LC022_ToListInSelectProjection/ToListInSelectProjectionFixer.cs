@@ -36,6 +36,7 @@ public class ToListInSelectProjectionFixer : CodeFixProvider
                          ?? node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 
         if (invocation == null) return;
+        if (!CanSafelyRemoveMaterializer(invocation)) return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -61,5 +62,16 @@ public class ToListInSelectProjectionFixer : CodeFixProvider
             .WithTrailingTrivia(invocation.GetTrailingTrivia()));
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool CanSafelyRemoveMaterializer(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return false;
+        if (invocation.Ancestors().Any(ancestor =>
+                ancestor is InitializerExpressionSyntax or AnonymousObjectMemberDeclaratorSyntax))
+        {
+            return false;
+        }
+        return memberAccess.Name.Identifier.Text == "ToList";
     }
 }

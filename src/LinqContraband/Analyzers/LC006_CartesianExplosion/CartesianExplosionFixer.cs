@@ -52,14 +52,10 @@ public class CartesianExplosionFixer : CodeFixProvider
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
-        // Target: .Include(Roles)
-        // We want to insert .AsSplitQuery() before this call.
-        // Currently: Source.Include(Roles)
-        // New: Source.AsSplitQuery().Include(Roles)
+        var firstInclude = FindFirstIncludeInvocation(invocation);
+        if (firstInclude?.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
 
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
         var source = memberAccess.Expression;
-
         if (IsInvocationOf(source, "AsSplitQuery")) return document;
 
         // Create .AsSplitQuery() invocation
@@ -74,6 +70,23 @@ public class CartesianExplosionFixer : CodeFixProvider
         editor.ReplaceNode(source, asSplitQueryInvocation.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    private static InvocationExpressionSyntax? FindFirstIncludeInvocation(InvocationExpressionSyntax invocation)
+    {
+        InvocationExpressionSyntax? firstInclude = null;
+        ExpressionSyntax? current = invocation;
+
+        while (current is InvocationExpressionSyntax currentInvocation &&
+               currentInvocation.Expression is MemberAccessExpressionSyntax currentMemberAccess)
+        {
+            if (currentMemberAccess.Name.Identifier.Text == "Include")
+                firstInclude = currentInvocation;
+
+            current = currentMemberAccess.Expression;
+        }
+
+        return firstInclude;
     }
 
     private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)

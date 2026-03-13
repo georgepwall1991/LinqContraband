@@ -37,6 +37,7 @@ public class SaveChangesInLoopFixer : CodeFixProvider
                          ?? node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 
         if (invocation == null) return;
+        if (!TryGetMovableSaveStatement(invocation, out _, out _)) return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -52,21 +53,7 @@ public class SaveChangesInLoopFixer : CodeFixProvider
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
         // Find the expression statement containing SaveChanges
-        var expressionStatement = invocation.AncestorsAndSelf().OfType<ExpressionStatementSyntax>().FirstOrDefault();
-        if (expressionStatement == null)
-        {
-            // May be an await expression: await db.SaveChangesAsync()
-            var awaitExpr = invocation.AncestorsAndSelf().OfType<AwaitExpressionSyntax>().FirstOrDefault();
-            expressionStatement = awaitExpr?.Parent as ExpressionStatementSyntax;
-        }
-
-        if (expressionStatement == null) return document;
-
-        // Find the enclosing loop
-        var loop = expressionStatement.Ancestors().FirstOrDefault(n =>
-            n is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax);
-
-        if (loop == null) return document;
+        if (!TryGetMovableSaveStatement(invocation, out var expressionStatement, out var loop)) return document;
 
         // Create the new statement to insert after the loop (preserve the full statement including await if present)
         var newStatement = expressionStatement
@@ -80,5 +67,82 @@ public class SaveChangesInLoopFixer : CodeFixProvider
         editor.InsertAfter(loop, newStatement);
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool TryGetMovableSaveStatement(
+        InvocationExpressionSyntax invocation,
+        out ExpressionStatementSyntax expressionStatement,
+        out StatementSyntax loop)
+    {
+        var statement = invocation.AncestorsAndSelf().OfType<ExpressionStatementSyntax>().FirstOrDefault();
+        if (statement == null)
+        {
+            var awaitExpr = invocation.AncestorsAndSelf().OfType<AwaitExpressionSyntax>().FirstOrDefault();
+            statement = awaitExpr?.Parent as ExpressionStatementSyntax;
+        }
+
+        if (statement == null)
+        {
+            expressionStatement = null!;
+            loop = null!;
+            return false;
+        }
+
+        var containingLoop = statement.Ancestors().FirstOrDefault(n =>
+            n is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax) as StatementSyntax;
+
+        if (containingLoop == null)
+        {
+            expressionStatement = null!;
+            loop = null!;
+            return false;
+        }
+
+        expressionStatement = statement;
+        loop = containingLoop;
+
+        if (ContainsUnsafeControlFlow(loop)) return false;
+        if (!IsDirectTerminalStatement(expressionStatement, loop)) return false;
+        if (CountSaveStatements(loop) != 1) return false;
+
+        return true;
+    }
+
+    private static bool ContainsUnsafeControlFlow(StatementSyntax loop)
+    {
+        return loop.DescendantNodes().Any(node =>
+            node is BreakStatementSyntax or ContinueStatementSyntax or ReturnStatementSyntax or ThrowStatementSyntax or
+                YieldStatementSyntax or TryStatementSyntax or GotoStatementSyntax);
+    }
+
+    private static bool IsDirectTerminalStatement(ExpressionStatementSyntax statement, StatementSyntax loop)
+    {
+        if (loop switch
+            {
+                ForStatementSyntax forLoop => forLoop.Statement,
+                ForEachStatementSyntax forEachLoop => forEachLoop.Statement,
+                WhileStatementSyntax whileLoop => whileLoop.Statement,
+                DoStatementSyntax doLoop => doLoop.Statement,
+                _ => null
+            } is not StatementSyntax body)
+        {
+            return false;
+        }
+
+        if (body is BlockSyntax block)
+        {
+            return block.Statements.LastOrDefault() == statement;
+        }
+
+        return body == statement;
+    }
+
+    private static int CountSaveStatements(StatementSyntax loop)
+    {
+        return loop.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Count(invocation =>
+                invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name.Identifier.Text is "SaveChanges" or "SaveChangesAsync");
     }
 }

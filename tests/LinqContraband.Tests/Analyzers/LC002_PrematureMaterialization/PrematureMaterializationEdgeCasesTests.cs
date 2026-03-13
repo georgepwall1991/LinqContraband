@@ -55,4 +55,52 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task MaterializedLocal_ThenWhere_ShouldTriggerLC002()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
+{
+    void Main()
+    {
+        var query = new List<int>().AsQueryable();
+        var materialized = query.ToList();
+        var result = materialized.Where(x => x > 0);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithSpan(11, 22, 11, 52)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ConstructorMaterializedLocal_ThenCount_ShouldTriggerLC002()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Linq;
+
+class Program
+{
+    void Main()
+    {
+        var query = new List<int>().AsQueryable();
+        var materialized = new HashSet<int>(query);
+        var result = materialized.Count();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithSpan(11, 22, 11, 42)
+            .WithArguments("Count");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }

@@ -187,6 +187,25 @@ public static class AnalysisExtensions
     }
 
     /// <summary>
+    /// Finds the nearest executable root that owns the operation, such as a method body, local function, or lambda.
+    /// </summary>
+    /// <param name="operation">The operation to inspect.</param>
+    /// <returns>The owning executable root, or null if none was found.</returns>
+    public static IOperation? FindOwningExecutableRoot(this IOperation operation)
+    {
+        var current = operation;
+        while (current != null)
+        {
+            if (current is IMethodBodyOperation or ILocalFunctionOperation or IAnonymousFunctionOperation)
+                return current;
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Determines whether the method name is a query materializer that triggers database execution.
     /// </summary>
     /// <param name="methodName">The method name to check.</param>
@@ -224,6 +243,54 @@ public static class AnalysisExtensions
             // Bulk operation materializers
             "ExecuteDelete" or "ExecuteDeleteAsync" or
             "ExecuteUpdate" or "ExecuteUpdateAsync";
+    }
+
+    /// <summary>
+    /// Determines whether an operation tree references the specified parameter symbol.
+    /// </summary>
+    /// <param name="operation">The operation to inspect.</param>
+    /// <param name="parameter">The parameter symbol to find.</param>
+    /// <returns><c>true</c> if the parameter is referenced anywhere within the operation tree; otherwise, <c>false</c>.</returns>
+    public static bool ReferencesParameter(this IOperation operation, IParameterSymbol parameter)
+    {
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped is IParameterReferenceOperation parameterReference &&
+            SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, parameter))
+        {
+            return true;
+        }
+
+        foreach (var child in operation.ChildOperations)
+        {
+            if (child.ReferencesParameter(parameter))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether an operation tree references the specified local symbol.
+    /// </summary>
+    /// <param name="operation">The operation to inspect.</param>
+    /// <param name="local">The local symbol to find.</param>
+    /// <returns><c>true</c> if the local is referenced anywhere within the operation tree; otherwise, <c>false</c>.</returns>
+    public static bool ReferencesLocal(this IOperation operation, ILocalSymbol local)
+    {
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped is ILocalReferenceOperation localReference &&
+            SymbolEqualityComparer.Default.Equals(localReference.Local, local))
+        {
+            return true;
+        }
+
+        foreach (var child in operation.ChildOperations)
+        {
+            if (child.ReferencesLocal(local))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

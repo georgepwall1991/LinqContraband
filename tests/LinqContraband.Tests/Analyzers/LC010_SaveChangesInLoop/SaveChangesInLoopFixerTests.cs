@@ -118,8 +118,8 @@ class Program
         int i = 0;
         while (i < 10)
         {
-            {|LC010:db.SaveChanges()|};
             i++;
+            {|LC010:db.SaveChanges()|};
         }
     }
 }" + MockNamespace;
@@ -140,6 +140,28 @@ class Program
 }" + MockNamespace;
 
         await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task SaveChanges_WithControlFlowInsideLoop_HasNoFix()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        foreach (var item in new List<int> { 1, 2, 3 })
+        {
+            if (item == 2)
+                break;
+
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
     }
 
     private static async Task VerifyFix(string test, string fixedCode)

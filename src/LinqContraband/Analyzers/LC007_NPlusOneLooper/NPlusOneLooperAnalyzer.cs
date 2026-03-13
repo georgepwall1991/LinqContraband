@@ -67,11 +67,12 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         // Case 1: DbSet.Find / FindAsync
         if (method.Name.StartsWith("Find", StringComparison.Ordinal) && method.ContainingType.IsDbSet()) return true;
 
-        // Case 2: Explicit loading entry points (might trigger lazy loading later or be used with .Load())
-        if (method.Name is "Reference" or "Collection")
+        // Case 2: Explicit loading operations on EF navigation entry objects
+        if (method.Name is "Load" or "LoadAsync")
         {
-            var ns = method.ContainingType?.ContainingNamespace?.ToString();
-            if (ns == "Microsoft.EntityFrameworkCore" || ns == "Microsoft.EntityFrameworkCore.ChangeTracking")
+            var explicitLoadReceiverType = invocation.GetInvocationReceiverType();
+            var ns = explicitLoadReceiverType?.ContainingNamespace?.ToString();
+            if (ns == "Microsoft.EntityFrameworkCore.ChangeTracking")
                 return true;
         }
 

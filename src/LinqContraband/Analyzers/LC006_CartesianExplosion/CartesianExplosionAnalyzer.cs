@@ -1,6 +1,9 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -52,77 +55,110 @@ public sealed class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        var methodName = method.Name;
-        if ((methodName != "Include" && methodName != "ThenInclude") ||
-            method.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
+        if (method.Name != "Include" || method.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
             return;
 
-        // We only flag top-level Include chaining. ThenInclude deep chains are considered valid.
-        if (methodName == "ThenInclude") return;
+        var semanticModel = context.Operation.SemanticModel;
+        if (semanticModel == null) return;
 
-        ITypeSymbol? propertyType = null;
-        if (method.TypeArguments.Length >= 2)
-            propertyType = method.TypeArguments[method.TypeArguments.Length - 1];
+        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax) return;
+        if (!TryGetIncludedNavigation(invocationSyntax, semanticModel, out var currentNavigation)) return;
 
-        // For string-based Include (no type args), we can't determine collection vs scalar; avoid flagging to prevent false positives.
-        if (propertyType == null) return;
+        var chain = AnalyzeIncludeChain(invocationSyntax, semanticModel);
+        if (HasSplitQueryDownstream(invocationSyntax, semanticModel)) return;
+        if (chain.HasSplitQuery) return;
 
-        if (!IsCollection(propertyType)) return;
+        if (chain.CollectionIncludes.Count > 1)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), currentNavigation));
+        }
+    }
 
-        // Now check the chain backwards. Handle extension method syntax.
-        var current = invocation.GetInvocationReceiver();
+    private static IncludeChainAnalysis AnalyzeIncludeChain(
+        InvocationExpressionSyntax invocationSyntax,
+        SemanticModel semanticModel)
+    {
+        var result = new IncludeChainAnalysis();
+        InvocationExpressionSyntax? current = invocationSyntax;
 
-        var foundSplitQuery = false;
-        var previousCollectionIncludes = 0;
+        while (current?.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
+            var symbol = semanticModel.GetSymbolInfo(current).Symbol as IMethodSymbol;
+            if (symbol?.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
+            {
+                current = memberAccess.Expression as InvocationExpressionSyntax;
+                continue;
+            }
 
+            var methodName = memberAccess.Name.Identifier.Text;
+            if (methodName == "AsSplitQuery")
+            {
+                result.HasSplitQuery = true;
+            }
+            else if (methodName == "Include" &&
+                     TryGetIncludedNavigation(current, semanticModel, out var navigation))
+            {
+                result.CollectionIncludes.Add(navigation);
+            }
+
+            current = memberAccess.Expression as InvocationExpressionSyntax;
+        }
+
+        result.CollectionIncludes.Reverse();
+        return result;
+    }
+
+    private static bool HasSplitQueryDownstream(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        var current = invocation.Parent;
         while (current != null)
         {
-            // Unwrap implicit conversions
-            while (current is IConversionOperation conversion) current = conversion.Operand;
-
-            if (current is IInvocationOperation prevInvocation)
+            if (current is InvocationExpressionSyntax parentInvocation &&
+                parentInvocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name.Identifier.Text == "AsSplitQuery" &&
+                semanticModel.GetSymbolInfo(parentInvocation).Symbol is IMethodSymbol method &&
+                method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
             {
-                var prevMethod = prevInvocation.TargetMethod;
-
-                if (prevMethod.Name == "AsSplitQuery" &&
-                    prevMethod.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                {
-                    foundSplitQuery = true;
-                    break;
-                }
-
-                if (prevMethod.Name == "Include" &&
-                    prevMethod.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-                {
-                    // Check if this previous include was ALSO a collection
-                    ITypeSymbol? prevPropType = null;
-                    if (prevMethod.TypeArguments.Length >= 2)
-                        prevPropType = prevMethod.TypeArguments[prevMethod.TypeArguments.Length - 1];
-
-                    // Only count as collection include if we can verify it's a collection type
-                    // When prevPropType is null (string-based Include), we can't determine, so skip counting
-                    if (prevPropType != null && IsCollection(prevPropType)) previousCollectionIncludes++;
-                }
-
-                // Move up the chain
-                current = prevInvocation.GetInvocationReceiver(false);
+                return true;
             }
-            else
-            {
-                // End of chain (variable or other source)
-                break;
-            }
+
+            current = current.Parent;
         }
 
-        if (foundSplitQuery) return;
+        return false;
+    }
 
-        if (previousCollectionIncludes > 0)
+    private static bool TryGetIncludedNavigation(
+        InvocationExpressionSyntax invocationSyntax,
+        SemanticModel semanticModel,
+        out string navigationName)
+    {
+        navigationName = string.Empty;
+        if (invocationSyntax.ArgumentList.Arguments.Count == 0)
         {
-            // This is the 2nd (or later) collection include. Flag it.
-            var display = propertyType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "string";
-            context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), display));
+            return false;
         }
+
+        var lambdaExpression = invocationSyntax.ArgumentList.Arguments.Last().Expression;
+        var lambdaBody = lambdaExpression switch
+        {
+            SimpleLambdaExpressionSyntax simpleLambda => simpleLambda.Body,
+            ParenthesizedLambdaExpressionSyntax parenthesizedLambda => parenthesizedLambda.Body,
+            _ => null
+        };
+
+        if (lambdaBody is MemberAccessExpressionSyntax memberAccess)
+        {
+            var propertySymbol = semanticModel.GetSymbolInfo(memberAccess).Symbol as IPropertySymbol;
+            var propertyType = propertySymbol?.Type ?? semanticModel.GetTypeInfo(memberAccess).Type;
+            if (propertyType == null || !IsCollection(propertyType)) return false;
+
+            navigationName = memberAccess.Name.Identifier.Text;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsCollection(ITypeSymbol type)
@@ -154,5 +190,12 @@ public sealed class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private sealed class IncludeChainAnalysis
+    {
+        public bool HasSplitQuery { get; set; }
+
+        public List<string> CollectionIncludes { get; } = new();
     }
 }

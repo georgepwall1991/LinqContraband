@@ -53,6 +53,7 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsSplitQuery<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsSingleQuery<T>(this IQueryable<T> source) => source;
     }
 }
 
@@ -95,7 +96,7 @@ class Program
     void Main()
     {
         var db = new DbContext();
-        var query = db.Users.Include(u => u.Orders).AsSplitQuery().Include(u => u.Roles).ToList();
+        var query = db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
     }
 }
 " + MockNamespace;
@@ -109,7 +110,45 @@ class Program
         // The diagnostic is on the second Include. Line 14 in this file structure.
         testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
             .WithSpan(14, 21, 14, 74)
-            .WithArguments("List<Role>"));
+            .WithArguments("Roles"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_WithWhereClause_InjectsAsSplitQueryBeforeFirstInclude()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => u.Id > 0).Include(u => u.Orders).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => u.Id > 0).AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
+            .WithSpan(14, 21, 14, 95)
+            .WithArguments("Roles"));
 
         await testObj.RunAsync();
     }

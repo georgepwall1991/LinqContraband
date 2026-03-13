@@ -49,6 +49,7 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         // Find the variable that stores the result
         var variableDeclarator = invocation.FirstAncestorOrSelf<VariableDeclaratorSyntax>();
         if (variableDeclarator == null) return;
+        if (variableDeclarator.Parent is not VariableDeclarationSyntax declaration || !declaration.Type.IsVar) return;
 
         var variableSymbol = semanticModel.GetDeclaredSymbol(variableDeclarator, context.CancellationToken) as ILocalSymbol;
         if (variableSymbol == null) return;

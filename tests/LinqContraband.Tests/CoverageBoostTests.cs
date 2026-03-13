@@ -86,7 +86,7 @@ class Program {
         // Corrected line: 59
         var expected = VerifyCS_LC006.Diagnostic("LC006")
             .WithSpan(59, 21, 59, 77)
-            .WithArguments("string[]"); // Int32[] or string[]? The second one is string[]. "Tags".
+            .WithArguments("Tags");
 
         await VerifyCS_LC006.VerifyAnalyzerAsync(test, expected);
     }
