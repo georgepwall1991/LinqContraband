@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-03-13
+
+### Changed
+- `LC015` now reports a single primary unordered-pagination diagnostic per fluent chain instead of stacking duplicate warnings on both `Skip(...)` and `Take(...)`
+- `LC015` now prefers the more specific misplaced-ordering diagnostic when the chain already contains `Skip(...).OrderBy(...)` or `Take(...).OrderBy(...)`
+- `LC017` now offers only the safe anonymous-type projection fixer; the compile-breaking direct projection action has been removed
+- `LC030` now targets likely long-lived service shapes such as hosted services and conventional middleware patterns instead of treating every stored `DbContext` as suspicious
+- Updated `LC030` docs and README guidance to frame the diagnostic as an advisory lifetime review for long-lived types
+
+### Fixed
+- Reduced `LC015` false-positive noise in pagination chains that previously produced redundant diagnostics for the same query
+- Added `LC030` guardrails so generic service classes and scoped `IMiddleware` implementations are no longer flagged by default
+- Hardened `LC030` review coverage with positive tests for hosted services and conventional middleware plus negative tests for obvious scoped or generic cases
+- Removed the last `LC017` fixer path that intentionally produced uncompilable code and deleted the corresponding permissive test coverage
+- Expanded targeted analyzer/fixer tests so the tightened heuristics are covered by both should-report and should-not-report scenarios
+
 ## [4.1.0] - 2026-03-13
 
 ### Changed
