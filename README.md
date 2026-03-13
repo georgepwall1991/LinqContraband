@@ -509,10 +509,12 @@ var user = db.Users.Where(u => u.Name == "john").FirstOrDefault();
 
 ---
 
-### LC015: Missing OrderBy Before Skip/Last
+### LC015: Deterministic Pagination Requires OrderBy
 
 Pagination (`Skip`/`Take`) and fetching the `Last` item rely on a specific sort order. If the query is unordered, the
 database can return results in any random order, making pagination unpredictable and `Last()` results non-deterministic.
+When a single query chain contains both `Skip(...)` and `Take(...)`, LinqContraband reports one primary warning for the
+unordered chain instead of duplicating the same root-cause message on both calls.
 
 **👶 Explain it like I'm a ten year old:** Imagine a teacher asks you to "Skip the first 5 students and pick the next
 one." If the students are standing in a line, you know who to pick. But if they are running around the playground
@@ -597,14 +599,20 @@ foreach (var p in products)
 ```
 
 **✅ The Fix:**
-Use `.Select()` to project only what you need.
+Use `.Select()` to project only what you need. The built-in fixer takes the safe route and inserts an anonymous-type
+projection so existing downstream property access still compiles.
 
 ```csharp
-// Projects only the Name column
-var names = db.Products
+// Safe fixer output: projects only the needed property but preserves p.Name usage
+var products = db.Products
     .Where(p => p.Price > 100)
-    .Select(p => p.Name)
+    .Select(p => new { p.Name })
     .ToList();
+
+foreach (var p in products)
+{
+    Console.WriteLine(p.Name);
+}
 ```
 
 ---
@@ -955,11 +963,13 @@ var users = db.Users.ToList();
 
 ---
 
-### LC030: DbContext in Singleton
+### LC030: DbContext Lifetime Review
 
 Holding a `DbContext` as a field or property is a lifetime smell. It may be fine for scoped types, but it is risky in
 long-lived services because `DbContext` is not thread-safe and is designed to be short-lived. Review the lifetime
-before keeping it around, and prefer `IDbContextFactory<T>` for long-lived services.
+before keeping it around, and prefer `IDbContextFactory<T>` for long-lived services. The rule is intentionally
+advisory: it looks for likely long-lived shapes such as hosted services or conventional middleware and stays quiet on
+obviously scoped request types.
 
 **👶 Explain it like I'm a ten year old:** Imagine you have one paintbrush (DbContext) that everyone in the class has
 to share at the same time. Paint gets mixed up, bristles break, and everyone makes a mess! Instead, give each person
