@@ -65,22 +65,9 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         context.RegisterCodeFix(
             CodeAction.Create(
                 $"Add .Select() with anonymous type ({accessedProperties.Count} properties)",
-                c => AddSelectProjectionAsync(context.Document, invocation, accessedProperties, useAnonymousType: true, c),
+                c => AddSelectProjectionAsync(context.Document, invocation, accessedProperties, c),
                 nameof(WholeEntityProjectionFixer) + "_AnonymousType"),
             diagnostic);
-
-        // For single property, also offer the cleaner direct projection
-        // (requires manual update of downstream code)
-        if (accessedProperties.Count == 1)
-        {
-            var propertyName = accessedProperties.First();
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    $"Add .Select(e => e.{propertyName}) - requires updating loop variable",
-                    c => AddSelectProjectionAsync(context.Document, invocation, accessedProperties, useAnonymousType: false, c),
-                    nameof(WholeEntityProjectionFixer) + "_DirectProjection"),
-                diagnostic);
-        }
     }
 
     private static ITypeSymbol? GetEntityType(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
@@ -127,7 +114,7 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         }
 
         // Try getting from the invocation's type argument
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccessExpr)
+        if (invocation.Expression is MemberAccessExpressionSyntax)
         {
             var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
             if (methodSymbol?.ReturnType is INamedTypeSymbol returnType && returnType.TypeArguments.Length > 0)
@@ -218,7 +205,6 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         Document document,
         InvocationExpressionSyntax invocation,
         HashSet<string> properties,
-        bool useAnonymousType,
         CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
@@ -228,30 +214,14 @@ public class WholeEntityProjectionFixer : CodeFixProvider
         var sourceExpression = memberAccess.Expression;
         var paramName = "e";
 
-        ExpressionSyntax lambdaBody;
+        // Anonymous type projection preserves downstream property access syntax.
+        var propertyAssignments = properties
+            .OrderBy(p => p)
+            .Select(p => CreateAnonymousObjectMemberDeclarator(paramName, p))
+            .ToArray();
 
-        if (!useAnonymousType && properties.Count == 1)
-        {
-            // Direct projection: .Select(e => e.PropertyName)
-            // Cleaner but requires updating downstream code
-            var propertyName = properties.First();
-            lambdaBody = SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                SyntaxFactory.IdentifierName(paramName),
-                SyntaxFactory.IdentifierName(propertyName));
-        }
-        else
-        {
-            // Anonymous type projection: .Select(e => new { e.Prop1, e.Prop2 })
-            // Preserves property access syntax in downstream code
-            var propertyAssignments = properties
-                .OrderBy(p => p) // Consistent ordering
-                .Select(p => CreateAnonymousObjectMemberDeclarator(paramName, p))
-                .ToArray();
-
-            lambdaBody = SyntaxFactory.AnonymousObjectCreationExpression(
-                SyntaxFactory.SeparatedList(propertyAssignments));
-        }
+        ExpressionSyntax lambdaBody = SyntaxFactory.AnonymousObjectCreationExpression(
+            SyntaxFactory.SeparatedList(propertyAssignments));
 
         var lambda = SyntaxFactory.SimpleLambdaExpression(
             SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName)),

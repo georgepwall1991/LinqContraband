@@ -968,10 +968,10 @@ their own paintbrush from a box (IDbContextFactory) when they need one, and put 
 **❌ The Crime:**
 
 ```csharp
-public class MyService
+public sealed class Worker : BackgroundService
 {
-    private readonly AppDbContext _db; // Bad: DbContext held as field
-    public MyService(AppDbContext db) => _db = db;
+    private readonly AppDbContext _db; // Review: long-lived hosted services should not hold DbContext directly
+    public Worker(AppDbContext db) => _db = db;
 }
 ```
 

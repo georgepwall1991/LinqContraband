@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -63,19 +62,20 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         // Skip DbContext itself
         if (type.IsDbContext()) return;
 
-        // Skip known Scoped types
-        if (IsKnownScopedType(type)) return;
+        // Skip known scoped or per-request types
+        if (IsKnownScopedType(type, context.Compilation)) return;
+
+        if (!IsLikelyLongLivedType(type, context.Compilation)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, location, type.Name, memberName));
     }
 
-    private bool IsKnownScopedType(INamedTypeSymbol type)
+    private bool IsKnownScopedType(INamedTypeSymbol type, Compilation compilation)
     {
         var current = type;
         while (current != null)
         {
             var name = current.Name;
-            var ns = current.ContainingNamespace?.ToString();
 
             // ASP.NET Core Controllers
             if (name.EndsWith("Controller", System.StringComparison.Ordinal) ||
@@ -83,8 +83,93 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
                 name.EndsWith("PageModel", System.StringComparison.Ordinal))
                 return true;
 
-            // Middleware usually takes DB in Invoke, but if it has a field, it's actually a SINGLETON risk!
-            // So we DON'T skip Middleware fields.
+            current = current.BaseType;
+        }
+
+        var middlewareType = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IMiddleware");
+        if (middlewareType != null && ImplementsInterface(type, middlewareType))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsLikelyLongLivedType(INamedTypeSymbol type, Compilation compilation)
+    {
+        var hostedServiceType = compilation.GetTypeByMetadataName("Microsoft.Extensions.Hosting.IHostedService");
+        if (hostedServiceType != null && ImplementsInterface(type, hostedServiceType))
+        {
+            return true;
+        }
+
+        var backgroundServiceType = compilation.GetTypeByMetadataName("Microsoft.Extensions.Hosting.BackgroundService");
+        if (backgroundServiceType != null && InheritsFrom(type, backgroundServiceType))
+        {
+            return true;
+        }
+
+        return HasConventionalMiddlewareSignature(type, compilation);
+    }
+
+    private bool HasConventionalMiddlewareSignature(INamedTypeSymbol type, Compilation compilation)
+    {
+        var httpContextType = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.HttpContext");
+        if (httpContextType == null)
+        {
+            return false;
+        }
+
+        foreach (var member in type.GetMembers())
+        {
+            if (member is not IMethodSymbol method)
+            {
+                continue;
+            }
+
+            if (method.Name is not ("Invoke" or "InvokeAsync"))
+            {
+                continue;
+            }
+
+            if (method.IsStatic || method.Parameters.Length == 0)
+            {
+                continue;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, httpContextType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ImplementsInterface(INamedTypeSymbol type, INamedTypeSymbol interfaceType)
+    {
+        foreach (var implementedInterface in type.AllInterfaces)
+        {
+            if (SymbolEqualityComparer.Default.Equals(implementedInterface.OriginalDefinition, interfaceType) ||
+                SymbolEqualityComparer.Default.Equals(implementedInterface, interfaceType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool InheritsFrom(INamedTypeSymbol type, INamedTypeSymbol baseType)
+    {
+        var current = type;
+        while (current != null)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, baseType) ||
+                SymbolEqualityComparer.Default.Equals(current, baseType))
+            {
+                return true;
+            }
 
             current = current.BaseType;
         }
