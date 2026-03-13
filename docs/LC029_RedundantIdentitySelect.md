@@ -24,7 +24,7 @@ var users = db.Users.ToList();
 
 ### ID: `LC029`
 ### Category: `Performance`
-### Severity: `Info` (I'll use `Warning` for consistency with project style, or `Info` if it's very minor. Let's stick to `Warning` as it's "contraband").
+### Severity: `Info`
 
 ### Algorithm
 1.  **Target Method**: Intercept invocations of `Select`.

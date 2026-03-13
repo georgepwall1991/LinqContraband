@@ -3,6 +3,7 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -49,7 +50,7 @@ public class CartesianExplosionFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        EnsureUsing(editor, "Microsoft.EntityFrameworkCore");
+        editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
         // Target: .Include(Roles)
         // We want to insert .AsSplitQuery() before this call.
@@ -82,18 +83,5 @@ public class CartesianExplosionFixer : CodeFixProvider
             return ma.Name.Identifier.Text == methodName;
 
         return false;
-    }
-
-    private static void EnsureUsing(DocumentEditor editor, string namespaceName)
-    {
-        var root = editor.OriginalRoot as CompilationUnitSyntax;
-        if (root == null) return;
-        if (root.Usings.Any(u =>
-                u.Name?.ToString() == namespaceName ||
-                (u.Alias != null && u.Name?.ToString() == namespaceName)))
-            return;
-
-        var newRoot = root.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName)));
-        editor.ReplaceNode(root, newRoot);
     }
 }

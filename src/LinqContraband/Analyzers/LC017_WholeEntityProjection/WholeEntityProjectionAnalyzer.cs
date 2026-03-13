@@ -41,7 +41,7 @@ public sealed class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
         Title,
         MessageFormat,
         Category,
-        DiagnosticSeverity.Warning,
+        DiagnosticSeverity.Info,
         true,
         Description);
 

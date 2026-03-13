@@ -42,7 +42,7 @@ public class MissingCancellationTokenFixer : CodeFixProvider
         var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
         if (semanticModel == null) return;
 
-        var cancellationTokenName = FindCancellationTokenInScope(semanticModel, invocation.SpanStart);
+        var cancellationTokenName = MissingCancellationTokenAnalyzer.FindCancellationTokenInScope(semanticModel, invocation.SpanStart);
 
         if (cancellationTokenName != null)
         {
@@ -53,25 +53,6 @@ public class MissingCancellationTokenFixer : CodeFixProvider
                     "PassCancellationToken"),
                 diagnostic);
         }
-    }
-
-    private string? FindCancellationTokenInScope(SemanticModel semanticModel, int position)
-    {
-        var symbols = semanticModel.LookupSymbols(position);
-
-        // Prioritize parameters/locals named 'cancellationToken' or 'ct'
-        var tokenSymbols = symbols.Where(s =>
-            (s is ILocalSymbol l && l.Type.Name == "CancellationToken") ||
-            (s is IParameterSymbol p && p.Type.Name == "CancellationToken")
-        ).ToList();
-
-        if (!tokenSymbols.Any()) return null;
-
-        var preferred = tokenSymbols.FirstOrDefault(s => s.Name == "cancellationToken") ??
-                        tokenSymbols.FirstOrDefault(s => s.Name == "ct") ??
-                        tokenSymbols.First();
-
-        return preferred.Name;
     }
 
     private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, string tokenName, CancellationToken cancellationToken)

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-03-13
+
+### Changed
+- Rebalanced advisory diagnostics `LC009`, `LC017`, `LC023`, `LC026`, `LC029`, and `LC030` to `Info` severity by default
+- Updated README and rule docs to distinguish advisory hints from higher-confidence warnings
+- `LC030` messaging now frames stored `DbContext` members as a lifetime review hint rather than a proven singleton bug
+
+### Fixed
+- `LC009` now suppresses diagnostics for ambiguous externally supplied query sources and avoids aggregate-only materialization noise
+- `LC023` is limited to direct `DbSet` primary-key lookups with safer fixer registration for supported invocation shapes only
+- `LC026` now reports only when a usable `CancellationToken` is actually in scope and only offers a fix in those cases
+- Disabled the `LC030` architecture-changing fixer for heuristic lifetime diagnostics
+- Standardized `using` insertion across several fixers to avoid root-replacement edits clobbering queued syntax changes
+
 ## [4.0.0] - 2026-02-05
 
 ### Added

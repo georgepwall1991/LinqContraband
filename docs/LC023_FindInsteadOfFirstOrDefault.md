@@ -24,15 +24,13 @@ var user = db.Users.Find(userId);
 
 ### ID: `LC023`
 ### Category: `Performance`
-### Severity: `Info` (or `Warning`?) - I'll go with `Performance` warning.
+### Severity: `Info`
 
 ### Algorithm
 1.  **Target Methods**: Intercept invocations of:
     -   `FirstOrDefault`, `FirstOrDefaultAsync`
     -   `SingleOrDefault`, `SingleOrDefaultAsync`
-    -   `First`, `FirstAsync`
-    -   `Single`, `SingleAsync`
-2.  **Receiver Check**: Ensure it's called on a `DbSet` or an `IQueryable` that is directly from a `DbSet`.
+2.  **Receiver Check**: Ensure it's called directly on a `DbSet`.
 3.  **Predicate Analysis**: 
     -   Check if the method has a lambda predicate.
     -   Analyze the predicate to see if it's a simple equality check: `x => x.PrimaryKey == someValue`.
@@ -46,7 +44,7 @@ var user = db.Users.Find(userId);
 ### Violations
 ```csharp
 db.Users.FirstOrDefault(x => x.Id == 1);
-db.Users.SingleAsync(x => x.Id == id);
+db.Users.SingleOrDefaultAsync(x => x.Id == id);
 ```
 
 ### Valid

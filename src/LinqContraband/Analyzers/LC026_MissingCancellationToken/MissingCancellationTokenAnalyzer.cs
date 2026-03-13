@@ -24,7 +24,7 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         "Always pass a CancellationToken to EF Core async operations to prevent resource waste when requests are cancelled.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC026_MissingCancellationToken.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC026_MissingCancellationToken.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
@@ -55,10 +55,36 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         // Find if an argument is passed for this parameter
         var ctArgument = invocation.Arguments.FirstOrDefault(a => SymbolEqualityComparer.Default.Equals(a.Parameter, ctParameter));
 
+        var semanticModel = context.Operation.SemanticModel;
+        if (semanticModel == null)
+            return;
+
+        if (FindCancellationTokenInScope(semanticModel, invocation.Syntax.SpanStart) == null)
+            return;
+
         if (ctArgument == null || ctArgument.IsImplicit || IsUsingDefault(ctArgument.Value))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
+    }
+
+    internal static string? FindCancellationTokenInScope(SemanticModel semanticModel, int position)
+    {
+        var symbols = semanticModel.LookupSymbols(position);
+
+        var tokenSymbols = symbols.Where(s =>
+            (s is ILocalSymbol l && IsCancellationTokenType(l.Type)) ||
+            (s is IParameterSymbol p && IsCancellationTokenType(p.Type)))
+            .ToList();
+
+        if (tokenSymbols.Count == 0)
+            return null;
+
+        var preferred = tokenSymbols.FirstOrDefault(s => s.Name == "cancellationToken") ??
+                        tokenSymbols.FirstOrDefault(s => s.Name == "ct") ??
+                        tokenSymbols.First();
+
+        return preferred.Name;
     }
 
     private bool IsEfCoreMethod(IMethodSymbol method)
@@ -66,6 +92,12 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         var ns = method.ContainingNamespace?.ToString();
         return ns != null && (ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) ||
                              ns.StartsWith("System.Data.Entity", System.StringComparison.Ordinal));
+    }
+
+    private static bool IsCancellationTokenType(ITypeSymbol type)
+    {
+        return type.Name == "CancellationToken" &&
+               type.ContainingNamespace?.ToString() == "System.Threading";
     }
 
     private bool IsUsingDefault(IOperation operation)

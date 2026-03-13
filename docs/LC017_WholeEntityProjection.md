@@ -3,7 +3,7 @@
 ## Overview
 
 **Diagnostic ID**: LC017
-**Severity**: Warning
+**Severity**: Info
 **Category**: Performance
 
 ## What It Detects

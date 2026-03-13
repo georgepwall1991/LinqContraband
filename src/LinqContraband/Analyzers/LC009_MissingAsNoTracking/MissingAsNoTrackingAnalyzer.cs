@@ -33,7 +33,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         Title,
         MessageFormat,
         Category,
-        DiagnosticSeverity.Warning,
+        DiagnosticSeverity.Info,
         true,
         Description);
 
@@ -52,7 +52,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         var method = invocation.TargetMethod;
 
         // 1. Must be a materializer (ToList, etc.) (Find/FindAsync ignored because tracking mods are ignored there)
-        if (!IsMaterializer(method)) return;
+        if (!IsEntityMaterializer(method)) return;
 
         // NEW: Heuristic - if the containing method returns IQueryable, it's likely a repository helper
         // where we want to let the CALLER decide on tracking.
@@ -65,6 +65,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         // 2. Analyze the query chain
         var analysis = AnalyzeQueryChain(invocation);
         if (!analysis.IsEfQuery) return;
+        if (analysis.IsAmbiguousSource) return;
         if (analysis.HasAsNoTracking || analysis.HasAsTracking) return;
         if (analysis.HasSelect) return; // Projections don't track
 
@@ -78,13 +79,20 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
     }
 
-    private static bool IsMaterializer(IMethodSymbol method)
+    private static bool IsEntityMaterializer(IMethodSymbol method)
     {
-        // Find/FindAsync have no effect with AsNoTracking, so skip them
-        if (method.Name.StartsWith("Find", StringComparison.Ordinal)) return false;
-
-        // Use shared extension method for materializer check
-        return method.Name.IsMaterializerMethod();
+        return method.Name is
+            "ToList" or "ToListAsync" or
+            "ToArray" or "ToArrayAsync" or
+            "ToDictionary" or "ToDictionaryAsync" or
+            "ToHashSet" or "ToHashSetAsync" or
+            "AsEnumerable" or
+            "First" or "FirstOrDefault" or
+            "FirstAsync" or "FirstOrDefaultAsync" or
+            "Single" or "SingleOrDefault" or
+            "SingleAsync" or "SingleOrDefaultAsync" or
+            "Last" or "LastOrDefault" or
+            "LastAsync" or "LastOrDefaultAsync";
     }
 
     private ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
@@ -125,28 +133,22 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             }
             else if (current is IParameterReferenceOperation paramRef)
             {
-                // Only flag DbSet parameters, not generic IQueryable<T> parameters.
-                // IQueryable<T> parameters are commonly used in repository patterns where
-                // the caller controls tracking behavior. We can't determine from inside
-                // this method whether the caller intends to use the result for writes.
-                // Flagging IQueryable params creates false positives in:
-                //   - Repository GetAll() returning IQueryable for flexible querying
-                //   - Methods that filter queries before passing to Add/Update contexts
-                // DbSet is a concrete EF type that we can confidently flag.
-                if (paramRef.Type.IsDbSet())
-                    result.IsEfQuery = true;
+                if (paramRef.Type.IsDbSet() || paramRef.Type.IsIQueryable())
+                    result.IsAmbiguousSource = true;
                 break;
             }
             else if (current is ILocalReferenceOperation localRef)
             {
-                // Local typed as DbSet/IQueryable counts as EF query source
                 if (localRef.Type.IsDbSet() || localRef.Type.IsIQueryable())
-                    result.IsEfQuery = true;
+                    result.IsAmbiguousSource = true;
                 break;
             }
             else
             {
-                if (current.Type.IsDbSet()) result.IsEfQuery = true;
+                if (current.Type.IsDbSet())
+                    result.IsEfQuery = true;
+                else if (current.Type.IsIQueryable())
+                    result.IsAmbiguousSource = true;
                 break;
             }
         }
@@ -212,6 +214,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
     private class ChainAnalysis
     {
         public bool IsEfQuery { get; set; }
+        public bool IsAmbiguousSource { get; set; }
         public bool HasAsNoTracking { get; set; }
         public bool HasAsTracking { get; set; }
         public bool HasSelect { get; set; }
