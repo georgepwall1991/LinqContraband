@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-03-13
+
+### Changed
+- `LC006` now evaluates `Include` chains from a single root query, respects `AsSplitQuery()` and explicit `AsSingleQuery()` overrides, and reports clearer navigation names in diagnostics
+- `LC006` fixer now inserts `AsSplitQuery()` at a stable root-query location instead of patching only the flagged include segment
+- `LC007` now distinguishes accessor-only explicit-loading APIs from real database work, so `Entry(...).Reference(...)` and `Entry(...).Collection(...)` alone are no longer treated as N+1 execution
+- `LC010` still reports `SaveChanges()` and `SaveChangesAsync()` inside loops, but the fixer now appears only when the loop structure makes hoisting the save safely semantics-preserving
+- `LC017` now uses cached body analysis instead of repeated whole-method scans and tracks downstream member usage more accurately, including conditional-access and indexer-driven access
+- `LC022` now requires collection materializers inside `Select` to actually derive from the projection parameter or a query-built subexpression before reporting
+
+### Fixed
+- `LC002` now catches premature materialization across local-variable hops and constructor-assigned materialized queries instead of only inline fluent chains
+- `LC002` local-variable resolution now avoids unsafe control-flow assumptions by refusing ambiguous multi-assignment cases
+- `LC006` include-chain analysis now validates EF extension methods semantically, reducing false positives from lookalike method names
+- `LC007` no longer flags pure query construction inside loops unless that chain definitely materializes or loads from the database
+- `LC017` fixer now stays disabled for compile-risky cases such as explicit entity collection types or usages that escape simple property reads
+- `LC022` fixer now stays disabled when removing the materializer would break object-initializer or DTO member type expectations
+- Expanded regression coverage for LC002, LC006, LC007, LC010, LC017, and LC022, including new should-report, should-not-report, and safe/no-fix scenarios
+
 ## [4.2.0] - 2026-03-13
 
 ### Changed
