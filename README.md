@@ -86,16 +86,25 @@ var query = db.Users.ToList().Where(u => u.Age > 18);
 // Same crime with other materializers: AsEnumerable, ToDictionary, etc.
 var query2 = db.Users.AsEnumerable().Where(u => u.Age > 18);
 var query3 = db.Users.ToDictionary(u => u.Id).Where(kvp => kvp.Value.Age > 18);
+
+// Redundant second materializer
+var query4 = db.Users.ToArray().ToList();
 ```
 
 **✅ The Fix:**
-Filter on the database, then materialize.
+Keep approved query work on the provider, then materialize once.
 
 ```csharp
 // SELECT * FROM Users WHERE Age > 18
 var query = db.Users.Where(u => u.Age > 18).ToList();
 var query2 = db.Users.Where(u => u.Age > 18).ToDictionary(u => u.Id);
+var query3 = db.Users.ToList();
 ```
+
+**🛡️ Reliability Notes:**
+- LC002 follows direct chains, single-assignment local hops, and collection constructors only when the `IQueryable` origin is provable.
+- It stays silent on ambiguous multi-assignment, field/property provenance, and overloads without a clear `IQueryable`-safe equivalent.
+- The fixer is intentionally conservative and skips risky cases such as local-hop rewrites or shape-changing materializers like `ToDictionary(...).Where(...)`.
 
 ---
 

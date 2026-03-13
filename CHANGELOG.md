@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] - 2026-03-13
+
+### Fixed
+- `LC002` now reports only approved post-materialization continuations with clear `IQueryable`-safe equivalents instead of broadly treating later `Enumerable` usage as suspicious
+- `LC002` follows single-assignment locals and collection constructors when the `IQueryable` origin is provable, and stays silent for ambiguous local, field, and property provenance
+- `LC002` redundant-materialization detection is now a first-class path with safe fixes only for analyzer-proven inline rewrites or direct redundant materializer pairs
+- `LC002` no longer treats `Distinct` as reorder-safe, avoiding result-shape changes between LINQ-to-Objects equality and provider-side distinct semantics
+- Expanded LC002 regression coverage for should-report, should-not-report, fix, no-fix, and fix-all scenarios, and aligned README/rule docs with the shipped contract
+
 ## [4.3.0] - 2026-03-13
 
 ### Changed
@@ -16,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LC022` now requires collection materializers inside `Select` to actually derive from the projection parameter or a query-built subexpression before reporting
 
 ### Fixed
-- `LC002` now catches premature materialization across local-variable hops and constructor-assigned materialized queries instead of only inline fluent chains
-- `LC002` local-variable resolution now avoids unsafe control-flow assumptions by refusing ambiguous multi-assignment cases
+- `LC002` now uses a stricter provenance model: it reports only approved post-materialization continuations with a clear `IQueryable`-safe equivalent, follows single-assignment locals and collection constructors, and stays silent on ambiguous multi-assignment or unsupported provenance shapes
+- `LC002` redundant-materialization reporting is now first-class, and the fixer only appears for analyzer-proven inline rewrites or direct redundant materializer pairs
 - `LC006` include-chain analysis now validates EF extension methods semantically, reducing false positives from lookalike method names
 - `LC007` no longer flags pure query construction inside loops unless that chain definitely materializes or loads from the database
 - `LC017` fixer now stays disabled for compile-risky cases such as explicit entity collection types or usages that escape simple property reads
