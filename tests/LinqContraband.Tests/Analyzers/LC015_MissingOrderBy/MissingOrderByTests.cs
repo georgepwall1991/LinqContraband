@@ -153,15 +153,11 @@ namespace TestApp
     }
 }" + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
-            .WithLocation(18, 35)
-            .WithArguments("Skip");
-
-        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
             .WithLocation(18, 44)
             .WithArguments("OrderBy");
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
@@ -184,15 +180,11 @@ namespace TestApp
     }
 }" + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
-            .WithLocation(18, 35)
-            .WithArguments("Take");
-
-        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
             .WithLocation(18, 43)
             .WithArguments("OrderBy");
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
@@ -229,10 +221,6 @@ namespace TestApp
             .WithLocation(28, 41)
             .WithArguments("Skip");
 
-        var expected2 = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
-            .WithLocation(28, 50)
-            .WithArguments("Take");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected, expected2);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 }

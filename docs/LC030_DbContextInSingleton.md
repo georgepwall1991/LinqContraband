@@ -1,7 +1,7 @@
 # Spec: LC030 - Review DbContext Lifetime Mismatches
 
 ## Goal
-Flag classes that store a `DbContext` in a field or property so the lifetime can be reviewed.
+Flag likely long-lived types that store a `DbContext` in a field or property so the lifetime can be reviewed.
 
 ## The Problem
 `DbContext` is NOT thread-safe and is designed to be short-lived (Scoped). Storing it on a long-lived service is risky and can lead to:
@@ -11,11 +11,11 @@ Flag classes that store a `DbContext` in a field or property so the lifetime can
 
 ### Example Violation
 ```csharp
-// Review needed: this may be fine for scoped types, risky for long-lived services
-public class MyService
+// Review needed: hosted services are long-lived by default
+public sealed class Worker : BackgroundService
 {
     private readonly AppDbContext _db;
-    public MyService(AppDbContext db) => _db = db;
+    public Worker(AppDbContext db) => _db = db;
 }
 ```
 
@@ -46,21 +46,24 @@ public class MyService
 
 ### Algorithm
 1.  **Target Classes**: Inspect classes that are NOT `DbContext` themselves.
-2.  **Lifetime Heuristic**: 
+2.  **Lifetime Heuristic**:
     -   This rule is intentionally heuristic. It does **not** prove singleton registration.
-    -   It skips obvious scoped MVC types such as controllers and page models.
+    -   Prefer symbol-based long-lived signals such as `IHostedService`, `BackgroundService`, or conventional middleware signatures.
+    -   Skip obvious scoped/per-request types such as controllers, page models, view components, and `IMiddleware` implementations.
     -   Treat the result as a review hint, not an automatic architecture rewrite.
 
 ## Test Cases
 
 ### Violations
 ```csharp
-public class MyManager { private readonly AppDbContext _db; ... }
+public sealed class Worker : BackgroundService { private readonly AppDbContext _db; ... }
+public sealed class AuditMiddleware { private readonly AppDbContext _db; public Task InvokeAsync(HttpContext ctx) => Task.CompletedTask; }
 ```
 
 ### Valid
 ```csharp
 public class MyController { public MyController(AppDbContext db) { ... } } // Controllers are scoped
+public sealed class ScopedAuditMiddleware : IMiddleware { public ScopedAuditMiddleware(AppDbContext db) { ... } } // IMiddleware can be scoped
 ```
 
 ## Implementation Plan
