@@ -1,5 +1,6 @@
 using System;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Extensions;
@@ -187,6 +188,43 @@ public static class AnalysisExtensions
     }
 
     /// <summary>
+    /// Finds the nearest enclosing loop operation.
+    /// </summary>
+    /// <param name="operation">The operation to inspect.</param>
+    /// <returns>The nearest enclosing loop, or null if none was found.</returns>
+    public static ILoopOperation? FindEnclosingLoop(this IOperation operation)
+    {
+        var current = operation.Parent;
+        while (current != null)
+        {
+            if (current is ILoopOperation loop)
+                return loop;
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns a stable, human-readable loop kind for diagnostics.
+    /// </summary>
+    /// <param name="loop">The loop to classify.</param>
+    /// <returns>A loop kind such as <c>for</c>, <c>foreach</c>, or <c>await foreach</c>.</returns>
+    public static string GetLoopKind(this ILoopOperation loop)
+    {
+        return loop.Syntax switch
+        {
+            ForEachStatementSyntax forEach when forEach.AwaitKeyword != default => "await foreach",
+            ForEachStatementSyntax => "foreach",
+            ForStatementSyntax => "for",
+            WhileStatementSyntax => "while",
+            DoStatementSyntax => "do",
+            _ => "loop"
+        };
+    }
+
+    /// <summary>
     /// Finds the nearest executable root that owns the operation, such as a method body, local function, or lambda.
     /// </summary>
     /// <param name="operation">The operation to inspect.</param>
@@ -203,6 +241,20 @@ public static class AnalysisExtensions
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Determines whether two operations belong to the same executable root.
+    /// </summary>
+    /// <param name="operation">The first operation.</param>
+    /// <param name="other">The second operation.</param>
+    /// <returns><c>true</c> if both operations are owned by the same method, local function, or lambda body.</returns>
+    public static bool SharesOwningExecutableRoot(this IOperation operation, IOperation other)
+    {
+        var left = operation.FindOwningExecutableRoot();
+        var right = other.FindOwningExecutableRoot();
+
+        return left != null && right != null && ReferenceEquals(left, right);
     }
 
     /// <summary>

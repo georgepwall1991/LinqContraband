@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -8,27 +7,28 @@ using Microsoft.CodeAnalysis.Operations;
 namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 
 /// <summary>
-/// Analyzes database query execution inside loops, causing N+1 query problems. Diagnostic ID: LC007
+/// Analyzes database execution inside loops, causing N+1 query problems. Diagnostic ID: LC007
 /// </summary>
 /// <remarks>
-/// <para><b>Why this matters:</b> Executing database queries inside a loop creates a separate database roundtrip for every
-/// loop iteration, resulting in N+1 total queries (1 query to get the collection + N queries inside the loop). Each database
-/// roundtrip adds network latency (typically 1-50ms), which multiplies catastrophically with large collections. For example,
-/// a loop over 1000 items with 10ms latency per query adds 10 seconds of pure waiting time. Always fetch required data in
-/// bulk outside the loop using techniques like Include(), joins, or dictionary lookups.</para>
+/// <para><b>Why this matters:</b> Executing database work once per loop iteration multiplies latency, load, and query cost.
+/// This includes direct lookups, explicit loading, query materialization, and EF set-based executors when they run inside
+/// a loop body. The rule intentionally prefers proof over guesswork: it reports only when EF-backed execution and
+/// per-iteration execution are both provable.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC007";
     private const string Category = "Performance";
-    private static readonly LocalizableString Title = "N+1 Problem: Database query inside loop";
+    private const string HelpLinkUri = "https://github.com/georgewall/LinqContraband/blob/main/docs/LC007_NPlusOneLooper.md";
+
+    private static readonly LocalizableString Title = "N+1 Problem: Database execution inside loop";
 
     private static readonly LocalizableString MessageFormat =
-        "Executing '{0}' inside a loop causes N+1 queries. Fetch data in bulk outside the loop.";
+        "Executing '{0}' inside a loop causes N+1 database operations. Fetch data in bulk or eager load before the loop.";
 
     private static readonly LocalizableString Description =
-        "Performing database queries inside a loop results in a database roundtrip for every iteration. This destroys performance via network latency.";
+        "Running EF Core database execution inside a loop causes one database operation per iteration. This includes Find/FindAsync, explicit loading, query materializers, aggregates, and EF set-based executors when the query source is provably EF-backed.";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
@@ -37,7 +37,8 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: HelpLinkUri);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
@@ -48,44 +49,24 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
-        var method = invocation.TargetMethod;
+        var match = NPlusOneLooperAnalysis.AnalyzeInvocation(invocation);
+        if (match == null)
+            return;
 
-        // 1. Check if this is a DB execution method
-        if (!IsDbExecutionMethod(method, invocation)) return;
+        var properties = ImmutableDictionary.CreateBuilder<string, string?>();
+        properties[NPlusOneLooperDiagnosticProperties.PatternKind] = match.PatternKind;
+        properties[NPlusOneLooperDiagnosticProperties.MethodName] = match.MethodName;
+        properties[NPlusOneLooperDiagnosticProperties.LoopKind] = match.LoopKind;
+        properties[NPlusOneLooperDiagnosticProperties.FixerEligible] = match.FixerEligible ? "true" : "false";
 
-        // 2. Check if inside a loop
-        if (IsInsideLoop(invocation))
-            context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
-    }
-
-    private static bool IsDbExecutionMethod(IMethodSymbol method, IInvocationOperation invocation)
-    {
-        // Case 1: DbSet.Find / FindAsync
-        if (method.Name.StartsWith("Find", StringComparison.Ordinal) && method.ContainingType.IsDbSet()) return true;
-
-        // Case 2: Explicit loading operations on EF navigation entry objects
-        if (method.Name is "Load" or "LoadAsync")
-        {
-            var explicitLoadReceiverType = invocation.GetInvocationReceiverType();
-            var ns = explicitLoadReceiverType?.ContainingNamespace?.ToString();
-            if (ns == "Microsoft.EntityFrameworkCore.ChangeTracking")
-                return true;
-        }
-
-        // Case 3: IQueryable materializers (ToList, Count, First, etc.)
-        if (!method.Name.IsMaterializerMethod()) return false;
-
-        var receiverType = invocation.GetInvocationReceiverType();
-
-        return receiverType?.IsIQueryable() == true;
-    }
-
-    private bool IsInsideLoop(IOperation operation)
-    {
-        return operation.IsInsideLoop() || operation.IsInsideAsyncForEach();
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Rule,
+                invocation.Syntax.GetLocation(),
+                properties.ToImmutable(),
+                match.MethodName));
     }
 }
