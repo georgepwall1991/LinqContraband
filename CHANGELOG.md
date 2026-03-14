@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2026-03-14
+
+### Added
+- `LC007` now has a conservative fixer for unconditional strongly-typed explicit-loading loops, rewriting `Reference(...).Load/LoadAsync` and `Collection(...).Load/LoadAsync` to eager loading with `Include(...)`
+
+### Changed
+- `LC007` now models loop-time database execution explicitly, classifying direct `Find`, explicit loading, navigation-query materialization, EF query materialization, and EF set-based executors
+- `LC007` now reports only when both the EF-backed origin and the per-iteration execution are provable, including `DbContext.Set<T>()`, navigation `Query()`, single-assignment local hops, and set-based executors such as `ExecuteDelete` and `ExecuteUpdate`
+- Updated the LC007 README and rule documentation to describe the execution-focused scope, intentional ignore cases, and the narrow fixer contract
+
+### Fixed
+- `LC007` no longer treats plain `IQueryable` shapes, `AsQueryable()`-backed LINQ-to-Objects queries, fields/properties/parameters with ambiguous provenance, or multi-assignment locals as definite N+1 database execution
+- `LC007` no longer flags loop-source materialization that happens once before iteration, such as the `ToList()` in `foreach (var item in query.ToList())`
+- Expanded LC007 regression coverage with should-report, should-not-report, fix, and no-fix scenarios across sync, async, navigation, and set-based execution paths
+
 ## [4.3.1] - 2026-03-13
 
 ### Fixed

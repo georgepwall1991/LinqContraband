@@ -224,7 +224,9 @@ var query = db.Users.Include(u => u.Orders).AsSplitQuery().Include(u => u.Roles)
 ### LC007: N+1 Looper
 
 Database queries have high fixed overhead (latency, connection pooling). Executing 100 queries takes ~100x longer than
-executing 1 query that fetches 100 items.
+executing 1 query that fetches 100 items. LC007 covers more than `Find(...)`: it catches explicit loading, query
+materialization, aggregates, and EF set-based executors when they run once per iteration on a provably EF-backed
+source.
 
 **👶 Explain it like I'm a ten year old:** Imagine you need 10 eggs. You drive to the store, buy *one* egg, drive home.
 Drive back, buy *one* egg, drive home. You do this 10 times. You spend all day driving instead of just buying the carton
@@ -239,19 +241,22 @@ foreach (var id in ids)
     var user = db.Users.Find(id);
 }
 
-// Also flags async streams that materialize inside the loop
-await foreach (var user in db.Users.AsAsyncEnumerable())
+// Explicit loading is the same trap in a different disguise.
+foreach (var user in db.Users.ToList())
 {
-    var count = db.Users.Count();
+    db.Entry(user).Collection(u => u.Orders).Load();
 }
 ```
 
 **✅ The Fix:**
-Fetch data in bulk outside the loop.
+Fetch data in bulk outside the loop. When the problem is explicit loading, eager load it.
 
 ```csharp
 // Executes 1 query for all IDs.
 var users = db.Users.Where(u => ids.Contains(u.Id)).ToList();
+
+// LC007 can auto-fix this shape to eager loading.
+var usersWithOrders = db.Users.Include(u => u.Orders).ToList();
 ```
 
 ---
