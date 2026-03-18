@@ -135,8 +135,9 @@ if (db.Users.Any()) { ... }
 
 ### LC004: Deferred Execution Leak
 
-Passing `IQueryable<T>` to a method that takes `IEnumerable<T>` forces implicit materialization if the method iterates
-it. This prevents you from composing the query further (e.g., adding `.Where()` or `.Take()`) inside that method.
+Passing `IQueryable<T>` to a method that takes `IEnumerable<T>` is only flagged when LinqContraband can prove that the
+callee actually forces in-memory execution by iterating, counting, or materializing that parameter. This prevents
+further provider-side composition and hides the real query cost.
 
 **👶 Explain it like I'm a ten year old:** Imagine you have a coupon for "Build Your Own Burger". You give it to the
 chef, but instead of letting you choose toppings, he immediately hands you a plain burger and says "Too late, I already
@@ -157,8 +158,8 @@ ProcessUsers(db.Users);
 
 **✅ The Fix:**
 
-Change the parameter to `IQueryable<T>` to allow composition, or explicitly call `.ToList()` if you *intend* to fetch
-everything.
+Change the parameter to `IQueryable<T>` to allow composition, or explicitly call `.ToList()` at the call site if you
+*intend* to fetch everything.
 
 ```csharp
 public void ProcessUsers(IQueryable<User> users)
