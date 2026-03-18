@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - 2026-03-18
+
+### Added
+- Added `LC033`, an advisory analyzer and fixer that upgrades provably read-only `private static readonly HashSet<T>` membership caches to `FrozenSet<T>` and `ToFrozenSet(...)` on supported target frameworks
+
+### Changed
+- `LC033` reports only when the cache initializer is fixer-safe and every source reference in the compilation is a direct `Contains(...)` use outside expression-tree contexts
+- Updated the README, rule documentation, and sample project to publish the new analyzer/fixer surface and raise the documented rule count from 32 to 33
+
+### Fixed
+- Hardened the `LC033` fixer to preserve semantic type binding under aliases and colliding imports by generating rewritten type syntax from Roslyn symbols instead of minimally qualified text
+- Hardened `LC033` initializer classification to reject static `Enumerable.ToHashSet(...)`-style receivers semantically rather than relying on syntax-string comparison
+- Expanded `LC033` regression coverage with should-report, should-not-report, fix, no-fix, Fix All, alias, and colliding-type-name scenarios
+
 ## [4.6.0] - 2026-03-18
 
 ### Added
