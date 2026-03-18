@@ -65,6 +65,9 @@ var minDob = DateTime.Now.AddYears(-18);
 var query = db.Users.Where(u => u.Dob <= minDob);
 ```
 
+Methods explicitly mapped for translation are exempt. LC001 will not report methods marked with
+`[DbFunction]` or `EntityFrameworkCore.Projectables`' `[Projectable]` attribute.
+
 ---
 
 ### LC002: Premature Materialization

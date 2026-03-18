@@ -6,6 +6,9 @@ Detect usage of local C# methods within LINQ to Entities queries that cannot be 
 ## The Problem
 Entity Framework Core attempts to translate LINQ expressions into SQL. When it encounters a method it does not recognize (like a custom local method), it often has to resort to "Client-Side Evaluation." This means it fetches ALL the data from the table into your application's memory and then filters it using C#. For large tables, this is a massive performance and memory leak.
 
+Methods explicitly marked as translatable are exempt. LC001 does not report methods annotated with
+`[Microsoft.EntityFrameworkCore.DbFunction]` or `[EntityFrameworkCore.Projectables.Projectable]`.
+
 ### Example Violation
 ```csharp
 // CalculateAge is a local method. EF Core cannot translate it to SQL.
@@ -30,4 +33,6 @@ var users = db.Users.Where(u => u.DateOfBirth <= minDob).ToList();
 ### Algorithm
 1.  **Target**: Invocations within a lambda expression.
 2.  **Context**: Ensure the lambda is an argument to an `IQueryable` method.
-3.  **Check**: If the method invoked is not a known framework method or a trusted database function (e.g., `EF.Functions`), flag it.
+3.  **Check**: Skip known framework methods, trusted provider methods, and methods explicitly marked with
+    `[DbFunction]` or `[Projectable]`.
+4.  **Report**: If none of those exemptions apply, flag the invocation.

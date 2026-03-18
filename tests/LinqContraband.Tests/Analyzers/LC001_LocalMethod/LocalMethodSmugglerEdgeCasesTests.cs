@@ -29,6 +29,33 @@ namespace TestNamespace
     }
 }";
 
+    private const string DbFunctionAttributeMock = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public class DbFunctionAttribute : System.Attribute
+    {
+    }
+}";
+
+    private const string ProjectableAttributeMock = @"
+namespace EntityFrameworkCore.Projectables
+{
+    [System.AttributeUsage(System.AttributeTargets.Method | System.AttributeTargets.Property | System.AttributeTargets.Constructor, Inherited = true, AllowMultiple = false)]
+    public sealed class ProjectableAttribute : System.Attribute
+    {
+    }
+}";
+
+    private const string FakeProjectableAttributeMock = @"
+namespace Fake.Projectables
+{
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public sealed class ProjectableAttribute : System.Attribute
+    {
+    }
+}";
+
     [Fact]
     public async Task TestCrime_NestedLambda_LocalMethodInInnerLambda_ShouldTriggerLC001()
     {
@@ -174,6 +201,122 @@ class Program
         var expected = VerifyCS.Diagnostic("LC001")
             .WithSpan(13, 42, 13, 60)
             .WithArguments("FormatName");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DbFunctionMethodInWhere_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => DatabaseFunctions.IsAdult(u.Age));
+    }
+}
+
+static class DatabaseFunctions
+{
+    [Microsoft.EntityFrameworkCore.DbFunction]
+    public static bool IsAdult(int age) => age >= 18;
+}
+" + DbFunctionAttributeMock + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ProjectableInstanceMethodInWhere_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => IsAdult(u.Age));
+    }
+
+    [EntityFrameworkCore.Projectables.Projectable]
+    bool IsAdult(int age) => age >= 18;
+}
+" + ProjectableAttributeMock + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ProjectableExtensionMethodInWhere_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => u.HasAdultAge());
+    }
+}
+
+static class UserProjectables
+{
+    [EntityFrameworkCore.Projectables.Projectable]
+    public static bool HasAdultAge(this User user) => user.Age >= 18;
+}
+" + ProjectableAttributeMock + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_StaticHelperMethodInWhereWithoutAttribute_ShouldTriggerLC001()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => DatabaseFunctions.IsAdult(u.Age));
+    }
+}
+
+static class DatabaseFunctions
+{
+    public static bool IsAdult(int age) => age >= 18;
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC001")
+            .WithSpan(13, 41, 13, 73)
+            .WithArguments("IsAdult");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_LookalikeProjectableAttribute_ShouldTriggerLC001()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => IsAdult(u.Age));
+    }
+
+    [Fake.Projectables.Projectable]
+    bool IsAdult(int age) => age >= 18;
+}
+" + FakeProjectableAttributeMock + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC001")
+            .WithSpan(13, 41, 13, 55)
+            .WithArguments("IsAdult");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
