@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **32 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **33 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ### LC001: The Local Method Smuggler
 
@@ -1086,6 +1086,41 @@ not offer an automatic fixer.
 
 ---
 
+### LC033: FrozenSet Membership Cache
+
+If a `private static readonly HashSet<T>` is initialized once and then used only for `Contains(...)`, you are paying
+for mutability you never use. On .NET 8+, `FrozenSet<T>` is a better fit for these membership caches.
+
+**👶 Explain it like I'm a ten year old:** Imagine you made a VIP guest list and then laminated it forever. You do not
+need an editable whiteboard anymore. A laminated list is faster to check and nobody can accidentally scribble on it.
+
+**❌ The Crime:**
+
+```csharp
+private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase)
+{
+    "admin",
+    "ops"
+};
+
+var elevated = roles.Where(role => ElevatedRoles.Contains(role)).ToList();
+```
+
+**✅ The Fix:**
+Convert the cache to `FrozenSet<T>` when the set is built once and only used for membership checks.
+
+```csharp
+private static readonly FrozenSet<string> ElevatedRoles = new string[] { "admin", "ops" }
+    .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+```
+
+**🛡️ Reliability Notes:**
+- LC033 only reports `private static readonly HashSet<T>` fields with inline initializers that can be rewritten safely.
+- It requires every source reference in the compilation to be a direct `Contains(...)` use and skips aliases, enumeration, mutation, and expression-tree usage.
+- The fixer is intentionally narrow and bails out if the field declaration no longer matches the analyzer-proven shape.
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:
@@ -1097,8 +1132,8 @@ dotnet_diagnostic.LC002.severity = error
 dotnet_diagnostic.LC003.severity = warning
 ```
 
-Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, `LC031`, and `LC032` default to
-`Info` so they surface as hints without drowning out higher-confidence warnings.
+Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, `LC031`, `LC032`, and `LC033`
+default to `Info` so they surface as hints without drowning out higher-confidence warnings.
 
 ## 🤝 Contributing
 

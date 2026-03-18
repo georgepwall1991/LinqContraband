@@ -22,6 +22,7 @@ using LinqContraband.Sample.Samples.LC026_MissingCancellationToken;
 using LinqContraband.Sample.Samples.LC029_RedundantIdentitySelect;
 using LinqContraband.Sample.Samples.LC030_DbContextInSingleton;
 using LinqContraband.Sample.Samples.LC032_ExecuteUpdateForBulkUpdates;
+using LinqContraband.Sample.Samples.LC033_UseFrozenSetForStaticMembershipCaches;
 
 namespace LinqContraband.Sample;
 
@@ -61,10 +62,11 @@ internal class Program
         FindInsteadOfFirstOrDefaultSample.Run(db);
         AsNoTrackingWithUpdateSample.Run(db);
 
-        // LC026 - LC032
+        // LC026 - LC033
         await MissingCancellationTokenSample.RunAsync(db, CancellationToken.None);
         RedundantIdentitySelectSample.Run(users);
         new DbContextInSingletonSample(db).Run();
         ExecuteUpdateForBulkUpdatesSample.Run();
+        UseFrozenSetForStaticMembershipCachesSample.Run();
     }
 }
