@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -46,68 +48,69 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
     private void AnalyzeReturn(OperationAnalysisContext context)
     {
         var returnOp = (IReturnOperation)context.Operation;
-        var returnedValue = returnOp.ReturnedValue;
+        var returnedValue = returnOp.ReturnedValue?.UnwrapConversions();
 
-        if (returnedValue == null) return;
+        if (returnedValue == null)
+            return;
 
-        // 1. Check if return type is deferred
-        if (!IsDeferredType(returnedValue.Type)) return;
+        var executableRoot = returnOp.FindOwningExecutableRoot();
+        if (!IsSupportedExecutableRoot(executableRoot))
+            return;
 
-        // 2. Recursively check the expression for disposed context usage
-        CheckExpression(returnedValue, context);
+        if (!IsDeferredType(returnedValue.Type))
+            return;
+
+        CheckExpression(returnedValue, executableRoot!, context);
     }
 
-    private void CheckExpression(IOperation? operation, OperationAnalysisContext context)
+    private void CheckExpression(IOperation? operation, IOperation executableRoot, OperationAnalysisContext context)
     {
-        if (operation == null) return;
+        if (operation == null)
+            return;
 
-        // Handle branching and unwrapping
+        operation = operation.UnwrapConversions();
+
         if (operation is IConditionalOperation conditional)
         {
-            CheckExpression(conditional.WhenTrue, context);
-            CheckExpression(conditional.WhenFalse, context);
+            CheckExpression(conditional.WhenTrue, executableRoot, context);
+            CheckExpression(conditional.WhenFalse, executableRoot, context);
             return;
         }
 
         if (operation is ICoalesceOperation coalesce)
         {
-            CheckExpression(coalesce.Value, context);
-            CheckExpression(coalesce.WhenNull, context);
+            CheckExpression(coalesce.Value, executableRoot, context);
+            CheckExpression(coalesce.WhenNull, executableRoot, context);
             return;
         }
 
         if (operation is ISwitchExpressionOperation switchExpr)
         {
-            foreach (var arm in switchExpr.Arms) CheckExpression(arm.Value, context);
+            foreach (var arm in switchExpr.Arms)
+                CheckExpression(arm.Value, executableRoot, context);
             return;
         }
 
-        if (operation is IConversionOperation conversion)
+        if (TryResolveDisposedContextOrigin(
+                operation,
+                executableRoot,
+                new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default),
+                out var dbContextLocal))
         {
-            CheckExpression(conversion.Operand, context);
-            return;
+            context.ReportDiagnostic(Diagnostic.Create(Rule, operation.Syntax.GetLocation(), dbContextLocal.Name));
         }
-
-        // 3. Find the root source of this specific expression chain
-        var root = GetRootOperation(operation);
-
-        // 4. Check if root is a local variable declared with 'using'
-        if (root is ILocalReferenceOperation localRef)
-            if (IsDisposedLocal(localRef.Local))
-                context.ReportDiagnostic(Diagnostic.Create(Rule, operation.Syntax.GetLocation(), localRef.Local.Name));
     }
 
     private bool IsDeferredType(ITypeSymbol? type)
     {
-        if (type == null) return false;
+        if (type == null)
+            return false;
 
-        return ImplementsInterface(type, "System.Linq.IQueryable`1") ||
-               ImplementsInterface(type, "System.Collections.Generic.IAsyncEnumerable`1") ||
-               ImplementsInterface(type, "System.Linq.IOrderedQueryable`1") ||
-               ImplementsInterface(type, "System.Linq.IQueryable");
+        return type.IsIQueryable() ||
+               ImplementsInterface(type, "System.Collections.Generic.IAsyncEnumerable`1");
     }
 
-    private bool ImplementsInterface(ITypeSymbol type, string interfaceMetadataName)
+    private static bool ImplementsInterface(ITypeSymbol type, string interfaceMetadataName)
     {
         if (GetFullMetadataName(type) == interfaceMetadataName)
             return true;
@@ -118,64 +121,237 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private string GetFullMetadataName(ITypeSymbol type)
+    private static string GetFullMetadataName(ITypeSymbol type)
     {
         return $"{type.ContainingNamespace}.{type.MetadataName}";
     }
 
-    private IOperation GetRootOperation(IOperation operation)
+    private static bool TryResolveDisposedContextOrigin(
+        IOperation operation,
+        IOperation executableRoot,
+        HashSet<ILocalSymbol> visitedLocals,
+        out ILocalSymbol dbContextLocal)
     {
-        var current = operation;
-        while (true)
+        operation = operation.UnwrapConversions();
+        dbContextLocal = null!;
+
+        switch (operation)
         {
-            if (current is IConversionOperation conv)
-            {
-                current = conv.Operand;
-                continue;
-            }
-
-            if (current is IInvocationOperation invoc)
-            {
-                // If extension method, first arg is 'this'.
-                if (invoc.TargetMethod.IsExtensionMethod && invoc.Arguments.Length > 0)
+            case ILocalReferenceOperation localReference:
+                if (IsDisposedDbContextLocal(localReference.Local, executableRoot))
                 {
-                    current = invoc.Arguments[0].Value;
-                    continue;
+                    dbContextLocal = localReference.Local;
+                    return true;
                 }
 
-                // If instance method, Instance is the target.
-                if (invoc.Instance != null)
-                {
-                    current = invoc.Instance;
-                    continue;
-                }
-            }
+                if (!visitedLocals.Add(localReference.Local))
+                    return false;
 
-            if (current is IMemberReferenceOperation member)
-                if (member.Instance != null)
+                if (!TryResolveAssignedDisposedContextOrigin(
+                        localReference.Local,
+                        localReference.Syntax.SpanStart,
+                        executableRoot,
+                        visitedLocals,
+                        out dbContextLocal))
                 {
-                    current = member.Instance;
-                    continue;
+                    return false;
                 }
 
-            // ArgumentOperation wrapping the value
-            if (current is IArgumentOperation arg)
-            {
-                current = arg.Value;
-                continue;
-            }
+                return true;
 
-            break;
+            case IInvocationOperation invocation when TryGetQueryChainReceiver(invocation, out var receiver):
+                return TryResolveDisposedContextOrigin(receiver, executableRoot, visitedLocals, out dbContextLocal);
+
+            case IMemberReferenceOperation memberReference when memberReference.Instance != null:
+                return TryResolveDisposedContextOrigin(memberReference.Instance, executableRoot, visitedLocals,
+                    out dbContextLocal);
+
+            case IArgumentOperation argument:
+                return TryResolveDisposedContextOrigin(argument.Value, executableRoot, visitedLocals, out dbContextLocal);
+
+            default:
+                return false;
         }
-
-        return current;
     }
 
-    private bool IsDisposedLocal(ILocalSymbol local)
+    private static bool TryResolveAssignedDisposedContextOrigin(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot,
+        HashSet<ILocalSymbol> visitedLocals,
+        out ILocalSymbol dbContextLocal)
     {
+        dbContextLocal = null!;
+
+        if (TryGetSingleAssignedValue(local, position, executableRoot, out var assignedValue))
+            return TryResolveDisposedContextOrigin(assignedValue, executableRoot, visitedLocals, out dbContextLocal);
+
+        return TryGetSharedAssignedDisposedContextOrigin(local, position, executableRoot, visitedLocals,
+            out dbContextLocal);
+    }
+
+    private static bool TryGetSharedAssignedDisposedContextOrigin(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot,
+        HashSet<ILocalSymbol> visitedLocals,
+        out ILocalSymbol dbContextLocal)
+    {
+        dbContextLocal = null!;
+        var assignments = GetAssignedValues(local, position, executableRoot);
+
+        if (assignments.Count <= 1)
+            return false;
+
+        foreach (var assignment in assignments)
+        {
+            if (!TryResolveDisposedContextOrigin(
+                    assignment,
+                    executableRoot,
+                    new HashSet<ILocalSymbol>(visitedLocals, SymbolEqualityComparer.Default),
+                    out var candidate))
+            {
+                return false;
+            }
+
+            if (dbContextLocal == null)
+            {
+                dbContextLocal = candidate;
+                continue;
+            }
+
+            if (!SymbolEqualityComparer.Default.Equals(dbContextLocal, candidate))
+                return false;
+        }
+
+        return dbContextLocal != null;
+    }
+
+    private static bool TryGetQueryChainReceiver(IInvocationOperation invocation, out IOperation receiver)
+    {
+        receiver = null!;
+
+        if (invocation.Instance != null)
+        {
+            receiver = invocation.Instance;
+            return true;
+        }
+
+        if (invocation.TargetMethod.IsExtensionMethod && invocation.Arguments.Length > 0)
+        {
+            receiver = invocation.Arguments[0].Value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSupportedExecutableRoot(IOperation? executableRoot)
+    {
+        return executableRoot is IMethodBodyOperation or ILocalFunctionOperation or IAnonymousFunctionOperation;
+    }
+
+    private static bool TryGetSingleAssignedValue(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot,
+        out IOperation value)
+    {
+        var assignments = GetAssignedValues(local, position, executableRoot);
+        value = null!;
+
+        if (assignments.Count != 1)
+            return false;
+
+        value = assignments[0];
+        return true;
+    }
+
+    private static List<IOperation> GetAssignedValues(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot)
+    {
+        var assignments = new List<(int Position, IOperation Value)>();
+
+        foreach (var operation in EnumerateOperations(executableRoot))
+        {
+            if (operation.Syntax.SpanStart >= position)
+                continue;
+
+            switch (operation)
+            {
+                case IVariableDeclaratorOperation declarator
+                    when SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
+                         declarator.Initializer != null:
+                    assignments.Add((declarator.Syntax.SpanStart, declarator.Initializer.Value.UnwrapConversions()));
+                    break;
+
+                case ISimpleAssignmentOperation assignment
+                    when IsLocalTarget(assignment.Target, local):
+                    assignments.Add((assignment.Syntax.SpanStart, assignment.Value.UnwrapConversions()));
+                    break;
+
+                case ICompoundAssignmentOperation compoundAssignment
+                    when IsLocalTarget(compoundAssignment.Target, local):
+                    return new List<IOperation>();
+
+                case IIncrementOrDecrementOperation incrementOrDecrement
+                    when IsLocalTarget(incrementOrDecrement.Target, local):
+                    return new List<IOperation>();
+            }
+        }
+
+        assignments.Sort(static (left, right) => left.Position.CompareTo(right.Position));
+        return assignments.ConvertAll(static assignment => assignment.Value);
+    }
+
+    private static bool IsLocalTarget(IOperation target, ILocalSymbol local)
+    {
+        return target.UnwrapConversions() is ILocalReferenceOperation localReference &&
+               SymbolEqualityComparer.Default.Equals(localReference.Local, local);
+    }
+
+    private static IEnumerable<IOperation> EnumerateOperations(IOperation executableRoot)
+    {
+        yield return executableRoot;
+
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (IsInsideNestedExecutable(operation, executableRoot))
+                continue;
+
+            yield return operation;
+        }
+    }
+
+    private static bool IsInsideNestedExecutable(IOperation operation, IOperation executableRoot)
+    {
+        var current = operation.Parent;
+        while (current != null && !ReferenceEquals(current, executableRoot))
+        {
+            if (current is ILocalFunctionOperation or IAnonymousFunctionOperation)
+                return true;
+
+            current = current.Parent;
+        }
+
+        return false;
+    }
+
+    private static bool IsDisposedDbContextLocal(ILocalSymbol local, IOperation executableRoot)
+    {
+        if (!local.Type.IsDbContext())
+            return false;
+
         foreach (var syntaxRef in local.DeclaringSyntaxReferences)
         {
             var syntax = syntaxRef.GetSyntax();
+            if (syntax.SyntaxTree != executableRoot.Syntax.SyntaxTree ||
+                !executableRoot.Syntax.Span.Contains(syntax.Span))
+            {
+                continue;
+            }
 
             if (syntax is VariableDeclaratorSyntax declarator)
             {

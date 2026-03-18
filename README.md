@@ -451,8 +451,9 @@ behavior of your application (by skipping interceptors and events). You must man
 
 ### LC013: Disposed Context Query
 
-EF Core queries are deferred, meaning they don't execute until you iterate them. If you build a query using a local
-`DbContext` that is disposed (via `using`) and return that query, it will explode when the caller tries to use it.
+EF Core `IQueryable` and `IAsyncEnumerable` queries are deferred, meaning they don't execute until you iterate them.
+If you build a query using a local `DbContext` that is disposed (via `using`) and return that query, it will explode
+when the caller tries to use it.
 
 **👶 Explain it like I'm a ten year old:** Imagine buying a ticket to a movie. But the ticket is only valid *inside* the
 ticket booth. As soon as you walk out to the theater (return the query), the ticket dissolves in your hand.
@@ -464,13 +465,12 @@ public IQueryable<User> GetUsers(bool adultsOnly)
 {
     using var db = new AppDbContext();
 
-    // The analyzer catches simple returns:
-    // return db.Users;
+    var query = db.Users;
 
-    // AND sneaky violations in conditional logic:
+    // The analyzer catches alias-based returns and conditional branches:
     return adultsOnly
-        ? db.Users.Where(u => u.Age >= 18)
-        : db.Users;
+        ? query.Where(u => u.Age >= 18)
+        : query;
 }
 ```
 
@@ -491,6 +491,9 @@ public List<User> GetUsers(bool adultsOnly)
     return query.ToList();
 }
 ```
+
+LC013 is analyzer-only. It does not offer an automatic code fix because the safe remediation depends on whether you
+should materialize, change the return contract, or change the context lifetime.
 
 ---
 
