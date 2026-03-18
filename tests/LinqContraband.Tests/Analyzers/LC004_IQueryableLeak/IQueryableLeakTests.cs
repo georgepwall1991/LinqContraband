@@ -16,14 +16,16 @@ using TestNamespace;
     private const string MockNamespace = @"
 namespace TestNamespace
 {
-    public class User { public int Id { get; set; } }
-    
-    // Mock EF Core classes
-    public class DbContext : IDisposable 
-    { 
-        public void Dispose() {}
+    public class User
+    {
+        public int Id { get; set; }
     }
-    
+
+    public class DbContext : IDisposable
+    {
+        public void Dispose() { }
+    }
+
     public class DbSet<T> : IQueryable<T>
     {
         public Type ElementType => typeof(T);
@@ -32,69 +34,174 @@ namespace TestNamespace
         public IEnumerator<T> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
-
-    namespace Microsoft.EntityFrameworkCore
-    {
-        // Just to allow 'using Microsoft.EntityFrameworkCore' if needed, 
-        // but we are using TestNamespace.DbContext
-    }
 }
 ";
 
     [Fact]
-    public async Task Leak_WhenPassingIQueryableToIEnumerableMethod_ShouldTrigger()
+    public async Task Leak_WhenForeachConsumesParameter_ShouldTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
 
-    public class Program
+    public sealed class Program
     {
         public void Main()
         {
             using var db = new AppDbContext();
             var query = db.Users.Where(u => u.Id > 10);
-            
-            // Trigger: passing IQueryable to IEnumerable parameter
+
             ProcessUsers({|LC004:query|});
         }
 
-        public void ProcessUsers(IEnumerable<User> users)
+        private static void ProcessUsers(IEnumerable<User> users)
         {
-            // This forces iteration or cannot be composed
-            foreach(var u in users) { }
+            foreach (var user in users)
+            {
+                Console.WriteLine(user.Id);
+            }
         }
     }
-}" + MockNamespace;
+}
+" + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task NoLeak_WhenPassingToList_ShouldNotTrigger()
+    public async Task Leak_WhenEnumerableTerminalConsumesParameter_ShouldTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
 
-    public class Program
+    public sealed class Program
+    {
+        public bool Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            return HasUsers({|LC004:query|});
+        }
+
+        private static bool HasUsers(IEnumerable<User> users)
+        {
+            return users.Where(u => u.Id > 50).Any();
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Leak_WhenExpressionBodiedMethodConsumesParameter_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public bool Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            return HasUsers({|LC004:query|});
+        }
+
+        private static bool HasUsers(IEnumerable<User> users) => users.Any();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Leak_WhenWrapperForwardsToHazardousMethod_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
     {
         public void Main()
         {
             using var db = new AppDbContext();
-            
-            // Safe: Explicit materialization
-            ProcessUsers(db.Users.Where(u => u.Id > 10).ToList());
+            var query = db.Users.Where(u => u.Id > 10);
+
+            Wrapper({|LC004:query|});
         }
 
-        public void ProcessUsers(IEnumerable<User> users)
+        private static void Wrapper(IEnumerable<User> users)
         {
-            foreach(var u in users) { }
+            Consume(users);
+        }
+
+        private static void Consume(IEnumerable<User> users)
+        {
+            foreach (var user in users)
+            {
+                Console.WriteLine(user.Id);
+            }
         }
     }
-}" + MockNamespace;
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenMethodDoesNotConsumeParameter_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public IEnumerable<User> Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            return Tap(query);
+        }
+
+        private static IEnumerable<User> Tap(IEnumerable<User> users)
+        {
+            Console.WriteLine(nameof(users));
+            return users;
+        }
+    }
+}
+" + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -103,27 +210,156 @@ namespace TestApp
     public async Task NoLeak_WhenPassingToIQueryableMethod_ShouldNotTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
 
-    public class Program
+    public sealed class Program
+    {
+        public IQueryable<User> Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            return ProcessUsersQuery(query);
+        }
+
+        private static IQueryable<User> ProcessUsersQuery(IQueryable<User> users)
+        {
+            return users.Where(u => u.Id > 20);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenPassingToFrameworkMethod_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public string Main()
+        {
+            using var db = new AppDbContext();
+
+            return string.Join("","", db.Users.Where(u => u.Id > 10).Select(u => u.Id));
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenMethodHasNoSourceBody_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public interface IUserProcessor
+    {
+        void Process(IEnumerable<User> users);
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main(IUserProcessor processor)
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            processor.Process(query);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenCallingDelegateInvoke_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
     {
         public void Main()
         {
             using var db = new AppDbContext();
             var query = db.Users.Where(u => u.Id > 10);
-            
-            // Safe: Target accepts IQueryable
-            ProcessUsersQuery(query);
-        }
+            Action<IEnumerable<User>> sink = users =>
+            {
+                foreach (var user in users)
+                {
+                    Console.WriteLine(user.Id);
+                }
+            };
 
-        public void ProcessUsersQuery(IQueryable<User> users)
-        {
-            var list = users.ToList();
+            sink(query);
         }
     }
-}" + MockNamespace;
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenArgumentIsAlreadyMaterialized_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+
+            ProcessUsers(db.Users.Where(u => u.Id > 10).ToList());
+        }
+
+        private static void ProcessUsers(IEnumerable<User> users)
+        {
+            foreach (var user in users)
+            {
+                Console.WriteLine(user.Id);
+            }
+        }
+    }
+}
+" + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] - 2026-03-18
+
+### Added
+- `LC004` now has a guarded fixer that materializes proven generic query sources with `.ToList()` at the call site
+
+### Changed
+- `LC004` now uses compilation-cached same-compilation analysis to prove whether an `IEnumerable` parameter is actually consumed before reporting
+- `LC004` only reports when the callee body is inspectable and the parameter is proven hazardous through direct enumeration, terminal/materializing `Enumerable` usage, or forwarding into another proven sink
+- Updated the LC004 README and rule documentation to describe the proof-based reporting model and explicit caller-side materialization fix
+
+### Fixed
+- `LC004` no longer flags framework sinks, delegate invocations, methods without source bodies, pure pass-through helpers, or already materialized arguments
+- Expanded LC004 regression coverage with should-report, should-not-report, fix, and no-fix scenarios for the new analyzer and fixer contract
+
 ## [4.4.0] - 2026-03-14
 
 ### Added
