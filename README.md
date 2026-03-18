@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **31 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **32 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ### LC001: The Local Method Smuggler
 
@@ -1049,6 +1049,43 @@ var users = db.Users.Where(u => u.IsActive).Take(1000).ToList();
 
 ---
 
+### LC032: ExecuteUpdate for Bulk Scalar Updates
+
+When a `foreach` loop loads tracked EF entities only to assign scalar properties and then immediately calls
+`SaveChanges()`, EF Core has to materialize and track every row first. `ExecuteUpdate()` turns the same bulk change into
+one set-based SQL update.
+
+**👶 Explain it like I'm a ten year old:** Imagine you need to put the same sticker on 10,000 boxes. The slow way is
+opening every box, touching it, and closing it again. The fast way is using a big stamp machine that marks all matching
+boxes at once.
+
+**❌ The Crime:**
+
+```csharp
+using var db = new AppDbContext();
+
+foreach (var user in db.Users.Where(u => u.IsActive))
+{
+    user.Name = "Archived";
+}
+
+db.SaveChanges();
+```
+
+**✅ The Fix:**
+Use `ExecuteUpdate()` when you are making a uniform scalar change and do not need change tracking callbacks.
+
+```csharp
+db.Users
+    .Where(u => u.IsActive)
+    .ExecuteUpdate(setters => setters.SetProperty(u => u.Name, "Archived"));
+```
+
+**⚠️ Warning:** `ExecuteUpdate()` bypasses change tracking and entity callbacks, so this rule stays advisory and does
+not offer an automatic fixer.
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:
@@ -1060,8 +1097,8 @@ dotnet_diagnostic.LC002.severity = error
 dotnet_diagnostic.LC003.severity = warning
 ```
 
-Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, and `LC031` default to `Info`
-so they surface as hints without drowning out higher-confidence warnings.
+Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, `LC031`, and `LC032` default to
+`Info` so they surface as hints without drowning out higher-confidence warnings.
 
 ## 🤝 Contributing
 
