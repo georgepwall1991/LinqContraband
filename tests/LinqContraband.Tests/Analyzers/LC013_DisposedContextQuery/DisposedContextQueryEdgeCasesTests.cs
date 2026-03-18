@@ -198,6 +198,26 @@ class Program
     }
 
     [Fact]
+    public async Task NestedLocalFunction_WithOwnedDisposedContext_ShouldTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public List<User> GetUsers()
+    {
+        IQueryable<User> BuildQuery()
+        {
+            using var db = new DbContext();
+            return {|LC013:db.Set<User>().Where(u => u.Id > 0)|};
+        }
+
+        return BuildQuery().ToList();
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NestedLambdaReturn_MaterializedBeforeMethodExit_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -212,6 +232,58 @@ class Program
         };
 
         return buildQuery().ToList();
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task MultiAssignmentFromSameDisposedContext_ShouldTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers(bool condition)
+    {
+        using var db = new DbContext();
+        IQueryable<User> query;
+
+        if (condition)
+        {
+            query = db.Set<User>();
+        }
+        else
+        {
+            query = db.Set<User>().Where(u => u.Id > 0);
+        }
+
+        return {|LC013:query|};
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task MultiAssignmentWithMixedOrigins_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers(bool condition, IQueryable<User> other)
+    {
+        using var db = new DbContext();
+        IQueryable<User> query;
+
+        if (condition)
+        {
+            query = db.Set<User>();
+        }
+        else
+        {
+            query = other;
+        }
+
+        return query;
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);

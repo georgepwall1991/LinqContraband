@@ -53,13 +53,14 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         if (returnedValue == null)
             return;
 
-        if (returnOp.FindOwningExecutableRoot() is not IMethodBodyOperation executableRoot)
+        var executableRoot = returnOp.FindOwningExecutableRoot();
+        if (!IsSupportedExecutableRoot(executableRoot))
             return;
 
         if (!IsDeferredType(returnedValue.Type))
             return;
 
-        CheckExpression(returnedValue, executableRoot, context);
+        CheckExpression(returnedValue, executableRoot!, context);
     }
 
     private void CheckExpression(IOperation? operation, IOperation executableRoot, OperationAnalysisContext context)
@@ -137,7 +138,7 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         switch (operation)
         {
             case ILocalReferenceOperation localReference:
-                if (IsDisposedDbContextLocal(localReference.Local))
+                if (IsDisposedDbContextLocal(localReference.Local, executableRoot))
                 {
                     dbContextLocal = localReference.Local;
                     return true;
@@ -146,15 +147,19 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
                 if (!visitedLocals.Add(localReference.Local))
                     return false;
 
-                if (!TryGetSingleAssignedValue(localReference.Local, localReference.Syntax.SpanStart, executableRoot,
-                        out var assignedValue))
+                if (!TryResolveAssignedDisposedContextOrigin(
+                        localReference.Local,
+                        localReference.Syntax.SpanStart,
+                        executableRoot,
+                        visitedLocals,
+                        out dbContextLocal))
                 {
                     return false;
                 }
 
-                return TryResolveDisposedContextOrigin(assignedValue, executableRoot, visitedLocals, out dbContextLocal);
+                return true;
 
-            case IInvocationOperation invocation when invocation.GetInvocationReceiver() is { } receiver:
+            case IInvocationOperation invocation when TryGetQueryChainReceiver(invocation, out var receiver):
                 return TryResolveDisposedContextOrigin(receiver, executableRoot, visitedLocals, out dbContextLocal);
 
             case IMemberReferenceOperation memberReference when memberReference.Instance != null:
@@ -169,16 +174,105 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    private static bool TryResolveAssignedDisposedContextOrigin(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot,
+        HashSet<ILocalSymbol> visitedLocals,
+        out ILocalSymbol dbContextLocal)
+    {
+        dbContextLocal = null!;
+
+        if (TryGetSingleAssignedValue(local, position, executableRoot, out var assignedValue))
+            return TryResolveDisposedContextOrigin(assignedValue, executableRoot, visitedLocals, out dbContextLocal);
+
+        return TryGetSharedAssignedDisposedContextOrigin(local, position, executableRoot, visitedLocals,
+            out dbContextLocal);
+    }
+
+    private static bool TryGetSharedAssignedDisposedContextOrigin(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot,
+        HashSet<ILocalSymbol> visitedLocals,
+        out ILocalSymbol dbContextLocal)
+    {
+        dbContextLocal = null!;
+        var assignments = GetAssignedValues(local, position, executableRoot);
+
+        if (assignments.Count <= 1)
+            return false;
+
+        foreach (var assignment in assignments)
+        {
+            if (!TryResolveDisposedContextOrigin(
+                    assignment,
+                    executableRoot,
+                    new HashSet<ILocalSymbol>(visitedLocals, SymbolEqualityComparer.Default),
+                    out var candidate))
+            {
+                return false;
+            }
+
+            if (dbContextLocal == null)
+            {
+                dbContextLocal = candidate;
+                continue;
+            }
+
+            if (!SymbolEqualityComparer.Default.Equals(dbContextLocal, candidate))
+                return false;
+        }
+
+        return dbContextLocal != null;
+    }
+
+    private static bool TryGetQueryChainReceiver(IInvocationOperation invocation, out IOperation receiver)
+    {
+        receiver = null!;
+
+        if (invocation.Instance != null)
+        {
+            receiver = invocation.Instance;
+            return true;
+        }
+
+        if (invocation.TargetMethod.IsExtensionMethod && invocation.Arguments.Length > 0)
+        {
+            receiver = invocation.Arguments[0].Value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSupportedExecutableRoot(IOperation? executableRoot)
+    {
+        return executableRoot is IMethodBodyOperation or ILocalFunctionOperation or IAnonymousFunctionOperation;
+    }
+
     private static bool TryGetSingleAssignedValue(
         ILocalSymbol local,
         int position,
         IOperation executableRoot,
         out IOperation value)
     {
+        var assignments = GetAssignedValues(local, position, executableRoot);
         value = null!;
-        IOperation? latestValue = null;
-        var latestPosition = -1;
-        var assignmentCount = 0;
+
+        if (assignments.Count != 1)
+            return false;
+
+        value = assignments[0];
+        return true;
+    }
+
+    private static List<IOperation> GetAssignedValues(
+        ILocalSymbol local,
+        int position,
+        IOperation executableRoot)
+    {
+        var assignments = new List<(int Position, IOperation Value)>();
 
         foreach (var operation in EnumerateOperations(executableRoot))
         {
@@ -189,41 +283,27 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
             {
                 case IVariableDeclaratorOperation declarator
                     when SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
-                         declarator.Initializer != null &&
-                         declarator.Syntax.SpanStart > latestPosition:
-                    latestValue = declarator.Initializer.Value;
-                    latestPosition = declarator.Syntax.SpanStart;
-                    assignmentCount++;
+                         declarator.Initializer != null:
+                    assignments.Add((declarator.Syntax.SpanStart, declarator.Initializer.Value.UnwrapConversions()));
                     break;
 
                 case ISimpleAssignmentOperation assignment
-                    when IsLocalTarget(assignment.Target, local) &&
-                         assignment.Syntax.SpanStart > latestPosition:
-                    latestValue = assignment.Value;
-                    latestPosition = assignment.Syntax.SpanStart;
-                    assignmentCount++;
+                    when IsLocalTarget(assignment.Target, local):
+                    assignments.Add((assignment.Syntax.SpanStart, assignment.Value.UnwrapConversions()));
                     break;
 
                 case ICompoundAssignmentOperation compoundAssignment
                     when IsLocalTarget(compoundAssignment.Target, local):
-                    assignmentCount = 2;
-                    break;
+                    return new List<IOperation>();
 
                 case IIncrementOrDecrementOperation incrementOrDecrement
                     when IsLocalTarget(incrementOrDecrement.Target, local):
-                    assignmentCount = 2;
-                    break;
+                    return new List<IOperation>();
             }
-
-            if (assignmentCount > 1)
-                break;
         }
 
-        if (latestValue == null || assignmentCount != 1)
-            return false;
-
-        value = latestValue.UnwrapConversions();
-        return true;
+        assignments.Sort(static (left, right) => left.Position.CompareTo(right.Position));
+        return assignments.ConvertAll(static assignment => assignment.Value);
     }
 
     private static bool IsLocalTarget(IOperation target, ILocalSymbol local)
@@ -259,7 +339,7 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static bool IsDisposedDbContextLocal(ILocalSymbol local)
+    private static bool IsDisposedDbContextLocal(ILocalSymbol local, IOperation executableRoot)
     {
         if (!local.Type.IsDbContext())
             return false;
@@ -267,6 +347,11 @@ public sealed class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         foreach (var syntaxRef in local.DeclaringSyntaxReferences)
         {
             var syntax = syntaxRef.GetSyntax();
+            if (syntax.SyntaxTree != executableRoot.Syntax.SyntaxTree ||
+                !executableRoot.Syntax.Span.Contains(syntax.Span))
+            {
+                continue;
+            }
 
             if (syntax is VariableDeclaratorSyntax declarator)
             {

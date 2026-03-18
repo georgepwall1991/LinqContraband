@@ -26,6 +26,11 @@ namespace TestNamespace
         public IQueryable<User> Users => Enumerable.Empty<User>().AsQueryable();
         public void Dispose() {}
     }
+
+    public static class QueryHelpers
+    {
+        public static IQueryable<User> Materialize(IQueryable<User> query) => query.ToList().AsQueryable();
+    }
 }
 
 namespace Microsoft.EntityFrameworkCore
@@ -217,6 +222,21 @@ class Program
     {
         using var factory = new DisposableQueryFactory();
         return factory.Users;
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StaticHelperMaterializes_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers()
+    {
+        using var db = new DbContext();
+        return QueryHelpers.Materialize(db.Set<User>());
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);
