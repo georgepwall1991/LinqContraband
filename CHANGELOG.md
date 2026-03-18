@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.1] - 2026-03-18
+
+### Changed
+- `LC013` now traces returned `IQueryable` and `IAsyncEnumerable` values back through single-assignment local aliases within the same executable root before deciding whether a disposed-context leak is proven
+- `LC013` now evaluates conditional, coalesce, and switch-expression returns branch by branch, so alias-based unsafe arms are reported without broadening the rule beyond its deferred-query contract
+- Updated the LC013 README and rule documentation to describe alias-aware provenance tracking, `IAsyncEnumerable` coverage, and the analyzer-only remediation guidance
+
+### Fixed
+- `LC013` no longer treats arbitrary disposed locals as query origins; it now reports only when the deferred return is rooted in a disposed EF `DbContext`
+- `LC013` now ignores nested local-function and lambda returns, avoiding false positives when the outer method still materializes the query before exiting
+- Expanded LC013 regression coverage with should-report and should-not-report tests for aliases, composed aliases, async escapes, mixed branch returns, materialized locals, nested-return suppression, and non-`DbContext` disposed origins
+
 ## [4.5.0] - 2026-03-18
 
 ### Added

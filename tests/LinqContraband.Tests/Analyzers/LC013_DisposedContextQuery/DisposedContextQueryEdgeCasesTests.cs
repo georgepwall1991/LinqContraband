@@ -10,7 +10,9 @@ public class DisposedContextQueryEdgeCasesTests
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using TestNamespace;
 ";
 
@@ -18,7 +20,10 @@ using TestNamespace;
 namespace TestNamespace
 {
     public class User { public int Id { get; set; } }
+}
 
+namespace Microsoft.EntityFrameworkCore
+{
     public class DbContext : IDisposable, IAsyncDisposable
     {
         public void Dispose() {}
@@ -34,6 +39,24 @@ namespace TestNamespace
         public IEnumerator<T> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IQueryable<T> source) => new AsyncEnumerableAdapter<T>();
+    }
+
+    internal sealed class AsyncEnumerableAdapter<T> : IAsyncEnumerable<T>
+    {
+        public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
+            new AsyncEnumeratorAdapter<T>();
+    }
+
+    internal sealed class AsyncEnumeratorAdapter<T> : IAsyncEnumerator<T>
+    {
+        public T Current => default!;
+        public ValueTask DisposeAsync() => default;
+        public ValueTask<bool> MoveNextAsync() => new(false);
+    }
 }
 ";
 
@@ -43,11 +66,11 @@ namespace TestNamespace
         var test = Usings + @"
 class Program
 {
-    public IQueryable<User> GetUsers(bool condition)
+    public IQueryable<User> GetUsers(bool condition, IQueryable<User> other)
     {
         using var db = new DbContext();
-        // Should trigger on both branches if possible, or at least the bad one
-        return condition ? {|LC013:db.Set<User>()|} : {|LC013:db.Set<User>()|};
+        var query = db.Set<User>().Where(u => u.Id > 0);
+        return condition ? {|LC013:query|} : other;
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);
@@ -62,7 +85,28 @@ class Program
     public IQueryable<User> GetUsers(IQueryable<User> other)
     {
         using var db = new DbContext();
-        return other ?? {|LC013:db.Set<User>()|};
+        var query = db.Set<User>().Where(u => u.Id > 0);
+        return other ?? {|LC013:query|};
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DisposedContext_SwitchReturn_ShouldTriggerUnsafeArmOnly()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers(int mode, IQueryable<User> other)
+    {
+        using var db = new DbContext();
+        var query = db.Set<User>().Where(u => u.Id > 0);
+        return mode switch
+        {
+            0 => other,
+            _ => {|LC013:query|}
+        };
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);
@@ -71,7 +115,6 @@ class Program
     [Fact]
     public async Task DisposedContext_AwaitUsing_ShouldTrigger()
     {
-        // Test for IAsyncDisposable pattern: await using var db = ...;
         var test = Usings + @"
 class Program
 {
@@ -103,9 +146,24 @@ class Program
     }
 
     [Fact]
+    public async Task DisposedContext_AwaitUsing_ReturnAsyncEnumerable_ShouldTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public async Task<IAsyncEnumerable<User>> GetUsersAsync()
+    {
+        await using var db = new DbContext();
+        var query = db.Set<User>().Where(u => u.Id > 0);
+        return {|LC013:query.AsAsyncEnumerable()|};
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NonDisposedContext_AwaitUsing_WithMaterialization_ShouldNotTrigger()
     {
-        // If we materialize inside the using block, no diagnostic
         var test = Usings + @"
 class Program
 {
@@ -113,6 +171,47 @@ class Program
     {
         await using var db = new DbContext();
         return db.Set<User>().Where(u => u.Id > 0).ToList();
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedLocalFunctionReturn_MaterializedBeforeMethodExit_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public List<User> GetUsers()
+    {
+        using var db = new DbContext();
+
+        IQueryable<User> BuildQuery()
+        {
+            return db.Set<User>().Where(u => u.Id > 0);
+        }
+
+        return BuildQuery().ToList();
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedLambdaReturn_MaterializedBeforeMethodExit_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public List<User> GetUsers()
+    {
+        using var db = new DbContext();
+        Func<IQueryable<User>> buildQuery = () =>
+        {
+            return db.Set<User>().Where(u => u.Id > 0);
+        };
+
+        return buildQuery().ToList();
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);
