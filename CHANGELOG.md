@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] - 2026-03-18
+
+### Added
+- Added `LC032`, an advisory analyzer that flags provable EF bulk scalar update loops and recommends `ExecuteUpdate` or `ExecuteUpdateAsync` when the loop source, scalar assignments, and trailing `SaveChanges` call are all proven within the same executable root
+
+### Changed
+- Expanded `LC032` query-shape support to cover modern EF query steps such as `IgnoreAutoIncludes` and `DbContext.Set<T>()`, while keeping the rule silent for ambiguous provenance and behavior-changing loop bodies
+- Updated the README, rule documentation, and sample project to publish the new analyzer surface and raise the documented rule count from 31 to 32
+
+### Fixed
+- Expanded `LC032` regression coverage for synchronous and asynchronous save paths, intervening statements, enum assignments, and non-reporting cases where `ExecuteUpdate` is unavailable or the loop semantics are not provably safe to suggest
+
 ## [4.5.1] - 2026-03-18
 
 ### Changed
