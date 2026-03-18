@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -20,6 +21,8 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC001";
     private const string Category = "Performance";
+    private const string DbFunctionAttributeMetadataName = "Microsoft.EntityFrameworkCore.DbFunctionAttribute";
+    private const string ProjectableAttributeMetadataName = "EntityFrameworkCore.Projectables.ProjectableAttribute";
     private static readonly LocalizableString Title = "Client-side evaluation risk: Local method usage in IQueryable";
 
     private static readonly LocalizableString MessageFormat =
@@ -57,7 +60,7 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
             return;
 
         // Trust methods from specific namespaces known to be translatable
-        if (IsTrustedTranslatableMethod(methodSymbol))
+        if (IsTrustedTranslatableMethod(context.Compilation, methodSymbol))
             return;
 
         // Constraint 1: Inside a Lambda
@@ -100,10 +103,11 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private bool IsTrustedTranslatableMethod(IMethodSymbol method)
+    private static bool IsTrustedTranslatableMethod(Compilation compilation, IMethodSymbol method)
     {
         // System and Microsoft (Linq, EF Core base) are generally translatable
         if (method.IsFrameworkMethod()) return true;
+        if (HasExplicitTranslationMarker(compilation, method)) return true;
 
         var ns = method.ContainingNamespace?.ToString();
         if (ns == null) return false;
@@ -117,5 +121,57 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static bool HasExplicitTranslationMarker(Compilation compilation, IMethodSymbol method)
+    {
+        var dbFunctionAttribute = compilation.GetTypeByMetadataName(DbFunctionAttributeMetadataName);
+        var projectableAttribute = compilation.GetTypeByMetadataName(ProjectableAttributeMetadataName);
+        if (dbFunctionAttribute == null && projectableAttribute == null) return false;
+
+        foreach (var candidate in EnumerateMethodVariants(method))
+        {
+            foreach (var attribute in candidate.GetAttributes())
+            {
+                var attributeClass = attribute.AttributeClass;
+                if (attributeClass == null)
+                    continue;
+
+                if ((dbFunctionAttribute != null &&
+                     SymbolEqualityComparer.Default.Equals(attributeClass, dbFunctionAttribute)) ||
+                    (projectableAttribute != null &&
+                     SymbolEqualityComparer.Default.Equals(attributeClass, projectableAttribute)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<IMethodSymbol> EnumerateMethodVariants(IMethodSymbol method)
+    {
+        var pending = new Stack<IMethodSymbol>();
+        var seen = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        pending.Push(method);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!seen.Add(current))
+                continue;
+
+            yield return current;
+
+            if (current.ReducedFrom != null)
+                pending.Push(current.ReducedFrom);
+
+            if (!SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, current))
+                pending.Push(current.OriginalDefinition);
+
+            if (current.OverriddenMethod != null)
+                pending.Push(current.OverriddenMethod);
+        }
     }
 }
