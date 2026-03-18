@@ -75,6 +75,12 @@ namespace Microsoft.EntityFrameworkCore
     private const string TestTypes = @"
 namespace TestApp
 {
+    public enum UserStatus
+    {
+        Active,
+        Archived
+    }
+
     public class Profile
     {
         public string Name { get; set; }
@@ -91,6 +97,7 @@ namespace TestApp
         public bool IsActive { get; set; }
         public string Name { get; set; }
         public int LoginCount { get; set; }
+        public UserStatus Status { get; set; }
         public Profile Profile { get; set; }
         public List<Order> Orders { get; set; }
     }
@@ -166,6 +173,66 @@ class Program
     }
 
     [Fact]
+    public async Task DirectQueryForeach_WithSaveChangesAsync_Triggers()
+    {
+        var test = Usings + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextSetSource_Triggers()
+    {
+        var test = Usings + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Set<User>().Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EnumAssignment_Triggers()
+    {
+        var test = Usings + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Status = UserStatus.Archived;
+        }|}
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PlainListSource_DoesNotTrigger()
     {
         var test = Usings + EFCoreMockWithExecuteUpdate + TestTypes + @"
@@ -178,6 +245,27 @@ class Program
         {
             user.Name = ""Archived"";
         }
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InterveningStatementBeforeSaveChanges_DoesNotTrigger()
+    {
+        var test = Usings + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }
+        var keepTracking = true;
         db.SaveChanges();
     }
 }";

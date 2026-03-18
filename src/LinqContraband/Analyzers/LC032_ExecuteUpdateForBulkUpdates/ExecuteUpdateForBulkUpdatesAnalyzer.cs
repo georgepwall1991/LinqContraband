@@ -53,6 +53,7 @@ public sealed class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnalyzer
         "AsSplitQuery",
         "AsSingleQuery",
         "AsTracking",
+        "IgnoreAutoIncludes",
         "TagWith",
         "TagWithCallSite"
     );
@@ -321,9 +322,11 @@ public sealed class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnalyzer
 
         var displayName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         return displayName is
+            "global::System.DateOnly" or
             "global::System.DateTime" or
             "global::System.DateTimeOffset" or
             "global::System.Guid" or
+            "global::System.TimeOnly" or
             "global::System.TimeSpan";
     }
 
