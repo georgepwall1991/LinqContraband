@@ -60,6 +60,9 @@ public sealed class RawSqlStringConstructionAnalyzer : DiagnosticAnalyzer
         if (sqlArgument == null)
             return;
 
+        if (IsOwnedBySpecificRawSqlAnalyzer(sqlArgument.Value, invocation.FindOwningExecutableRoot()))
+            return;
+
         if (!IsConstructedRawSql(sqlArgument.Value, invocation.FindOwningExecutableRoot()))
             return;
 
@@ -73,6 +76,18 @@ public sealed class RawSqlStringConstructionAnalyzer : DiagnosticAnalyzer
             return null;
 
         return invocation.Arguments[sqlParameterIndex];
+    }
+
+    private static bool IsOwnedBySpecificRawSqlAnalyzer(IOperation operation, IOperation? executableRoot)
+    {
+        var current = operation.UnwrapConversions();
+
+        if (current is IInterpolatedStringOperation)
+            return true;
+
+        return current is IBinaryOperation binary &&
+               binary.OperatorKind == BinaryOperatorKind.Add &&
+               IsConcatWithNonConstant(binary, executableRoot);
     }
 
     private static bool IsConstructedRawSql(IOperation operation, IOperation? executableRoot)

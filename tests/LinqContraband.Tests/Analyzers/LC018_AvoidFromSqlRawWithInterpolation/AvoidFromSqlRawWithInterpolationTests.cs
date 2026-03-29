@@ -102,6 +102,48 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FromSqlRaw_WithInterpolatedAlias_ShouldNotTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var sql = $""SELECT * FROM Table WHERE Id = {id}"";
+            var result = query.FromSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithConcatenatedAlias_ShouldNotTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var sql = ""SELECT * FROM Table WHERE Id = "" + id;
+            var result = query.FromSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldReplaceFromSqlRawWithFromSqlInterpolated()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"

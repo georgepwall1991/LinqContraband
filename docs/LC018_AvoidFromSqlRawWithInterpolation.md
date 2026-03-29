@@ -50,10 +50,17 @@ db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = " + name);
 
 ### Valid
 ```csharp
+var sql = $"SELECT * FROM Users WHERE Id = {id}";
+db.Users.FromSqlRaw(sql); // LC037 owns constructed aliases that flow into raw SQL
+
 db.Users.FromSqlRaw("SELECT * FROM Users");
 db.Users.FromSqlRaw("SELECT * FROM Users WHERE Id = {0}", id);
 db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Id = {id}");
 ```
+
+## Rule Boundary
+- LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.
 
 ## Implementation Plan
 1.  Create `LC018_AvoidFromSqlRawWithInterpolation` directory.

@@ -73,6 +73,23 @@ class TestClass
     }
 
     [Fact]
+    public async Task GroupBy_Select_WithToList_ShouldNotTriggerLC022()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users
+            .GroupBy(u => u.Id)
+            .Select(g => g.ToList());
+    }
+}" + MockNamespaces;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Select_WithToListInsideAnonymousType_ShouldTriggerLC022()
     {
         var test = Usings + @"
@@ -81,6 +98,23 @@ class TestClass
     void TestMethod(DbSet<User> users)
     {
         var result = users.Select(u => new { Items = {|LC022:u.Orders.ToList()|} });
+    }
+}" + MockNamespaces;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBySelect_WithGroupingToList_ShouldNotTriggerLC022()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(IQueryable<Order> orders)
+    {
+        var result = orders
+            .GroupBy(o => o.Id)
+            .Select(g => g.ToList());
     }
 }" + MockNamespaces;
 

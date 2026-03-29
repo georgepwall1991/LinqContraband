@@ -27,3 +27,7 @@ var users = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = {0}", name).To
 
 ### Notes
 This v1 surface is analyzer-only. It intentionally avoids speculative rewrites for complex SQL-building code.
+
+## Rule Boundary
+- LC037 intentionally yields when the raw SQL argument is passed directly as an interpolated string or direct non-constant `+` concatenation. Those direct call-site patterns are owned by LC018 (`FromSqlRaw`) and LC034 (`ExecuteSqlRaw` / `ExecuteSqlRawAsync`).
+- LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and local alias / variable flow into raw SQL APIs.

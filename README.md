@@ -662,6 +662,10 @@ Use `FromSqlInterpolated` or `FromSql` (EF Core 7+), which automatically paramet
 var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {name}").ToList();
 ```
 
+**🛡️ Reliability Notes:**
+- LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- Broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder` are covered by `LC037`.
+
 ---
 
 ### LC019: Conditional Include Expression
@@ -766,6 +770,10 @@ Remove the materializer from the projection. EF Core handles it.
 var result = db.Users.Select(u => u.Orders).ToList();
 ```
 
+**🛡️ Reliability Notes:**
+- LC022 applies to normal `IQueryable.Select(...)` projections where the collection materializer is redundant or forces client evaluation.
+- Grouped projections like `GroupBy(...).Select(g => g.ToList())` are owned by `LC024`, which gives the more specific non-translatable `GroupBy` guidance.
+
 ---
 
 ### LC023: Suggest Find/FindAsync
@@ -819,6 +827,10 @@ Use only Key and aggregate functions in GroupBy projections.
 var result = db.Orders.GroupBy(o => o.CustomerId)
     .Select(g => new { Key = g.Key, Count = g.Count(), Total = g.Sum(o => o.Amount) }).ToList();
 ```
+
+**🛡️ Reliability Notes:**
+- LC024 owns grouped element access such as `g.ToList()`, `g.Where(...)`, and `g.First()` inside `GroupBy(...).Select(...)`.
+- That grouped-projection case is intentionally excluded from `LC022` so one rule owns the diagnostic.
 
 ---
 
@@ -1148,6 +1160,7 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 
 **🛡️ Reliability Notes:**
 - LC034 only offers a fixer when the replacement is analyzer-proven and keeps the same semantics.
+- LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
 - More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
 
 ---
@@ -1236,8 +1249,8 @@ var users = db.Users
 ```
 
 **🛡️ Reliability Notes:**
-- LC037 catches `+`, `string.Concat(...)`, `string.Format(...)`, `StringBuilder`, and local alias hops when the raw SQL flow is provable.
-- It complements `LC018` and `LC034` by catching unsafe construction patterns before the final raw SQL API call.
+- LC037 catches `string.Concat(...)`, `string.Format(...)`, `StringBuilder`, and local alias hops when the raw SQL flow is provable.
+- Direct interpolated-string and direct non-constant `+` call-site patterns are intentionally owned by `LC018` (`FromSqlRaw`) and `LC034` (`ExecuteSqlRaw*`).
 
 ---
 

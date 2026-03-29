@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2026-03-29
+
+### Changed
+- Tightened raw-SQL analyzer ownership so `LC018` and `LC034` own direct interpolated-string and direct non-constant `+` call-site patterns, while `LC037` stays focused on broader constructed-SQL flows such as aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`
+- Tightened projection analyzer ownership so grouped `GroupBy(...).Select(...)` materializers are owned by `LC024`, while `LC022` remains focused on ordinary `IQueryable.Select(...)` collection materializers
+- Updated the sample diagnostics verifier and rule documentation to enforce and describe the exact post-dedup diagnostic contract
+
+### Fixed
+- Reduced duplicate diagnostics on direct raw-SQL interpolation/concatenation call sites without weakening the broader constructed-SQL coverage
+- Reduced duplicate diagnostics for grouped projection materializers and kept the more specific `GroupBy` guidance as the only emitted rule for that shape
+
 ## [5.0.0] - 2026-03-29
 
 ### Added

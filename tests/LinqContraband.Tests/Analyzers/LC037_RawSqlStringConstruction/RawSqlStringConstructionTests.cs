@@ -9,6 +9,7 @@ public class RawSqlStringConstructionTests
 using System;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Microsoft.EntityFrameworkCore
 {
@@ -23,10 +24,126 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static IQueryable<TEntity> FromSqlRaw<TEntity>(this IQueryable<TEntity> source, string sql, params object[] parameters) => source;
         public static int ExecuteSqlRaw(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => 0;
-        public static int ExecuteSqlRawAsync(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => 0;
+        public static Task<int> ExecuteSqlRawAsync(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => Task.FromResult(0);
     }
 }
 ";
+
+    [Fact]
+    public async Task FromSqlRaw_WithInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(IQueryable<User> query, int id)
+        {
+            var result = query.FromSqlRaw($""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithConcatenatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(IQueryable<User> query, int id)
+        {
+            var result = query.FromSqlRaw(""SELECT * FROM Users WHERE Id = "" + id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithConcatenatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(""UPDATE Users SET Name = "" + id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRawAsync_WithInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, int id)
+        {
+            var result = await db.Database.ExecuteSqlRawAsync($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRawAsync_WithConcatenatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, int id)
+        {
+            var result = await db.Database.ExecuteSqlRawAsync(""UPDATE Users SET Name = "" + id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
     [Fact]
     public async Task FromSqlRaw_WithStringFormat_ShouldTrigger()
@@ -42,13 +159,76 @@ namespace TestApp
         public void Run(IQueryable<User> query, int id)
         {
             var sql = string.Format(""SELECT * FROM Users WHERE Id = {0}"", id);
-            var result = query.FromSqlRaw(sql);
+            var result = query.FromSqlRaw({|LC037:sql|});
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC037").WithSpan(33, 43, 33, 46).WithArguments("FromSqlRaw");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithDirectInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(IQueryable<User> query, int id)
+        {
+            var result = query.FromSqlRaw($""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithDirectConcatenation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(IQueryable<User> query, int id)
+        {
+            var result = query.FromSqlRaw(""SELECT * FROM Users WHERE Id = "" + id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithInterpolatedAlias_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(IQueryable<User> query, int id)
+        {
+            var sql = $""SELECT * FROM Users WHERE Id = {id}"";
+            var result = query.FromSqlRaw({|LC037:sql|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -68,13 +248,48 @@ namespace TestApp
                 .Append(""'"")
                 .ToString();
 
-            var result = db.Database.ExecuteSqlRaw(sql);
+            var result = db.Database.ExecuteSqlRaw({|LC037:sql|});
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC037").WithSpan(36, 52, 36, 55).WithArguments("ExecuteSqlRaw");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithDirectInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithDirectConcatenation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(""UPDATE Users SET Name = "" + id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -89,13 +304,31 @@ namespace TestApp
         {
             var prefix = ""UPDATE Users SET Name = "";
             var sql = prefix + id;
-            var result = db.Database.ExecuteSqlRaw(sql);
+            var result = db.Database.ExecuteSqlRaw({|LC037:sql|});
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC037").WithSpan(31, 52, 31, 55).WithArguments("ExecuteSqlRaw");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithStringConcatCall_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = string.Concat(""UPDATE Users SET Name = "", id);
+            var result = db.Database.ExecuteSqlRaw({|LC037:sql|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

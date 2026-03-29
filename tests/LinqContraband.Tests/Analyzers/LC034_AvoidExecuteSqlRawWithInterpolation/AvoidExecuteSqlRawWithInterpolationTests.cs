@@ -109,6 +109,44 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteSqlRaw_WithInterpolatedAlias_ShouldNotTriggerLC034()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = $""UPDATE Users SET Name = {id}"";
+            var result = db.Database.ExecuteSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithConcatenatedAlias_ShouldNotTriggerLC034()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = ""UPDATE Users SET Name = "" + id;
+            var result = db.Database.ExecuteSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldReplaceExecuteSqlRawWithExecuteSql()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

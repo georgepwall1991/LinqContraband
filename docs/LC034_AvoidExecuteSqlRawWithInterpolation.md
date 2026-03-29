@@ -27,3 +27,7 @@ await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM Users WHERE Name = {
 
 ### Notes
 The fixer is intentionally narrow. It appears only when the analyzer can prove the rewrite keeps the SQL text and argument flow semantically safe.
+
+## Rule Boundary
+- LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` or `ExecuteSqlRawAsync(...)`.
+- LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.
