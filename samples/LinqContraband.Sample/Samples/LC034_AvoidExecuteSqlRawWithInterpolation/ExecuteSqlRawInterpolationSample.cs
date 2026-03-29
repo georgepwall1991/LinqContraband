@@ -12,7 +12,7 @@ public static class ExecuteSqlRawInterpolationSample
         var name = "admin";
 
         // VIOLATION: Interpolated user input flows into ExecuteSqlRawAsync.
-        await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = '{name}'");
+        await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = '{name}'");
 
         // CORRECT: Use the safe interpolated API instead.
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM Users WHERE Name = {name}");

@@ -35,7 +35,7 @@ public class SyncBlockerSample
 
         // VIOLATION: Blocking the thread with synchronous ToList() inside an async method.
         // The thread is held hostage while the query executes.
-        var syncBlocker = await users.ToListAsync();
+        var syncBlocker = users.ToList();
 
         await Task.Delay(10); // Ensure async context
     }

@@ -32,7 +32,7 @@ public class LocalMethodSample
 
         // VIOLATION: IsAdult is a local method and cannot be translated to SQL.
         // EF Core will likely fetch ALL users from the database and filter them in memory.
-        var localResult = users.AsEnumerable().Where(u => IsAdult(u.Age)).ToList();
+        var localResult = users.Where(u => IsAdult(u.Age)).ToList();
     }
 
     /// <summary>

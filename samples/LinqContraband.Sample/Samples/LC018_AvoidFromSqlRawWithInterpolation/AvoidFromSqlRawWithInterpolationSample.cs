@@ -12,7 +12,7 @@ public class AvoidFromSqlRawWithInterpolationSample
         var name = "admin";
 
         // VIOLATION: Potential SQL Injection using interpolated string
-        var users1 = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = '{name}'").ToList();
+        var users1 = db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'").ToList();
 
         // VIOLATION: Potential SQL Injection using string concatenation
         var users2 = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = '" + name + "'").ToList();
