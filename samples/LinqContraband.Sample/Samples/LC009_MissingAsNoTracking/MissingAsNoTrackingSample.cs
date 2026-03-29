@@ -27,31 +27,34 @@ public class MissingAsNoTrackingSample
     /// <summary>
     ///     Runs the sample demonstrating missing tracking optimizations.
     /// </summary>
-    /// <param name="users">The source queryable of users.</param>
-    public static void Run(IQueryable<User> users)
+    public static void Run()
     {
         Console.WriteLine("Testing LC009...");
 
-        GetUsersReadOnly(users);
-        GetUsersWithIdentityResolution(users);
+        GetUsersReadOnly();
+        GetUsersWithIdentityResolution();
     }
 
     /// <summary>
     ///     Fetches users without disabling tracking, triggering the violation.
     /// </summary>
-    private static List<User> GetUsersReadOnly(IQueryable<User> users)
+    private static List<User> GetUsersReadOnly()
     {
+        using var db = new AppDbContext();
+
         // VIOLATION: Returning entities from read-only context without AsNoTracking.
         // EF Core tracks these entities, wasting resources.
-        return users.Where(u => u.Age > 18).ToList();
+        return db.Users.Where(u => u.Age > 18).Take(10).ToList();
     }
 
     /// <summary>
     ///     Correctly uses identity resolution without full tracking.
     /// </summary>
-    private static List<User> GetUsersWithIdentityResolution(IQueryable<User> users)
+    private static List<User> GetUsersWithIdentityResolution()
     {
+        using var db = new AppDbContext();
+
         // SAFE: Using AsNoTrackingWithIdentityResolution is explicitly allowed.
-        return users.AsNoTrackingWithIdentityResolution().Where(u => u.Age > 21).ToList();
+        return db.Users.AsNoTrackingWithIdentityResolution().Where(u => u.Age > 21).Take(10).ToList();
     }
 }

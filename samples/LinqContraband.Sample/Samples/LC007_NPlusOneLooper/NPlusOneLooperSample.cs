@@ -35,17 +35,11 @@ public class NPlusOneLooperSample
         Console.WriteLine("Testing LC007...");
         var targetIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
 
-        // VIOLATION 1: Iterating over a list and querying the DB for each item.
+        // VIOLATION: Iterating over a list and querying the DB for each item.
         foreach (var id in targetIds)
         {
             // This executes a separate SQL query for every iteration.
-            var user = users.Where(u => u.Id == id).ToList();
-        }
-
-        // VIOLATION 2: Explicit loading inside a loop (Merged from LC022).
-        var materializedUsers = users.OrderBy(x => x.Id).Take(10).Include(u => u.Configurations).ToList();
-        foreach (var user in materializedUsers)
-        {
+            var user = db.Users.Find(id);
         }
     }
 }

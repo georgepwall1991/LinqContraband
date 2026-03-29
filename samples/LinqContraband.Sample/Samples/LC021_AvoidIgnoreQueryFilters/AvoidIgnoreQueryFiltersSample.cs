@@ -10,9 +10,9 @@ public class AvoidIgnoreQueryFiltersSample
         Console.WriteLine("Testing LC021...");
 
         // VIOLATION: Bypasses global filters (e.g., multi-tenancy or soft-delete)
-        var allUsers = db.Users.ToList();
+        var allUsers = db.Users.AsNoTracking().IgnoreQueryFilters().OrderBy(u => u.Id).Take(10).ToList();
 
         // CORRECT: Normal query respecting global filters
-        var activeUsers = db.Users.ToList();
+        var activeUsers = db.Users.AsNoTracking().OrderBy(u => u.Id).Take(10).ToList();
     }
 }

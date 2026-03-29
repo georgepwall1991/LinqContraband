@@ -1,24 +1,47 @@
-using LinqContraband.Sample.Data;
+using Microsoft.EntityFrameworkCore;
 
-namespace LinqContraband.Sample.Samples.LC032_ExecuteUpdateForBulkUpdates;
-
-/// <summary>
-///     Demonstrates the "Use ExecuteUpdate for Provable Bulk Scalar Updates" advisory (LC032).
-/// </summary>
-public static class ExecuteUpdateForBulkUpdatesSample
+namespace Microsoft.EntityFrameworkCore
 {
-    public static void Run()
+    internal static class SampleExecuteUpdateSupport
     {
-        Console.WriteLine("Testing LC032...");
+        public static int ExecuteUpdate<TSource>(this IQueryable<TSource> source, object? updates = null) => 0;
 
-        using var db = new AppDbContext();
+        public static Task<int> ExecuteUpdateAsync<TSource>(this IQueryable<TSource> source, object? updates = null) => Task.FromResult(0);
+    }
+}
 
-        // ADVISORY: This tracked bulk update can usually become a single ExecuteUpdate() call.
-        foreach (var user in db.Users.Where(u => u.Age >= 18))
+namespace LinqContraband.Sample.Samples.LC032_ExecuteUpdateForBulkUpdates
+{
+    /// <summary>
+    ///     Demonstrates the "Use ExecuteUpdate for Provable Bulk Scalar Updates" advisory (LC032).
+    /// </summary>
+    public static class ExecuteUpdateForBulkUpdatesSample
+    {
+        public static void Run()
         {
-            user.Name = "Archived";
-        }
+            Console.WriteLine("Testing LC032...");
 
-        db.SaveChanges();
+            using var db = new BulkAppDbContext();
+
+            // ADVISORY: This tracked bulk update can usually become a single ExecuteUpdate() call.
+            foreach (var user in db.Users.Where(u => u.IsActive))
+            {
+                user.Name = "Archived";
+            }
+
+            db.SaveChanges();
+        }
+    }
+
+    internal sealed class BulkUser
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    internal sealed class BulkAppDbContext : DbContext
+    {
+        public DbSet<BulkUser> Users { get; set; } = null!;
     }
 }

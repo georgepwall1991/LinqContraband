@@ -40,6 +40,9 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
+      - name: Verify Sample Diagnostics
+        run: dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --frameworks net8.0 net9.0 net10.0
+
       - name: Test
         run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 

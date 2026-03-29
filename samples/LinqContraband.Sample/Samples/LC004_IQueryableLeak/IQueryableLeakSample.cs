@@ -38,7 +38,7 @@ public class IQueryableLeakSample
 
         // VIOLATION: Passing a raw IQueryable (db.Users) to a method expecting IEnumerable.
         // This implicitly opts out of further SQL composition.
-        ProcessUsers(db.Users.ToList());
+        ProcessUsers(db.Users);
     }
 
     /// <summary>

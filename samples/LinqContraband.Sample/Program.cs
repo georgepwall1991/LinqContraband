@@ -54,7 +54,7 @@ internal class Program
         CartesianExplosionSample.Run(users);
         NPlusOneLooperSample.Run(db, users);
         await SyncBlockerSample.RunAsync(users);
-        MissingAsNoTrackingSample.Run(users);
+        MissingAsNoTrackingSample.Run();
         SaveChangesInLoopSample.Run(users.ToList());
 
         EntityMissingPrimaryKeySample.Run();

@@ -35,6 +35,6 @@ public class CartesianExplosionSample
 
         // VIOLATION: Fetching multiple collection navigations (Orders, Roles) in a single query.
         // This creates a Cartesian product (Users * Orders * Roles).
-        var cartesianResult = users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
+        var cartesianResult = users.OrderBy(u => u.Id).Take(10).Include(u => u.Orders).Include(u => u.Roles).ToList();
     }
 }

@@ -1,21 +1,34 @@
-namespace LinqContraband.Sample.Samples.LC033_UseFrozenSetForStaticMembershipCaches;
+using System.Collections.Frozen;
 
-public static class UseFrozenSetForStaticMembershipCachesSample
+namespace System.Collections.Frozen
 {
-    private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase)
+    internal static class SampleFrozenSetSupport
     {
-        "admin",
-        "ops"
-    };
+        public static FrozenSet<T> ToFrozenSet<T>(this IEnumerable<T> source) => throw new NotSupportedException();
 
-    public static void Run()
+        public static FrozenSet<T> ToFrozenSet<T>(this IEnumerable<T> source, IEqualityComparer<T> comparer) =>
+            throw new NotSupportedException();
+    }
+}
+
+namespace LinqContraband.Sample.Samples.LC033_UseFrozenSetForStaticMembershipCaches
+{
+    public sealed class UseFrozenSetForStaticMembershipCachesSample
     {
-        Console.WriteLine("Testing LC033...");
+        private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "admin",
+            "ops"
+        };
 
-        var roles = new List<string> { "admin", "guest" };
+        public static void Run()
+        {
+            Console.WriteLine("Testing LC033...");
 
-        // ADVISORY: This cache is read-only and used only for membership checks.
-        var elevatedRoles = roles.Where(role => ElevatedRoles.Contains(role)).ToList();
-        Console.WriteLine(elevatedRoles.Count);
+            // ADVISORY: This cache is read-only and used only for membership checks.
+            Console.WriteLine(IsElevated("admin"));
+        }
+
+        private static bool IsElevated(string role) => ElevatedRoles.Contains(role);
     }
 }

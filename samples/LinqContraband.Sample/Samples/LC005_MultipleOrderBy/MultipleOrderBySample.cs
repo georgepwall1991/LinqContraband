@@ -31,6 +31,6 @@ public class MultipleOrderBySample
 
         // VIOLATION: This first sorts by Age, but then immediately discards that work
         // to sort by Name. The resulting list is NOT sorted by Age.
-        var orderResult = users.AsNoTracking().OrderBy(u => u.Age).ThenBy(u => u.Name).ToList();
+        var orderResult = users.AsNoTracking().OrderBy(u => u.Age).OrderBy(u => u.Name).ToList();
     }
 }

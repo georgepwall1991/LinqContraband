@@ -31,6 +31,6 @@ public class AnyOverCountSample
 
         // VIOLATION: This executes SELECT COUNT(*) FROM Users.
         // On large tables, this is significantly slower than checking existence.
-        if (users.Any()) Console.WriteLine("Users exist");
+        if (users.Count() > 0) Console.WriteLine("Users exist");
     }
 }
