@@ -1124,18 +1124,315 @@ private static readonly FrozenSet<string> ElevatedRoles = new string[] { "admin"
 
 ---
 
-## New in v5.0
+### LC034: Avoid ExecuteSqlRaw with Interpolation
 
-- **[LC034: Avoid `ExecuteSqlRaw` with interpolation](docs/LC034_AvoidExecuteSqlRawWithInterpolation.md)** (`Warning`) detects unsafe SQL flowing into `ExecuteSqlRaw(...)` / `ExecuteSqlRawAsync(...)` and offers a safe rewrite when the replacement is analyzer-proven.
-- **[LC035: Missing `Where` before `ExecuteDelete` / `ExecuteUpdate`](docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md)** (`Info`) flags unfiltered bulk delete or update calls rooted in a direct `DbSet` chain.
-- **[LC036: `DbContext` captured across threads](docs/LC036_DbContextCapturedAcrossThreads.md)** (`Warning`) reports `DbContext` instances captured into `Task.Run(...)`, `Parallel.ForEach(...)`, or similar cross-thread delegates.
-- **[LC037: Raw SQL string construction](docs/LC037_RawSqlStringConstruction.md)** (`Warning`) catches concatenated, formatted, or `StringBuilder`-assembled SQL before it reaches `FromSqlRaw(...)` or `ExecuteSqlRaw(...)`.
-- **[LC038: Excessive eager loading](docs/LC038_ExcessiveEagerLoading.md)** (`Info`) reports query chains with too many `Include(...)` / `ThenInclude(...)` calls. Tune it with `dotnet_code_quality.LC038.include_threshold`.
-- **[LC039: Nested `SaveChanges`](docs/LC039_NestedSaveChanges.md)** (`Info`) reports repeated `SaveChanges()` / `SaveChangesAsync()` calls on the same proven context in one executable root when no transaction boundary separates them.
-- **[LC040: Mixed tracking and no-tracking](docs/LC040_MixedTrackingAndNoTracking.md)** (`Info`) advises when one method mixes tracked and `AsNoTracking()` materialization from the same `DbContext`.
-- **[LC041: Single-entity scalar projection](docs/LC041_SingleEntityScalarProjection.md)** (`Info`) detects `First*` / `Single*` queries that materialize an entity even though only one scalar property is consumed, with a guarded projection fixer for `var` locals.
-- **[LC042: Missing query tags](docs/LC042_MissingQueryTags.md)** (`Info`) flags untagged EF queries with `3+` counted operators. Tune it with `dotnet_code_quality.LC042.query_operator_threshold`.
-- **[LC043: Async enumerable buffering](docs/LC043_AsyncEnumerableBuffering.md)** (`Info`) detects the narrow v1 pattern where an `IAsyncEnumerable<T>` is buffered into a list or array and then looped exactly once, with a fixer that rewrites to `await foreach`.
+Passing interpolated input into `ExecuteSqlRaw(...)` or `ExecuteSqlRawAsync(...)` builds raw SQL text and can open the
+door to SQL injection. EF Core already provides a safe interpolated path for this.
+
+**👶 Explain it like I'm a ten year old:** Imagine writing a note to the cafeteria that says "Throw away lunch for
+${name}". If somebody scribbles extra instructions into the blank, the cafeteria might throw away *everybody's* lunch.
+You want a form with a locked box for the name instead.
+
+**❌ The Crime:**
+
+```csharp
+await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = '{name}'");
+```
+
+**✅ The Fix:**
+Use EF Core's safe interpolated API.
+
+```csharp
+await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
+```
+
+**🛡️ Reliability Notes:**
+- LC034 only offers a fixer when the replacement is analyzer-proven and keeps the same semantics.
+- More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
+
+---
+
+### LC035: Missing Where before ExecuteDelete / ExecuteUpdate
+
+`ExecuteDelete()` and `ExecuteUpdate()` are powerful because they affect rows in bulk. That also means a missing
+filter can delete or update an entire table in one statement.
+
+**👶 Explain it like I'm a ten year old:** Imagine you meant to erase one line on the whiteboard, but instead you
+pressed the giant "erase whole board" button.
+
+**❌ The Crime:**
+
+```csharp
+await db.Users.ExecuteDeleteAsync();
+```
+
+**✅ The Fix:**
+Add a real filter before the bulk operation.
+
+```csharp
+await db.Users
+    .Where(u => !u.IsActive)
+    .ExecuteDeleteAsync();
+```
+
+**⚠️ Warning:** This rule is advisory only. There is no safe automatic fixer because LinqContraband cannot guess the
+missing predicate for you.
+
+---
+
+### LC036: DbContext Captured Across Threads
+
+`DbContext` is not thread-safe. Capturing it into `Task.Run(...)`, `Parallel.ForEach(...)`, or thread-pool callbacks
+can produce race conditions, disposal bugs, and very confusing data-access failures.
+
+**👶 Explain it like I'm a ten year old:** Imagine two people trying to write in the same notebook at the exact same
+time. They bump elbows, write over each other, and ruin the page.
+
+**❌ The Crime:**
+
+```csharp
+await Task.Run(() => db.Users.Count());
+```
+
+**✅ The Fix:**
+Create a fresh context inside the delegate, typically via `IDbContextFactory<TContext>`.
+
+```csharp
+await Task.Run(async () =>
+{
+    await using var innerDb = await factory.CreateDbContextAsync();
+    return await innerDb.Users.CountAsync();
+});
+```
+
+**🛡️ Reliability Notes:**
+- LC036 stays quiet when the delegate creates and uses its own fresh context.
+- This rule defaults to `Warning` because cross-thread `DbContext` use is both common and high-risk.
+
+---
+
+### LC037: Raw SQL String Construction
+
+Even if the final call site is `FromSqlRaw(...)` or `ExecuteSqlRaw(...)`, the real bug often starts earlier: string
+concatenation, `string.Format(...)`, or `StringBuilder` assembling SQL from user input.
+
+**👶 Explain it like I'm a ten year old:** Imagine building a train track out of random spare pieces and hoping the
+train still goes where you wanted. One bad piece and it flies off the rails.
+
+**❌ The Crime:**
+
+```csharp
+var sql = "SELECT * FROM Users WHERE Name = '" + name + "'";
+var users = db.Users.FromSqlRaw(sql).ToList();
+```
+
+**✅ The Fix:**
+Use EF Core's parameterized or safe interpolated APIs instead of hand-built SQL strings.
+
+```csharp
+var users = db.Users
+    .FromSql($"SELECT * FROM Users WHERE Name = {name}")
+    .ToList();
+```
+
+**🛡️ Reliability Notes:**
+- LC037 catches `+`, `string.Concat(...)`, `string.Format(...)`, `StringBuilder`, and local alias hops when the raw SQL flow is provable.
+- It complements `LC018` and `LC034` by catching unsafe construction patterns before the final raw SQL API call.
+
+---
+
+### LC038: Excessive Eager Loading
+
+Long `Include(...)` / `ThenInclude(...)` chains can explode query size, duplicate data, and create very expensive SQL.
+Past a certain point, a projection or split strategy is usually clearer and cheaper.
+
+**👶 Explain it like I'm a ten year old:** Imagine ordering a backpack, then asking the shop to also stuff in your
+books, your desk, your chair, and your whole bedroom. Technically they can try, but it becomes a terrible delivery.
+
+**❌ The Crime:**
+
+```csharp
+var users = db.Users
+    .Include(u => u.Orders)
+    .Include(u => u.Roles)
+    .Include(u => u.Addresses)
+    .Include(u => u.Payments)
+    .ToList();
+```
+
+**✅ The Fix:**
+Project only what you need, split the query, or load related data in more focused steps.
+
+```csharp
+var users = db.Users
+    .AsSplitQuery()
+    .Include(u => u.Orders)
+    .Include(u => u.Roles)
+    .ToList();
+```
+
+**⚙️ Configuration:** Tune the threshold with `dotnet_code_quality.LC038.include_threshold` in your
+`.editorconfig`. The default is `4`.
+
+---
+
+### LC039: Nested SaveChanges
+
+Calling `SaveChanges()` or `SaveChangesAsync()` repeatedly on the same context in one method often means extra
+round-trips, fragmented units of work, and a higher chance of partial persistence.
+
+**👶 Explain it like I'm a ten year old:** Imagine mailing each page of your homework in a separate envelope instead of
+sending one finished packet.
+
+**❌ The Crime:**
+
+```csharp
+db.Users.Add(user);
+await db.SaveChangesAsync();
+
+db.AuditEntries.Add(audit);
+await db.SaveChangesAsync();
+```
+
+**✅ The Fix:**
+Batch related work and save once when the unit of work is complete.
+
+```csharp
+db.Users.Add(user);
+db.AuditEntries.Add(audit);
+await db.SaveChangesAsync();
+```
+
+**🛡️ Reliability Notes:**
+- LC039 is advisory and suppresses obvious transaction-boundary patterns.
+- If the split save is intentional, keep it explicit with a transaction or a clear comment boundary.
+
+---
+
+### LC040: Mixed Tracking and No-Tracking
+
+Mixing tracked queries with `AsNoTracking()` queries on the same proven `DbContext` in one method often signals muddled
+intent. It makes it harder to reason about updates, identity resolution, and why some entities are tracked while others
+are not.
+
+**👶 Explain it like I'm a ten year old:** Imagine half your soccer team is wearing jerseys with numbers and the other
+half is invisible. The coach cannot tell who is on the field anymore.
+
+**❌ The Crime:**
+
+```csharp
+var user = await db.Users.FirstAsync(u => u.Id == id);
+var related = await db.Users.AsNoTracking().Where(u => u.ManagerId == id).ToListAsync();
+```
+
+**✅ The Fix:**
+Pick one tracking mode for the method, or split the work so each scope has a single clear purpose.
+
+```csharp
+var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == id);
+var related = await db.Users.AsNoTracking().Where(u => u.ManagerId == id).ToListAsync();
+```
+
+---
+
+### LC041: Single-Entity Scalar Projection
+
+If you fetch a whole entity with `First*` or `Single*` and then immediately read just one scalar property, you are
+over-fetching. Push that projection into SQL instead.
+
+**👶 Explain it like I'm a ten year old:** Imagine asking the library to deliver an entire encyclopedia just because you
+wanted to read one sentence.
+
+**❌ The Crime:**
+
+```csharp
+var user = await db.Users.FirstAsync(u => u.Id == id);
+return user.Name;
+```
+
+**✅ The Fix:**
+Project the one value you need before materializing.
+
+```csharp
+return await db.Users
+    .Where(u => u.Id == id)
+    .Select(u => u.Name)
+    .FirstAsync();
+```
+
+**🛡️ Reliability Notes:**
+- LC041 only fixes analyzer-proven single-property usages.
+- The fixer currently targets guarded `var` local patterns and stays silent on escape-heavy or shape-changing cases.
+
+---
+
+### LC042: Missing Query Tags
+
+Complex EF queries are much easier to find and diagnose in logs when they carry a `TagWith(...)` label. Without tags,
+slow-query analysis turns into guesswork.
+
+**👶 Explain it like I'm a ten year old:** Imagine a giant pile of lunch boxes with no names on them. When something
+goes wrong, nobody knows which lunch belongs to whom.
+
+**❌ The Crime:**
+
+```csharp
+var users = await db.Users
+    .Where(u => u.IsActive)
+    .OrderBy(u => u.Name)
+    .Take(50)
+    .ToListAsync();
+```
+
+**✅ The Fix:**
+Add a meaningful query tag near the root of the chain.
+
+```csharp
+var users = await db.Users
+    .TagWith("Active users list")
+    .Where(u => u.IsActive)
+    .OrderBy(u => u.Name)
+    .Take(50)
+    .ToListAsync();
+```
+
+**⚙️ Configuration:** Tune the complexity threshold with `dotnet_code_quality.LC042.query_operator_threshold`. The
+default is `3`.
+
+---
+
+### LC043: Async Enumerable Buffering
+
+If an `IAsyncEnumerable<T>` is buffered into a list or array and then immediately looped once, you lose the streaming
+benefit and hold everything in memory for no reason.
+
+**👶 Explain it like I'm a ten year old:** Imagine waiting for every toy to arrive in one giant pile before you start
+playing, even though you could play with each toy as soon as it shows up.
+
+**❌ The Crime:**
+
+```csharp
+var users = await stream.ToListAsync();
+
+foreach (var user in users)
+{
+    Console.WriteLine(user.Name);
+}
+```
+
+**✅ The Fix:**
+Stream the sequence directly with `await foreach`.
+
+```csharp
+await foreach (var user in stream)
+{
+    Console.WriteLine(user.Name);
+}
+```
+
+**🛡️ Reliability Notes:**
+- LC043 intentionally targets a narrow, analyzer-proven v1 pattern: immediate buffering followed by one linear loop in the same method.
+- The fixer rewrites only those safe cases and does not try to transform broader async-stream usage.
 
 ---
 
