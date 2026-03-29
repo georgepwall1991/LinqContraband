@@ -46,10 +46,23 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
+    {
+        var dbFunctionAttribute = context.Compilation.GetTypeByMetadataName(DbFunctionAttributeMetadataName);
+        var projectableAttribute = context.Compilation.GetTypeByMetadataName(ProjectableAttributeMetadataName);
+
+        context.RegisterOperationAction(
+            operationContext => AnalyzeInvocation(operationContext, dbFunctionAttribute, projectableAttribute),
+            OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        INamedTypeSymbol? dbFunctionAttribute,
+        INamedTypeSymbol? projectableAttribute)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
@@ -60,7 +73,7 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
             return;
 
         // Trust methods from specific namespaces known to be translatable
-        if (IsTrustedTranslatableMethod(context.Compilation, methodSymbol))
+        if (IsTrustedTranslatableMethod(methodSymbol, dbFunctionAttribute, projectableAttribute))
             return;
 
         // Constraint 1: Inside a Lambda
@@ -103,11 +116,14 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool IsTrustedTranslatableMethod(Compilation compilation, IMethodSymbol method)
+    private static bool IsTrustedTranslatableMethod(
+        IMethodSymbol method,
+        INamedTypeSymbol? dbFunctionAttribute,
+        INamedTypeSymbol? projectableAttribute)
     {
         // System and Microsoft (Linq, EF Core base) are generally translatable
         if (method.IsFrameworkMethod()) return true;
-        if (HasExplicitTranslationMarker(compilation, method)) return true;
+        if (HasExplicitTranslationMarker(method, dbFunctionAttribute, projectableAttribute)) return true;
 
         var ns = method.ContainingNamespace?.ToString();
         if (ns == null) return false;
@@ -123,10 +139,11 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static bool HasExplicitTranslationMarker(Compilation compilation, IMethodSymbol method)
+    private static bool HasExplicitTranslationMarker(
+        IMethodSymbol method,
+        INamedTypeSymbol? dbFunctionAttribute,
+        INamedTypeSymbol? projectableAttribute)
     {
-        var dbFunctionAttribute = compilation.GetTypeByMetadataName(DbFunctionAttributeMetadataName);
-        var projectableAttribute = compilation.GetTypeByMetadataName(ProjectableAttributeMetadataName);
         if (dbFunctionAttribute == null && projectableAttribute == null) return false;
 
         foreach (var candidate in EnumerateMethodVariants(method))

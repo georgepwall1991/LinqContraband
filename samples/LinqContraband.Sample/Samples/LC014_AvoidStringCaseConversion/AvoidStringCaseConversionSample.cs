@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using LinqContraband.Sample.Data;
+using System;
 
 namespace LinqContraband.Sample.Samples.LC014_AvoidStringCaseConversion;
 
@@ -37,7 +38,7 @@ public static class AvoidStringCaseConversionSample
         // This query forces the database to scan the entire Users table.
         // SQL Translation: SELECT ... WHERE LOWER(u.Name) = 'admin'
         var slowQuery = db.Users
-            .Where(u => u.Name.ToLower() == "admin") // LC014 Violation
+            .Where(u => string.Equals(u.Name, "admin", StringComparison.OrdinalIgnoreCase)) // LC014 Violation
             .ToList();
 
         // Even in OrderBy, this prevents using the index for sorting, forcing a sort in memory/tempdb.

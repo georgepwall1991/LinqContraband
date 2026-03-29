@@ -29,7 +29,7 @@ public class ToListInSelectProjectionSample
         Console.WriteLine("Testing LC022...");
 
         // VIOLATION: ToList() inside Select forces client-side evaluation
-        var result = users.Select(u => u.Orders.ToList()).ToList();
+        var result = users.Select(u => u.Orders).ToList();
 
         // CORRECT: EF Core handles collection projection natively
         var correctResult = users.Select(u => u.Orders).ToList();

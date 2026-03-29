@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **33 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **43 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ### LC001: The Local Method Smuggler
 
@@ -1124,6 +1124,21 @@ private static readonly FrozenSet<string> ElevatedRoles = new string[] { "admin"
 
 ---
 
+## New in v5.0
+
+- **[LC034: Avoid `ExecuteSqlRaw` with interpolation](docs/LC034_AvoidExecuteSqlRawWithInterpolation.md)** (`Warning`) detects unsafe SQL flowing into `ExecuteSqlRaw(...)` / `ExecuteSqlRawAsync(...)` and offers a safe rewrite when the replacement is analyzer-proven.
+- **[LC035: Missing `Where` before `ExecuteDelete` / `ExecuteUpdate`](docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md)** (`Info`) flags unfiltered bulk delete or update calls rooted in a direct `DbSet` chain.
+- **[LC036: `DbContext` captured across threads](docs/LC036_DbContextCapturedAcrossThreads.md)** (`Warning`) reports `DbContext` instances captured into `Task.Run(...)`, `Parallel.ForEach(...)`, or similar cross-thread delegates.
+- **[LC037: Raw SQL string construction](docs/LC037_RawSqlStringConstruction.md)** (`Warning`) catches concatenated, formatted, or `StringBuilder`-assembled SQL before it reaches `FromSqlRaw(...)` or `ExecuteSqlRaw(...)`.
+- **[LC038: Excessive eager loading](docs/LC038_ExcessiveEagerLoading.md)** (`Info`) reports query chains with too many `Include(...)` / `ThenInclude(...)` calls. Tune it with `dotnet_code_quality.LC038.include_threshold`.
+- **[LC039: Nested `SaveChanges`](docs/LC039_NestedSaveChanges.md)** (`Info`) reports repeated `SaveChanges()` / `SaveChangesAsync()` calls on the same proven context in one executable root when no transaction boundary separates them.
+- **[LC040: Mixed tracking and no-tracking](docs/LC040_MixedTrackingAndNoTracking.md)** (`Info`) advises when one method mixes tracked and `AsNoTracking()` materialization from the same `DbContext`.
+- **[LC041: Single-entity scalar projection](docs/LC041_SingleEntityScalarProjection.md)** (`Info`) detects `First*` / `Single*` queries that materialize an entity even though only one scalar property is consumed, with a guarded projection fixer for `var` locals.
+- **[LC042: Missing query tags](docs/LC042_MissingQueryTags.md)** (`Info`) flags untagged EF queries with `3+` counted operators. Tune it with `dotnet_code_quality.LC042.query_operator_threshold`.
+- **[LC043: Async enumerable buffering](docs/LC043_AsyncEnumerableBuffering.md)** (`Info`) detects the narrow v1 pattern where an `IAsyncEnumerable<T>` is buffered into a list or array and then looped exactly once, with a fixer that rewrites to `await foreach`.
+
+---
+
 ## ⚙️ Configuration
 
 You can configure the severity of these rules in your `.editorconfig` file:
@@ -1133,10 +1148,15 @@ You can configure the severity of these rules in your `.editorconfig` file:
 dotnet_diagnostic.LC001.severity = error
 dotnet_diagnostic.LC002.severity = error
 dotnet_diagnostic.LC003.severity = warning
+
+# Optional rule-specific thresholds
+dotnet_code_quality.LC038.include_threshold = 4
+dotnet_code_quality.LC042.query_operator_threshold = 3
 ```
 
-Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, `LC031`, `LC032`, and `LC033`
-default to `Info` so they surface as hints without drowning out higher-confidence warnings.
+Advisory rules such as `LC009`, `LC017`, `LC023`, `LC026`, `LC027`, `LC029`, `LC030`, `LC031`, `LC032`, `LC033`,
+`LC035`, `LC038`, `LC039`, `LC040`, `LC041`, `LC042`, and `LC043` default to `Info` so they surface as
+hints without drowning out higher-confidence warnings.
 
 ## 🤝 Contributing
 

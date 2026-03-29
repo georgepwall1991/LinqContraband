@@ -366,7 +366,7 @@ public static class AnalysisExtensions
                     if (attr.AttributeClass == null) continue;
                     if (attr.AttributeClass.Name == "KeyAttribute" ||
                         (attr.AttributeClass.Name == "Key" &&
-                         attr.AttributeClass.ContainingNamespace?.ToString().StartsWith("System.ComponentModel.DataAnnotations", StringComparison.Ordinal) == true))
+                         attr.AttributeClass.ContainingNamespace?.ToString()?.StartsWith("System.ComponentModel.DataAnnotations", StringComparison.Ordinal) == true))
                     {
                         return prop.Name;
                     }

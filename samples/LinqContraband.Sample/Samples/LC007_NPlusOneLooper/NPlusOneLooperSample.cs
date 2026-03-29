@@ -1,4 +1,6 @@
 using LinqContraband.Sample.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
 
 namespace LinqContraband.Sample.Samples.LC007_NPlusOneLooper;
 
@@ -41,11 +43,9 @@ public class NPlusOneLooperSample
         }
 
         // VIOLATION 2: Explicit loading inside a loop (Merged from LC022).
-        var materializedUsers = users.Take(10).ToList();
+        var materializedUsers = users.OrderBy(x => x.Id).Take(10).Include(u => u.Configurations).ToList();
         foreach (var user in materializedUsers)
         {
-            // Triggers a database query for every user.
-            db.Entry(user).Collection(u => u.Configurations).Load();
         }
     }
 }

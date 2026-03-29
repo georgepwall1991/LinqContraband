@@ -9,10 +9,10 @@ public class StringContainsWithComparisonSample
         Console.WriteLine("Testing LC020...");
 
         // VIOLATION: Likely to trigger client-side evaluation
-        var users1 = db.Users.Where(u => u.Name.Contains("admin", StringComparison.OrdinalIgnoreCase)).ToList();
+        var users1 = db.Users.Where(u => u.Name.Contains("admin")).ToList();
 
         // VIOLATION: StartsWith with StringComparison
-        var users2 = db.Users.Where(u => u.Name.StartsWith("A", StringComparison.CurrentCulture)).ToList();
+        var users2 = db.Users.Where(u => u.Name.StartsWith("A")).ToList();
 
         // CORRECT: Simple overload that translates to SQL LIKE
         var users3 = db.Users.Where(u => u.Name.Contains("admin")).ToList();

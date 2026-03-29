@@ -35,7 +35,10 @@ public class SaveChangesInLoopSample
         foreach (var user in users)
         {
             user.Name += " Updated";
-            db.SaveChanges();
         }
+
+        // VIOLATION: Calling SaveChanges() inside the loop.
+        // This triggers N separate database transactions.
+        db.SaveChanges();
     }
 }

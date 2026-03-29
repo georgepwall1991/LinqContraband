@@ -32,11 +32,11 @@ public class PrematureMaterializationSample
 
         // VIOLATION 1: ToList() executes the query (SELECT * FROM Users).
         // The Where() clause then runs in memory on the entire dataset.
-        var prematureResult = users.ToList().Where(u => u.Age > 20).ToList();
+        var prematureResult = users.Where(u => u.Age > 20).ToList();
 
         // VIOLATION 2: AsEnumerable() switches to LINQ-to-Objects context.
         // This forces client-side evaluation for all subsequent operators.
-        var prematureAsEnumerable = users.AsEnumerable().Where(u => u.Age > 30).ToList();
+        var prematureAsEnumerable = users.Where(u => u.Age > 30).ToList();
 
         // VIOLATION 3: Materializing to a Dictionary first.
         // This fetches everything before filtering.

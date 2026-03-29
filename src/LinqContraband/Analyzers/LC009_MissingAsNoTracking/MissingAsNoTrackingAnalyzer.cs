@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
@@ -43,10 +44,20 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
+    {
+        var writeOperationCache = new ConcurrentDictionary<SyntaxNode, bool>();
+        context.RegisterOperationAction(
+            operationContext => AnalyzeInvocation(operationContext, writeOperationCache),
+            OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        ConcurrentDictionary<SyntaxNode, bool> writeOperationCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -70,7 +81,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (analysis.HasSelect) return; // Projections don't track
 
         // 3. Analyze the containing method for writes (SaveChanges)
-        if (HasWriteOperations(context.Operation)) return;
+        if (HasWriteOperations(context.Operation, writeOperationCache)) return;
 
         // If we got here: It's an EF query returning entities, no tracking mod, no writes in method.
         var containingMethodName = GetContainingMethodName(context.Operation);
@@ -95,7 +106,7 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             "LastAsync" or "LastOrDefaultAsync";
     }
 
-    private ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
+    private static ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
     {
         var result = new ChainAnalysis();
         var current = invocation.GetInvocationReceiver();
@@ -156,38 +167,27 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         return result;
     }
 
-    private bool HasWriteOperations(IOperation operation)
+    private static bool HasWriteOperations(
+        IOperation operation,
+        ConcurrentDictionary<SyntaxNode, bool> writeOperationCache)
     {
-        // Find method body
-        var root = operation;
-        while (root.Parent != null)
-        {
-            if (root is IMethodBodyOperation ||
-                root is ILocalFunctionOperation ||
-                root is IAnonymousFunctionOperation)
-                break;
-            root = root.Parent;
-        }
-
+        var root = operation.FindOwningExecutableRoot();
         if (root == null) return false;
 
-        // Walk the body to find SaveChanges
-        var hasWrite = false;
+        return writeOperationCache.GetOrAdd(root.Syntax, _ => ComputeHasWriteOperations(root));
+    }
+
+    private static bool ComputeHasWriteOperations(IOperation root)
+    {
         foreach (var descendant in root.Descendants())
             if (descendant is IInvocationOperation inv)
             {
                 if (inv.TargetMethod.Name == "SaveChanges" ||
                     inv.TargetMethod.Name == "SaveChangesAsync")
                 {
-                    hasWrite = true;
-                    break;
+                    return true;
                 }
 
-                // Also check for Add, Update, Remove on DbSet?
-                // Ideally yes, but SaveChanges is the commit point. 
-                // If they Add but don't SaveChanges in this method, tracking is still technically needed?
-                // Yes, because the Context tracks it.
-                // So if they call Add(), we should assume tracking is needed.
                 var name = inv.TargetMethod.Name;
                 var receiverType =
                     inv.Instance?.Type ?? (inv.Arguments.Length > 0 ? inv.Arguments[0].Value.Type : null);
@@ -197,15 +197,14 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
                      name == "AddRangeAsync") &&
                     (receiverType?.IsDbSet() == true || receiverType?.IsDbContext() == true))
                 {
-                    hasWrite = true;
-                    break;
+                    return true;
                 }
             }
 
-        return hasWrite;
+        return false;
     }
 
-    private string GetContainingMethodName(IOperation operation)
+    private static string GetContainingMethodName(IOperation operation)
     {
         var sym = operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart);
         return sym?.Name ?? "Unknown";

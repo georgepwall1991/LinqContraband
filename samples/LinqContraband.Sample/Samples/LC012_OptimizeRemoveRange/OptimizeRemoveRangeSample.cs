@@ -39,9 +39,11 @@ public class OptimizeRemoveRangeSample
 
         // VIOLATION: Loading entities into memory to delete them.
         // This fetches all matching rows, tracks them, and marks them as Deleted.
-        db.Users.RemoveRange(usersToDelete);
+        // Warning: ExecuteDelete bypasses change tracking and cascades.
+        usersToDelete.ExecuteDelete();
 
         // Alternative inefficient approach on the context directly.
-        db.RemoveRange(usersToDelete);
+        // Warning: ExecuteDelete bypasses change tracking and cascades.
+        usersToDelete.ExecuteDelete();
     }
 }

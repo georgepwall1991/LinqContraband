@@ -1,4 +1,5 @@
 using LinqContraband.Sample.Data;
+using System.Linq;
 
 namespace LinqContraband.Sample.Samples.LC015_MissingOrderBy;
 
@@ -32,13 +33,13 @@ public class MissingOrderBySample
         Console.WriteLine("Testing LC015...");
 
         // VIOLATION: Skipping 10 users without sorting. Which 10 are skipped? It's undefined.
-        var page2 = users.Skip(10).Take(10).ToList();
+        var page2 = users.OrderBy(x => x.Id).Skip(10).Take(10).ToList();
 
         // VIOLATION: Getting the last user without sorting. Which user is "Last"? Undefined.
         // Note: Last() isn't supported directly in some EF Core providers without ordering, but LINQ allows compilation.
         try
         {
-            var last = users.Last();
+            var last = users.OrderBy(x => x.Id).Last();
         }
         catch (Exception ex)
         {

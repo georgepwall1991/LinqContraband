@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.CodeAnalysis.CSharp;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -20,10 +21,10 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC003";
     private const string Category = "Performance";
-    private static readonly LocalizableString Title = "Prefer Any() over Count() > 0";
+    private static readonly LocalizableString Title = "Prefer Any() over Count() existence checks";
 
     private static readonly LocalizableString MessageFormat =
-        "Use Any() instead of Count() > 0 for efficient existence checking on IQueryable";
+        "Use Any() or !Any() instead of Count()-based existence checks on IQueryable";
 
     private static readonly LocalizableString Description =
         "Checking if Count() is greater than 0 on an IQueryable can be expensive as it may iterate the entire result set. Any() is optimized to return as soon as a match is found.";
@@ -54,12 +55,14 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
         // 1. Count() > 0  OR  0 < Count()
         // 2. Count() >= 1 OR  1 <= Count()
         // 3. Count() != 0 OR  0 != Count()
+        // 4. Count() == 0 OR  0 == Count()
 
         if (binaryOp.OperatorKind != BinaryOperatorKind.GreaterThan &&
             binaryOp.OperatorKind != BinaryOperatorKind.LessThan &&
             binaryOp.OperatorKind != BinaryOperatorKind.GreaterThanOrEqual &&
             binaryOp.OperatorKind != BinaryOperatorKind.LessThanOrEqual &&
-            binaryOp.OperatorKind != BinaryOperatorKind.NotEquals)
+            binaryOp.OperatorKind != BinaryOperatorKind.NotEquals &&
+            binaryOp.OperatorKind != BinaryOperatorKind.Equals)
             return;
 
         IOperation? countInvocation = null;
@@ -86,14 +89,19 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
 
         if (IsZero(constantValue))
         {
-            // Count() > 0, 0 < Count(), Count() != 0, 0 != Count()
+            // Count() > 0, 0 < Count(), Count() != 0, 0 != Count(), Count() == 0, 0 == Count()
             if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThan || // Count > 0
                 binaryOp.OperatorKind == BinaryOperatorKind.LessThan ||    // 0 < Count
-                binaryOp.OperatorKind == BinaryOperatorKind.NotEquals)     // Count != 0
+                binaryOp.OperatorKind == BinaryOperatorKind.NotEquals ||   // Count != 0
+                binaryOp.OperatorKind == BinaryOperatorKind.Equals)        // Count == 0
             {
                 // Ensure strict direction for inequalities
                 if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThan && binaryOp.LeftOperand != countInvocation) return; // 0 > Count (False)
                 if (binaryOp.OperatorKind == BinaryOperatorKind.LessThan && binaryOp.RightOperand != countInvocation) return;   // Count < 0 (False)
+                if (binaryOp.OperatorKind == BinaryOperatorKind.Equals &&
+                    binaryOp.LeftOperand != countInvocation &&
+                    binaryOp.RightOperand != countInvocation)
+                    return;
 
                 isMatch = true;
             }

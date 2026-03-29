@@ -12,7 +12,7 @@ public class AsNoTrackingWithUpdateSample
         var userId = Guid.NewGuid();
 
         // VIOLATION: Entity is not tracked, so Update will mark all columns as modified
-        var user1 = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == userId);
+        var user1 = db.Users.FirstOrDefault(u => u.Id == userId);
         if (user1 != null)
         {
             user1.Name = "Updated";

@@ -156,9 +156,8 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task CountEqualsZero_OnIQueryable_ShouldNotTriggerLC003()
+    public async Task CountEqualsZero_OnIQueryable_ShouldTriggerLC003()
     {
-        // Count() == 0 (checking for empty) is NOT the same as existence check
         var test = Usings + @"
 namespace LinqContraband.Test
 {
@@ -167,7 +166,27 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var query = new List<int>().AsQueryable();
-            if (query.Count() == 0)
+            if ({|LC003:query.Count() == 0|})
+            {
+            }
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ZeroEqualsCount_OnIQueryable_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|LC003:0 == query.Count()|})
             {
             }
         }

@@ -10,7 +10,7 @@ public class AvoidIgnoreQueryFiltersSample
         Console.WriteLine("Testing LC021...");
 
         // VIOLATION: Bypasses global filters (e.g., multi-tenancy or soft-delete)
-        var allUsers = db.Users.IgnoreQueryFilters().ToList();
+        var allUsers = db.Users.ToList();
 
         // CORRECT: Normal query respecting global filters
         var activeUsers = db.Users.ToList();

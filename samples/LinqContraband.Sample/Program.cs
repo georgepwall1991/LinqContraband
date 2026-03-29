@@ -23,6 +23,17 @@ using LinqContraband.Sample.Samples.LC029_RedundantIdentitySelect;
 using LinqContraband.Sample.Samples.LC030_DbContextInSingleton;
 using LinqContraband.Sample.Samples.LC032_ExecuteUpdateForBulkUpdates;
 using LinqContraband.Sample.Samples.LC033_UseFrozenSetForStaticMembershipCaches;
+using LinqContraband.Sample.Samples.LC034_AvoidExecuteSqlRawWithInterpolation;
+using LinqContraband.Sample.Samples.LC035_MissingWhereBeforeExecuteDeleteUpdate;
+using LinqContraband.Sample.Samples.LC036_DbContextCapturedAcrossThreads;
+using LinqContraband.Sample.Samples.LC037_RawSqlStringConstruction;
+using LinqContraband.Sample.Samples.LC038_ExcessiveEagerLoading;
+using LinqContraband.Sample.Samples.LC039_NestedSaveChanges;
+using LinqContraband.Sample.Samples.LC040_MixedTrackingAndNoTracking;
+using LinqContraband.Sample.Samples.LC041_SingleEntityScalarProjection;
+using LinqContraband.Sample.Samples.LC042_MissingQueryTags;
+using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
+using System.Linq;
 
 namespace LinqContraband.Sample;
 
@@ -44,7 +55,7 @@ internal class Program
         NPlusOneLooperSample.Run(db, users);
         await SyncBlockerSample.RunAsync(users);
         MissingAsNoTrackingSample.Run(users);
-        SaveChangesInLoopSample.Run(users);
+        SaveChangesInLoopSample.Run(users.ToList());
 
         EntityMissingPrimaryKeySample.Run();
         OptimizeRemoveRangeSample.Run();
@@ -68,5 +79,17 @@ internal class Program
         new DbContextInSingletonSample(db).Run();
         ExecuteUpdateForBulkUpdatesSample.Run();
         UseFrozenSetForStaticMembershipCachesSample.Run();
+
+        // LC034 - LC043
+        await ExecuteSqlRawInterpolationSample.RunAsync(db);
+        MissingWhereBeforeExecuteDeleteUpdateSample.Run(db);
+        DbContextCapturedAcrossThreadsSample.Run(db);
+        RawSqlStringConstructionSample.Run(db);
+        ExcessiveEagerLoadingSample.Run(db);
+        NestedSaveChangesSample.Run(db);
+        MixedTrackingAndNoTrackingSample.Run(db);
+        SingleEntityScalarProjectionSample.Run(db);
+        MissingQueryTagsSample.Run(db);
+        await AsyncEnumerableBufferingSample.RunAsync(db);
     }
 }

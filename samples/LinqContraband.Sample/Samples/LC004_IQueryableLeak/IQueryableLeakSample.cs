@@ -1,4 +1,5 @@
 using LinqContraband.Sample.Data;
+using System.Linq;
 
 namespace LinqContraband.Sample.Samples.LC004_IQueryableLeak;
 
@@ -37,7 +38,7 @@ public class IQueryableLeakSample
 
         // VIOLATION: Passing a raw IQueryable (db.Users) to a method expecting IEnumerable.
         // This implicitly opts out of further SQL composition.
-        ProcessUsers(db.Users);
+        ProcessUsers(db.Users.ToList());
     }
 
     /// <summary>

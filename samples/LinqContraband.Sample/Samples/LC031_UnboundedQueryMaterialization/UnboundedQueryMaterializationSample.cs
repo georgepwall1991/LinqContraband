@@ -1,4 +1,5 @@
 using LinqContraband.Sample.Data;
+using System.Linq;
 
 namespace LinqContraband.Sample.Samples.LC031_UnboundedQueryMaterialization;
 
@@ -33,6 +34,6 @@ public class UnboundedQueryMaterializationSample
         var result = db.Users.Where(u => u.Age > 18).ToList();
 
         // CORRECT: Bounded with Take()
-        var correctResult = db.Users.Where(u => u.Age > 18).Take(1000).ToList();
+        var correctResult = db.Users.Where(u => u.Age > 18).OrderBy(x => x.Id).Take(1000).ToList();
     }
 }

@@ -117,6 +117,98 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    [Fact]
+    public async Task CountEqualsZero_ShouldBeReplacedWithNotAny()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|LC003:query.Count() == 0|})
+            {
+            }
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if (!(query.Any()))
+            {
+            }
+        }
+    }
+}";
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task CountAsyncEqualsZero_ShouldBeReplacedWithNotAwaitAnyAsync()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<int> CountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public static Task<bool> AnyAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(false);
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async Task TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|LC003:await query.CountAsync() == 0|})
+            {
+            }
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<int> CountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public static Task<bool> AnyAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(false);
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async Task TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if (!(await query.AnyAsync()))
+            {
+            }
+        }
+    }
+}";
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest

@@ -68,17 +68,9 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
     private bool IsFromNoTrackingQuery(ILocalSymbol local, IOperation currentOperation)
     {
-        // Find the top-most block or method body
-        var root = currentOperation;
-        while (root.Parent != null)
-        {
-            root = root.Parent;
-        }
+        var root = currentOperation.FindOwningExecutableRoot() ?? currentOperation;
 
-        var descendants = root.Descendants().ToList();
-        var allOps = new List<IOperation>(descendants) { root };
-
-        foreach (var op in allOps)
+        foreach (var op in EnumerateOperations(root))
         {
             // 1. Standard Assignments
             if (op is ISimpleAssignmentOperation assignment &&
@@ -121,6 +113,17 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static IEnumerable<IOperation> EnumerateOperations(IOperation root)
+    {
+        yield return root;
+
+        foreach (var child in root.ChildOperations)
+        {
+            foreach (var descendant in EnumerateOperations(child))
+                yield return descendant;
+        }
     }
 
     private bool IsAsNoTrackingQuery(IOperation operation)

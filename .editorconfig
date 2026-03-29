@@ -96,7 +96,7 @@ indent_size = 2
 # dotnet_diagnostic.LC008.severity = warning
 
 # LC009: The Tracking Tax - Missing AsNoTracking() on read-only queries
-# dotnet_diagnostic.LC009.severity = warning
+# dotnet_diagnostic.LC009.severity = info
 
 # LC010: SaveChanges Loop Tax - SaveChanges() inside a loop
 # dotnet_diagnostic.LC010.severity = warning
@@ -120,7 +120,7 @@ indent_size = 2
 # dotnet_diagnostic.LC016.severity = warning
 
 # LC017: Whole Entity Projection - Loading entire entity when few properties accessed
-# dotnet_diagnostic.LC017.severity = warning
+# dotnet_diagnostic.LC017.severity = info
 
 # LC018: Avoid FromSqlRaw with Interpolation - SQL injection risk from interpolated strings
 # dotnet_diagnostic.LC018.severity = warning
@@ -132,16 +132,16 @@ indent_size = 2
 # dotnet_diagnostic.LC021.severity = warning
 
 # LC023: Find Instead of FirstOrDefault - Using FirstOrDefault when Find is more efficient
-# dotnet_diagnostic.LC023.severity = warning
+# dotnet_diagnostic.LC023.severity = info
 
 # LC025: AsNoTracking with Update - Conflicting tracking/update intent
 # dotnet_diagnostic.LC025.severity = warning
 
 # LC026: Missing CancellationToken - Async operations without cancellation support
-# dotnet_diagnostic.LC026.severity = warning
+# dotnet_diagnostic.LC026.severity = info
 
 # LC029: Redundant Identity Select - Pointless Select(x => x) projection
-# dotnet_diagnostic.LC029.severity = warning
+# dotnet_diagnostic.LC029.severity = info
 
 # LC019: Conditional Include Expression - Ternary/coalesce in Include throws at runtime
 # dotnet_diagnostic.LC019.severity = warning
@@ -159,7 +159,45 @@ indent_size = 2
 # dotnet_diagnostic.LC028.severity = warning
 
 # LC030: DbContext in Singleton - Potential lifetime mismatch
-# dotnet_diagnostic.LC030.severity = warning
+# dotnet_diagnostic.LC030.severity = info
 
 # LC031: Unbounded Query Materialization - ToList/ToArray on DbSet without Take/First bounding
 # dotnet_diagnostic.LC031.severity = info
+
+# LC032: ExecuteUpdate for Bulk Scalar Updates - Tracked bulk loops that can become ExecuteUpdate
+# dotnet_diagnostic.LC032.severity = info
+
+# LC033: FrozenSet Membership Cache - private static readonly HashSet<T> used only for Contains
+# dotnet_diagnostic.LC033.severity = info
+
+# LC034: Avoid ExecuteSqlRaw with Interpolation - SQL injection risk in ExecuteSqlRaw/Async
+# dotnet_diagnostic.LC034.severity = warning
+
+# LC035: Missing Where Before ExecuteDelete/Update - Unfiltered bulk delete/update
+# dotnet_diagnostic.LC035.severity = info
+
+# LC036: DbContext Captured Across Threads - DbContext used from Task.Run/Parallel APIs
+# dotnet_diagnostic.LC036.severity = warning
+
+# LC037: Raw SQL String Construction - String.Concat/+ /Format/StringBuilder into raw SQL
+# dotnet_diagnostic.LC037.severity = warning
+
+# LC038: Excessive Eager Loading - Too many Include/ThenInclude calls on one query
+# dotnet_diagnostic.LC038.severity = info
+# dotnet_code_quality.LC038.include_threshold = 4
+
+# LC039: Nested SaveChanges - Multiple saves on the same DbContext in one method
+# dotnet_diagnostic.LC039.severity = info
+
+# LC040: Mixed Tracking and No-Tracking - Inconsistent materialization modes in one method
+# dotnet_diagnostic.LC040.severity = info
+
+# LC041: Single Entity Scalar Projection - Materialized entity where one scalar is consumed
+# dotnet_diagnostic.LC041.severity = info
+
+# LC042: Missing Query Tags - Complex query without TagWith/TagWithCallSite
+# dotnet_diagnostic.LC042.severity = info
+# dotnet_code_quality.LC042.query_operator_threshold = 3
+
+# LC043: Async Enumerable Buffering - Buffering IAsyncEnumerable before a single foreach
+# dotnet_diagnostic.LC043.severity = info

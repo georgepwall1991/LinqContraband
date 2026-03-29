@@ -118,13 +118,13 @@ public class SaveChangesInLoopFixer : CodeFixProvider
     private static bool IsDirectTerminalStatement(ExpressionStatementSyntax statement, StatementSyntax loop)
     {
         if (loop switch
-            {
-                ForStatementSyntax forLoop => forLoop.Statement,
-                ForEachStatementSyntax forEachLoop => forEachLoop.Statement,
-                WhileStatementSyntax whileLoop => whileLoop.Statement,
-                DoStatementSyntax doLoop => doLoop.Statement,
-                _ => null
-            } is not StatementSyntax body)
+        {
+            ForStatementSyntax forLoop => forLoop.Statement,
+            ForEachStatementSyntax forEachLoop => forEachLoop.Statement,
+            WhileStatementSyntax whileLoop => whileLoop.Statement,
+            DoStatementSyntax doLoop => doLoop.Statement,
+            _ => null
+        } is not StatementSyntax body)
         {
             return false;
         }

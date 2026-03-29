@@ -129,10 +129,8 @@ namespace LinqContraband.Test
     }
 
     [Fact]
-    public async Task CountEqualsZero_ShouldNotTrigger_ForNow()
+    public async Task CountEqualsZero_OnIQueryable_ShouldTriggerLC003()
     {
-        // Analyzer is specifically for Any() replacement which implies > 0. 
-        // == 0 would be !Any(), which is a valid extension but let's stick to the requirement first.
         var test = Usings + @"
 namespace LinqContraband.Test
 {
@@ -141,7 +139,7 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var query = new List<int>().AsQueryable();
-            if (query.Count() == 0)
+            if ({|LC003:query.Count() == 0|})
             {
             }
         }
@@ -240,5 +238,37 @@ namespace LinqContraband.Test
             .WithSpan(23, 17, 23, 45);
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task CountAsync_EqualsZero_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<int> CountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+}
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async Task TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|LC003:await query.CountAsync() == 0|})
+            {
+            }
+        }
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

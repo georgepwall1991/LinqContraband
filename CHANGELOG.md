@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-03-29
+
+### Added
+- Added `LC034` through `LC043`, expanding the shipped analyzer set from 33 rules to 43 rules
+- Added per-rule docs and sample-project coverage for `LC034`, `LC035`, `LC036`, `LC037`, `LC038`, `LC039`, `LC040`, `LC041`, `LC042`, and `LC043`
+- Added targeted analyzer and fixer coverage for the new rule set, including guarded no-fix scenarios where the fixer contract is intentionally narrow
+
+### Changed
+- `LC001` now caches `DbFunctionAttribute` / `ProjectableAttribute` symbol lookups once per compilation instead of resolving them per invocation
+- `LC003` now covers `Count()` / `LongCount()` / async variants compared against `0`, including `== 0` and reversed-operand forms, and the fixer rewrites those cases to `!Any()` / `!AnyAsync()`
+- `LC009` now caches write-operation detection per executable root instead of rescanning the same method body for each materializer
+- `LC025` now walks the operation tree without materializing `Descendants().ToList()` for the whole root
+- `LC026` now uses a single-pass in-scope `CancellationToken` search and prefers `cancellationToken`, then `ct`, before falling back to the first available token
+- `LC027` now respects `HasForeignKey(...)`, `OwnsOne(...)`, `OwnsMany(...)`, and `IEntityTypeConfiguration<T>` / `OnModelCreating(...)` Fluent API patterns when deciding whether a navigation is missing an explicit FK
+- Updated README, `.editorconfig`, and sample-project coverage to reflect the 43-rule surface, new advisory defaults, and tunable thresholds for `LC038` and `LC042`
+
+### Fixed
+- `LC023` continues to suppress `Find(...)` suggestions when the query chain already contains `AsNoTracking()`, preventing an impossible “fix” that would force tracking
+- Expanded edge-case and fixer coverage for the newly hardened foundation rules, including regression cases for `LC009`, `LC025`, `LC026`, and `LC027`
+
 ## [4.7.1] - 2026-03-18
 
 ### Changed

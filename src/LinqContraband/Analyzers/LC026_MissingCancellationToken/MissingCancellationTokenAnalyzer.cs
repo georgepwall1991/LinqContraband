@@ -70,21 +70,34 @@ public sealed class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
 
     internal static string? FindCancellationTokenInScope(SemanticModel semanticModel, int position)
     {
-        var symbols = semanticModel.LookupSymbols(position);
+        ISymbol? fallback = null;
+        ISymbol? shortName = null;
 
-        var tokenSymbols = symbols.Where(s =>
-            (s is ILocalSymbol l && IsCancellationTokenType(l.Type)) ||
-            (s is IParameterSymbol p && IsCancellationTokenType(p.Type)))
-            .ToList();
+        foreach (var symbol in semanticModel.LookupSymbols(position))
+        {
+            if (symbol is not ILocalSymbol and not IParameterSymbol)
+                continue;
 
-        if (tokenSymbols.Count == 0)
-            return null;
+            var type = symbol switch
+            {
+                ILocalSymbol local => local.Type,
+                IParameterSymbol parameter => parameter.Type,
+                _ => null
+            };
 
-        var preferred = tokenSymbols.FirstOrDefault(s => s.Name == "cancellationToken") ??
-                        tokenSymbols.FirstOrDefault(s => s.Name == "ct") ??
-                        tokenSymbols.First();
+            if (type == null || !IsCancellationTokenType(type))
+                continue;
 
-        return preferred.Name;
+            if (symbol.Name == "cancellationToken")
+                return symbol.Name;
+
+            if (symbol.Name == "ct" && shortName == null)
+                shortName = symbol;
+
+            fallback ??= symbol;
+        }
+
+        return shortName?.Name ?? fallback?.Name;
     }
 
     private bool IsEfCoreMethod(IMethodSymbol method)

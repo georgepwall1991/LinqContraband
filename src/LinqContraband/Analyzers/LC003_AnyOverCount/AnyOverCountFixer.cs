@@ -57,49 +57,95 @@ public class AnyOverCountFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        // Identify the invocation of Count/LongCount
-        InvocationExpressionSyntax? countInvocation = null;
+        if (!TryExtractCountInvocation(binaryExpr.Left, out var leftInvocation, out var leftAwaited))
+            leftInvocation = null;
 
-        if (binaryExpr.Left is InvocationExpressionSyntax leftInv)
-            // Check if it is the Count call (simplistic check, relying on analyzer to catch right nodes)
-            countInvocation = leftInv;
-        else if (binaryExpr.Right is InvocationExpressionSyntax rightInv) countInvocation = rightInv;
+        if (!TryExtractCountInvocation(binaryExpr.Right, out var rightInvocation, out var rightAwaited))
+            rightInvocation = null;
 
-        // If we have casts, unwrap them
-        if (countInvocation == null)
-        {
-            var potentialLeft = binaryExpr.Left;
-            while (potentialLeft is CastExpressionSyntax cast) potentialLeft = cast.Expression;
-            if (potentialLeft is InvocationExpressionSyntax l) countInvocation = l;
+        var countInvocation = leftInvocation ?? rightInvocation;
+        var isAwaited = leftInvocation != null ? leftAwaited : rightAwaited;
+        if (countInvocation == null || countInvocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return document;
 
-            var potentialRight = binaryExpr.Right;
-            while (potentialRight is CastExpressionSyntax cast) potentialRight = cast.Expression;
-            if (potentialRight is InvocationExpressionSyntax r) countInvocation = r;
-        }
+        var anyMethodName = GetReplacementMethodName(memberAccess.Name.Identifier.Text);
+        if (anyMethodName == null)
+            return document;
 
-        if (countInvocation == null) return document;
+        var newMemberAccess = memberAccess.WithName(SyntaxFactory.IdentifierName(anyMethodName));
+        ExpressionSyntax replacement = SyntaxFactory.InvocationExpression(newMemberAccess, countInvocation.ArgumentList);
 
-        // Get the member access to find 'query' (the expression on which Count is called)
-        if (countInvocation.Expression is MemberAccessExpressionSyntax memberAccess)
-        {
-            var queryExpression = memberAccess.Expression;
-            var arguments = countInvocation.ArgumentList;
+        if (isAwaited)
+            replacement = SyntaxFactory.AwaitExpression(replacement);
 
-            // Create 'Any' identifier
-            var anyName = SyntaxFactory.IdentifierName("Any");
+        if (binaryExpr.IsKind(SyntaxKind.EqualsExpression) && HasZeroConstant(binaryExpr))
+            replacement = SyntaxFactory.PrefixUnaryExpression(
+                SyntaxKind.LogicalNotExpression,
+                SyntaxFactory.ParenthesizedExpression(replacement.WithoutTrivia()))
+                .WithTriviaFrom(replacement);
 
-            // Create new MemberAccess 'query.Any'
-            var newMemberAccess = memberAccess.WithName(anyName);
+        replacement = replacement
+            .WithLeadingTrivia(binaryExpr.GetLeadingTrivia())
+            .WithTrailingTrivia(binaryExpr.GetTrailingTrivia());
 
-            // Create Invocation 'query.Any(...)'
-            var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, arguments)
-                .WithLeadingTrivia(binaryExpr.GetLeadingTrivia())
-                .WithTrailingTrivia(binaryExpr.GetTrailingTrivia());
-
-            // Replace the binary expression with the new invocation
-            editor.ReplaceNode(binaryExpr, newInvocation);
-        }
+        editor.ReplaceNode(binaryExpr, replacement);
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool TryExtractCountInvocation(
+        ExpressionSyntax expression,
+        out InvocationExpressionSyntax? invocation,
+        out bool isAwaited)
+    {
+        isAwaited = false;
+        invocation = null;
+
+        var current = expression;
+        while (current is CastExpressionSyntax cast)
+            current = cast.Expression;
+
+        while (current is ParenthesizedExpressionSyntax parenthesized)
+            current = parenthesized.Expression;
+
+        if (current is AwaitExpressionSyntax awaitExpression)
+        {
+            isAwaited = true;
+            current = awaitExpression.Expression;
+        }
+
+        while (current is ParenthesizedExpressionSyntax nestedParenthesized)
+            current = nestedParenthesized.Expression;
+
+        invocation = current as InvocationExpressionSyntax;
+        return invocation != null;
+    }
+
+    private static string? GetReplacementMethodName(string methodName)
+    {
+        return methodName switch
+        {
+            "Count" => "Any",
+            "LongCount" => "Any",
+            "CountAsync" => "AnyAsync",
+            "LongCountAsync" => "AnyAsync",
+            _ => null
+        };
+    }
+
+    private static bool HasZeroConstant(BinaryExpressionSyntax binaryExpression)
+    {
+        return IsZeroLiteral(binaryExpression.Left) || IsZeroLiteral(binaryExpression.Right);
+    }
+
+    private static bool IsZeroLiteral(ExpressionSyntax expression)
+    {
+        expression = expression is ParenthesizedExpressionSyntax parenthesized
+            ? parenthesized.Expression
+            : expression;
+
+        return expression is LiteralExpressionSyntax literal &&
+               literal.IsKind(SyntaxKind.NumericLiteralExpression) &&
+               literal.Token.ValueText == "0";
     }
 }
