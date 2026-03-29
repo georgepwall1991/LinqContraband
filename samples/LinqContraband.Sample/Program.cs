@@ -33,6 +33,7 @@ using LinqContraband.Sample.Samples.LC040_MixedTrackingAndNoTracking;
 using LinqContraband.Sample.Samples.LC041_SingleEntityScalarProjection;
 using LinqContraband.Sample.Samples.LC042_MissingQueryTags;
 using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
+using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
 namespace LinqContraband.Sample;
@@ -55,7 +56,7 @@ internal class Program
         NPlusOneLooperSample.Run(db, users);
         await SyncBlockerSample.RunAsync(users);
         MissingAsNoTrackingSample.Run();
-        SaveChangesInLoopSample.Run(users.ToList());
+        SaveChangesInLoopSample.Run(await users.ToListAsync());
 
         EntityMissingPrimaryKeySample.Run();
         OptimizeRemoveRangeSample.Run();

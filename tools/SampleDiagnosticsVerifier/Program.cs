@@ -16,19 +16,26 @@ if (!File.Exists(sourceSampleProjectPath))
     return 1;
 }
 
-var expectedSamples = Directory
+var expectedSampleGroups = Directory
     .EnumerateFiles(sourceSampleRoot, "*.cs", SearchOption.AllDirectories)
     .Select(path => CreateExpectation(sourceSampleProjectDirectory, path))
-    .OrderBy(sample => sample.RuleId, StringComparer.Ordinal)
+    .GroupBy(sample => sample.DiagnosticPath, StringComparer.Ordinal)
+    .Select(group => new SampleExpectationGroup(
+        group.Key,
+        group.SelectMany(sample => sample.SamplePaths).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray(),
+        ExpandExpectedRuleIds(
+            group.Key,
+            group.SelectMany(sample => sample.ExpectedRuleIds).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray())))
+    .OrderBy(group => group.DiagnosticPath, StringComparer.Ordinal)
     .ToArray();
 
-if (expectedSamples.Length == 0)
+if (expectedSampleGroups.Length == 0)
 {
     Console.Error.WriteLine($"No sample files found under {sourceSampleRoot}");
     return 1;
 }
 
-Console.WriteLine($"Verifying {expectedSamples.Length} sample files in {sourceSampleProjectPath}");
+Console.WriteLine($"Verifying {expectedSampleGroups.Sum(group => group.SamplePaths.Count)} sample files across {expectedSampleGroups.Length} diagnostic paths in {sourceSampleProjectPath}");
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "LinqContraband.SampleDiagnosticsVerifier", Guid.NewGuid().ToString("N"));
 var tempSampleProjectDirectory = Path.Combine(tempRoot, "LinqContraband.Sample");
@@ -50,22 +57,42 @@ try
 
         RunDotnetBuild(tempSampleProjectPath, tempSampleProjectDirectory, framework, options.Configuration, errorLogPath);
         var diagnostics = ParseDiagnostics(errorLogPath, tempSampleProjectDirectory);
+        var observedByPath = diagnostics
+            .GroupBy(diagnostic => diagnostic.RelativePath, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(diagnostic => diagnostic.Id).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray(),
+                StringComparer.Ordinal);
 
         var failures = new List<string>();
 
-        foreach (var sample in expectedSamples)
+        foreach (var expectedGroup in expectedSampleGroups)
         {
-            var observedIds = diagnostics
-                .Where(diagnostic => PathsEqual(diagnostic.RelativePath, sample.DiagnosticPath))
-                .Select(diagnostic => diagnostic.Id)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(id => id, StringComparer.Ordinal)
-                .ToArray();
+            observedByPath.TryGetValue(expectedGroup.DiagnosticPath, out var observedIds);
+            observedIds ??= Array.Empty<string>();
 
-            if (!observedIds.Contains(sample.RuleId, StringComparer.Ordinal))
+            var missingIds = expectedGroup.ExpectedRuleIds.Except(observedIds, StringComparer.Ordinal).ToArray();
+            var unexpectedIds = observedIds.Except(expectedGroup.ExpectedRuleIds, StringComparer.Ordinal).ToArray();
+
+            if (missingIds.Length > 0)
             {
                 failures.Add(
-                    $"{sample.RuleId} missing from {sample.DiagnosticPath} (sample {sample.SamplePath}); observed: {(observedIds.Length == 0 ? "<none>" : string.Join(", ", observedIds))}");
+                    $"{expectedGroup.DiagnosticPath} missing expected diagnostics [{string.Join(", ", missingIds)}]; expected: {string.Join(", ", expectedGroup.ExpectedRuleIds)}; observed: {(observedIds.Length == 0 ? "<none>" : string.Join(", ", observedIds))}; samples: {string.Join(", ", expectedGroup.SamplePaths)}");
+            }
+
+            if (unexpectedIds.Length > 0)
+            {
+                failures.Add(
+                    $"{expectedGroup.DiagnosticPath} reported unexpected diagnostics [{string.Join(", ", unexpectedIds)}]; expected: {string.Join(", ", expectedGroup.ExpectedRuleIds)}; observed: {string.Join(", ", observedIds)}; samples: {string.Join(", ", expectedGroup.SamplePaths)}");
+            }
+        }
+
+        var expectedPaths = expectedSampleGroups.Select(group => group.DiagnosticPath).ToHashSet(StringComparer.Ordinal);
+        foreach (var pair in observedByPath.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (!expectedPaths.Contains(pair.Key))
+            {
+                failures.Add($"{pair.Key} reported unexpected diagnostics [{string.Join(", ", pair.Value)}] with no matching sample expectation.");
             }
         }
 
@@ -81,7 +108,7 @@ try
             return 1;
         }
 
-        Console.WriteLine($"[{framework}] verified {expectedSamples.Length} sample files.");
+        Console.WriteLine($"[{framework}] verified {expectedSampleGroups.Length} diagnostic paths.");
     }
 }
 finally
@@ -320,12 +347,6 @@ static bool TryNormalizeUriPath(JsonElement uriProperty, out string path)
     return true;
 }
 
-static bool PathsEqual(string left, string right)
-{
-    var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-    return string.Equals(left, right, comparison);
-}
-
 static SampleExpectation CreateExpectation(string sampleProjectDirectory, string samplePath)
 {
     var relativePath = Path.GetRelativePath(sampleProjectDirectory, samplePath).Replace('\\', '/');
@@ -336,7 +357,42 @@ static SampleExpectation CreateExpectation(string sampleProjectDirectory, string
         _ => relativePath
     };
 
-    return new SampleExpectation(ruleId, relativePath, diagnosticPath);
+    return new SampleExpectation(diagnosticPath, new[] { relativePath }, new[] { ruleId });
+}
+
+static IReadOnlyList<string> ExpandExpectedRuleIds(string diagnosticPath, IReadOnlyList<string> baseRuleIds)
+{
+    var expected = baseRuleIds.ToHashSet(StringComparer.Ordinal);
+
+    foreach (var additionalRule in diagnosticPath switch
+             {
+                 "Samples/LC009_MissingAsNoTracking/MissingAsNoTrackingSample.cs" => new[] { "LC015", "LC042" },
+                 "Samples/LC013_DisposedContextQuery/DisposedContextQuerySample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC016_AvoidDateTimeNow/AvoidDateTimeNowSample.cs" => new[] { "LC042" },
+                 "Samples/LC017_WholeEntityProjection/WholeEntityProjectionSample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC018_AvoidFromSqlRawWithInterpolation/AvoidFromSqlRawWithInterpolationSample.cs" => new[] { "LC009", "LC031", "LC037" },
+                 "Samples/LC020_StringContainsWithComparison/StringContainsWithComparisonSample.cs" => new[] { "LC042" },
+                 "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSample.cs" => new[] { "LC042" },
+                 "Samples/LC023_FindInsteadOfFirstOrDefault/FindInsteadOfFirstOrDefaultSample.cs" => new[] { "LC009" },
+                 "Samples/LC024_GroupByNonTranslatable/GroupByNonTranslatableSample.cs" => new[] { "LC022" },
+                 "Samples/LC025_AsNoTrackingWithUpdate/AsNoTrackingWithUpdateSample.cs" => new[] { "LC023", "LC031", "LC040" },
+                 "Samples/LC026_MissingCancellationToken/MissingCancellationTokenSample.cs" => new[] { "LC031", "LC039" },
+                 "Samples/LC031_UnboundedQueryMaterialization/UnboundedQueryMaterializationSample.cs" => new[] { "LC009", "LC042" },
+                 "Samples/LC034_AvoidExecuteSqlRawWithInterpolation/ExecuteSqlRawInterpolationSample.cs" => new[] { "LC037" },
+                 "Samples/LC036_DbContextCapturedAcrossThreads/DbContextCapturedAcrossThreadsSample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC037_RawSqlStringConstruction/RawSqlStringConstructionSample.cs" => new[] { "LC009" },
+                 "Samples/LC038_ExcessiveEagerLoading/ExcessiveEagerLoadingSample.cs" => new[] { "LC009", "LC031", "LC042" },
+                 "Samples/LC040_MixedTrackingAndNoTracking/MixedTrackingAndNoTrackingSample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC042_MissingQueryTags/MissingQueryTagsSample.cs" => new[] { "LC009" },
+                 "Samples/LC043_AsyncEnumerableBuffering/AsyncEnumerableBufferingSample.cs" => new[] { "LC009", "LC031" },
+                 _ => Array.Empty<string>()
+             })
+    {
+        expected.Add(additionalRule);
+    }
+
+    return expected.OrderBy(id => id, StringComparer.Ordinal).ToArray();
 }
 
 static string Quote(string value)
@@ -415,6 +471,8 @@ internal sealed record Options
     public bool NoRestore { get; set; }
 }
 
-internal sealed record SampleExpectation(string RuleId, string SamplePath, string DiagnosticPath);
+internal sealed record SampleExpectation(string DiagnosticPath, IReadOnlyList<string> SamplePaths, IReadOnlyList<string> ExpectedRuleIds);
+
+internal sealed record SampleExpectationGroup(string DiagnosticPath, IReadOnlyList<string> SamplePaths, IReadOnlyList<string> ExpectedRuleIds);
 
 internal sealed record SampleDiagnostic(string RelativePath, string Id);
