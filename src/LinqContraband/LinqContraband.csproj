@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.0.1</Version>
+        <Version>5.0.2</Version>
         <Authors>George Wall</Authors>
         <Description>Stop smuggling bad queries into production. LinqContraband is a Roslyn Analyzer that catches EF Core performance killers (client-side evaluation, N+1 queries) at compile time.</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -36,7 +36,7 @@
         <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
         <!-- Include analyzer DLL in correct path for Roslyn -->
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>

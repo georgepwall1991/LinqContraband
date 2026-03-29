@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.2] - 2026-03-29
+
+### Changed
+- Upgraded `Microsoft.CodeAnalysis.Analyzers` from `3.11.0` to `5.3.0` in the analyzer and test projects while keeping `Microsoft.CodeAnalysis.CSharp` and `Microsoft.CodeAnalysis.CSharp.Workspaces` pinned at `4.3.0` to preserve host compatibility
+
+### Fixed
+- Removed the sample-project `NU1903` vulnerability warning by overriding the `net8.0` transitive `Microsoft.Extensions.Caching.Memory` dependency from `8.0.0` to `8.0.1`
+- Kept the sample diagnostic contract stable after the sample dependency override and analyzer-package refresh
+
 ## [5.0.1] - 2026-03-29
 
 ### Changed
