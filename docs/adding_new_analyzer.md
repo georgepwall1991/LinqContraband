@@ -7,12 +7,12 @@ This guide outlines the process for adding a new Roslyn analyzer and code fix pr
 We follow a strict naming convention and directory structure.
 
 *   **Diagnostic ID**: `LCxxx` (e.g., `LC001`, `LC002`).
-*   **Directory**: `src/LinqContraband/Analyzers/LCxxx_Name/`
+*   **Source Directory**: `src/LinqContraband/Analyzers/<DomainFolder>/LCxxx_Name/`
 *   **Test Directory**: `tests/LinqContraband.Tests/Analyzers/LCxxx_Name/`
 
 ### Example Structure
 ```
-src/LinqContraband/Analyzers/LC003_NewRule/
+src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC003_NewRule/
     ├── NewRuleAnalyzer.cs
     └── NewRuleFixer.cs
 
@@ -26,6 +26,7 @@ tests/LinqContraband.Tests/Analyzers/LC003_NewRule/
 Every rule now has to update the central catalog and keep all four mirrored surfaces in sync:
 
 *   `src/LinqContraband/Catalog/RuleCatalog.cs`
+*   analyzer source under the domain path recorded in `RuleCatalog`
 *   `tests/LinqContraband.Tests/Analyzers/LCxxx_Name/`
 *   `samples/LinqContraband.Sample/Samples/LCxxx_Name/`
 *   `docs/LCxxx_Name.md`
@@ -112,7 +113,7 @@ class Program
 
 ### Step 2: Implement the Analyzer
 
-Create `src/LinqContraband/Analyzers/LCxxx_Name/NameAnalyzer.cs`.
+Create `src/LinqContraband/Analyzers/<DomainFolder>/LCxxx_Name/NameAnalyzer.cs`.
 
 ```csharp
 using System.Collections.Immutable;
@@ -192,7 +193,7 @@ namespace LinqContraband.Tests
 
 ### Step 4: Implement the Fixer
 
-Create `src/LinqContraband/Analyzers/LCxxx_Name/NameFixer.cs`.
+Create `src/LinqContraband/Analyzers/<DomainFolder>/LCxxx_Name/NameFixer.cs`.
 
 ```csharp
 using System.Collections.Immutable;

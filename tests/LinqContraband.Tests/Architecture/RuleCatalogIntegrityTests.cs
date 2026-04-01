@@ -28,7 +28,7 @@ public sealed class RuleCatalogIntegrityTests
 
         foreach (var rule in RuleCatalog.All)
         {
-            var analyzerDir = Path.Combine(_repoRoot, "src", "LinqContraband", "Analyzers", rule.Slug);
+            var analyzerDir = Path.Combine(_repoRoot, rule.AnalyzerSourcePath.Replace('/', Path.DirectorySeparatorChar));
             var testDir = Path.Combine(_repoRoot, "tests", "LinqContraband.Tests", "Analyzers", rule.Slug);
             var docPath = Path.Combine(_repoRoot, rule.DocumentationPath.Replace('/', Path.DirectorySeparatorChar));
             var sampleDir = Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "Samples", rule.Slug);
@@ -95,7 +95,12 @@ public sealed class RuleCatalogIntegrityTests
     [Fact]
     public void RepositoryCounts_MatchTheCatalog()
     {
-        var analyzerDirectories = Directory.GetDirectories(Path.Combine(_repoRoot, "src", "LinqContraband", "Analyzers"));
+        var analyzerDirectories = Directory
+            .GetFiles(Path.Combine(_repoRoot, "src", "LinqContraband", "Analyzers"), "*Analyzer.cs", SearchOption.AllDirectories)
+            .Select(Path.GetDirectoryName)
+            .Where(path => path is not null)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         var testDirectories = Directory.GetDirectories(Path.Combine(_repoRoot, "tests", "LinqContraband.Tests", "Analyzers"));
         var sampleDirectories = Directory.GetDirectories(Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "Samples"));
         var documentationFiles = Directory.GetFiles(Path.Combine(_repoRoot, "docs"), "LC*.md", SearchOption.TopDirectoryOnly);

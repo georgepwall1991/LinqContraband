@@ -33,10 +33,12 @@ Thank you for your interest in contributing to LinqContraband! This document pro
 ```
 src/LinqContraband/
     Analyzers/
-        LC001_LocalMethod/
-            LocalMethodAnalyzer.cs
-            LocalMethodFixer.cs
-        LC002_.../
+        QueryShapeAndTranslation/
+            LC001_LocalMethod/
+                LocalMethodAnalyzer.cs
+                LocalMethodFixer.cs
+        MaterializationAndProjection/
+            LC002_.../
     Catalog/
         RuleCatalog.cs
         RuleCatalogEntry.cs
@@ -68,7 +70,7 @@ We follow a strict **Test-Driven Development (TDD)** workflow for all analyzers.
 
 Every rule is now governed by the central catalog in `src/LinqContraband/Catalog/RuleCatalog.cs`. A valid rule contribution keeps all mirrored surfaces in sync:
 
-- analyzer folder under `src/LinqContraband/Analyzers/LCxxx_Name/`
+- analyzer source folder under the domain path recorded in `RuleCatalog` (for example `src/LinqContraband/Analyzers/QueryShapeAndTranslation/LCxxx_Name/`)
 - tests under `tests/LinqContraband.Tests/Analyzers/LCxxx_Name/`
 - sample under `samples/LinqContraband.Sample/Samples/LCxxx_Name/`
 - docs page at `docs/LCxxx_Name.md`
@@ -93,7 +95,7 @@ CI runs the same tool with `--check` and fails if the checked-in file is stale.
 ### Naming Conventions
 
 - **Diagnostic ID**: `LC0XX` (sequential, e.g., LC017, LC018)
-- **Directory**: `src/LinqContraband/Analyzers/LCxxx_DescriptiveName/`
+- **Source directory**: `src/LinqContraband/Analyzers/<DomainFolder>/LCxxx_DescriptiveName/`
 - **Analyzer class**: `{Name}Analyzer.cs`
 - **Fixer class**: `{Name}Fixer.cs`
 - **Test classes**: `{Name}Tests.cs`, `{Name}FixerTests.cs`

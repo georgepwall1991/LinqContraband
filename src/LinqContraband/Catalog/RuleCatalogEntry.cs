@@ -16,6 +16,7 @@ public sealed class RuleCatalogEntry
         string? fixerTypeName,
         string documentationPath,
         string samplePath,
+        string analyzerSourcePath,
         bool hasCodeFix,
         string? noCodeFixRationale)
     {
@@ -27,6 +28,7 @@ public sealed class RuleCatalogEntry
         if (string.IsNullOrWhiteSpace(analyzerTypeName)) throw new ArgumentException("Analyzer type name is required.", nameof(analyzerTypeName));
         if (string.IsNullOrWhiteSpace(documentationPath)) throw new ArgumentException("Documentation path is required.", nameof(documentationPath));
         if (string.IsNullOrWhiteSpace(samplePath)) throw new ArgumentException("Sample path is required.", nameof(samplePath));
+        if (string.IsNullOrWhiteSpace(analyzerSourcePath)) throw new ArgumentException("Analyzer source path is required.", nameof(analyzerSourcePath));
 
         if (hasCodeFix)
         {
@@ -55,6 +57,7 @@ public sealed class RuleCatalogEntry
         FixerTypeName = fixerTypeName;
         DocumentationPath = documentationPath;
         SamplePath = samplePath;
+        AnalyzerSourcePath = analyzerSourcePath;
         HasCodeFix = hasCodeFix;
         NoCodeFixRationale = noCodeFixRationale;
     }
@@ -69,6 +72,7 @@ public sealed class RuleCatalogEntry
     public string? FixerTypeName { get; }
     public string DocumentationPath { get; }
     public string SamplePath { get; }
+    public string AnalyzerSourcePath { get; }
     public bool HasCodeFix { get; }
     public string? NoCodeFixRationale { get; }
 }

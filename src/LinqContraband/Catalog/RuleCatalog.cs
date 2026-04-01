@@ -19,6 +19,7 @@ public static class RuleCatalog
             fixerTypeName: "LocalMethodFixer",
             documentationPath: "docs/LC001_LocalMethod.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC001_LocalMethod/LocalMethodSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC001_LocalMethod",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -32,6 +33,7 @@ public static class RuleCatalog
             fixerTypeName: "PrematureMaterializationFixer",
             documentationPath: "docs/LC002_PrematureMaterialization.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC002_PrematureMaterialization/PrematureMaterializationSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC002_PrematureMaterialization",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -45,6 +47,7 @@ public static class RuleCatalog
             fixerTypeName: "AnyOverCountFixer",
             documentationPath: "docs/LC003_AnyOverCount.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC003_AnyOverCount/AnyOverCountSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC003_AnyOverCount",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -58,6 +61,7 @@ public static class RuleCatalog
             fixerTypeName: "IQueryableLeakFixer",
             documentationPath: "docs/LC004_IQueryableLeak.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC004_IQueryableLeak/IQueryableLeakSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC004_IQueryableLeak",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -71,6 +75,7 @@ public static class RuleCatalog
             fixerTypeName: "MultipleOrderByFixer",
             documentationPath: "docs/LC005_MultipleOrderBy.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC005_MultipleOrderBy/MultipleOrderBySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC005_MultipleOrderBy",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -84,6 +89,7 @@ public static class RuleCatalog
             fixerTypeName: "CartesianExplosionFixer",
             documentationPath: "docs/LC006_CartesianExplosion.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC006_CartesianExplosion/CartesianExplosionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC006_CartesianExplosion",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -97,6 +103,7 @@ public static class RuleCatalog
             fixerTypeName: "NPlusOneLooperFixer",
             documentationPath: "docs/LC007_NPlusOneLooper.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC007_NPlusOneLooper/NPlusOneLooperSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC007_NPlusOneLooper",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -110,6 +117,7 @@ public static class RuleCatalog
             fixerTypeName: "SyncBlockerFixer",
             documentationPath: "docs/LC008_SyncBlocker.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC008_SyncBlocker/SyncBlockerSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC008_SyncBlocker",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -123,6 +131,7 @@ public static class RuleCatalog
             fixerTypeName: "MissingAsNoTrackingFixer",
             documentationPath: "docs/LC009_MissingAsNoTracking.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC009_MissingAsNoTracking/MissingAsNoTrackingSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC009_MissingAsNoTracking",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -136,6 +145,7 @@ public static class RuleCatalog
             fixerTypeName: "SaveChangesInLoopFixer",
             documentationPath: "docs/LC010_SaveChangesInLoop.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC010_SaveChangesInLoop/SaveChangesInLoopSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC010_SaveChangesInLoop",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -149,6 +159,7 @@ public static class RuleCatalog
             fixerTypeName: "EntityMissingPrimaryKeyFixer",
             documentationPath: "docs/LC011_EntityMissingPrimaryKey.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC011_EntityMissingPrimaryKey/EntityMissingPrimaryKeySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC011_EntityMissingPrimaryKey",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -162,6 +173,7 @@ public static class RuleCatalog
             fixerTypeName: "OptimizeRemoveRangeFixer",
             documentationPath: "docs/LC012_OptimizeRemoveRange.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC012_OptimizeRemoveRange/OptimizeRemoveRangeSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/BulkOperationsAndSetBasedWrites/LC012_OptimizeRemoveRange",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -175,6 +187,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC013_DisposedContextQuery.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC013_DisposedContextQuery/DisposedContextQuerySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC013_DisposedContextQuery",
             hasCodeFix: false,
             noCodeFixRationale: "No safe automated rewrite: the fix depends on reshaping DbContext lifetime and query ownership."),
         new RuleCatalogEntry(
@@ -188,6 +201,7 @@ public static class RuleCatalog
             fixerTypeName: "AvoidStringCaseConversionFixer",
             documentationPath: "docs/LC014_AvoidStringCaseConversion.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC014_AvoidStringCaseConversion",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -201,6 +215,7 @@ public static class RuleCatalog
             fixerTypeName: "MissingOrderByFixer",
             documentationPath: "docs/LC015_MissingOrderBy.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC015_MissingOrderBy/MissingOrderBySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC015_MissingOrderBy",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -214,6 +229,7 @@ public static class RuleCatalog
             fixerTypeName: "AvoidDateTimeNowFixer",
             documentationPath: "docs/LC016_AvoidDateTimeNow.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC016_AvoidDateTimeNow/AvoidDateTimeNowSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC016_AvoidDateTimeNow",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -227,6 +243,7 @@ public static class RuleCatalog
             fixerTypeName: "WholeEntityProjectionFixer",
             documentationPath: "docs/LC017_WholeEntityProjection.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC017_WholeEntityProjection/WholeEntityProjectionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC017_WholeEntityProjection",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -240,6 +257,7 @@ public static class RuleCatalog
             fixerTypeName: "AvoidFromSqlRawWithInterpolationFixer",
             documentationPath: "docs/LC018_AvoidFromSqlRawWithInterpolation.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC018_AvoidFromSqlRawWithInterpolation/AvoidFromSqlRawWithInterpolationSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC018_AvoidFromSqlRawWithInterpolation",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -253,6 +271,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC019_ConditionalInclude.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC019_ConditionalInclude/ConditionalIncludeSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC019_ConditionalInclude",
             hasCodeFix: false,
             noCodeFixRationale: "No generally correct code fix: callers must choose between splitting queries, reshaping projections, or removing the conditional include path."),
         new RuleCatalogEntry(
@@ -266,6 +285,7 @@ public static class RuleCatalog
             fixerTypeName: "StringContainsWithComparisonFixer",
             documentationPath: "docs/LC020_StringContainsWithComparison.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC020_StringContainsWithComparison/StringContainsWithComparisonSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC020_StringContainsWithComparison",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -279,6 +299,7 @@ public static class RuleCatalog
             fixerTypeName: "AvoidIgnoreQueryFiltersFixer",
             documentationPath: "docs/LC021_AvoidIgnoreQueryFilters.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC021_AvoidIgnoreQueryFilters",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -292,6 +313,7 @@ public static class RuleCatalog
             fixerTypeName: "ToListInSelectProjectionFixer",
             documentationPath: "docs/LC022_ToListInSelectProjection.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC022_ToListInSelectProjection/ToListInSelectProjectionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC022_ToListInSelectProjection",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -305,6 +327,7 @@ public static class RuleCatalog
             fixerTypeName: "FindInsteadOfFirstOrDefaultFixer",
             documentationPath: "docs/LC023_FindInsteadOfFirstOrDefault.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC023_FindInsteadOfFirstOrDefault/FindInsteadOfFirstOrDefaultSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC023_FindInsteadOfFirstOrDefault",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -318,6 +341,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC024_GroupByNonTranslatable.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC024_GroupByNonTranslatable/GroupByNonTranslatableSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC024_GroupByNonTranslatable",
             hasCodeFix: false,
             noCodeFixRationale: "No safe one-click fix: the correct rewrite depends on whether the query should aggregate on the server, project earlier, or materialize intentionally before performing complex grouping in memory."),
         new RuleCatalogEntry(
@@ -331,6 +355,7 @@ public static class RuleCatalog
             fixerTypeName: "AsNoTrackingWithUpdateFixer",
             documentationPath: "docs/LC025_AsNoTrackingWithUpdate.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC025_AsNoTrackingWithUpdate/AsNoTrackingWithUpdateSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC025_AsNoTrackingWithUpdate",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -344,6 +369,7 @@ public static class RuleCatalog
             fixerTypeName: "MissingCancellationTokenFixer",
             documentationPath: "docs/LC026_MissingCancellationToken.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC026_MissingCancellationToken/MissingCancellationTokenSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC026_MissingCancellationToken",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -357,6 +383,7 @@ public static class RuleCatalog
             fixerTypeName: "MissingExplicitForeignKeyFixer",
             documentationPath: "docs/LC027_MissingExplicitForeignKey.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC027_MissingExplicitForeignKey/MissingExplicitForeignKeySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC027_MissingExplicitForeignKey",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -370,6 +397,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC028_DeepThenInclude.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC028_DeepThenInclude/DeepThenIncludeSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC028_DeepThenInclude",
             hasCodeFix: false,
             noCodeFixRationale: "No safe automated fix: reducing eager-loading depth requires a domain-specific decision about projections, split queries, or alternate loading patterns."),
         new RuleCatalogEntry(
@@ -383,6 +411,7 @@ public static class RuleCatalog
             fixerTypeName: "RedundantIdentitySelectFixer",
             documentationPath: "docs/LC029_RedundantIdentitySelect.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC029_RedundantIdentitySelect/RedundantIdentitySelectSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC029_RedundantIdentitySelect",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -396,6 +425,7 @@ public static class RuleCatalog
             fixerTypeName: "DbContextInSingletonFixer",
             documentationPath: "docs/LC030_DbContextInSingleton.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC030_DbContextInSingleton/DbContextInSingletonSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC030_DbContextInSingleton",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -409,6 +439,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC031_UnboundedQueryMaterialization.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC031_UnboundedQueryMaterialization/UnboundedQueryMaterializationSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC031_UnboundedQueryMaterialization",
             hasCodeFix: false,
             noCodeFixRationale: "No universally correct fix: the caller must decide the appropriate filter, Take limit, pagination strategy, or intentional full scan."),
         new RuleCatalogEntry(
@@ -422,6 +453,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC032_ExecuteUpdateForBulkUpdates.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC032_ExecuteUpdateForBulkUpdates/ExecuteUpdateForBulkUpdatesSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/BulkOperationsAndSetBasedWrites/LC032_ExecuteUpdateForBulkUpdates",
             hasCodeFix: false,
             noCodeFixRationale: "No safe code fix yet: preserving semantics across captured values, concurrency, and provider capabilities requires a conservative manual rewrite."),
         new RuleCatalogEntry(
@@ -435,6 +467,7 @@ public static class RuleCatalog
             fixerTypeName: "UseFrozenSetForStaticMembershipCachesFixer",
             documentationPath: "docs/LC033_UseFrozenSetForStaticMembershipCaches.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC033_UseFrozenSetForStaticMembershipCaches/UseFrozenSetForStaticMembershipCachesSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC033_UseFrozenSetForStaticMembershipCaches",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -448,6 +481,7 @@ public static class RuleCatalog
             fixerTypeName: "AvoidExecuteSqlRawWithInterpolationFixer",
             documentationPath: "docs/LC034_AvoidExecuteSqlRawWithInterpolation.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC034_AvoidExecuteSqlRawWithInterpolation/ExecuteSqlRawInterpolationSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC034_AvoidExecuteSqlRawWithInterpolation",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -461,6 +495,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC035_MissingWhereBeforeExecuteDeleteUpdate/MissingWhereBeforeExecuteDeleteUpdateSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/BulkOperationsAndSetBasedWrites/LC035_MissingWhereBeforeExecuteDeleteUpdate",
             hasCodeFix: false,
             noCodeFixRationale: "No automatic fix: adding a predicate would invent business logic and could silently change data scope."),
         new RuleCatalogEntry(
@@ -474,6 +509,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC036_DbContextCapturedAcrossThreads.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC036_DbContextCapturedAcrossThreads/DbContextCapturedAcrossThreadsSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC036_DbContextCapturedAcrossThreads",
             hasCodeFix: false,
             noCodeFixRationale: "No safe automated rewrite: the correct fix depends on choosing scopes, factories, or asynchronous control flow for the specific workload."),
         new RuleCatalogEntry(
@@ -487,6 +523,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC037_RawSqlStringConstruction.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC037_RawSqlStringConstruction/RawSqlStringConstructionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC037_RawSqlStringConstruction",
             hasCodeFix: false,
             noCodeFixRationale: "No one-size-fits-all fix: parameterization, interpolated SQL APIs, or query reshaping depend on how the SQL is assembled."),
         new RuleCatalogEntry(
@@ -500,6 +537,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC038_ExcessiveEagerLoading.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC038_ExcessiveEagerLoading/ExcessiveEagerLoadingSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC038_ExcessiveEagerLoading",
             hasCodeFix: false,
             noCodeFixRationale: "No automatic fix: trimming includes requires understanding which navigations are actually needed by the caller."),
         new RuleCatalogEntry(
@@ -513,6 +551,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC039_NestedSaveChanges.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC039_NestedSaveChanges/NestedSaveChangesSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC039_NestedSaveChanges",
             hasCodeFix: false,
             noCodeFixRationale: "No safe rewrite: batching or transaction reshaping must respect domain ordering, side effects, and error handling."),
         new RuleCatalogEntry(
@@ -526,6 +565,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC040_MixedTrackingAndNoTracking.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC040_MixedTrackingAndNoTracking/MixedTrackingAndNoTrackingSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC040_MixedTrackingAndNoTracking",
             hasCodeFix: false,
             noCodeFixRationale: "No automatic fix: the right resolution depends on whether the workflow should be fully tracked, fully read-only, or split across contexts."),
         new RuleCatalogEntry(
@@ -539,6 +579,7 @@ public static class RuleCatalog
             fixerTypeName: "SingleEntityScalarProjectionFixer",
             documentationPath: "docs/LC041_SingleEntityScalarProjection.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC041_SingleEntityScalarProjection/SingleEntityScalarProjectionSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC041_SingleEntityScalarProjection",
             hasCodeFix: true,
             noCodeFixRationale: null),
         new RuleCatalogEntry(
@@ -552,6 +593,7 @@ public static class RuleCatalog
             fixerTypeName: null,
             documentationPath: "docs/LC042_MissingQueryTags.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC042_MissingQueryTags/MissingQueryTagsSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC042_MissingQueryTags",
             hasCodeFix: false,
             noCodeFixRationale: "No default fix: teams need to decide the tagging convention and tag text that fit their observability standards."),
         new RuleCatalogEntry(
@@ -565,6 +607,7 @@ public static class RuleCatalog
             fixerTypeName: "AsyncEnumerableBufferingFixer",
             documentationPath: "docs/LC043_AsyncEnumerableBuffering.md",
             samplePath: "samples/LinqContraband.Sample/Samples/LC043_AsyncEnumerableBuffering/AsyncEnumerableBufferingSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC043_AsyncEnumerableBuffering",
             hasCodeFix: true,
             noCodeFixRationale: null)
     );
