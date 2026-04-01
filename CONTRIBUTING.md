@@ -47,6 +47,10 @@ src/LinqContraband/
         OperationTraversalExtensions.cs
         SymbolAnalysisExtensions.cs
 
+tools/
+    RuleCatalogDocGenerator/
+        Program.cs
+
 tests/LinqContraband.Tests/
     Analyzers/
         LC001_LocalMethod/
@@ -70,6 +74,12 @@ Every rule is now governed by the central catalog in `src/LinqContraband/Catalog
 - docs page at `docs/LCxxx_Name.md`
 
 If a rule intentionally has no fixer, record the rationale in the catalog. `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforces this contract in CI.
+
+`docs/rule-catalog.md` is generated from `RuleCatalog`. Regenerate it locally with:
+```bash
+dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
+```
+CI runs the same tool with `--check` and fails if the checked-in file is stale.
 
 ### Quick Summary
 

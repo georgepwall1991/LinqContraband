@@ -1,7 +1,7 @@
 # Rule Catalog
 
 The source of truth for rule metadata lives in `src/LinqContraband/Catalog/RuleCatalog.cs`.
-This page mirrors that catalog in a navigable matrix grouped by domain.
+This page is generated from that catalog and grouped by domain.
 
 ## Bulk Operations & Set-Based Writes
 
