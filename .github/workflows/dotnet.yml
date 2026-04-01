@@ -37,6 +37,9 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
+      - name: Verify generated rule catalog docs
+        run: dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check
+
       - name: Build
         run: dotnet build --no-restore
 
