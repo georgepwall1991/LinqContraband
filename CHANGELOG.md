@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.4] - 2026-04-01
+
+### Added
+- Added `docs/analyzer-layout-decision.md` to record the trade-offs, migration strategy, and long-term contract for the analyzer source layout
+
+### Changed
+- Grouped analyzer source folders by domain under `src/LinqContraband/Analyzers/` while preserving analyzer ids, namespaces, tests, samples, and docs layout
+- Extended `RuleCatalog` metadata with analyzer source paths so architecture tests validate the grouped source layout through the catalog
+- Refreshed contributor guidance to explain the grouped source layout and catalog-driven placement rules for future analyzers
+- Refreshed `.complexity-log.md` path references to match the new grouped analyzer source folders
+
 ## [5.0.3] - 2026-04-01
 
 ### Added
