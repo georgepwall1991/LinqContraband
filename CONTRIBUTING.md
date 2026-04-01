@@ -33,23 +33,43 @@ Thank you for your interest in contributing to LinqContraband! This document pro
 ```
 src/LinqContraband/
     Analyzers/
-        LC001_LocalMethodSmuggler/
-            LocalMethodSmugglerAnalyzer.cs
-            LocalMethodSmugglerFixer.cs
+        LC001_LocalMethod/
+            LocalMethodAnalyzer.cs
+            LocalMethodFixer.cs
         LC002_.../
+    Catalog/
+        RuleCatalog.cs
+        RuleCatalogEntry.cs
     Extensions/
         AnalysisExtensions.cs
+        InvocationAnalysisExtensions.cs
+        OperationReferenceExtensions.cs
+        OperationTraversalExtensions.cs
+        SymbolAnalysisExtensions.cs
 
 tests/LinqContraband.Tests/
     Analyzers/
-        LC001_LocalMethodSmuggler/
+        LC001_LocalMethod/
             LocalMethodSmugglerTests.cs
-            LocalMethodSmugglerFixerTests.cs
+            LocalMethodFixerTests.cs
+    Architecture/
+        RuleCatalogIntegrityTests.cs
 ```
 
 ## Adding a New Analyzer
 
 We follow a strict **Test-Driven Development (TDD)** workflow for all analyzers. See [docs/adding_new_analyzer.md](docs/adding_new_analyzer.md) for the complete step-by-step guide.
+
+## Repository Contract
+
+Every rule is now governed by the central catalog in `src/LinqContraband/Catalog/RuleCatalog.cs`. A valid rule contribution keeps all mirrored surfaces in sync:
+
+- analyzer folder under `src/LinqContraband/Analyzers/LCxxx_Name/`
+- tests under `tests/LinqContraband.Tests/Analyzers/LCxxx_Name/`
+- sample under `samples/LinqContraband.Sample/Samples/LCxxx_Name/`
+- docs page at `docs/LCxxx_Name.md`
+
+If a rule intentionally has no fixer, record the rationale in the catalog. `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforces this contract in CI.
 
 ### Quick Summary
 
@@ -57,7 +77,8 @@ We follow a strict **Test-Driven Development (TDD)** workflow for all analyzers.
 2. **Implement the analyzer** - Write logic to detect the anti-pattern
 3. **Verify tests pass** - Ensure your implementation works
 4. **Add a code fixer** (optional) - Implement automatic fix if applicable
-5. **Document the rule** - Add to README and create a detailed doc if needed
+5. **Update the catalog contract** - Add the new rule to `src/LinqContraband/Catalog/RuleCatalog.cs`, including domain, docs path, sample path, and code-fix metadata
+6. **Document the rule** - Add the rule doc and keep the taxonomy docs current
 
 ### Naming Conventions
 
@@ -96,7 +117,9 @@ Before submitting a PR, ensure:
 - [ ] Build succeeds with no warnings (`dotnet build`)
 - [ ] New analyzers have both "crime" and "innocent" test cases
 - [ ] Code follows existing patterns in the codebase
-- [ ] README is updated if adding a new analyzer
+- [ ] README/docs taxonomy are updated if adding a new analyzer
+- [ ] RuleCatalog entry was added or updated
+- [ ] Architecture integrity tests pass
 - [ ] Commit messages follow conventional format
 
 ## Code Style
@@ -104,7 +127,7 @@ Before submitting a PR, ensure:
 - We use `.editorconfig` for consistent formatting
 - Enable `TreatWarningsAsErrors` - fix all warnings
 - Prefer `RegisterOperationAction` over `RegisterSyntaxNodeAction` for semantic analysis
-- Use extension methods from `AnalysisExtensions.cs` when applicable
+- Use the shared analysis helpers in `src/LinqContraband/Extensions/` when applicable
 - Enable concurrent execution and skip generated code analysis:
   ```csharp
   context.EnableConcurrentExecution();

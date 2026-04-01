@@ -41,6 +41,24 @@ The analyzer will immediately start scanning your code for contraband.
 
 > **43 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
+## 🗺️ Rule Neighborhoods
+
+The repository keeps the familiar `LC001`-style rule numbering, but the rules now also live in explicit neighborhoods:
+
+| Domain | Rules |
+| --- | --- |
+| Query Shape & Translation | LC001, LC004, LC005, LC014, LC015, LC016, LC020, LC024 |
+| Materialization & Projection | LC002, LC003, LC017, LC022, LC023, LC029, LC031, LC033, LC041 |
+| Loading & Includes | LC006, LC019, LC028, LC038, LC042 |
+| Execution & Async | LC007, LC008, LC026, LC036, LC043 |
+| Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040 |
+| Bulk Operations & Set-Based Writes | LC012, LC032, LC035 |
+| Schema & Modeling | LC011, LC027 |
+| Raw SQL & Security | LC018, LC021, LC034, LC037 |
+
+For the full matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
+
+
 ### LC001: The Local Method Smuggler
 
 When EF Core encounters a method it can't translate, it might switch to client-side evaluation (fetching all rows) or
