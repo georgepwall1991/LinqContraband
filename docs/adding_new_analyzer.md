@@ -21,6 +21,18 @@ tests/LinqContraband.Tests/Analyzers/LC003_NewRule/
     └── NewRuleFixerTests.cs
 ```
 
+### Repository contract
+
+Every rule now has to update the central catalog and keep all four mirrored surfaces in sync:
+
+*   `src/LinqContraband/Catalog/RuleCatalog.cs`
+*   `tests/LinqContraband.Tests/Analyzers/LCxxx_Name/`
+*   `samples/LinqContraband.Sample/Samples/LCxxx_Name/`
+*   `docs/LCxxx_Name.md`
+
+If a rule intentionally has no code fix, add an explicit rationale in `RuleCatalog.cs`.
+The architecture tests in `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforce this contract in CI.
+
 ## 2. TDD Workflow
 
 We use TDD to ensure our analyzers and fixers work as expected. The general workflow is:
@@ -31,6 +43,8 @@ We use TDD to ensure our analyzers and fixers work as expected. The general work
 4.  **Write a failing Fixer test**: Create a test case for the code fix.
 5.  **Implement the Fixer**: Write the logic to apply the fix.
 6.  **Verify Fixer passes**: Run the test to ensure the fix is applied correctly.
+7.  **Update RuleCatalog and docs/sample metadata**: Add or update the matching entry in `src/LinqContraband/Catalog/RuleCatalog.cs`, add the docs page, and ensure the sample folder exists.
+8.  **Run architecture tests**: Verify the repository contract tests still pass.
 
 ## 3. Step-by-Step Implementation
 

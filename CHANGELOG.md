@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.3] - 2026-04-01
+
+### Added
+- Added a central `RuleCatalog` / `RuleCatalogEntry` metadata registry for all 43 rules, including explicit domain taxonomy, docs/sample paths, fixer metadata, and no-fix rationales
+- Added architecture governance tests that verify analyzer, test, sample, docs, and fixer layout consistency across the repository
+- Added `docs/rule-catalog.md` and filled the previously missing docs for `LC019`, `LC022`, `LC024`, `LC027`, `LC028`, and `LC031`
+
+### Changed
+- Split the shared `AnalysisExtensions` chokepoint into concern-specific partial files for invocation, traversal, reference, and symbol analysis helpers
+- Moved cross-rule suite tests into `tests/LinqContraband.Tests/Architecture/` to give governance/integration coverage an explicit home
+- Updated `README.md`, `CONTRIBUTING.md`, and `docs/adding_new_analyzer.md` to document the rule neighborhoods, repository contract, and catalog-driven workflow
+- Added descriptor-alignment tests so catalog metadata is checked against analyzer descriptors instead of drifting as a parallel registry
+
 ## [5.0.2] - 2026-03-29
 
 ### Changed
