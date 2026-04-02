@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC009_MissingAsNoTracking;
 /// performance in scenarios where entities are not being modified.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
+public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC009";
     private const string Category = "Performance";
@@ -62,30 +62,23 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        // 1. Must be a materializer (ToList, etc.) (Find/FindAsync ignored because tracking mods are ignored there)
-        if (!IsEntityMaterializer(method)) return;
+        if (!IsEntityMaterializer(method))
+            return;
 
-        // NEW: Heuristic - if the containing method returns IQueryable, it's likely a repository helper
-        // where we want to let the CALLER decide on tracking.
         var enclosingSymbol = context.Operation.SemanticModel?.GetEnclosingSymbol(invocation.Syntax.SpanStart);
-        if (enclosingSymbol is IMethodSymbol enclosingMethod)
-        {
-            if (enclosingMethod.ReturnType.IsIQueryable()) return;
-        }
+        if (enclosingSymbol is IMethodSymbol enclosingMethod && enclosingMethod.ReturnType.IsIQueryable())
+            return;
 
-        // 2. Analyze the query chain
         var analysis = AnalyzeQueryChain(invocation);
-        if (!analysis.IsEfQuery) return;
-        if (analysis.IsAmbiguousSource) return;
-        if (analysis.HasAsNoTracking || analysis.HasAsTracking) return;
-        if (analysis.HasSelect) return; // Projections don't track
+        if (!analysis.IsEfQuery || analysis.IsAmbiguousSource)
+            return;
+        if (analysis.HasAsNoTracking || analysis.HasAsTracking || analysis.HasSelect)
+            return;
 
-        // 3. Analyze the containing method for writes (SaveChanges)
-        if (HasWriteOperations(context.Operation, writeOperationCache)) return;
+        if (HasWriteOperations(context.Operation, writeOperationCache))
+            return;
 
-        // If we got here: It's an EF query returning entities, no tracking mod, no writes in method.
         var containingMethodName = GetContainingMethodName(context.Operation);
-
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
     }
@@ -106,111 +99,13 @@ public sealed class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             "LastAsync" or "LastOrDefaultAsync";
     }
 
-    private static ChainAnalysis AnalyzeQueryChain(IInvocationOperation invocation)
-    {
-        var result = new ChainAnalysis();
-        var current = invocation.GetInvocationReceiver();
-
-        while (current != null)
-        {
-            // Unwrap implicit conversions
-            current = current!.UnwrapConversions();
-
-            if (current is IInvocationOperation prevInvocation)
-            {
-                var method = prevInvocation.TargetMethod;
-
-                if (method.Name == "AsNoTracking" || method.Name == "AsNoTrackingWithIdentityResolution")
-                    result.HasAsNoTracking = true;
-                if (method.Name == "AsTracking") result.HasAsTracking = true;
-                if (method.Name == "Select")
-                    result.HasSelect = true; // Any projection invalidates need for AsNoTracking check
-
-                // Move up
-                current = prevInvocation.Instance ??
-                          (prevInvocation.Arguments.Length > 0 ? prevInvocation.Arguments[0].Value : null);
-            }
-            else if (current is IPropertyReferenceOperation propRef)
-            {
-                // Check if it's a DbSet
-                if (propRef.Type.IsDbSet()) result.IsEfQuery = true;
-                // End of chain
-                break;
-            }
-            else if (current is IFieldReferenceOperation fieldRef)
-            {
-                if (fieldRef.Type.IsDbSet()) result.IsEfQuery = true;
-                break;
-            }
-            else if (current is IParameterReferenceOperation paramRef)
-            {
-                if (paramRef.Type.IsDbSet() || paramRef.Type.IsIQueryable())
-                    result.IsAmbiguousSource = true;
-                break;
-            }
-            else if (current is ILocalReferenceOperation localRef)
-            {
-                if (localRef.Type.IsDbSet() || localRef.Type.IsIQueryable())
-                    result.IsAmbiguousSource = true;
-                break;
-            }
-            else
-            {
-                if (current.Type.IsDbSet())
-                    result.IsEfQuery = true;
-                else if (current.Type.IsIQueryable())
-                    result.IsAmbiguousSource = true;
-                break;
-            }
-        }
-
-        return result;
-    }
-
-    private static bool HasWriteOperations(
-        IOperation operation,
-        ConcurrentDictionary<SyntaxNode, bool> writeOperationCache)
-    {
-        var root = operation.FindOwningExecutableRoot();
-        if (root == null) return false;
-
-        return writeOperationCache.GetOrAdd(root.Syntax, _ => ComputeHasWriteOperations(root));
-    }
-
-    private static bool ComputeHasWriteOperations(IOperation root)
-    {
-        foreach (var descendant in root.Descendants())
-            if (descendant is IInvocationOperation inv)
-            {
-                if (inv.TargetMethod.Name == "SaveChanges" ||
-                    inv.TargetMethod.Name == "SaveChangesAsync")
-                {
-                    return true;
-                }
-
-                var name = inv.TargetMethod.Name;
-                var receiverType =
-                    inv.Instance?.Type ?? (inv.Arguments.Length > 0 ? inv.Arguments[0].Value.Type : null);
-
-                if ((name == "Add" || name == "AddAsync" ||
-                     name == "Update" || name == "Remove" || name == "RemoveRange" || name == "AddRange" ||
-                     name == "AddRangeAsync") &&
-                    (receiverType?.IsDbSet() == true || receiverType?.IsDbContext() == true))
-                {
-                    return true;
-                }
-            }
-
-        return false;
-    }
-
     private static string GetContainingMethodName(IOperation operation)
     {
         var sym = operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart);
         return sym?.Name ?? "Unknown";
     }
 
-    private class ChainAnalysis
+    private sealed class ChainAnalysis
     {
         public bool IsEfQuery { get; set; }
         public bool IsAmbiguousSource { get; set; }
