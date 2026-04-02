@@ -11,7 +11,7 @@ using Microsoft.CodeAnalysis.Operations;
 namespace LinqContraband.Analyzers.LC039_NestedSaveChanges;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
+public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC039";
     private const string Category = "Reliability";
@@ -70,7 +70,7 @@ public sealed class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         context.RegisterCompilationEndAction(state.ReportDiagnostics);
     }
 
-    private sealed class AnalysisState
+    private sealed partial class AnalysisState
     {
         private readonly ConcurrentBag<InvocationRecord> _records = new();
 
@@ -143,46 +143,6 @@ public sealed class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        private static void Report(CompilationAnalysisContext context, InvocationRecord record, ISymbol contextSymbol, string methodName)
-        {
-            context.ReportDiagnostic(
-                Diagnostic.Create(Rule, record.Location, contextSymbol.Name, methodName));
-        }
-
-        private static bool HasTransactionBoundaryBetween(int[] boundaries, int left, int right)
-        {
-            foreach (var boundary in boundaries)
-            {
-                if (boundary > left && boundary < right)
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryGetContextSymbol(IOperation? receiver, out ISymbol? symbol)
-        {
-            receiver = receiver?.UnwrapConversions();
-
-            switch (receiver)
-            {
-                case ILocalReferenceOperation localReference:
-                    symbol = localReference.Local;
-                    return true;
-                case IParameterReferenceOperation parameterReference:
-                    symbol = parameterReference.Parameter;
-                    return true;
-                case IFieldReferenceOperation fieldReference:
-                    symbol = fieldReference.Field;
-                    return true;
-                case IPropertyReferenceOperation propertyReference:
-                    symbol = propertyReference.Property;
-                    return true;
-                default:
-                    symbol = null;
-                    return false;
-            }
-        }
     }
 
     private sealed class InvocationRecord
@@ -210,7 +170,6 @@ public sealed class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         public static readonly OperationRootComparer Instance = new();
 
         public bool Equals(IOperation? x, IOperation? y) => ReferenceEquals(x, y);
-
         public int GetHashCode(IOperation obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 }
