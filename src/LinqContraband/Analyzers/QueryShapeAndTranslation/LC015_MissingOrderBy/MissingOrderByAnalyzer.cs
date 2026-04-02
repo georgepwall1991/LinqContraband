@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC015_MissingOrderBy;
 /// application behavior and difficult-to-reproduce bugs.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class MissingOrderByAnalyzer : DiagnosticAnalyzer
+public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC015";
     private const string Category = "Reliability";
@@ -60,147 +60,38 @@ public sealed class MissingOrderByAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        bool isSorting = SortingMethods.Contains(method.Name);
-        bool isPagination = PaginationMethods.Contains(method.Name);
-
-        if (!isSorting && !isPagination) return;
+        var isSorting = SortingMethods.Contains(method.Name);
+        var isPagination = PaginationMethods.Contains(method.Name);
+        if (!isSorting && !isPagination)
+            return;
 
         var receiver = invocation.GetInvocationReceiver();
-        if (receiver == null || !receiver.Type.IsIQueryable()) return;
+        if (receiver == null || !receiver.Type.IsIQueryable())
+            return;
 
-        // Case 1: OrderBy AFTER Skip/Take (was LC027)
         if (isSorting)
         {
             if (HasPaginationUpstream(receiver))
-            {
                 context.ReportDiagnostic(Diagnostic.Create(MisplacedRule, GetMethodLocation(invocation), method.Name));
-            }
             return;
         }
 
-        // Case 2: Skip/Take WITHOUT OrderBy (was original LC015)
-        if (isPagination)
+        if (!HasOrderByUpstream(receiver) &&
+            !HasPaginationUpstream(receiver) &&
+            !HasSortingDownstream(invocation))
         {
-            if (!HasOrderByUpstream(receiver) &&
-                !HasPaginationUpstream(receiver) &&
-                !HasSortingDownstream(invocation))
-            {
-                context.ReportDiagnostic(Diagnostic.Create(Rule, GetMethodLocation(invocation), method.Name));
-            }
+            context.ReportDiagnostic(Diagnostic.Create(Rule, GetMethodLocation(invocation), method.Name));
         }
     }
 
-    private Location GetMethodLocation(IInvocationOperation invocation)
+    private static Location GetMethodLocation(IInvocationOperation invocation)
     {
         if (invocation.Syntax is InvocationExpressionSyntax invocationSyntax &&
             invocationSyntax.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
             return memberAccess.Name.GetLocation();
+        }
+
         return invocation.Syntax.GetLocation();
-    }
-
-    private bool HasPaginationUpstream(IOperation operation)
-    {
-        var current = operation.UnwrapConversions();
-        while (current is IInvocationOperation inv)
-        {
-            if (PaginationMethods.Contains(inv.TargetMethod.Name)) return true;
-
-            var next = inv.GetInvocationReceiver();
-            if (next == null) break;
-            current = next.UnwrapConversions();
-        }
-        return false;
-    }
-
-    private bool HasSortingDownstream(IInvocationOperation invocation)
-    {
-        IOperation current = invocation;
-
-        while (TryGetDownstreamInvocation(current) is { } downstream)
-        {
-            if (SortingMethods.Contains(downstream.TargetMethod.Name))
-            {
-                return true;
-            }
-
-            current = downstream;
-        }
-
-        return false;
-    }
-
-    private IInvocationOperation? TryGetDownstreamInvocation(IOperation operation)
-    {
-        var unwrappedOperation = operation.UnwrapConversions();
-        var current = operation;
-
-        while (current.Parent != null)
-        {
-            current = current.Parent;
-
-            if (current is IConversionOperation or IParenthesizedOperation or IAwaitOperation or IArgumentOperation)
-            {
-                continue;
-            }
-
-            if (current is not IInvocationOperation invocation)
-            {
-                return null;
-            }
-
-            var receiver = invocation.GetInvocationReceiver();
-            if (receiver == null)
-            {
-                return null;
-            }
-
-            return IsSameOperation(receiver, unwrappedOperation) ? invocation : null;
-        }
-
-        return null;
-    }
-
-    private bool IsSameOperation(IOperation left, IOperation right)
-    {
-        var unwrappedLeft = left.UnwrapConversions();
-        var unwrappedRight = right.UnwrapConversions();
-
-        return ReferenceEquals(unwrappedLeft, unwrappedRight) ||
-               unwrappedLeft.Syntax == unwrappedRight.Syntax;
-    }
-
-    private bool HasOrderByUpstream(IOperation operation)
-    {
-        var current = operation.UnwrapConversions();
-
-        while (current != null)
-            if (current is IInvocationOperation inv)
-            {
-                var method = inv.TargetMethod;
-
-                if (SortingMethods.Contains(method.Name) && method.ReturnType.IsIQueryable()) return true;
-
-                // Move "upstream"
-                var next = inv.GetInvocationReceiver();
-                if (next == null) return false;
-                current = next.UnwrapConversions();
-            }
-            else
-            {
-                if (current.Type != null && IsOrderedQueryable(current.Type)) return true;
-                return false;
-            }
-
-        return false;
-    }
-
-    private bool IsOrderedQueryable(ITypeSymbol type)
-    {
-        // Check if it implements IOrderedQueryable
-        if (type.Name == "IOrderedQueryable" && type.ContainingNamespace?.ToString() == "System.Linq") return true;
-        foreach (var i in type.AllInterfaces)
-            if (i.Name == "IOrderedQueryable" && i.ContainingNamespace?.ToString() == "System.Linq")
-                return true;
-        return false;
     }
 }
