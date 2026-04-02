@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -10,7 +8,7 @@ using Microsoft.CodeAnalysis.Operations;
 namespace LinqContraband.Analyzers.LC042_MissingQueryTags;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class MissingQueryTagsAnalyzer : DiagnosticAnalyzer
+public sealed partial class MissingQueryTagsAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC042";
     private const string Category = "Performance";
@@ -119,73 +117,6 @@ public sealed class MissingQueryTagsAnalyzer : DiagnosticAnalyzer
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), count));
-    }
-
-    private static bool TryAnalyzeChain(IOperation receiver, out int count)
-    {
-        count = 0;
-        var current = receiver;
-
-        while (current != null)
-        {
-            current = current.UnwrapConversions();
-
-            if (current is IInvocationOperation invocation)
-            {
-                var methodName = invocation.TargetMethod.Name;
-
-                if (methodName is "TagWith" or "TagWithCallSite")
-                    return false;
-
-                if (QuerySteps.Contains(methodName))
-                {
-                    count++;
-                    current = invocation.GetInvocationReceiver();
-                    continue;
-                }
-
-                if (methodName == "Set" && invocation.TargetMethod.ContainingType.IsDbContext())
-                {
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (current.Type != null && current.Type.IsDbSet())
-                return true;
-
-            if (current is IPropertyReferenceOperation propertyReference &&
-                propertyReference.Type.IsDbSet())
-            {
-                return true;
-            }
-
-            if (current is IFieldReferenceOperation fieldReference &&
-                fieldReference.Type.IsDbSet())
-            {
-                return true;
-            }
-
-            if (current is ILocalReferenceOperation localReference &&
-                localReference.Type.IsDbSet())
-            {
-                return true;
-            }
-
-            if (current is IParameterReferenceOperation parameterReference &&
-                parameterReference.Type.IsDbSet())
-            {
-                return true;
-            }
-
-            if (current is IPropertyReferenceOperation or IFieldReferenceOperation or ILocalReferenceOperation or IParameterReferenceOperation)
-                return false;
-
-            return false;
-        }
-
-        return false;
     }
 
     private static int GetThreshold(AnalyzerConfigOptionsProvider provider, SyntaxTree syntaxTree)
