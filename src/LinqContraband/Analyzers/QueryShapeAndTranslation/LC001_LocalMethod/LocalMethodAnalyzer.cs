@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Collections.Generic;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -17,7 +16,7 @@ namespace LinqContraband.Analyzers.LC001_LocalMethod;
 /// and can cause severe performance degradation and memory issues when working with large datasets.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
+public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC001";
     private const string Category = "Performance";
@@ -67,128 +66,24 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
 
-        // Constraint 3: Method defined in Source Code or untrusted library
-        if (methodSymbol.MethodKind != MethodKind.Ordinary ||
-            methodSymbol.IsImplicitlyDeclared)
+        if (!IsCandidateMethod(methodSymbol, dbFunctionAttribute, projectableAttribute))
             return;
 
-        // Trust methods from specific namespaces known to be translatable
-        if (IsTrustedTranslatableMethod(methodSymbol, dbFunctionAttribute, projectableAttribute))
+        if (!IsInsideQueryableLambda(invocation))
             return;
 
-        // Constraint 1: Inside a Lambda
-        var parent = invocation.Parent;
-        IOperation? lambda = null;
-
-        while (parent != null)
-        {
-            if (parent.Kind == OperationKind.AnonymousFunction)
-            {
-                lambda = parent;
-                break;
-            }
-
-            parent = parent.Parent;
-        }
-
-        if (lambda == null) return;
-
-        // Constraint 2: Lambda is argument to IQueryable extension method
-        var current = lambda.Parent;
-        while (current != null)
-        {
-            if (current is IInvocationOperation queryInvocation)
-            {
-                // Handle both extension syntax (Instance populated) and static call syntax (Instance null, use first arg)
-                var type = queryInvocation.Instance?.Type;
-                if (type == null && queryInvocation.Arguments.Length > 0)
-                    type = queryInvocation.Arguments[0].Value.Type;
-
-                if (type.IsIQueryable())
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
-                    return;
-                }
-            }
-
-            current = current.Parent;
-        }
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
     }
 
-    private static bool IsTrustedTranslatableMethod(
-        IMethodSymbol method,
+    private static bool IsCandidateMethod(
+        IMethodSymbol methodSymbol,
         INamedTypeSymbol? dbFunctionAttribute,
         INamedTypeSymbol? projectableAttribute)
     {
-        // System and Microsoft (Linq, EF Core base) are generally translatable
-        if (method.IsFrameworkMethod()) return true;
-        if (HasExplicitTranslationMarker(method, dbFunctionAttribute, projectableAttribute)) return true;
+        if (methodSymbol.MethodKind != MethodKind.Ordinary || methodSymbol.IsImplicitlyDeclared)
+            return false;
 
-        var ns = method.ContainingNamespace?.ToString();
-        if (ns == null) return false;
-
-        // Specific database provider functions that are often used in IQueryable
-        if (ns.StartsWith("Npgsql", System.StringComparison.Ordinal) ||
-            ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) ||
-            ns.StartsWith("NetTopologySuite", System.StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool HasExplicitTranslationMarker(
-        IMethodSymbol method,
-        INamedTypeSymbol? dbFunctionAttribute,
-        INamedTypeSymbol? projectableAttribute)
-    {
-        if (dbFunctionAttribute == null && projectableAttribute == null) return false;
-
-        foreach (var candidate in EnumerateMethodVariants(method))
-        {
-            foreach (var attribute in candidate.GetAttributes())
-            {
-                var attributeClass = attribute.AttributeClass;
-                if (attributeClass == null)
-                    continue;
-
-                if ((dbFunctionAttribute != null &&
-                     SymbolEqualityComparer.Default.Equals(attributeClass, dbFunctionAttribute)) ||
-                    (projectableAttribute != null &&
-                     SymbolEqualityComparer.Default.Equals(attributeClass, projectableAttribute)))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static IEnumerable<IMethodSymbol> EnumerateMethodVariants(IMethodSymbol method)
-    {
-        var pending = new Stack<IMethodSymbol>();
-        var seen = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-        pending.Push(method);
-
-        while (pending.Count > 0)
-        {
-            var current = pending.Pop();
-            if (!seen.Add(current))
-                continue;
-
-            yield return current;
-
-            if (current.ReducedFrom != null)
-                pending.Push(current.ReducedFrom);
-
-            if (!SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, current))
-                pending.Push(current.OriginalDefinition);
-
-            if (current.OverriddenMethod != null)
-                pending.Push(current.OverriddenMethod);
-        }
+        return !IsTrustedTranslatableMethod(methodSymbol, dbFunctionAttribute, projectableAttribute);
     }
 }
