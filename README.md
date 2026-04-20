@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **43 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **44 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ## 🗺️ Rule Neighborhoods
 
@@ -51,7 +51,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | Materialization & Projection | LC002, LC003, LC017, LC022, LC023, LC029, LC031, LC033, LC041 |
 | Loading & Includes | LC006, LC019, LC028, LC038, LC042 |
 | Execution & Async | LC007, LC008, LC026, LC036, LC043 |
-| Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040 |
+| Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044 |
 | Bulk Operations & Set-Based Writes | LC012, LC032, LC035 |
 | Schema & Modeling | LC011, LC027 |
 | Raw SQL & Security | LC018, LC021, LC034, LC037 |
@@ -1464,6 +1464,46 @@ await foreach (var user in stream)
 **🛡️ Reliability Notes:**
 - LC043 intentionally targets a narrow, analyzer-proven v1 pattern: immediate buffering followed by one linear loop in the same method.
 - The fixer rewrites only those safe cases and does not try to transform broader async-stream usage.
+
+---
+
+### LC044: AsNoTracking Silent-Write
+
+If you load an entity with `AsNoTracking()`, change one of its properties, and then call `SaveChanges`, EF Core persists
+nothing. There is no exception, no log — the UI reports success and the database never changes.
+
+**👶 Explain it like I'm a ten year old:** Imagine writing corrections on a photocopy and then asking the teacher to
+re-grade your exam. The teacher only re-reads the original exam, so your corrections are ignored.
+
+**❌ The Crime:**
+
+```csharp
+var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
+user.Name = "New Name";
+db.SaveChanges(); // <-- persists nothing; returns 0
+```
+
+**✅ The Fix:**
+Either drop `AsNoTracking` so the entity is tracked from the start, or re-attach before saving.
+
+```csharp
+// Option A: track from origin
+var user = db.Users.FirstOrDefault(u => u.Id == id);
+user.Name = "New Name";
+db.SaveChanges();
+
+// Option B: explicit re-attach
+var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
+user.Name = "New Name";
+db.Users.Update(user); // or db.Attach(user); or db.Entry(user).State = EntityState.Modified;
+db.SaveChanges();
+```
+
+**🛡️ Reliability Notes:**
+- LC044 only fires when the chain `AsNoTracking origin → property mutation → SaveChanges on the same context` is
+  provable inside one method and no re-attach (`Update`, `Attach`, `Entry(entity).State = Modified|Added`) intervenes.
+- Ambiguous dataflow, mutations in branches that never reach `SaveChanges`, and entities that arrive as parameters are
+  intentionally skipped to keep false positives at zero.
 
 ---
 

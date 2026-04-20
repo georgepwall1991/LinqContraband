@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-04-20
+
+### Added
+- Added `LC044` — AsNoTracking query mutated then SaveChanges. Detects silent data-loss bugs where an entity loaded with `AsNoTracking()` is mutated and `SaveChanges` is called on the same context without any re-attach (`Update`/`Attach`/`Entry(entity).State = Modified|Added`). The chain is provable intra-procedurally; the analyzer uses single-assignment dataflow, same-context linkage, block-ancestor reachability, and explicit re-attach gating to keep false positives at zero across the 43 existing sample files
+- Added docs, sample, and test coverage (18 tests: 7 positive, 11 FP-exclusion scenarios) for `LC044`
+
+### Changed
+- Grouped `LC044` under the `Change Tracking & Context Lifetime` domain in `RuleCatalog`, the rule-catalog documentation, and the README
+
 ## [5.0.4] - 2026-04-01
 
 ### Added
