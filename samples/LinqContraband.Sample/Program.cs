@@ -33,6 +33,7 @@ using LinqContraband.Sample.Samples.LC040_MixedTrackingAndNoTracking;
 using LinqContraband.Sample.Samples.LC041_SingleEntityScalarProjection;
 using LinqContraband.Sample.Samples.LC042_MissingQueryTags;
 using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
+using LinqContraband.Sample.Samples.LC044_AsNoTrackingThenModify;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -81,7 +82,7 @@ internal class Program
         ExecuteUpdateForBulkUpdatesSample.Run();
         UseFrozenSetForStaticMembershipCachesSample.Run();
 
-        // LC034 - LC043
+        // LC034 - LC044
         await ExecuteSqlRawInterpolationSample.RunAsync(db);
         MissingWhereBeforeExecuteDeleteUpdateSample.Run(db);
         DbContextCapturedAcrossThreadsSample.Run(db);
@@ -92,5 +93,6 @@ internal class Program
         SingleEntityScalarProjectionSample.Run(db);
         MissingQueryTagsSample.Run(db);
         await AsyncEnumerableBufferingSample.RunAsync(db);
+        AsNoTrackingThenModifySample.Run(db);
     }
 }

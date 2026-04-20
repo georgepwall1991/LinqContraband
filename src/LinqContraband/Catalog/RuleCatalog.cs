@@ -609,7 +609,21 @@ public static class RuleCatalog
             samplePath: "samples/LinqContraband.Sample/Samples/LC043_AsyncEnumerableBuffering/AsyncEnumerableBufferingSample.cs",
             analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC043_AsyncEnumerableBuffering",
             hasCodeFix: true,
-            noCodeFixRationale: null)
+            noCodeFixRationale: null),
+        new RuleCatalogEntry(
+            id: "LC044",
+            slug: "LC044_AsNoTrackingThenModify",
+            title: "AsNoTracking query mutated then SaveChanges — silent data loss",
+            category: "Reliability",
+            domain: "Change Tracking & Context Lifetime",
+            severity: DiagnosticSeverity.Warning,
+            analyzerTypeName: "AsNoTrackingThenModifyAnalyzer",
+            fixerTypeName: null,
+            documentationPath: "docs/LC044_AsNoTrackingThenModifySilentWrite.md",
+            samplePath: "samples/LinqContraband.Sample/Samples/LC044_AsNoTrackingThenModify/AsNoTrackingThenModifySample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC044_AsNoTrackingThenModify",
+            hasCodeFix: false,
+            noCodeFixRationale: "No automatic fix: the right resolution depends on intent — either remove AsNoTracking() so the entity is tracked from origin, or call Update/Attach (or set Entry.State = Modified) before SaveChanges. Both are semantically valid depending on context.")
     );
 
     public static RuleCatalogEntry GetById(string id)

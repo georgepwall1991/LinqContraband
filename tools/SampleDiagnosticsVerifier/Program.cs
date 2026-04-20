@@ -386,6 +386,7 @@ static IReadOnlyList<string> ExpandExpectedRuleIds(string diagnosticPath, IReadO
                  "Samples/LC040_MixedTrackingAndNoTracking/MixedTrackingAndNoTrackingSample.cs" => new[] { "LC009", "LC031" },
                  "Samples/LC042_MissingQueryTags/MissingQueryTagsSample.cs" => new[] { "LC009" },
                  "Samples/LC043_AsyncEnumerableBuffering/AsyncEnumerableBufferingSample.cs" => new[] { "LC009", "LC031" },
+                 "Samples/LC044_AsNoTrackingThenModify/AsNoTrackingThenModifySample.cs" => new[] { "LC023", "LC025", "LC039", "LC040" },
                  _ => Array.Empty<string>()
              })
     {
