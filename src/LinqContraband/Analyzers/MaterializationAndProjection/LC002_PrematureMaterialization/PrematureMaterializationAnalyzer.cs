@@ -120,6 +120,7 @@ public sealed partial class PrematureMaterializationAnalyzer : DiagnosticAnalyze
 
         if (receiverType?.IsIQueryable() == true) return;
         if (!IsApprovedContinuationMethod(invocation.TargetMethod, out _)) return;
+        if (!HasProviderSafeContinuationArguments(invocation)) return;
 
         if (!TryResolveMaterializationOrigin(
                 unwrappedReceiver,

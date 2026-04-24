@@ -106,6 +106,74 @@ public class PrematureMaterializationFixerTests
     }
 
     [Fact]
+    public async Task Fixes_InlineAnyPredicateByMovingItBeforeToList()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main(string name)
+                {
+                    var db = new DbContext();
+                    var exists = {|#0:db.Users.ToList().Any(x => x.Name == name)|};
+                }
+            }
+            """ + MockTypes;
+
+        var fixedCode = CommonUsings + """
+
+            class Program
+            {
+                void Main(string name)
+                {
+                    var db = new DbContext();
+                    var exists = db.Users.Any(x => x.Name == name);
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Any");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixes_InlineCountByRemovingEarlyToList()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var count = {|#0:db.Users.ToList().Count()|};
+                }
+            }
+            """ + MockTypes;
+
+        var fixedCode = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var count = db.Users.Count();
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Count");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task Fixes_RedundantToArrayThenToList()
     {
         var test = CommonUsings + """
@@ -219,6 +287,82 @@ public class PrematureMaterializationFixerTests
     }
 
     [Fact]
+    public async Task DoesNotOfferFix_ForAsyncMaterialization()
+    {
+        var test = CommonUsings + """
+            using System.Threading.Tasks;
+            using Microsoft.EntityFrameworkCore;
+
+            class Program
+            {
+                async Task Main()
+                {
+                    var db = new DbContext();
+                    var query = {|#0:(await db.Users.ToListAsync()).Where(x => x.Age > 18)|};
+                }
+            }
+
+            namespace Microsoft.EntityFrameworkCore
+            {
+                public static class AsyncExtensions
+                {
+                    public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) =>
+                        Task.FromResult(source.ToList());
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task DoesNotOfferFix_ForConstructorMaterialization()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var materialized = new HashSet<User>(db.Users);
+                    var query = {|#0:materialized.Where(x => x.Age > 18)|};
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task DoesNotReportOrOfferFix_ForClientOnlyLambda()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var query = db.Users.ToList().Where(x => IsActive(x));
+                }
+
+                private static bool IsActive(User user) => user.Age > 18;
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task FixAll_RewritesAllInlineMoveBeforeMaterializationCases()
     {
         var test = CommonUsings + """
@@ -264,6 +408,66 @@ public class PrematureMaterializationFixerTests
             new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
                 .WithLocation(1)
                 .WithArguments("OrderBy"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesOnlyFixableDiagnostics()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var adults = {|#0:db.Users.ToList().Where(x => x.Age >= 18)|};
+                    var materialized = db.Users.ToList();
+                    var older = {|#1:materialized.Where(x => x.Age >= 21)|};
+                }
+            }
+            """ + MockTypes;
+
+        var fixedCode = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var adults = db.Users.Where(x => x.Age >= 18).ToList();
+                    var materialized = db.Users.ToList();
+                    var older = materialized.Where(x => x.Age >= 21);
+                }
+            }
+            """ + MockTypes;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 1,
+            CodeFixEquivalenceKey = "MoveBeforeMaterialization"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
+                .WithLocation(0)
+                .WithArguments("Where"));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
+                .WithLocation(1)
+                .WithArguments("Where"));
+        testObj.FixedState.ExpectedDiagnostics.Add(
+            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
+                .WithSpan(12, 21, 12, 57)
+                .WithArguments("Where"));
+        testObj.BatchFixedState.ExpectedDiagnostics.Add(
+            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
+                .WithSpan(12, 21, 12, 57)
+                .WithArguments("Where"));
 
         await testObj.RunAsync();
     }

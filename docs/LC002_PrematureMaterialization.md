@@ -7,6 +7,7 @@ Catch query work that moves from the provider to LINQ-to-Objects only because an
 
 ### 1. Premature query continuation
 LC002 reports approved `Enumerable` operators that run after a materializer sourced from `IQueryable`.
+Lambda-based continuations must also pass a conservative provider-safety check before the rule reports.
 
 ```csharp
 var users = db.Users.ToList().Where(u => u.Age > 18);
@@ -35,7 +36,7 @@ var usersAgain = db.Users.ToArray().ToList();
 ## What LC002 Intentionally Ignores
 - Ambiguous provenance such as multiple local assignments or control-flow-dependent sources
 - Field/property provenance and other shapes where the analyzer cannot prove the query origin safely
-- Overloads that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors or comparer-based overloads
+- Overloads or lambdas that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors, comparer-based overloads, delegated predicates, local/source methods, `Regex`, or `StringComparison` string calls
 - Pure in-memory sequences that never came from `IQueryable`
 
 ## Fixer Behavior
@@ -44,6 +45,7 @@ The fixer is intentionally conservative.
 - It offers `Move query operator before materialization` only for analyzer-proven inline chains where the rewrite is explicit.
 - It offers `Remove redundant materialization` only for direct redundant materializer pairs.
 - It does not offer a fix for local-hop, constructor, ambiguous, or shape-changing cases such as `ToDictionary(...).Where(...)`.
+- It does not offer a fix for client-only lambda bodies because LC002 suppresses those diagnostics entirely.
 
 ## Example Fixes
 
