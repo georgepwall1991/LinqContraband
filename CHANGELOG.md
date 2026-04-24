@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.6] - 2026-04-24
+
+### Changed
+- Hardened the `LC005` fixer so explicit generic `OrderBy<TSource, TKey>(...)` calls keep their type arguments when rewritten to `ThenBy<TSource, TKey>(...)`
+- Added dedicated `LC005` fixer coverage for explicit generic calls and descending sort chains
+- Refreshed `LC005` docs and analyzer-health status to reflect the tighter fixer contract
+
 ## [5.2.5] - 2026-04-24
 
 ### Changed

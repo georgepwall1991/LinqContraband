@@ -25,7 +25,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC002 | Premature query continuation after materialization | Materialization & Projection | Warning | 5 | 4 | 5 | 5 | 5 | 5 | Low | Strong analyzer/fixer/test depth; good model for complex performance rules. |
 | LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 5 | 5 | 5 | 5 | 4 | 4 | Low | Mature rule with broad edge-case and fixer coverage. |
 | LC004 | IQueryable passed as IEnumerable | Query Shape & Translation | Warning | 5 | 4 | 4 | 4 | 5 | 4 | Low | Strong semantic implementation; keep watching for intentional API-boundary cases. |
-| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 3 | 3 | 4 | 3 | Medium | Analyzer is straightforward; add explicit fixer tests to raise confidence. |
+| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 3 | Low | Fixer coverage now includes explicit generic calls and descending chained sorts while preserving typed method syntax. |
 | LC006 | Multiple collection Includes | Loading & Includes | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Useful high-impact EF performance rule; fixer to `AsSplitQuery` is appropriately conservative. |
 | LC007 | Database execution inside loop | Execution & Async | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Excellent rule with clear ignored cases and conservative explicit-loading fixer behavior. |
 | LC008 | Synchronous EF method in async context | Execution & Async | Warning | 5 | 4 | 4 | 5 | 4 | 4 | Low | Strong coverage including edge cases; keep async API mapping current. |
@@ -84,6 +84,6 @@ The next improvement batch should focus on rules that combine high importance wi
 
 `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` currently verifies 43 diagnostic paths.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 594 passing tests.
+`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 596 passing tests.
 
 `dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
