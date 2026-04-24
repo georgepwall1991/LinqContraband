@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-04-24
+
 ### Changed
 - Upgraded `LC030` to strict-by-default lifetime review: it now reports only when a `DbContext` member or constructor injection is paired with proven long-lived evidence such as hosted services, conventional middleware, `AddHostedService<T>()`, `AddSingleton(...)`, or explicit singleton `DbContext` registrations
 - Added `LC030` `.editorconfig` knobs for expanded name-based review and project-specific long-lived base/interface types
