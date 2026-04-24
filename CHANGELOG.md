@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.1] - 2026-04-24
+
 ### Changed
 - Hardened `LC002` continuation reporting with a conservative provider-safety classifier for lambda-based operators, suppressing client-only continuations such as delegated predicates, local/source methods, `Regex`, and `StringComparison` string calls
 - Expanded `LC002` analyzer and fixer coverage for safe lambda continuations, no-fix boundaries, and mixed fix-all behavior
