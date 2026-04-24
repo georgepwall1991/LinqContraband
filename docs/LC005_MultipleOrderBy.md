@@ -13,12 +13,14 @@ var users = db.Users.OrderBy(u => u.Name).OrderBy(u => u.Age).ToList();
 ```
 
 ### The Fix
-Use `ThenBy`.
+Use `ThenBy` or `ThenByDescending` for the second and later sort keys.
 
 ```csharp
 // Correct: Sorts by Name, then by Age for ties.
 var users = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age).ToList();
 ```
+
+The code fix rewrites only the later resetting sort call, preserving the selector and any explicit generic type arguments.
 
 ## Analyzer Logic
 

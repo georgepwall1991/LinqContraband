@@ -53,7 +53,7 @@ public class MultipleOrderByFixer : CodeFixProvider
         var methodName = memberAccess.Name.Identifier.Text;
         var newMethodName = methodName == "OrderBy" ? "ThenBy" : "ThenByDescending";
 
-        var newName = SyntaxFactory.IdentifierName(newMethodName);
+        var newName = CreateReplacementName(memberAccess.Name, newMethodName);
         var newMemberAccess = memberAccess.WithName(newName);
         var newInvocation = invocation.WithExpression(newMemberAccess);
 
@@ -62,5 +62,20 @@ public class MultipleOrderByFixer : CodeFixProvider
 
         var newRoot = root.ReplaceNode(invocation, newInvocation);
         return document.WithSyntaxRoot(newRoot);
+    }
+
+    private static SimpleNameSyntax CreateReplacementName(SimpleNameSyntax originalName, string newMethodName)
+    {
+        var identifier = SyntaxFactory.Identifier(
+            originalName.Identifier.LeadingTrivia,
+            newMethodName,
+            originalName.Identifier.TrailingTrivia);
+
+        return originalName switch
+        {
+            GenericNameSyntax genericName => genericName.WithIdentifier(identifier),
+            IdentifierNameSyntax identifierName => identifierName.WithIdentifier(identifier),
+            _ => SyntaxFactory.IdentifierName(identifier).WithTriviaFrom(originalName)
+        };
     }
 }
