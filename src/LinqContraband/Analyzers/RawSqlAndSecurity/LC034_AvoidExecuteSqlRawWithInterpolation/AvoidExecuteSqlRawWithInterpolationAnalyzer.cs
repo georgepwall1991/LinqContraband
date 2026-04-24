@@ -15,7 +15,7 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
     private static readonly LocalizableString Title = "Avoid ExecuteSqlRaw with interpolated strings";
 
     private static readonly LocalizableString MessageFormat =
-        "Use 'ExecuteSql' instead of '{0}' when passing interpolated strings or concatenated SQL";
+        "Use '{0}' instead of '{1}' when passing interpolated strings or concatenated SQL";
 
     private static readonly LocalizableString Description =
         "Raw SQL execution APIs should receive constant SQL text plus parameters. Interpolated strings and concatenation are safer through ExecuteSql/ExecuteSqlAsync.";
@@ -54,7 +54,11 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
         if (!IsPotentiallyUnsafeSql(sqlArgument.Value))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, sqlArgument.Value.Syntax.GetLocation(), method.Name));
+        context.ReportDiagnostic(Diagnostic.Create(
+            Rule,
+            sqlArgument.Value.Syntax.GetLocation(),
+            GetReplacementMethodName(method.Name),
+            method.Name));
     }
 
     private static bool IsTargetMethod(IMethodSymbol method)
@@ -63,13 +67,23 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
                method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) == true;
     }
 
+    private static string GetReplacementMethodName(string methodName)
+    {
+        return methodName == "ExecuteSqlRawAsync" ? "ExecuteSqlAsync" : "ExecuteSql";
+    }
+
     private static IArgumentOperation? GetSqlArgument(IInvocationOperation invocation, IMethodSymbol method)
     {
-        var sqlParameterIndex = method.Parameters.ToList().FindIndex(parameter => parameter.Name == "sql");
-        if (sqlParameterIndex < 0 || sqlParameterIndex >= invocation.Arguments.Length)
-            return null;
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Name == "sql")
+                return argument;
+        }
 
-        return invocation.Arguments[sqlParameterIndex];
+        var sqlParameterIndex = method.Parameters.ToList().FindIndex(parameter => parameter.Name == "sql");
+        return sqlParameterIndex >= 0 && sqlParameterIndex < invocation.Arguments.Length
+            ? invocation.Arguments[sqlParameterIndex]
+            : null;
     }
 
     private static bool IsPotentiallyUnsafeSql(IOperation operation)

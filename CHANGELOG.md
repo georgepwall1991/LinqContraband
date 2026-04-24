@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Hardened `LC034` so `ExecuteSqlRaw` / `ExecuteSqlRawAsync` diagnostics resolve the `sql` parameter by symbol binding, including named/reordered arguments, and report the correct safe replacement API for sync vs async calls
+- Tightened the `LC034` fixer contract so it only rewrites direct interpolated-string calls with no additional raw SQL parameters
+- Expanded `LC034` analyzer/fixer coverage around nested concatenation, named arguments, parameterized raw SQL, safe `ExecuteSql*` calls, and `LC037`-owned constructed SQL flows
+- Updated `LC034` docs, README guidance, sample code, and analyzer-health status to match the hardened behavior
+
 ## [5.1.0] - 2026-04-20
 
 ### Added

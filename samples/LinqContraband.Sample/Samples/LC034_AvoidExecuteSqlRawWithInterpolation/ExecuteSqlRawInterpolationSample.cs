@@ -15,6 +15,6 @@ public static class ExecuteSqlRawInterpolationSample
         await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = '{name}'");
 
         // CORRECT: Use the safe interpolated API instead.
-        await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM Users WHERE Name = {name}");
+        await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
     }
 }

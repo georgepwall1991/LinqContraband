@@ -1177,7 +1177,7 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 ```
 
 **🛡️ Reliability Notes:**
-- LC034 only offers a fixer when the replacement is analyzer-proven and keeps the same semantics.
+- LC034 only offers a fixer for direct interpolated-string calls with no additional raw SQL parameters.
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
 - More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
 

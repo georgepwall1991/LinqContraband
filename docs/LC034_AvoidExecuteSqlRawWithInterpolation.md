@@ -16,7 +16,7 @@ await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = '{name}'")
 Use the safe interpolated API so values are parameterized.
 
 ```csharp
-await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM Users WHERE Name = {name}");
+await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 ```
 
 ## Analyzer Logic
@@ -26,7 +26,8 @@ await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM Users WHERE Name = {
 ### Severity: `Warning`
 
 ### Notes
-The fixer is intentionally narrow. It appears only when the analyzer can prove the rewrite keeps the SQL text and argument flow semantically safe.
+The fixer is intentionally narrow. It appears only for direct interpolated-string calls with no additional raw SQL
+parameters, where the method-name rewrite keeps the SQL text and argument flow semantically safe.
 
 ## Rule Boundary
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` or `ExecuteSqlRawAsync(...)`.

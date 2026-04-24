@@ -49,8 +49,11 @@ public sealed class AvoidExecuteSqlRawWithInterpolationFixer : CodeFixProvider
         if (replacementName is null)
             return;
 
-        var firstArg = invocation.ArgumentList.Arguments.FirstOrDefault();
-        if (firstArg?.Expression is not InterpolatedStringExpressionSyntax)
+        var sqlArgument = GetSqlArgument(invocation);
+        if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax)
+            return;
+
+        if (invocation.ArgumentList.Arguments.Count != 1)
             return;
 
         context.RegisterCodeFix(
@@ -70,5 +73,16 @@ public sealed class AvoidExecuteSqlRawWithInterpolationFixer : CodeFixProvider
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
         editor.ReplaceNode(memberAccess, memberAccess.WithName(SyntaxFactory.IdentifierName(replacementName)));
         return editor.GetChangedDocument();
+    }
+
+    private static ArgumentSyntax? GetSqlArgument(InvocationExpressionSyntax invocation)
+    {
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            if (argument.NameColon?.Name.Identifier.ValueText == "sql")
+                return argument;
+        }
+
+        return invocation.ArgumentList.Arguments.FirstOrDefault(argument => argument.NameColon is null);
     }
 }
