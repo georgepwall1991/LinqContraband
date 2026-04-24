@@ -883,6 +883,10 @@ user.Name = "New Name";
 db.SaveChanges();
 ```
 
+**🛡️ Reliability Notes:**
+- LC025 follows the nearest previous local origin, so a later `AsNoTracking()` assignment does not taint an earlier write.
+- The fixer removes `AsNoTracking()` from direct declarations, simple assignments, and foreach collection expressions when that is the safe local origin.
+
 ---
 
 ### LC026: Missing CancellationToken

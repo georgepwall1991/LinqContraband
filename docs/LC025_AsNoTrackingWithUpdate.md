@@ -1,62 +1,66 @@
-# Spec: LC025 - Avoid AsNoTracking with Update/Remove
+# LC025 - Avoid AsNoTracking with Update/Remove
 
 ## Goal
-Detect usage of `AsNoTracking()` on queries where the resulting entities are subsequently passed to `DbContext.Update()`, `DbSet.Update()`, `DbContext.Remove()`, or `DbSet.Remove()`.
+Detect entities or materialized entity collections that come from an `AsNoTracking()` query and are later passed to `DbContext.Update`, `DbSet.Update`, `DbContext.Remove`, `DbSet.Remove`, or their `*Range` variants.
 
-## The Problem
-`AsNoTracking()` tells EF Core not to track the entities in the change tracker. This improves performance for read-only queries. However, if you then pass these untracked entities to `Update()` or `Remove()`, EF Core has to re-attach them to the context. 
-1.  **For Update**: EF Core will mark ALL properties as modified because it doesn't know which ones actually changed (since it wasn't tracking the original state). This results in a SQL UPDATE statement that updates every column, which is less efficient and can cause concurrency issues.
-2.  **For Remove**: It works, but it's often a sign of inconsistent intent (marking as read-only, then deleting).
+## Why This Matters
+`AsNoTracking()` is correct for read-only queries because EF Core does not keep original values in the change tracker. Passing those entities back to `Update()` forces EF Core to attach them and mark all properties as modified, which can produce wider SQL updates than intended and can hide concurrency mistakes. Passing untracked entities to `Remove()` is usually a sign that the query was marked read-only even though the result is part of a write path.
 
-### Example Violation
+## Violations
+
 ```csharp
-// Violation: Entity is not tracked, so Update will update all columns
 var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
-user.Name = "New Name";
-db.Users.Update(user); 
+if (user is not null)
+{
+    db.Users.Update(user);
+}
 ```
 
-### The Fix
-Remove `AsNoTracking()` if you intend to modify or delete the entity, so EF Core can track changes and generate optimized SQL.
+```csharp
+var users = db.Users.AsNoTracking().Where(u => u.Age > 20).ToList();
+db.Users.UpdateRange(users);
+```
 
 ```csharp
-// Correct: Entity is tracked, Update (or just SaveChanges) will be optimized
+foreach (var user in db.Users.AsNoTracking().Where(u => u.Age > 20).ToList())
+{
+    db.Users.Remove(user);
+}
+```
+
+## Safe Patterns
+
+Use a tracked query when the entity is going through a write path:
+
+```csharp
 var user = db.Users.FirstOrDefault(u => u.Id == id);
-user.Name = "New Name";
-db.SaveChanges(); // No need for Update() if tracked
+if (user is not null)
+{
+    user.Name = "Updated";
+    db.SaveChanges();
+}
 ```
 
-## Analyzer Logic
+Keep `AsNoTracking()` for read-only projections or materialized values that are not passed back into EF write APIs:
 
-### ID: `LC025`
-### Category: `Reliability` (or `Performance`)
-### Severity: `Warning`
-
-### Algorithm
-1.  **Detection**: This is a cross-statement analysis, which is harder with Roslyn `IOperation` but possible within a method scope.
-2.  **Step 1**: Find calls to `AsNoTracking()`.
-3.  **Step 2**: Track the resulting variable (data flow analysis).
-4.  **Step 3**: Check if that variable (or items from the collection) is passed to `Update` or `Remove`.
-
-*Simplification for MVP*: 
--   Focus on local variables assigned from a query ending in `AsNoTracking()`.
--   Check if that local variable is used as an argument to `Update`/`Remove` in the same method.
-
-## Test Cases
-
-### Violations
 ```csharp
-var user = db.Users.AsNoTracking().First(x => x.Id == 1);
-db.Users.Update(user);
+var names = db.Users.AsNoTracking()
+    .Where(u => u.Age > 20)
+    .Select(u => u.Name)
+    .ToList();
 ```
 
-### Valid
-```csharp
-var user = db.Users.First(x => x.Id == 1);
-db.Users.Update(user);
-```
+## Analyzer Behavior
+LC025 tracks local variables within the current method, lambda, or local function. It reports when the nearest previous origin for the local is an `AsNoTracking()` query, including:
 
-## Implementation Plan
-1.  Create `LC025_AsNoTrackingWithUpdate` directory.
-2.  Implement `AsNoTrackingWithUpdateAnalyzer`.
-3.  Implement tests.
+- direct entity locals materialized from a no-tracking query;
+- collection locals materialized from a no-tracking query and passed to `UpdateRange` or `RemoveRange`;
+- foreach iteration variables over no-tracking collections;
+- entities materialized from local query aliases that were built from `AsNoTracking()`.
+
+The rule is order-aware. It does not report when a local is reassigned from a tracked query before the write API call, and it does not look ahead to no-tracking assignments that occur after the write.
+
+## Code Fix
+The fixer removes the `AsNoTracking()` call from direct local declarations, simple assignments, and foreach collection expressions when that is the origin of the diagnostic.
+
+It intentionally does not rewrite broader architecture choices. If the query was intentionally read-only, change the write path instead of applying the fix blindly.
