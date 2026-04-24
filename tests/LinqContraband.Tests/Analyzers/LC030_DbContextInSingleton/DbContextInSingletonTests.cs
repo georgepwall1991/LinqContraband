@@ -68,6 +68,7 @@ namespace Microsoft.Extensions.DependencyInjection
     }
 
     public interface IServiceCollection { }
+    public interface IServiceScopeFactory { }
 
     public sealed class ServiceCollection : IServiceCollection { }
 
@@ -186,6 +187,52 @@ public static class Startup
     public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
         Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<Worker>(services);
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AddSingletonServiceImplementation_WithStoredDbContext_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + DependencyInjectionMock + @"
+public interface IWorker { }
+
+public sealed class Worker : IWorker
+{
+    private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_db|};
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IWorker, Worker>(services);
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AddSingletonTypeImplementation_WithStoredDbContext_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + DependencyInjectionMock + @"
+public interface IWorker { }
+
+public sealed class Worker : IWorker
+{
+    private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_db|};
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(services, typeof(IWorker), typeof(Worker));
     }
 }
 ";
@@ -337,6 +384,36 @@ dotnet_code_quality.LC030.long_lived_types = TestApp.ILongLivedWorker
     }
 
     [Fact]
+    public async Task ConfiguredLongLivedBaseType_ShouldTrigger()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC030_DbContextInSingleton.DbContextInSingletonAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = EFCoreMock + @"
+namespace TestApp
+{
+    public abstract class LongLivedBase { }
+
+    public sealed class Worker : LongLivedBase
+    {
+        private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_db|};
+    }
+}
+"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC030.long_lived_types = TestApp.LongLivedBase
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task ScopedAndPerRequestTypes_ShouldNotTrigger()
     {
         var test = EFCoreMock + HttpMock + @"
@@ -415,6 +492,24 @@ public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
 {
     private readonly Microsoft.EntityFrameworkCore.IDbContextFactory<Microsoft.EntityFrameworkCore.DbContext> _factory;
     private readonly Microsoft.EntityFrameworkCore.DbContextOptions<Microsoft.EntityFrameworkCore.DbContext> _options;
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task HostedService_WithScopeFactoryOnly_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + HostingMock + DependencyInjectionMock + @"
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
+
+    public Worker(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory) => _scopeFactory = scopeFactory;
 
     public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
     public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;

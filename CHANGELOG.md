@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.3] - 2026-04-24
+
+### Changed
+- Hardened `LC018` `FromSqlRaw(...)` security analysis with named `sql:` argument handling, nested direct concatenation coverage, and LC037 boundary tests for alias-owned constructed SQL
+- Narrowed the `LC018` fixer so it only rewrites direct interpolated-string calls with no additional raw SQL parameters
+- Narrowed `LC012` to query-shaped `RemoveRange(...)` sources and guarded its fixer from materialized lists, arrays, tracked collections, and params-style entity arguments
+- Expanded `LC030` lifetime review coverage for singleton service/implementation registrations, configured long-lived base/interface types, and factory/scope-safe patterns
+- Added `LC035` coverage for async bulk execute calls, chained query filters, and simple filtered local query initializers
+- Hardened `LC043` so cancellation-token buffer calls and reused buffers are not rewritten to `await foreach`
+- Refreshed analyzer-health and per-rule docs to distinguish shipped behavior from remaining roadmap items
+
 ## [5.2.2] - 2026-04-24
 
 ### Changed

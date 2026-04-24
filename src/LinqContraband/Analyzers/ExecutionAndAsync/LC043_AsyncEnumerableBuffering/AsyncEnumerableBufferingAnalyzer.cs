@@ -119,6 +119,9 @@ public sealed class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyzer
         if (invocationSyntax.Expression is not MemberAccessExpressionSyntax memberAccess)
             return false;
 
+        if (invocationSyntax.ArgumentList.Arguments.Count != 0)
+            return false;
+
         if (!BufferMethods.Contains(memberAccess.Name.Identifier.ValueText))
             return false;
 

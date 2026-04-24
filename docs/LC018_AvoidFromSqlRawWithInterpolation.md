@@ -28,17 +28,8 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 ### Category: `Security`
 ### Severity: `Warning`
 
-### Algorithm
-1.  **Target Method**: Intercept invocations of `FromSqlRaw`.
-2.  **Type Check**: Ensure the method is the EF Core extension method for `IQueryable` or `DbSet`.
-3.  **Argument Analysis**: Inspect the first argument (the SQL string).
-    -   If it's an **interpolated string** (`$""`): **VIOLATION**.
-    -   If it's a **string concatenation** (`+`):
-        -   Check if all parts are constant strings.
-        -   If any part is a variable or non-constant: **VIOLATION**.
-
-### Exceptions
--   If the interpolated string contains *only* constant values (though this is rare and usually better handled as a simple string).
+### Notes
+LC018 reports direct interpolated strings and direct non-constant string concatenations passed to the `sql` argument of `FromSqlRaw(...)`, including named `sql:` arguments. The fixer is intentionally narrow: it is offered only for direct interpolated-string calls with no additional raw SQL parameters, where changing the method name to `FromSqlInterpolated` preserves the argument flow.
 
 ## Test Cases
 
@@ -61,9 +52,3 @@ db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Id = {id}");
 ## Rule Boundary
 - LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
 - LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.
-
-## Implementation Plan
-1.  Create `LC018_AvoidFromSqlRawWithInterpolation` directory.
-2.  Implement `AvoidFromSqlRawWithInterpolationAnalyzer`.
-3.  Implement `AvoidFromSqlRawWithInterpolationFixer`.
-4.  Implement tests.

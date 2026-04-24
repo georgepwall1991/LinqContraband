@@ -65,4 +65,25 @@ namespace LinqContraband.Test
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_ForMaterializedList()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var list = users.Where(x => x.Id > 0).ToList();
+            users.RemoveRange(list);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
 }

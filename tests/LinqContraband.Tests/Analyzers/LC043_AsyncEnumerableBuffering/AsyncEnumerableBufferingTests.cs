@@ -10,6 +10,7 @@ public class AsyncEnumerableBufferingTests
 {
     private const string AsyncEnumerableMock = @"
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Microsoft.EntityFrameworkCore
@@ -17,6 +18,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class AsyncEnumerableExtensions
     {
         public static Task<List<TSource>> ToListAsync<TSource>(this IAsyncEnumerable<TSource> source) => Task.FromResult(new List<TSource>());
+        public static Task<List<TSource>> ToListAsync<TSource>(this IAsyncEnumerable<TSource> source, CancellationToken cancellationToken) => Task.FromResult(new List<TSource>());
         public static Task<TSource[]> ToArrayAsync<TSource>(this IAsyncEnumerable<TSource> source) => Task.FromResult(new TSource[0]);
     }
 }
@@ -45,7 +47,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC043").WithSpan(24, 31, 24, 50).WithArguments("ToListAsync");
+        var expected = VerifyCS.Diagnostic("LC043").WithSpan(26, 31, 26, 50).WithArguments("ToListAsync");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
@@ -72,7 +74,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC043").WithSpan(24, 31, 24, 51).WithArguments("ToArrayAsync");
+        var expected = VerifyCS.Diagnostic("LC043").WithSpan(26, 31, 26, 51).WithArguments("ToArrayAsync");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
@@ -118,7 +120,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC043").WithSpan(24, 31, 24, 50).WithArguments("ToListAsync");
+        var expected = VerifyCS.Diagnostic("LC043").WithSpan(26, 31, 26, 50).WithArguments("ToListAsync");
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
@@ -142,6 +144,61 @@ namespace TestApp
             {
                 System.Console.WriteLine(item.Name);
             }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BufferedAsyncEnumerable_WithCancellationToken_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users, CancellationToken cancellationToken)
+        {
+            var items = await users.ToListAsync(cancellationToken);
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BufferedAsyncEnumerable_WithSecondUse_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users)
+        {
+            var items = await users.ToListAsync();
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+
+            System.Console.WriteLine(items.Count);
         }
     }
 }";

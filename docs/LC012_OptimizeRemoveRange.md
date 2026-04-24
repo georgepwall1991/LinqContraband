@@ -8,8 +8,7 @@ Suggest using `ExecuteDelete()` instead of `RemoveRange()` for bulk deletions.
 
 ### Example Violation
 ```csharp
-var oldLogs = db.Logs.Where(l => l.Date < oneYearAgo).ToList();
-// Slow: Fetches all rows first
+var oldLogs = db.Logs.Where(l => l.Date < oneYearAgo);
 db.Logs.RemoveRange(oldLogs);
 ```
 
@@ -26,3 +25,6 @@ db.Logs.Where(l => l.Date < oneYearAgo).ExecuteDelete();
 ### ID: `LC012`
 ### Category: `Performance`
 ### Severity: `Warning`
+
+### Notes
+LC012 is conservative. It reports only when the `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>`/`DbSet<T>`) so the fixer can safely rewrite that source to `ExecuteDelete()`. It stays quiet for materialized lists, arrays, tracked entity collections, and `params` entity arguments because `ExecuteDelete()` bypasses change tracking, client-side cascades, and in-memory state.

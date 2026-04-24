@@ -59,6 +59,9 @@ public class MyService
     -   `dotnet_code_quality.LC030.detection_mode = expanded` enables conservative name-based review hints such as `*Singleton*`, `*HostedService`, and `*BackgroundWorker`.
     -   `dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton;MyApp.LongLivedBase` treats matching base types or interfaces as long-lived.
 
+### Notes
+LC030 is intentionally manual-only. It does not provide a code fix because the correct change may be `IDbContextFactory<TContext>`, creating a scope through `IServiceScopeFactory`, changing registration lifetimes, or moving work into a scoped collaborator.
+
 ## Test Cases
 
 ### Violations

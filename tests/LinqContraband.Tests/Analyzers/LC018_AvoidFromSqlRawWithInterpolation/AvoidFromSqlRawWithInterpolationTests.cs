@@ -63,6 +63,47 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FromSqlRaw_WithNestedConcatenatedString_ShouldTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var name = ""A"";
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:""SELECT * FROM Table WHERE Name = "" + name + "" AND Id = "" + id|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithNamedSqlArgument_ShouldTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw(parameters: new object[0], sql: {|LC018:$""SELECT * FROM Table WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FromSqlRaw_WithConstantString_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
@@ -115,6 +156,26 @@ namespace LinqContraband.Test
             var query = new int[0].AsQueryable();
             var sql = $""SELECT * FROM Table WHERE Id = {id}"";
             var result = query.FromSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlInterpolated_WithInterpolatedString_ShouldNotTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlInterpolated($""SELECT * FROM Table WHERE Id = {id}"");
         }
     }
 }";
@@ -176,5 +237,79 @@ namespace LinqContraband.Test
 
         var expected = VerifyFix.Diagnostic("LC018").WithSpan(22, 43, 22, 81);
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldReplaceNamedFromSqlRawWithFromSqlInterpolated()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw(sql: {|LC018:$""SELECT * FROM Table WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlInterpolated(sql: $""SELECT * FROM Table WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenRawParametersArePresent()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw(parameters: new object[0], sql: {|LC018:$""SELECT * FROM Table WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_ForConcatenation()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:""SELECT * FROM Table WHERE Id = "" + id|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 }

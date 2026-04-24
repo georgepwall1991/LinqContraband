@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -58,7 +59,15 @@ public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
         var type = method.ContainingType;
         if (!type.IsDbSet() && !type.IsDbContext()) return;
 
-        context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+        if (!HasQueryableDeleteSource(invocation))
+            return;
+
+        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+    }
+
+    private static bool HasQueryableDeleteSource(IInvocationOperation invocation)
+    {
+        var deleteSource = invocation.Arguments.FirstOrDefault()?.Value.UnwrapConversions();
+        return deleteSource?.Type.IsIQueryable() == true || deleteSource?.Type.IsDbSet() == true;
     }
 }

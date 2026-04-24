@@ -32,4 +32,4 @@ await foreach (var user in stream)
 ### Severity: `Info`
 
 ### Notes
-This v1 rule is intentionally narrow. It reports only immediate buffer-then-loop patterns that are safe to rewrite to `await foreach`.
+This v1 rule is intentionally narrow. It reports only immediate buffer-then-loop patterns that are safe to rewrite to `await foreach`. Calls with buffer-method arguments, such as cancellation tokens, are left alone so the fixer does not drop behavior.

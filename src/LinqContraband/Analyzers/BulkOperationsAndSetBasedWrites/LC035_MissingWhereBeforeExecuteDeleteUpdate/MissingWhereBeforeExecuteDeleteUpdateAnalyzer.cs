@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -82,13 +84,58 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
                 continue;
             }
 
-            if (current is ILocalReferenceOperation or IParameterReferenceOperation or IFieldReferenceOperation or IPropertyReferenceOperation)
+            if (current is ILocalReferenceOperation localReference)
+                return HasWhereInLocalInitializer(localReference.Local);
+
+            if (current is IParameterReferenceOperation or IFieldReferenceOperation or IPropertyReferenceOperation)
                 return false;
 
             if (current.Type.IsDbSet() || current.Type.IsIQueryable())
                 return false;
 
             current = current.Parent;
+        }
+
+        return false;
+    }
+
+    private static bool HasWhereInLocalInitializer(ILocalSymbol local)
+    {
+        var syntaxReference = local.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxReference?.GetSyntax() is not VariableDeclaratorSyntax declarator)
+            return false;
+
+        return declarator.Initializer?.Value != null && HasWhereInSyntaxChain(declarator.Initializer.Value);
+    }
+
+    private static bool HasWhereInSyntaxChain(ExpressionSyntax expression)
+    {
+        var current = expression;
+        while (current != null)
+        {
+            if (current is InvocationExpressionSyntax invocation &&
+                invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+            {
+                if (memberAccess.Name.Identifier.ValueText == "Where")
+                    return true;
+
+                current = memberAccess.Expression;
+                continue;
+            }
+
+            if (current is MemberAccessExpressionSyntax bareMemberAccess)
+            {
+                current = bareMemberAccess.Expression;
+                continue;
+            }
+
+            if (current is ParenthesizedExpressionSyntax parenthesized)
+            {
+                current = parenthesized.Expression;
+                continue;
+            }
+
+            break;
         }
 
         return false;
