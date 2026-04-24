@@ -48,7 +48,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSqlRaw");
+        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSql", "ExecuteSqlRaw");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
@@ -67,7 +67,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 63, 31, 94).WithArguments("ExecuteSqlRawAsync");
+        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 63, 31, 94).WithArguments("ExecuteSqlAsync", "ExecuteSqlRawAsync");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
@@ -104,8 +104,44 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSqlRaw");
+        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSql", "ExecuteSqlRaw");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithNestedConcatenation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id, string name)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:""UPDATE Users SET Name = "" + name + "" WHERE Id = "" + id|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithNamedSqlArgument_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(parameters: new object[0], sql: {|LC034:$""UPDATE Users SET Name = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -128,6 +164,24 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteSqlRaw_WithParameterizedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(""UPDATE Users SET Active = 1 WHERE Id = {0}"", id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteSqlRaw_WithConcatenatedAlias_ShouldNotTriggerLC034()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
@@ -139,6 +193,81 @@ namespace TestApp
         {
             var sql = ""UPDATE Users SET Name = "" + id;
             var result = db.Database.ExecuteSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithStringFormat_ShouldNotTriggerLC034()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(string.Format(""UPDATE Users SET Name = {0}"", id));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithStringBuilder_ShouldNotTriggerLC034()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Text;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var builder = new StringBuilder(""UPDATE Users SET Name = "");
+            builder.Append(id);
+            var result = db.Database.ExecuteSqlRaw(builder.ToString());
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSql_WithInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSql($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlAsync_WithInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, int id)
+        {
+            var result = await db.Database.ExecuteSqlAsync($""UPDATE Users SET Name = {id}"");
         }
     }
 }";
@@ -173,7 +302,7 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSqlRaw");
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSql", "ExecuteSqlRaw");
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
@@ -206,8 +335,58 @@ namespace TestApp
     }
 }";
 
-        var expected = VerifyFix.Diagnostic("LC034").WithSpan(32, 63, 32, 94).WithArguments("ExecuteSqlRawAsync");
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(32, 63, 32, 94).WithArguments("ExecuteSqlAsync", "ExecuteSqlRawAsync");
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldReplaceNamedExecuteSqlRawWithExecuteSql()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(sql: $""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSql(sql: $""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 57, 31, 88).WithArguments("ExecuteSql", "ExecuteSqlRaw");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenRawParametersArePresent()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw(parameters: new object[0], sql: $""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 84, 31, 115).WithArguments("ExecuteSql", "ExecuteSqlRaw");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, test);
     }
 
     [Fact]
@@ -225,7 +404,26 @@ namespace TestApp
         }
     }";
 
-        var expected = VerifyCS.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSqlRaw");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 52, 31, 83).WithArguments("ExecuteSql", "ExecuteSqlRaw");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_ForInterpolatedAlias()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = $""UPDATE Users SET Name = {id}"";
+            var result = db.Database.ExecuteSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 }
