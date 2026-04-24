@@ -124,7 +124,7 @@ var query3 = db.Users.ToList();
 
 **🛡️ Reliability Notes:**
 - LC002 follows direct chains, single-assignment local hops, and collection constructors only when the `IQueryable` origin is provable.
-- It stays silent on ambiguous multi-assignment, field/property provenance, and overloads without a clear `IQueryable`-safe equivalent.
+- It gates lambda continuations through a conservative provider-safety classifier and stays silent on ambiguous multi-assignment, field/property provenance, delegated predicates, local/source methods, `Regex`, `StringComparison` string calls, and overloads without a clear `IQueryable`-safe equivalent.
 - The fixer is intentionally conservative and skips risky cases such as local-hop rewrites or shape-changing materializers like `ToDictionary(...).Where(...)`.
 
 ---
