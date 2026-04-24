@@ -68,16 +68,29 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
     private bool IsFromNoTrackingQuery(ILocalSymbol local, IOperation currentOperation)
     {
+        return IsFromNoTrackingQuery(local, currentOperation, new HashSet<ISymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private bool IsFromNoTrackingQuery(ILocalSymbol local, IOperation currentOperation, ISet<ISymbol> visited)
+    {
+        if (!visited.Add(local)) return false;
+
         var root = currentOperation.FindOwningExecutableRoot() ?? currentOperation;
+        var currentStart = currentOperation.Syntax.SpanStart;
+        var bestOriginPosition = -1;
+        var bestOriginIsNoTracking = false;
 
         foreach (var op in EnumerateOperations(root))
         {
             // 1. Standard Assignments
             if (op is ISimpleAssignmentOperation assignment &&
                 assignment.Target is ILocalReferenceOperation targetLocal &&
-                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
+                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
+                assignment.Syntax.SpanStart < currentStart &&
+                assignment.Syntax.SpanStart >= bestOriginPosition)
             {
-                if (IsAsNoTrackingQuery(assignment.Value)) return true;
+                bestOriginPosition = assignment.Syntax.SpanStart;
+                bestOriginIsNoTracking = IsNoTrackingSource(assignment.Value, assignment, visited);
             }
 
             // 2. Variable Declarations
@@ -87,9 +100,11 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
                 {
                     if (SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
                         declarator.Initializer != null &&
-                        IsAsNoTrackingQuery(declarator.Initializer.Value))
+                        declarator.Syntax.SpanStart < currentStart &&
+                        declarator.Syntax.SpanStart >= bestOriginPosition)
                     {
-                        return true;
+                        bestOriginPosition = declarator.Syntax.SpanStart;
+                        bestOriginIsNoTracking = IsNoTrackingSource(declarator.Initializer.Value, declarator.Initializer.Value, visited);
                     }
                 }
             }
@@ -98,21 +113,40 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
             if (op is IForEachLoopOperation forEach)
             {
                 // Check if our target 'local' is one of the locals defined by the loop
-                if (forEach.Locals.Any(l => SymbolEqualityComparer.Default.Equals(l, local)))
+                if (forEach.Locals.Any(l => SymbolEqualityComparer.Default.Equals(l, local)) &&
+                    forEach.Syntax.Span.Contains(currentStart) &&
+                    forEach.Collection.Syntax.SpanStart < currentStart &&
+                    forEach.Collection.Syntax.SpanStart >= bestOriginPosition)
                 {
-                    var collection = forEach.Collection.UnwrapConversions();
-                    if (IsAsNoTrackingQuery(collection)) return true;
-
-                    if (collection is ILocalReferenceOperation collRef)
-                    {
-                        // Check if collection variable itself is from a no-tracking query
-                        if (IsFromNoTrackingQuery(collRef.Local, forEach)) return true;
-                    }
+                    bestOriginPosition = forEach.Collection.Syntax.SpanStart;
+                    bestOriginIsNoTracking = IsNoTrackingSource(forEach.Collection, forEach.Collection, visited);
                 }
             }
         }
 
-        return false;
+        return bestOriginIsNoTracking;
+    }
+
+    private bool IsNoTrackingSource(IOperation source, IOperation boundaryOperation, ISet<ISymbol> visited)
+    {
+        var unwrapped = source.UnwrapConversions();
+        if (IsAsNoTrackingQuery(unwrapped)) return true;
+
+        if (unwrapped is IInvocationOperation invocation &&
+            invocation.TargetMethod.Name.IsMaterializerMethod() &&
+            invocation.GetInvocationReceiver() is ILocalReferenceOperation receiverLocal)
+        {
+            return IsFromNoTrackingQuery(
+                receiverLocal.Local,
+                boundaryOperation,
+                new HashSet<ISymbol>(visited, SymbolEqualityComparer.Default));
+        }
+
+        return unwrapped is ILocalReferenceOperation localRef &&
+               IsFromNoTrackingQuery(
+                   localRef.Local,
+                   boundaryOperation,
+                   new HashSet<ISymbol>(visited, SymbolEqualityComparer.Default));
     }
 
     private static IEnumerable<IOperation> EnumerateOperations(IOperation root)
@@ -132,13 +166,9 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
         if (current is IInvocationOperation invocation)
         {
-            if (invocation.TargetMethod.Name.IsMaterializerMethod())
-            {
-                var receiver = invocation.GetInvocationReceiver();
-                if (receiver != null) return HasAsNoTrackingInChain(receiver);
-            }
-
             if (invocation.TargetMethod.Name == "AsNoTracking") return true;
+
+            return HasAsNoTrackingInChain(invocation);
         }
 
         return false;

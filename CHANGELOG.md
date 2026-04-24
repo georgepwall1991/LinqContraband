@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.5] - 2026-04-24
+
+### Changed
+- Hardened `LC025` local-origin analysis so diagnostics follow the nearest previous assignment or declaration instead of treating later no-tracking assignments as write-path evidence
+- Expanded `LC025` coverage for query aliases, `UpdateRange`/`RemoveRange` collection locals, assignment-based fixes, foreach collection fixes, and tracked-reassignment false-positive boundaries
+- Refreshed `LC025` docs/sample guidance and analyzer-health status to reflect the safer analyzer and fixer contract
+
 ## [5.2.4] - 2026-04-24
 
 ### Changed
