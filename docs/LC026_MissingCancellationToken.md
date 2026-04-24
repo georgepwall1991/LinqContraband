@@ -1,7 +1,7 @@
 # Spec: LC026 - Missing CancellationToken in Async Call
 
 ## Goal
-Detect usage of EF Core async extension methods (like `ToListAsync`, `FirstOrDefaultAsync`, `SaveChangesAsync`) that are called without a `CancellationToken`.
+Detect usage of EF Core async methods (such as `ToListAsync`, `FirstOrDefaultAsync`, and `SaveChangesAsync`) that are called without a meaningful `CancellationToken` when one is available in scope.
 
 ## The Problem
 Async database operations can take a long time. In a web application, if a user cancels their request or navigates away, the server should stop processing that request to save resources. If you don't pass a `CancellationToken` to EF Core, the database query will continue to run to completion even if no one is waiting for the result. This wastes database connections, CPU, and memory.
@@ -10,8 +10,8 @@ Async database operations can take a long time. In a web application, if a user 
 ```csharp
 public async Task<List<User>> GetUsers(CancellationToken ct)
 {
-    // Violation: CancellationToken is available but not passed to EF
-    return await db.Users.ToListAsync(); 
+    // Violation: CancellationToken is available but not passed to EF.
+    return await db.Users.ToListAsync();
 }
 ```
 
@@ -35,15 +35,17 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 ### Algorithm
 1.  **Target Methods**: Intercept invocations of methods ending in `Async` that belong to `Microsoft.EntityFrameworkCore`.
 2.  **Parameter Check**: Check if the method signature accepts a `CancellationToken`.
-3.  **Scope Check**: Only report when a non-default `CancellationToken` is available in the local method/lambda scope.
-4.  **Argument Check**: Check if an argument is actually passed for that parameter.
-    -   *Note*: If the argument is `default` or `CancellationToken.None`, we should still warn if there is a `CancellationToken` available in the method scope.
+3.  **Scope Check**: Only report when a `CancellationToken` local or parameter is available at the call site.
+4.  **Argument Check**: Report when the target token parameter is omitted, passed `default`, or passed `CancellationToken.None`.
+5.  **Fix Strategy**: Prefer a variable named `cancellationToken`, then `ct`, then the first available token. The fixer appends the token when the optional argument was omitted and replaces an explicit `default`, named `cancellationToken: default`, or `CancellationToken.None` argument when one was already supplied.
 
 ## Test Cases
 
 ### Violations
 ```csharp
 await db.Users.ToListAsync(); // Missing
+await db.Users.ToListAsync(default); // Explicit default token
+await db.Users.ToListAsync(CancellationToken.None); // Ignores available token
 await db.SaveChangesAsync(); // Missing
 ```
 
@@ -53,9 +55,3 @@ await db.Users.ToListAsync(cancellationToken);
 await db.SaveChangesAsync(ct);
 await db.Users.ToListAsync(); // No token available in scope, so this stays silent
 ```
-
-## Implementation Plan
-1.  Create `LC026_MissingCancellationToken` directory.
-2.  Implement `MissingCancellationTokenAnalyzer`.
-3.  Implement `MissingCancellationTokenFixer`.
-4.  Implement tests.
