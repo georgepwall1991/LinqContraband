@@ -38,36 +38,40 @@ public class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
         var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null) return;
 
-        // Ensure it's actually FromSqlRaw
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Name.Identifier.Text == "FromSqlRaw")
-        {
-            // Only offer fix if the first argument is an interpolated string.
-            // (Concatenations are harder to fix automatically)
-            var firstArg = invocation.ArgumentList.Arguments.FirstOrDefault();
-            if (firstArg?.Expression is InterpolatedStringExpressionSyntax)
-            {
-                context.RegisterCodeFix(
-                    CodeAction.Create(
-                        "Replace with FromSqlInterpolated",
-                        c => ApplyFixAsync(context.Document, invocation, c),
-                        "ReplaceFromSqlRawWithInterpolated"),
-                    diagnostic);
-            }
-        }
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess ||
+            memberAccess.Name.Identifier.Text != "FromSqlRaw")
+            return;
+
+        var sqlArgument = GetSqlArgument(invocation);
+        if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax)
+            return;
+
+        if (invocation.ArgumentList.Arguments.Count != 1)
+            return;
+
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                "Replace with FromSqlInterpolated",
+                c => ApplyFixAsync(context.Document, memberAccess, c),
+                "ReplaceFromSqlRawWithInterpolated"),
+            diagnostic);
     }
 
-    private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
+    private static async Task<Document> ApplyFixAsync(Document document, MemberAccessExpressionSyntax memberAccess, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        editor.ReplaceNode(memberAccess, memberAccess.WithName(SyntaxFactory.IdentifierName("FromSqlInterpolated")));
+        return editor.GetChangedDocument();
+    }
 
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+    private static ArgumentSyntax? GetSqlArgument(InvocationExpressionSyntax invocation)
+    {
+        foreach (var argument in invocation.ArgumentList.Arguments)
         {
-            var newName = SyntaxFactory.IdentifierName("FromSqlInterpolated");
-            var newMemberAccess = memberAccess.WithName(newName);
-            editor.ReplaceNode(memberAccess, newMemberAccess);
+            if (argument.NameColon?.Name.Identifier.ValueText == "sql")
+                return argument;
         }
 
-        return editor.GetChangedDocument();
+        return invocation.ArgumentList.Arguments.FirstOrDefault(argument => argument.NameColon is null);
     }
 }

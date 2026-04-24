@@ -26,4 +26,4 @@ db.Users.Where(u => u.Age < 18).ExecuteDelete();
 ### Severity: `Info`
 
 ### Notes
-This rule is advisory only. There is no automatic fixer because adding a predicate speculatively would be unsafe.
+This rule is advisory only. There is no automatic fixer because adding a predicate speculatively would be unsafe. LC035 recognizes filters in the direct fluent chain and in simple local query initializers such as `var filtered = db.Users.Where(...); filtered.ExecuteDelete();`.

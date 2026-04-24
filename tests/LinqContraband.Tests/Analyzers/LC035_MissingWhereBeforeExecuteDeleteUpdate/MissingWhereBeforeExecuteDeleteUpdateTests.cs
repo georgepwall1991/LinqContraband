@@ -9,6 +9,7 @@ public class MissingWhereBeforeExecuteDeleteUpdateTests
 using System;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 
 namespace Microsoft.EntityFrameworkCore
 {
@@ -29,7 +30,9 @@ namespace Microsoft.EntityFrameworkCore
     public static class RelationalQueryableExtensions
     {
         public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
+        public static Task<int> ExecuteDeleteAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(0);
         public static int ExecuteUpdate<TSource>(this IQueryable<TSource> source) => 0;
+        public static Task<int> ExecuteUpdateAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(0);
         public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
     }
@@ -109,6 +112,88 @@ namespace TestApp
         public void Run(DbContext db)
         {
             var result = db.Set<User>().Where(u => u.Id > 10).TagWith(""bulk"").ExecuteUpdate();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDeleteAsync_WithoutWhere_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public async System.Threading.Tasks.Task Run(DbContext db)
+        {
+            var result = await {|LC035:db.Set<User>().ExecuteDeleteAsync()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteUpdateAsync_WithWhereThroughChainedOperators_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public async System.Threading.Tasks.Task Run(DbContext db)
+        {
+            var result = await db.Set<User>().AsNoTracking().Where(u => u.Id > 10).TagWith(""bulk"").ExecuteUpdateAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithFilteredLocalQuery_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var filtered = db.Set<User>().Where(u => u.Id > 10);
+            var result = filtered.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithUnfilteredLocalQuery_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var allUsers = db.Set<User>();
+            var result = {|LC035:allUsers.ExecuteDelete()|};
         }
     }
 }";

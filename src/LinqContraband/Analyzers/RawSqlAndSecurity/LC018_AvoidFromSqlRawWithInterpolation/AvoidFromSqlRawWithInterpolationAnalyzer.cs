@@ -45,18 +45,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
         // Verify it's an EF Core method
         if (!IsEfCoreMethod(method)) return;
 
-        // Find the 'sql' parameter index
-        var sqlParameterIndex = method.Parameters.ToList().FindIndex(p => p.Name == "sql");
-        if (sqlParameterIndex < 0) return;
-
-        // For extension methods called with instance syntax, the 'this' parameter is the first argument
-        // but it is NOT included in the 'Parameters' list of the method if we look at it from the perspective of the call?
-        // Actually, IInvocationOperation.Arguments aligns with Method.Parameters for extension methods too
-        // IF it's an extension method call.
-
-        if (sqlParameterIndex >= invocation.Arguments.Length) return;
-
-        var sqlArgument = invocation.Arguments[sqlParameterIndex].Value;
+        var sqlArgument = invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == "sql")?.Value;
 
         if (sqlArgument != null && IsPotentiallyUnsafe(sqlArgument))
         {

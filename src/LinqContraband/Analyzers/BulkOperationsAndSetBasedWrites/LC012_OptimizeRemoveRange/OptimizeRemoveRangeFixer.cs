@@ -3,6 +3,7 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -38,6 +39,9 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
         var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null) return;
 
+        if (!await CanSafelyRewriteAsync(context.Document, invocation, context.CancellationToken).ConfigureAwait(false))
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Use ExecuteDelete()",
@@ -46,7 +50,7 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
             diagnostic);
     }
 
-    private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
+    private static async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
@@ -68,5 +72,21 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
         }
 
         return editor.GetChangedDocument();
+    }
+
+    private static async Task<bool> CanSafelyRewriteAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.ArgumentList.Arguments.Count != 1)
+            return false;
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel == null)
+            return false;
+
+        var sourceType = semanticModel.GetTypeInfo(invocation.ArgumentList.Arguments[0].Expression, cancellationToken).Type;
+        return sourceType.IsIQueryable() || sourceType.IsDbSet();
     }
 }

@@ -44,7 +44,7 @@ namespace Microsoft.EntityFrameworkCore
 ";
 
     [Fact]
-    public async Task RemoveRange_OnDbSet_ShouldTrigger()
+    public async Task RemoveRange_OnDbSetWithQueryableSource_ShouldTrigger()
     {
         var test = Usings + @"
 namespace TestApp
@@ -56,7 +56,7 @@ namespace TestApp
         public void Main()
         {
             using var db = new AppDbContext();
-            var usersToDelete = db.Users.Where(u => u.Id > 10).ToList();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
             
             // Trigger: DbSet.RemoveRange
             {|LC012:db.Users.RemoveRange(usersToDelete)|};
@@ -68,7 +68,31 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task RemoveRange_OnDbContext_ShouldTrigger()
+    public async Task RemoveRange_OnDbContextWithQueryableSource_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            
+            // Trigger: DbContext.RemoveRange
+            {|LC012:db.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithMaterializedList_ShouldNotTrigger()
     {
         var test = Usings + @"
 namespace TestApp
@@ -81,9 +105,28 @@ namespace TestApp
         {
             using var db = new AppDbContext();
             var usersToDelete = db.Users.Where(u => u.Id > 10).ToList();
-            
-            // Trigger: DbContext.RemoveRange
-            {|LC012:db.RemoveRange(usersToDelete)|};
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithParamsArray_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main(User user)
+        {
+            using var db = new AppDbContext();
+            db.Users.RemoveRange(user);
         }
     }
 }" + MockNamespace;
