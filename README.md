@@ -920,6 +920,10 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 }
 ```
 
+**Reliability Notes:**
+- LC026 only reports when a `CancellationToken` local or parameter is available at the call site.
+- The fixer prefers `cancellationToken`, then `ct`, and replaces explicit `default` / `CancellationToken.None` token arguments instead of appending a duplicate token.
+
 ---
 
 ### LC027: Missing Explicit Foreign Key Property

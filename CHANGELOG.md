@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.7] - 2026-04-24
+
+### Changed
+- Hardened the `LC026` fixer so explicit `default`, named default, and `CancellationToken.None` arguments are replaced with the available token instead of appending a duplicate argument
+- Added `LC026` fixer coverage for omitted, local, preferred-name, default-token, and named-token argument shapes
+- Refreshed `LC026` docs and analyzer-health status to describe the safer fixer contract
+
 ## [5.2.6] - 2026-04-24
 
 ### Changed

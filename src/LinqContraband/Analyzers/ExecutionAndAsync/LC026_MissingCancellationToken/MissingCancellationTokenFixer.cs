@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC026_MissingCancellationToken;
 
@@ -49,22 +50,59 @@ public class MissingCancellationTokenFixer : CodeFixProvider
             context.RegisterCodeFix(
                 CodeAction.Create(
                     $"Pass '{cancellationTokenName}'",
-                    c => ApplyFixAsync(context.Document, invocation, cancellationTokenName, c),
+                    c => ApplyFixAsync(context.Document, invocation, semanticModel, cancellationTokenName, c),
                     "PassCancellationToken"),
                 diagnostic);
         }
     }
 
-    private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, string tokenName, CancellationToken cancellationToken)
+    private static async Task<Document> ApplyFixAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        string tokenName,
+        CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
         var newArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName));
-        var newArgumentList = invocation.ArgumentList.AddArguments(newArgument);
-        var newInvocation = invocation.WithArgumentList(newArgumentList);
+        var tokenArgument = FindExplicitCancellationTokenArgument(semanticModel, invocation, cancellationToken);
+        var newInvocation = tokenArgument is null
+            ? invocation.WithArgumentList(invocation.ArgumentList.AddArguments(newArgument))
+            : invocation.ReplaceNode(tokenArgument, tokenArgument.WithExpression(SyntaxFactory.IdentifierName(tokenName)));
 
         editor.ReplaceNode(invocation, newInvocation);
 
         return editor.GetChangedDocument();
+    }
+
+    private static ArgumentSyntax? FindExplicitCancellationTokenArgument(
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return null;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter is null ||
+                !IsCancellationTokenParameter(argument.Parameter) ||
+                argument.Syntax is not ArgumentSyntax syntax)
+            {
+                continue;
+            }
+
+            return syntax;
+        }
+
+        return null;
+    }
+
+    private static bool IsCancellationTokenParameter(IParameterSymbol parameter)
+    {
+        var type = parameter.Type;
+        return type.Name == "CancellationToken" &&
+               type.ContainingNamespace?.ToString() == "System.Threading";
     }
 }
