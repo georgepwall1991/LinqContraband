@@ -86,3 +86,4 @@ This page is generated from that catalog and grouped by domain.
 | --- | --- | --- | --- | --- | --- |
 | `LC011` Design: Entity missing Primary Key | `Warning` | `Design` | Code fix | [`LC011_EntityMissingPrimaryKey`](./LC011_EntityMissingPrimaryKey.md) | `Samples/LC011_EntityMissingPrimaryKey/` |
 | `LC027` Missing Explicit Foreign Key Property | `Info` | `Design` | Code fix | [`LC027_MissingExplicitForeignKey`](./LC027_MissingExplicitForeignKey.md) | `Samples/LC027_MissingExplicitForeignKey/` |
+
