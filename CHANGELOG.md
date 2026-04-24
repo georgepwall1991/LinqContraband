@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.4] - 2026-04-24
+
+### Changed
+- Hardened `LC024` GroupBy projection analysis around EF translation boundaries, including local helpers over grouped keys, client-only string comparison calls, direct group object construction, and nested non-aggregate group projections
+- Expanded `LC024` safe coverage for aggregate-only projections and LINQ-to-Objects grouping boundaries
+- Expanded `LC036` thread-work detection to cover `Task.Factory.StartNew(...)`, `Thread`, timer callbacks, async lambdas, and captured `DbContext` members
+- Added `LC036` safe-pattern coverage for factory-created contexts, scoped context creation inside callbacks, scalar-only capture, and work scheduled after materialization without context capture
+- Refreshed LC024/LC036 docs and analyzer-health status to mark both rules as reference-quality examples
+
 ## [5.2.3] - 2026-04-24
 
 ### Changed

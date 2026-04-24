@@ -78,6 +78,100 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task GroupBy_Select_LocalHelperOverKey_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public string CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => {|LC024:Normalize(g.Key)|});
+        }
+
+        private static string Normalize(string value) => value.Trim().ToUpperInvariant();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_StringComparisonOverKey_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public string CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => {|LC024:g.Key.Equals(""vip"", StringComparison.OrdinalIgnoreCase)|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_ObjectConstructionWithGroup_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+    public sealed class Bucket
+    {
+        public Bucket(IGrouping<int, Order> group) { }
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new Bucket({|LC024:g|}));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_NestedNonTranslatableProjection_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Summary = new { First = {|LC024:g.First()|} } });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GroupBy_Select_KeyAndAggregates_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -100,6 +194,37 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task GroupBy_Select_AllSupportedAggregates_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new
+                {
+                    Key = g.Key,
+                    Count = g.Count(),
+                    LongCount = g.LongCount(),
+                    Sum = g.Sum(o => o.Amount),
+                    Average = g.Average(o => o.Amount),
+                    Min = g.Min(o => o.Amount),
+                    Max = g.Max(o => o.Amount)
+                });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GroupBy_Select_KeyOnly_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -114,6 +239,28 @@ namespace TestApp
             var result = orders
                 .GroupBy(o => o.CustomerId)
                 .Select(g => g.Key);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EnumerableGroupBy_Select_ClientProjection_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IEnumerable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Items = g.ToList() });
         }
     }
 }";

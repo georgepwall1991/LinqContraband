@@ -44,7 +44,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 4 | 3 | 4 | 3 | 4 | 4 | Medium | Intentional bypasses can be valid; consider suppression/allow-list guidance and more negative tests. |
 | LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Medium | Analyzer coverage is decent; add dedicated fixer tests if fixer behavior is meant to be supported. |
 | LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 3 | 3 | 3 | 3 | 4 | 3 | Medium | Useful but schema-sensitive; add fixer tests and more composite-key/provider edge cases. |
-| LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 4 | 4 | 5 | 3 | 4 | 5 | Medium | Manual-only is correct; expand translation-boundary tests because runtime failure impact is high. |
+| LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Reference-quality manual rule with aggregate-only exclusions, helper/string-comparison/object-construction coverage, nested projection tests, and LINQ-to-Objects boundary coverage. |
 | LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Medium | Reliability value is clear; add fixer tests or narrow catalog confidence if fixer coverage is intentionally absent. |
 | LC026 | Missing CancellationToken in async call | Execution & Async | Info | 4 | 4 | 3 | 4 | 4 | 3 | Medium | Good analyzer scope; add fixer tests across method parameters, locals, and default token cases. |
 | LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 4 | 4 | 3 | 4 | 4 | 3 | Medium | Design guidance is useful; add fixer tests and more model-configuration negative cases. |
@@ -56,7 +56,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC033 | Use FrozenSet for static membership caches | Materialization & Projection | Info | 5 | 5 | 5 | 4 | 4 | 2 | Low | Strong implementation for a niche optimization; not a planning priority. |
 | LC034 | ExecuteSqlRaw with interpolated strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Hardened to reference quality with parameter-aware SQL argument resolution, narrow safe fixer behavior, raw-parameter guardrails, LC037 boundary coverage, and aligned docs/sample guidance. |
 | LC035 | Missing Where before bulk execute | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 5 | 4 | 4 | 5 | Low | Added async, chained-query, and simple filtered-local coverage while keeping the rule advisory and manual-only. |
-| LC036 | DbContext captured by thread work item | Execution & Async | Warning | 4 | 4 | 5 | 3 | 4 | 5 | Medium | Important safety rule; add coverage for more task/parallel APIs and safe factory/scope patterns. |
+| LC036 | DbContext captured by thread work item | Execution & Async | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Reference-quality thread-safety rule covering Task, TaskFactory, Thread, ThreadPool, Parallel, timer callbacks, async lambdas, member capture, and factory/scope/materialized-value safe patterns. |
 | LC037 | Constructed raw SQL strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 4 | 5 | Low | Strong manual-only security rule with broad string-construction coverage. |
 | LC038 | Excessive eager loading | Loading & Includes | Info | 3 | 3 | 5 | 3 | 4 | 3 | Medium | Heuristic rule; add threshold documentation and more examples of legitimate deep loads. |
 | LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 3 | 4 | 4 | Medium | Useful reliability smell; add more transaction, branch, and intentional boundary tests. |
@@ -73,13 +73,13 @@ The next improvement batch should focus on rules that combine high importance wi
 | Priority | Rules | Work |
 | --- | --- | --- |
 | Medium | LC023, LC025, LC026, LC027, LC041 | Expand existing fixer coverage for schema-sensitive and subtle projection/tracking rewrites. |
-| Medium | LC019, LC024, LC028, LC031, LC036, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
-| Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC030, LC034, LC035, LC037, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
+| Medium | LC019, LC028, LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
+| Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC024, LC030, LC034, LC035, LC036, LC037, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
 
 ## Verification Baseline
 
 `dotnet restore LinqContraband.sln` completed successfully.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 574 passing tests.
+`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 588 passing tests.
 
 `dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.

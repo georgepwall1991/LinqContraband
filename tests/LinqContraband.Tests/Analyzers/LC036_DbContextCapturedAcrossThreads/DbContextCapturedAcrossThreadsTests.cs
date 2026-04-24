@@ -17,6 +17,7 @@ namespace Microsoft.EntityFrameworkCore
     public class DbContext
     {
         public int SaveChanges() => 0;
+        public Task<int> SaveChangesAsync() => Task.FromResult(0);
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
@@ -33,6 +34,27 @@ namespace Microsoft.EntityFrameworkCore
         TContext CreateDbContext();
     }
 }
+
+namespace Microsoft.Extensions.DependencyInjection
+{
+    using System;
+    using Microsoft.EntityFrameworkCore;
+
+    public interface IServiceScope : IDisposable
+    {
+        IServiceProvider ServiceProvider { get; }
+    }
+
+    public interface IServiceScopeFactory
+    {
+        IServiceScope CreateScope();
+    }
+
+    public static class ServiceProviderServiceExtensions
+    {
+        public static T GetRequiredService<T>(this IServiceProvider provider) => default;
+    }
+}
 ";
 
     [Fact]
@@ -46,13 +68,12 @@ namespace TestApp
     {
         public Task<int> Run(DbContext db)
         {
-            return Task.Run(() => db.SaveChanges());
+            return {|LC036:Task.Run(() => db.SaveChanges())|};
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC036").WithSpan(37, 20, 37, 52).WithArguments("db", "Run");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -69,13 +90,12 @@ namespace TestApp
     {
         public void Run(DbContext db, IEnumerable<User> users)
         {
-            Parallel.ForEach(users, user => db.SaveChanges());
+            {|LC036:Parallel.ForEach(users, user => db.SaveChanges())|};
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC036").WithSpan(40, 13, 40, 62).WithArguments("db", "ForEach");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -89,13 +109,109 @@ namespace TestApp
     {
         public void Run(DbContext db)
         {
-            ThreadPool.QueueUserWorkItem(_ => db.SaveChanges());
+            {|LC036:ThreadPool.QueueUserWorkItem(_ => db.SaveChanges())|};
         }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic("LC036").WithSpan(37, 13, 37, 64).WithArguments("db", "QueueUserWorkItem");
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskFactoryStartNew_CapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(DbContext db)
+        {
+            return {|LC036:Task.Factory.StartNew(() => db.SaveChanges())|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NewThread_CapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            {|LC036:new Thread(() => db.SaveChanges())|}.Start();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TimerCallback_CapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Timer Run(DbContext db)
+        {
+            return {|LC036:new Timer(_ => db.SaveChanges(), null, 0, 1000)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskRun_AsyncLambdaCapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(DbContext db)
+        {
+            return {|LC036:Task.Run(async () => await db.SaveChangesAsync())|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskRun_CapturingDbContextMember_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        private readonly DbContext _db = new DbContext();
+
+        public Task<int> Run()
+        {
+            return {|LC036:Task.Run(() => _db.SaveChanges())|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -137,6 +253,73 @@ namespace TestApp
                 var db = factory.CreateDbContext();
                 return db.SaveChanges();
             });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CreatingScopeInsideTask_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(IServiceScopeFactory scopeFactory)
+        {
+            return Task.Run(() =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<DbContext>();
+                return db.SaveChanges();
+            });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskRun_PassingScalarOnly_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(DbContext db)
+        {
+            var count = db.SaveChanges();
+            return Task.Run(() => count);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskRun_AfterMaterializationWithoutContextCapture_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(DbContext db)
+        {
+            var saved = db.SaveChanges();
+            var values = new List<int> { saved };
+            return Task.Run(() => values.Count);
         }
     }
 }";
