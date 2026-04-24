@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.2] - 2026-04-24
+
+### Changed
+- Reworked `LC006` cartesian explosion analysis around EF query-chain navigation paths so diagnostics now focus on distinct sibling collection includes instead of every later include call
+- Added `LC006` coverage for nested sibling `ThenInclude` collections, filtered includes, resolvable string include paths, duplicate include suppression, and final `AsSplitQuery()` / `AsSingleQuery()` ordering
+- Hardened the `LC006` fixer so it inserts `AsSplitQuery()` at the stable query root and replaces an effective downstream `AsSingleQuery()` when needed
+- Updated `LC006` docs, README guidance, and sample wording to describe sibling collection risk and the preferred split-query placement
+
 ## [5.2.1] - 2026-04-24
 
 ### Changed

@@ -1,11 +1,7 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionAnalyzer,
     LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionFixer,
     Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
-    LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionAnalyzer>;
 
 namespace LinqContraband.Tests.Analyzers.LC006_CartesianExplosion;
 
@@ -66,7 +62,12 @@ namespace TestNamespace
         public List<Role> Roles { get; set; }
     }
 
-    public class Order { public List<Item> Items { get; set; } }
+    public class Order
+    {
+        public int Id { get; set; }
+        public List<Item> Items { get; set; }
+    }
+
     public class Role { }
     public class Item { }
 
@@ -85,7 +86,7 @@ class Program
     void Main()
     {
         var db = new DbContext();
-        var query = db.Users.Include(u => u.Orders).Include(u => u.Roles).ToList();
+        var query = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|}.ToList();
     }
 }
 " + MockNamespace;
@@ -107,11 +108,6 @@ class Program
             FixedCode = fixedCode
         };
 
-        // The diagnostic is on the second Include. Line 14 in this file structure.
-        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
-            .WithSpan(14, 21, 14, 74)
-            .WithArguments("Roles"));
-
         await testObj.RunAsync();
     }
 
@@ -124,7 +120,7 @@ class Program
     void Main()
     {
         var db = new DbContext();
-        var query = db.Users.Where(u => u.Id > 0).Include(u => u.Orders).Include(u => u.Roles).ToList();
+        var query = {|LC006:db.Users.Where(u => u.Id > 0).Include(u => u.Orders).Include(u => u.Roles)|}.ToList();
     }
 }
 " + MockNamespace;
@@ -146,15 +142,11 @@ class Program
             FixedCode = fixedCode
         };
 
-        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
-            .WithSpan(14, 21, 14, 95)
-            .WithArguments("Roles"));
-
         await testObj.RunAsync();
     }
 
     [Fact]
-    public async Task AnalyzerIgnoresStringIncludeChains()
+    public async Task FixCrime_WithFinalAsSingleQuery_ReplacesWithAsSplitQuery()
     {
         var test = Usings + @"
 class Program
@@ -162,11 +154,96 @@ class Program
     void Main()
     {
         var db = new DbContext();
-        var query = db.Users.Include(""Orders"").Include(""Roles"").ToList();
+        var query = {|LC006:db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).AsSingleQuery()|}.ToList();
     }
 }
 " + MockNamespace;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_StringIncludeChain_InjectsAsSplitQuery()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = {|LC006:db.Users.Include(""Orders"").Include(""Roles"")|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSplitQuery().Include(""Orders"").Include(""Roles"").ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_FilteredIncludeChain_InjectsAsSplitQuery()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = {|LC006:db.Users.Include(u => u.Orders.Where(o => o.Id > 0).OrderBy(o => o.Id)).Include(u => u.Roles)|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSplitQuery().Include(u => u.Orders.Where(o => o.Id > 0).OrderBy(o => o.Id)).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
     }
 }

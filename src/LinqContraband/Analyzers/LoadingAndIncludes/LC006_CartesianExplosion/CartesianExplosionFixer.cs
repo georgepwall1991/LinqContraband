@@ -52,6 +52,14 @@ public class CartesianExplosionFixer : CodeFixProvider
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
+        if (FindEffectiveAsSingleQueryInvocation(invocation) is { Expression: MemberAccessExpressionSyntax asSingleMemberAccess } asSingleQuery)
+        {
+            var replacementMemberAccess = asSingleMemberAccess.WithName(
+                SyntaxFactory.IdentifierName("AsSplitQuery").WithTriviaFrom(asSingleMemberAccess.Name));
+            editor.ReplaceNode(asSingleQuery, asSingleQuery.WithExpression(replacementMemberAccess));
+            return editor.GetChangedDocument();
+        }
+
         var firstInclude = FindFirstIncludeInvocation(invocation);
         if (firstInclude?.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
 
@@ -70,6 +78,25 @@ public class CartesianExplosionFixer : CodeFixProvider
         editor.ReplaceNode(source, asSplitQueryInvocation.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    private static InvocationExpressionSyntax? FindEffectiveAsSingleQueryInvocation(InvocationExpressionSyntax invocation)
+    {
+        ExpressionSyntax? current = invocation;
+
+        while (current is InvocationExpressionSyntax currentInvocation &&
+               currentInvocation.Expression is MemberAccessExpressionSyntax currentMemberAccess)
+        {
+            if (currentMemberAccess.Name.Identifier.Text == "AsSingleQuery")
+                return currentInvocation;
+
+            if (currentMemberAccess.Name.Identifier.Text == "AsSplitQuery")
+                return null;
+
+            current = currentMemberAccess.Expression;
+        }
+
+        return null;
     }
 
     private static InvocationExpressionSyntax? FindFirstIncludeInvocation(InvocationExpressionSyntax invocation)

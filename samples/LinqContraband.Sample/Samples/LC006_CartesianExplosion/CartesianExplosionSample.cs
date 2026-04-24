@@ -8,8 +8,8 @@ namespace LinqContraband.Sample.Samples.LC006_CartesianExplosion;
 /// </summary>
 /// <remarks>
 ///     <para>
-///         <strong>The Crime:</strong> Using multiple <c>Include()</c> calls on different collection navigations
-///         in a single query without splitting it.
+///         <strong>The Crime:</strong> Using multiple <c>Include()</c> calls on sibling collection navigations in a
+///         single query without splitting it.
 ///     </para>
 ///     <para>
 ///         <strong>Why it's bad:</strong> Relational databases join tables to produce the result.
@@ -33,7 +33,7 @@ public class CartesianExplosionSample
     {
         Console.WriteLine("Testing LC006...");
 
-        // VIOLATION: Fetching multiple collection navigations (Orders, Roles) in a single query.
+        // VIOLATION: Fetching sibling collection navigations (Orders, Roles) in a single query.
         // This creates a Cartesian product (Users * Orders * Roles).
         var cartesianResult = users.OrderBy(u => u.Id).Take(10).Include(u => u.Orders).Include(u => u.Roles).ToList();
     }
