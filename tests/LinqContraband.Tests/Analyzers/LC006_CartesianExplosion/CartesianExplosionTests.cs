@@ -26,6 +26,11 @@ namespace Microsoft.EntityFrameworkCore
 
     public static class EntityFrameworkQueryableExtensions
     {
+        public static IQueryable<TEntity> Include<TEntity>(
+            this IQueryable<TEntity> source,
+            string navigationPropertyPath)
+            => source;
+
         public static IIncludableQueryable<TEntity, TProperty> Include<TEntity, TProperty>(
             this IQueryable<TEntity> source, 
             System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationPropertyPath) 
@@ -53,6 +58,7 @@ namespace TestNamespace
         public int Id { get; set; }
         public List<Order> Orders { get; set; }
         public List<Role> Roles { get; set; }
+        public HashSet<Tag> Tags { get; set; }
         public Address Address { get; set; }
     }
 
@@ -60,11 +66,15 @@ namespace TestNamespace
     {
         public int Id { get; set; }
         public List<Item> Items { get; set; }
+        public ICollection<Comment> Comments { get; set; }
+        public ICollection<Tag> Tags { get; set; }
     }
 
     public class Role { }
     public class Address { }
     public class Item { }
+    public class Comment { }
+    public class Tag { }
 
     public class DbContext
     {
@@ -87,12 +97,9 @@ class Program
 }
 " + MockNamespace;
 
-        // The diagnostic spans the entire chain up to the second Include.
-        // Line 15 starts with `var query = ...`
-        // The usage `db.Users...` starts at column 21.
         var expected = VerifyCS.Diagnostic("LC006")
             .WithSpan(15, 21, 15, 74)
-            .WithArguments("Roles");
+            .WithArguments("Orders', 'Roles");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
@@ -184,8 +191,156 @@ class Program
 
         var expected = VerifyCS.Diagnostic("LC006")
             .WithSpan(14, 21, 14, 90)
-            .WithArguments("Roles");
+            .WithArguments("Orders', 'Roles");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_FinalAsSingleQueryAfterAsSplitQuery_StillTriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).AsSingleQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 14, 105)
+            .WithArguments("Orders', 'Roles");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ThreeCollectionIncludes_ReportsOnlyOnce()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(u => u.Orders).Include(u => u.Roles).Include(u => u.Tags).ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 14, 95)
+            .WithArguments("Orders', 'Roles', 'Tags");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_NestedSiblingCollectionThenIncludes_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Include(u => u.Orders)
+                .ThenInclude(o => o.Comments)
+            .Include(u => u.Orders)
+                .ThenInclude(o => o.Tags)
+            .ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 18, 42)
+            .WithArguments("Comments', 'Tags");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_FilteredSiblingCollectionIncludes_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Include(u => u.Orders.Where(o => o.Id > 0).OrderBy(o => o.Id))
+            .Include(u => u.Roles)
+            .ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 16, 35)
+            .WithArguments("Orders', 'Roles");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ResolvableStringIncludeSiblings_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(""Orders"").Include(""Roles"").ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 14, 64)
+            .WithArguments("Orders', 'Roles");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DuplicateCollectionInclude_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(u => u.Orders).Include(u => u.Orders).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_UnresolvableStringInclude_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var navigation = ""Orders"";
+        var query = db.Users.Include(navigation).Include(""Roles"").ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

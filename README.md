@@ -219,8 +219,8 @@ var query = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age);
 
 ### LC006: Cartesian Explosion Risk
 
-If User has 10 Orders, and Order has 10 Items, fetching all creates 100 rows per User. With 1000 Users, that's 100,000
-rows transferred. `AsSplitQuery` fetches Users, Orders, and Items in 3 separate, clean queries.
+If User has 10 Orders and 10 Roles, fetching both sibling collections in one SQL query creates 100 rows per User. With
+1000 Users, that's 100,000 rows transferred. `AsSplitQuery` fetches Users, Orders, and Roles in separate, clean queries.
 
 **👶 Explain it like I'm a ten year old:** Imagine a teacher asks 30 students what they ate. Instead of getting 30
 answers, she asks every student to list every single fry they ate individually. You end up with thousands of answers ("I
@@ -238,7 +238,7 @@ Use `.AsSplitQuery()` to fetch related data in separate SQL queries.
 
 ```csharp
 // Fetches Users, then Orders, then Roles (3 queries).
-var query = db.Users.Include(u => u.Orders).AsSplitQuery().Include(u => u.Roles).ToList();
+var query = db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
 ```
 
 ---

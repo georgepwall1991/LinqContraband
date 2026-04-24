@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -25,7 +25,7 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Title = "Cartesian Explosion Risk: Multiple Collection Includes";
 
     private static readonly LocalizableString MessageFormat =
-        "Including multiple collections ('{0}') in a single query causes Cartesian Explosion. Use AsSplitQuery().";
+        "Including sibling collections ('{0}') in a single query can cause cartesian explosion. Use AsSplitQuery().";
 
     private static readonly LocalizableString Description =
         "Loading multiple collections in a single query causes geometric data duplication. Use .AsSplitQuery() to separate them into distinct SQL queries.";
@@ -51,37 +51,123 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
-        var method = invocation.TargetMethod;
 
-        if (!IsIncludeMethod(method))
+        if (!IsRelevantQueryOperator(invocation.TargetMethod))
             return;
 
-        var semanticModel = context.Operation.SemanticModel;
-        if (semanticModel == null || invocation.Syntax is not InvocationExpressionSyntax invocationSyntax)
+        if (HasRelevantQueryOperatorAncestor(invocation))
             return;
 
-        if (!TryGetIncludedNavigation(invocationSyntax, semanticModel, out var currentNavigation))
+        if (!TryAnalyzeIncludeChain(invocation, out var chain))
             return;
 
-        var chain = AnalyzeIncludeChain(invocationSyntax, semanticModel);
-        if (HasSplitQueryDownstream(invocationSyntax, semanticModel) || chain.HasSplitQuery)
+        if (chain.EffectiveQueryMode == QuerySplittingMode.Split)
             return;
 
-        if (chain.CollectionIncludes.Count > 1)
+        if (chain.TryGetRiskySiblingCollections(out var siblings))
         {
             context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), currentNavigation));
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), string.Join("', '", siblings)));
         }
     }
 
-    private static bool IsIncludeMethod(IMethodSymbol method)
+    private static bool IsRelevantQueryOperator(IMethodSymbol method)
     {
-        return method.Name == "Include" && method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
+        return method.Name is "Include" or "ThenInclude" or "AsSplitQuery" or "AsSingleQuery" &&
+               method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
+    }
+
+    private enum QuerySplittingMode
+    {
+        None,
+        Split,
+        Single
+    }
+
+    private readonly struct NavigationSegment
+    {
+        public NavigationSegment(string name, bool isCollection)
+        {
+            Name = name;
+            IsCollection = isCollection;
+        }
+
+        public string Name { get; }
+        public bool IsCollection { get; }
+    }
+
+    private sealed class IncludePath
+    {
+        public IncludePath(ImmutableArray<NavigationSegment> segments)
+        {
+            Segments = segments;
+        }
+
+        public ImmutableArray<NavigationSegment> Segments { get; }
+
+        public string Key => string.Join(".", Segments.Select(segment => segment.Name));
+
+        public IncludePath Append(IncludePath childPath)
+        {
+            return new IncludePath(Segments.AddRange(childPath.Segments));
+        }
     }
 
     private sealed class IncludeChainAnalysis
     {
-        public bool HasSplitQuery { get; set; }
-        public System.Collections.Generic.List<string> CollectionIncludes { get; } = new();
+        private readonly System.Collections.Generic.List<IncludePath> includePaths = new();
+
+        public QuerySplittingMode EffectiveQueryMode { get; set; }
+
+        public void AddIncludePath(IncludePath path)
+        {
+            if (path.Segments.Length > 0)
+                includePaths.Add(path);
+        }
+
+        public bool TryGetRiskySiblingCollections(out ImmutableArray<string> siblings)
+        {
+            var seenIncludePaths = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+            var groups = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>(System.StringComparer.Ordinal);
+            var groupSets = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>>(System.StringComparer.Ordinal);
+
+            foreach (var path in includePaths)
+            {
+                if (!seenIncludePaths.Add(path.Key))
+                    continue;
+
+                var parent = new System.Collections.Generic.List<string>();
+                foreach (var segment in path.Segments)
+                {
+                    if (segment.IsCollection)
+                    {
+                        var parentKey = string.Join(".", parent);
+                        if (!groups.TryGetValue(parentKey, out var group))
+                        {
+                            group = new System.Collections.Generic.List<string>();
+                            groups[parentKey] = group;
+                            groupSets[parentKey] = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        }
+
+                        if (groupSets[parentKey].Add(segment.Name))
+                            group.Add(segment.Name);
+                    }
+
+                    parent.Add(segment.Name);
+                }
+            }
+
+            foreach (var group in groups.Values)
+            {
+                if (group.Count > 1)
+                {
+                    siblings = group.ToImmutableArray();
+                    return true;
+                }
+            }
+
+            siblings = ImmutableArray<string>.Empty;
+            return false;
+        }
     }
 }

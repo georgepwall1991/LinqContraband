@@ -1,59 +1,106 @@
+using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 
 public sealed partial class CartesianExplosionAnalyzer
 {
-    private static IncludeChainAnalysis AnalyzeIncludeChain(
-        InvocationExpressionSyntax invocationSyntax,
-        SemanticModel semanticModel)
+    private static bool TryAnalyzeIncludeChain(
+        IInvocationOperation outermostInvocation,
+        out IncludeChainAnalysis analysis)
     {
-        var result = new IncludeChainAnalysis();
-        InvocationExpressionSyntax? current = invocationSyntax;
+        analysis = new IncludeChainAnalysis();
+        var semanticModel = outermostInvocation.SemanticModel;
+        if (semanticModel == null)
+            return false;
 
-        while (current?.Expression is MemberAccessExpressionSyntax memberAccess)
+        var invocations = CollectReceiverChainInvocations(outermostInvocation);
+        IncludePath? currentIncludePath = null;
+        var foundInclude = false;
+
+        foreach (var invocation in invocations)
         {
-            var symbol = semanticModel.GetSymbolInfo(current).Symbol as IMethodSymbol;
-            if (symbol?.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore")
+            var methodName = invocation.TargetMethod.Name;
+            if (!IsRelevantQueryOperator(invocation.TargetMethod))
+                continue;
+
+            if (methodName == "AsSplitQuery")
             {
-                current = memberAccess.Expression as InvocationExpressionSyntax;
+                analysis.EffectiveQueryMode = QuerySplittingMode.Split;
                 continue;
             }
 
-            var methodName = memberAccess.Name.Identifier.Text;
-            if (methodName == "AsSplitQuery")
+            if (methodName == "AsSingleQuery")
             {
-                result.HasSplitQuery = true;
-            }
-            else if (methodName == "Include" &&
-                     TryGetIncludedNavigation(current, semanticModel, out var navigation))
-            {
-                result.CollectionIncludes.Add(navigation);
+                analysis.EffectiveQueryMode = QuerySplittingMode.Single;
+                continue;
             }
 
-            current = memberAccess.Expression as InvocationExpressionSyntax;
+            if (!TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
+                continue;
+
+            foundInclude = true;
+            currentIncludePath = includePath;
+            analysis.AddIncludePath(includePath);
         }
 
-        result.CollectionIncludes.Reverse();
-        return result;
+        return foundInclude;
     }
 
-    private static bool HasSplitQueryDownstream(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    private static ImmutableArray<IInvocationOperation> CollectReceiverChainInvocations(IInvocationOperation outermostInvocation)
     {
-        var current = invocation.Parent;
+        var builder = ImmutableArray.CreateBuilder<IInvocationOperation>();
+        IOperation? current = outermostInvocation;
+
         while (current != null)
         {
-            if (current is InvocationExpressionSyntax parentInvocation &&
-                parentInvocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-                memberAccess.Name.Identifier.Text == "AsSplitQuery" &&
-                semanticModel.GetSymbolInfo(parentInvocation).Symbol is IMethodSymbol method &&
-                method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-            {
+            current = current.UnwrapConversions();
+            if (current is not IInvocationOperation invocation)
+                break;
+
+            builder.Add(invocation);
+            current = invocation.GetInvocationReceiver();
+        }
+
+        builder.Reverse();
+        return builder.ToImmutable();
+    }
+
+    private static bool HasRelevantQueryOperatorAncestor(IInvocationOperation invocation)
+    {
+        for (var current = invocation.Parent; current != null; current = current.Parent)
+        {
+            if (current is not IInvocationOperation parentInvocation)
+                continue;
+
+            if (!IsRelevantQueryOperator(parentInvocation.TargetMethod))
+                continue;
+
+            if (InvocationUsesReceiverChain(parentInvocation.GetInvocationReceiver(), invocation))
                 return true;
+        }
+
+        return false;
+    }
+
+    private static bool InvocationUsesReceiverChain(IOperation? current, IInvocationOperation target)
+    {
+        current = current?.UnwrapConversions();
+
+        while (current != null)
+        {
+            if (ReferenceEquals(current, target))
+                return true;
+
+            if (current is IInvocationOperation invocation)
+            {
+                current = invocation.GetInvocationReceiver();
+                continue;
             }
 
-            current = current.Parent;
+            break;
         }
 
         return false;
