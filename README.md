@@ -1016,11 +1016,10 @@ var users = db.Users.ToList();
 
 ### LC030: DbContext Lifetime Review
 
-Holding a `DbContext` as a field or property is a lifetime smell. It may be fine for scoped types, but it is risky in
-long-lived services because `DbContext` is not thread-safe and is designed to be short-lived. Review the lifetime
-before keeping it around, and prefer `IDbContextFactory<T>` for long-lived services. The rule is intentionally
-advisory: it looks for likely long-lived shapes such as hosted services or conventional middleware and stays quiet on
-obviously scoped request types.
+Holding a `DbContext` as a field or property is a lifetime smell when the containing type is long-lived.
+`DbContext` is not thread-safe and is designed to be short-lived. LC030 stays strict by default: it reports only when
+the type is proven long-lived, such as hosted services, conventional middleware, `AddHostedService<T>()`,
+`AddSingleton(...)`, or explicit singleton `DbContext` registrations.
 
 **👶 Explain it like I'm a ten year old:** Imagine you have one paintbrush (DbContext) that everyone in the class has
 to share at the same time. Paint gets mixed up, bristles break, and everyone makes a mess! Instead, give each person
@@ -1037,7 +1036,9 @@ public sealed class Worker : BackgroundService
 ```
 
 **✅ The Fix:**
-Use `IDbContextFactory` to create short-lived instances.
+Review the service registration first. If the type is long-lived, use `IDbContextFactory` to create short-lived
+instances or move the work into a scoped component. This rule is manual-only because the correct fix depends on the
+application architecture.
 
 ```csharp
 public class MySingletonService
@@ -1051,6 +1052,13 @@ public class MySingletonService
         // ...
     }
 }
+```
+
+Optional `.editorconfig` knobs:
+
+```ini
+dotnet_code_quality.LC030.detection_mode = expanded
+dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton;MyApp.LongLivedBase
 ```
 
 ---

@@ -19,7 +19,7 @@ This page is generated from that catalog and grouped by domain.
 | `LC010` N+1 Write Problem: SaveChanges inside loop | `Warning` | `Performance` | Code fix | [`LC010_SaveChangesInLoop`](./LC010_SaveChangesInLoop.md) | `Samples/LC010_SaveChangesInLoop/` |
 | `LC013` Disposed Context Query | `Warning` | `Reliability` | Manual only | [`LC013_DisposedContextQuery`](./LC013_DisposedContextQuery.md) | `Samples/LC013_DisposedContextQuery/` |
 | `LC025` Avoid AsNoTracking with Update/Remove | `Warning` | `Reliability` | Code fix | [`LC025_AsNoTrackingWithUpdate`](./LC025_AsNoTrackingWithUpdate.md) | `Samples/LC025_AsNoTrackingWithUpdate/` |
-| `LC030` Potential DbContext lifetime mismatch | `Info` | `Architecture` | Code fix | [`LC030_DbContextInSingleton`](./LC030_DbContextInSingleton.md) | `Samples/LC030_DbContextInSingleton/` |
+| `LC030` Potential DbContext lifetime mismatch | `Info` | `Architecture` | Manual only | [`LC030_DbContextInSingleton`](./LC030_DbContextInSingleton.md) | `Samples/LC030_DbContextInSingleton/` |
 | `LC039` Avoid repeated SaveChanges on the same context | `Info` | `Reliability` | Manual only | [`LC039_NestedSaveChanges`](./LC039_NestedSaveChanges.md) | `Samples/LC039_NestedSaveChanges/` |
 | `LC040` Avoid mixing tracking modes on the same context | `Info` | `Reliability` | Manual only | [`LC040_MixedTrackingAndNoTracking`](./LC040_MixedTrackingAndNoTracking.md) | `Samples/LC040_MixedTrackingAndNoTracking/` |
 | `LC044` AsNoTracking query mutated then SaveChanges — silent data loss | `Warning` | `Reliability` | Manual only | [`LC044_AsNoTrackingThenModify`](./LC044_AsNoTrackingThenModifySilentWrite.md) | `Samples/LC044_AsNoTrackingThenModify/` |

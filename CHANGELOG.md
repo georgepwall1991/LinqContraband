@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Upgraded `LC030` to strict-by-default lifetime review: it now reports only when a `DbContext` member or constructor injection is paired with proven long-lived evidence such as hosted services, conventional middleware, `AddHostedService<T>()`, `AddSingleton(...)`, or explicit singleton `DbContext` registrations
+- Added `LC030` `.editorconfig` knobs for expanded name-based review and project-specific long-lived base/interface types
+- Marked `LC030` as manual-only in the catalog/docs and removed its stale architecture-changing fixer surface
 - Hardened `LC034` so `ExecuteSqlRaw` / `ExecuteSqlRawAsync` diagnostics resolve the `sql` parameter by symbol binding, including named/reordered arguments, and report the correct safe replacement API for sync vs async calls
 - Tightened the `LC034` fixer contract so it only rewrites direct interpolated-string calls with no additional raw SQL parameters
 - Expanded `LC034` analyzer/fixer coverage around nested concatenation, named arguments, parameterized raw SQL, safe `ExecuteSql*` calls, and `LC037`-owned constructed SQL flows

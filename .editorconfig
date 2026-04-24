@@ -160,6 +160,8 @@ indent_size = 2
 
 # LC030: DbContext in Singleton - Potential lifetime mismatch
 # dotnet_diagnostic.LC030.severity = info
+# dotnet_code_quality.LC030.detection_mode = strict
+# dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton;MyApp.LongLivedBase
 
 # LC031: Unbounded Query Materialization - ToList/ToArray on DbSet without Take/First bounding
 # dotnet_diagnostic.LC031.severity = info
