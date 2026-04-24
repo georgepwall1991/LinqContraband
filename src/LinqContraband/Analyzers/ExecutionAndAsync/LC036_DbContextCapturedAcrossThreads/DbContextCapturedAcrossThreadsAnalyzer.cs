@@ -40,6 +40,7 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterOperationAction(AnalyzeObjectCreation, OperationKind.ObjectCreation);
     }
 
     private static void AnalyzeInvocation(OperationAnalysisContext context)
@@ -64,10 +65,33 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    private static void AnalyzeObjectCreation(OperationAnalysisContext context)
+    {
+        var creation = (IObjectCreationOperation)context.Operation;
+        if (!IsTargetThreadObject(creation.Constructor?.ContainingType))
+            return;
+
+        var semanticModel = context.Operation.SemanticModel;
+        if (semanticModel == null)
+            return;
+
+        foreach (var argument in creation.Arguments)
+        {
+            if (TryFindCapturedDbContext(argument.Value.Syntax, semanticModel, out var symbol))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(Rule, creation.Syntax.GetLocation(), symbol.Name, creation.Type?.Name ?? "thread work item"));
+                return;
+            }
+        }
+    }
+
     private static bool IsTargetThreadApi(IMethodSymbol method)
     {
         return (method.Name == "Run" &&
                 method.ContainingType.Name == "Task" &&
+                method.ContainingNamespace?.ToString() == "System.Threading.Tasks") ||
+               (method.Name == "StartNew" &&
+                method.ContainingType.Name == "TaskFactory" &&
                 method.ContainingNamespace?.ToString() == "System.Threading.Tasks") ||
                (method.Name == "ForEach" &&
                 method.ContainingType.Name == "Parallel" &&
@@ -75,6 +99,15 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
                (method.Name == "QueueUserWorkItem" &&
                 method.ContainingType.Name == "ThreadPool" &&
                 method.ContainingNamespace?.ToString() == "System.Threading");
+    }
+
+    private static bool IsTargetThreadObject(INamedTypeSymbol? type)
+    {
+        if (type == null)
+            return false;
+
+        var ns = type.ContainingNamespace?.ToString();
+        return ns == "System.Threading" && type.Name is "Thread" or "Timer";
     }
 
     private static bool TryFindCapturedDbContext(SyntaxNode syntax, SemanticModel semanticModel, out ISymbol capturedSymbol)

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -128,6 +129,19 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
         OperationAnalysisContext context,
         IInvocationOperation selectInvocation)
     {
+        foreach (var invocation in GetAllOperations(operation).OfType<IInvocationOperation>())
+        {
+            if (IsAllowedAggregateMethod(invocation.TargetMethod.Name))
+                continue;
+
+            if (!invocation.ReferencesParameter(groupParam))
+                continue;
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), invocation.TargetMethod.Name));
+            return;
+        }
+
         foreach (var descendant in GetAllOperations(operation))
         {
             if (descendant is IParameterReferenceOperation paramRef &&

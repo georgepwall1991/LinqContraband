@@ -2,7 +2,7 @@
 
 ## What it flags
 
-Flags GroupBy pipelines that project values EF Core cannot translate cleanly to SQL, which usually triggers runtime failures or accidental client-side grouping.
+Flags `IQueryable.GroupBy(...)` pipelines that project values EF Core cannot translate cleanly to SQL, which usually triggers runtime failures or accidental client-side grouping.
 
 ## Why it matters
 
@@ -11,6 +11,8 @@ LinqContraband reports this rule when the query shape suggests a risky or non-tr
 ## Typical fix
 
 Move the projection before the grouping only when it stays translatable, aggregate on the server, or materialize intentionally before performing complex grouping in memory.
+
+LC024 is intentionally manual-only. The safe rewrite depends on whether the caller wants a server aggregate, a pre-grouped projection, or explicit client-side grouping after materialization.
 
 ## Samples
 
@@ -28,6 +30,8 @@ var query = db.Orders
     });
 ```
 
+Other risky shapes include calling local helpers over `g.Key`, using client-only string comparison overloads in the grouped projection, constructing objects from `g` directly, or nesting non-aggregate group access inside another projection object.
+
 ## A better shape
 
 ```csharp
@@ -40,3 +44,5 @@ var query = db.Orders
         Total = g.Sum(o => o.Total)
     });
 ```
+
+LC024 stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
