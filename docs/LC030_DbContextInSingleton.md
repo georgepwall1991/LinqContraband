@@ -1,7 +1,8 @@
 # Spec: LC030 - Review DbContext Lifetime Mismatches
 
 ## Goal
-Flag likely long-lived types that store a `DbContext` in a field or property so the lifetime can be reviewed.
+Flag proven long-lived types that store or directly receive a `DbContext`, and flag explicit singleton
+`DbContext` registrations, so the lifetime can be reviewed.
 
 ## The Problem
 `DbContext` is NOT thread-safe and is designed to be short-lived (Scoped). Storing it on a long-lived service is risky and can lead to:
@@ -21,7 +22,8 @@ public sealed class Worker : BackgroundService
 
 ### The Fix
 Review the service lifetime first. If the type is long-lived, inject `IDbContextFactory<T>` instead or move the `DbContext`
-usage to a scoped component.
+usage to a scoped component. LC030 intentionally has no code fix because the right correction depends on the service
+ownership model and registration.
 
 ```csharp
 // Correct
@@ -45,12 +47,17 @@ public class MyService
 ### Severity: `Info`
 
 ### Algorithm
-1.  **Target Classes**: Inspect classes that are NOT `DbContext` themselves.
-2.  **Lifetime Heuristic**:
-    -   This rule is intentionally heuristic. It does **not** prove singleton registration.
-    -   Prefer symbol-based long-lived signals such as `IHostedService`, `BackgroundService`, or conventional middleware signatures.
-    -   Skip obvious scoped/per-request types such as controllers, page models, view components, and `IMiddleware` implementations.
-    -   Treat the result as a review hint, not an automatic architecture rewrite.
+1.  **Targets**:
+    -   Instance fields and properties whose type derives from `Microsoft.EntityFrameworkCore.DbContext`.
+    -   Constructor parameters whose type derives from `DbContext`, when the type has no stored `DbContext` member to report.
+    -   DI calls that register a `DbContext` itself as singleton.
+2.  **Strict long-lived proof**:
+    -   Report when the containing type implements `IHostedService`, inherits `BackgroundService`, has a conventional ASP.NET Core middleware `Invoke`/`InvokeAsync(HttpContext, ...)` shape, is registered with `AddHostedService<T>()`, or is registered with `AddSingleton(...)`.
+    -   Report direct `AddSingleton<TDbContext>()` and `AddDbContext<TContext>(..., ServiceLifetime.Singleton)` registrations.
+    -   Stay quiet for controllers, page models, view components, `IMiddleware`, `AddScoped`, `AddTransient`, factories, options, and generic service classes with no long-lived proof.
+3.  **Optional project configuration**:
+    -   `dotnet_code_quality.LC030.detection_mode = expanded` enables conservative name-based review hints such as `*Singleton*`, `*HostedService`, and `*BackgroundWorker`.
+    -   `dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton;MyApp.LongLivedBase` treats matching base types or interfaces as long-lived.
 
 ## Test Cases
 
@@ -58,15 +65,14 @@ public class MyService
 ```csharp
 public sealed class Worker : BackgroundService { private readonly AppDbContext _db; ... }
 public sealed class AuditMiddleware { private readonly AppDbContext _db; public Task InvokeAsync(HttpContext ctx) => Task.CompletedTask; }
+services.AddSingleton<AppDbContext>(); // DbContext registered as singleton
+services.AddDbContext<AppDbContext>(contextLifetime: ServiceLifetime.Singleton);
 ```
 
 ### Valid
 ```csharp
 public class MyController { public MyController(AppDbContext db) { ... } } // Controllers are scoped
 public sealed class ScopedAuditMiddleware : IMiddleware { public ScopedAuditMiddleware(AppDbContext db) { ... } } // IMiddleware can be scoped
+services.AddScoped<MyService>();
+private readonly IDbContextFactory<AppDbContext> _factory;
 ```
-
-## Implementation Plan
-1.  Create `LC030_DbContextInSingleton` directory.
-2.  Implement `DbContextInSingletonAnalyzer`.
-3.  Implement tests.
