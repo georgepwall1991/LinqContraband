@@ -47,7 +47,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC017 | Whole entity projection | Materialization & Projection | Info | 4 | 4 | 4 | 5 | 5 | 3 | Low | Very healthy for a heuristic Info rule; keep no-fix/escape boundaries tight. |
 | LC018 | FromSqlRaw with interpolated strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | Security-critical and mostly sound, but one test file and limited dedicated fixer coverage leave avoidable risk. |
 | LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 4 | 3 | 4 | 4 | Low | Good manual-only rule; would benefit from more filtered Include and non-EF Include edge cases. |
-| LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 3 | 2 | 2 | 2 | 4 | 4 | High | Analyzer and fixer are basic; provider differences, query-context proof, and fixer safety need serious hardening. |
+| LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Hardened around Queryable expression-lambda proof, direct/nested query-parameter-dependent receivers, captured local/constant negatives, and semantically bound fixer argument removal. |
 | LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 3 | 2 | 2 | 2 | 3 | 4 | High | Intentional bypasses are common enough that the rule needs suppression/allow-list guidance and stronger negative tests. |
 | LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 3 | 3 | 2 | 3 | 3 | 4 | High | Important performance smell; fixer behavior needs dedicated tests or a clearer supported-boundary statement. |
 | LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 3 | 3 | 3 | 2 | 4 | 3 | Medium | Helpful cleanup rule, but key-shape/model-awareness and async fixer cases remain thin. |
@@ -79,10 +79,10 @@ The next improvement batch should focus on rules where user impact and health ga
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| High | LC020, LC021, LC022 | Harden Warning rules with weak fixer/test confidence. Add dedicated fixer tests, provider/non-EF boundaries, intentional-use guidance, and tighter diagnostic placement. |
+| High | LC021, LC022 | Harden Warning rules with weak fixer/test confidence. Add dedicated fixer tests, intentional-use guidance, and tighter diagnostic placement. |
 | High | LC031, LC039, LC040 | Build out high-value heuristic rules. Add source/context aliasing, branch/transaction/workflow negatives, opt-out guidance, and richer docs before raising scores. |
 | Medium | LC010, LC012, LC014, LC015, LC018, LC023, LC024, LC025, LC034, LC035, LC036, LC038, LC043 | Improve targeted tests and docs, especially around safe/unsafe fixer boundaries and intentional-use cases. |
-| Low | LC002, LC003, LC005, LC006, LC007, LC008, LC009, LC011, LC013, LC016, LC017, LC019, LC026, LC027, LC028, LC029, LC030, LC032, LC033, LC037, LC041, LC042, LC044 | Treat as currently acceptable, reference examples, or low-impact tuning rules. |
+| Low | LC002, LC003, LC005, LC006, LC007, LC008, LC009, LC011, LC013, LC016, LC017, LC019, LC020, LC026, LC027, LC028, LC029, LC030, LC032, LC033, LC037, LC041, LC042, LC044 | Treat as currently acceptable, reference examples, or low-impact tuning rules. |
 
 ## Verification Baseline
 
@@ -93,11 +93,8 @@ This audit was recalibrated against the current `RuleCatalog`, analyzer/fixer so
 Current local verification:
 
 - `/opt/homebrew/bin/dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
-- `/opt/homebrew/bin/dotnet test LinqContraband.sln --no-restore --framework net10.0` passed with 622 tests.
+- `/opt/homebrew/bin/dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --no-restore --framework net10.0 --filter FullyQualifiedName~LC020` passed with 12 tests.
+- `PATH="/opt/homebrew/bin:$PATH" /opt/homebrew/bin/dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` passed for 43 diagnostic paths.
+- `/opt/homebrew/bin/dotnet test LinqContraband.sln --no-restore --framework net10.0` passed with 628 tests.
 - `git diff --check` passed.
 - `/opt/homebrew/bin/dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
-
-Not rerun for this doc-only audit:
-
-- `dotnet restore LinqContraband.sln`
-- `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0`

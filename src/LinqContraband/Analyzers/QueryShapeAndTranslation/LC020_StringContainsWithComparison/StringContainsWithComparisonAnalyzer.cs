@@ -39,7 +39,7 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
         context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -47,50 +47,102 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
         if (method.ContainingType.SpecialType != SpecialType.System_String) return;
         if (!TargetMethods.Contains(method.Name)) return;
 
-        // Check if any argument is StringComparison
-        var hasStringComparison = invocation.Arguments.Any(arg =>
-            arg.Value.Type?.Name == "StringComparison" &&
-            arg.Value.Type.ContainingNamespace?.ToString() == "System");
+        var hasStringComparison = invocation.Arguments.Any(IsStringComparisonArgument);
 
         if (!hasStringComparison) return;
 
-        // Check if we are inside an IQueryable context
-        if (IsInsideIQueryableExpression(invocation))
+        var lambdaParameters = GetQueryableExpressionLambdaParameters(invocation);
+        if (lambdaParameters.Any(parameter => ReceiverDependsOnParameter(invocation.Instance, parameter)))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
     }
 
-    private bool IsInsideIQueryableExpression(IOperation operation)
+    private static bool IsStringComparisonArgument(IArgumentOperation argument)
     {
+        var parameterType = argument.Parameter?.Type;
+        var valueType = argument.Value.Type;
+
+        return IsStringComparison(parameterType) || IsStringComparison(valueType);
+    }
+
+    private static bool IsStringComparison(ITypeSymbol? type)
+    {
+        return type?.Name == nameof(System.StringComparison) &&
+               type.ContainingNamespace?.ToString() == "System";
+    }
+
+    private static ImmutableArray<IParameterSymbol> GetQueryableExpressionLambdaParameters(IOperation operation)
+    {
+        var builder = ImmutableArray.CreateBuilder<IParameterSymbol>();
         var current = operation.Parent;
         while (current != null)
         {
-            // If we hit an anonymous function (lambda), check if it's passed to an IQueryable method
-            if (current is IAnonymousFunctionOperation or IDelegateCreationOperation)
+            if (current is IAnonymousFunctionOperation anonymousFunction)
             {
-                var lambdaParent = current.Parent;
-                // Unwrap potential argument/conversion
-                while (lambdaParent is IArgumentOperation or IConversionOperation)
+                builder.AddRange(anonymousFunction.Symbol.Parameters);
+
+                var lambdaParent = anonymousFunction.Parent;
+                while (lambdaParent is IConversionOperation or IDelegateCreationOperation)
                 {
                     lambdaParent = lambdaParent.Parent;
                 }
 
-                if (lambdaParent is IInvocationOperation parentInvocation)
+                if (lambdaParent is IArgumentOperation { Parent: IInvocationOperation parentInvocation } &&
+                    IsQueryableInvocation(parentInvocation))
                 {
-                    var parentMethod = parentInvocation.TargetMethod;
-                    // Check if the method is called on IQueryable or returns IQueryable
-                    if (parentInvocation.GetInvocationReceiverType().IsIQueryable() ||
-                        parentMethod.ReturnType.IsIQueryable())
-                    {
-                        return true;
-                    }
+                    return builder.ToImmutable();
                 }
             }
 
             current = current.Parent;
         }
 
-        return false;
+        return ImmutableArray<IParameterSymbol>.Empty;
+    }
+
+    private static bool IsQueryableInvocation(IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod;
+        if (method.ContainingType.Name != "Queryable" ||
+            method.ContainingNamespace?.ToString() != "System.Linq")
+        {
+            return false;
+        }
+
+        return invocation.GetInvocationReceiverType().IsIQueryable();
+    }
+
+    private static bool ReceiverDependsOnParameter(IOperation? operation, IParameterSymbol parameter)
+    {
+        if (operation is null) return false;
+
+        operation = operation.UnwrapConversions();
+
+        return operation switch
+        {
+            IParameterReferenceOperation parameterReference =>
+                SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, parameter),
+            IPropertyReferenceOperation propertyReference =>
+                ReceiverDependsOnParameter(propertyReference.Instance, parameter) ||
+                propertyReference.Arguments.Any(argument => ReceiverDependsOnParameter(argument.Value, parameter)),
+            IFieldReferenceOperation fieldReference =>
+                ReceiverDependsOnParameter(fieldReference.Instance, parameter),
+            IInvocationOperation invocation =>
+                ReceiverDependsOnParameter(invocation.Instance, parameter) ||
+                invocation.Arguments.Any(argument => ReceiverDependsOnParameter(argument.Value, parameter)),
+            IBinaryOperation binary =>
+                ReceiverDependsOnParameter(binary.LeftOperand, parameter) ||
+                ReceiverDependsOnParameter(binary.RightOperand, parameter),
+            ICoalesceOperation coalesce =>
+                ReceiverDependsOnParameter(coalesce.Value, parameter) ||
+                ReceiverDependsOnParameter(coalesce.WhenNull, parameter),
+            IConditionalAccessOperation conditionalAccess =>
+                ReceiverDependsOnParameter(conditionalAccess.Operation, parameter) ||
+                ReceiverDependsOnParameter(conditionalAccess.WhenNotNull, parameter),
+            IConditionalAccessInstanceOperation when operation.Parent?.Parent is IConditionalAccessOperation conditionalAccess =>
+                ReceiverDependsOnParameter(conditionalAccess.Operation, parameter),
+            _ => false
+        };
     }
 }

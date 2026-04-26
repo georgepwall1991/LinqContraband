@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.14] - 2026-04-26
+
+### Changed
+- Hardened `LC020` string comparison overload analysis so diagnostics require a `System.Linq.Queryable` expression lambda and a direct or nested string receiver that depends on a query parameter
+- Suppressed false positives for captured local and constant string comparisons inside query predicates, and for custom `IQueryable` helpers that execute delegate predicates outside expression-tree translation
+- Hardened the `LC020` fixer to remove the semantically bound `StringComparison` argument and expanded analyzer/fixer coverage for `Contains`, `StartsWith`, and `EndsWith`
+
 ## [5.2.13] - 2026-04-26
 
 ### Changed
