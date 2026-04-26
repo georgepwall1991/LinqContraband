@@ -56,7 +56,23 @@ namespace TestApp
     public class Address { public int Id { get; set; } public Country Country { get; set; } }
     public class Country { public int Id { get; set; } public Region Region { get; set; } }
     public class Region { public int Id { get; set; } public Continent Continent { get; set; } }
-    public class Continent { public int Id { get; set; } }
+    public class Continent { public int Id { get; set; } public Planet Planet { get; set; } }
+    public class Planet { public int Id { get; set; } public Moon Moon { get; set; } }
+    public class Moon { public int Id { get; set; } }
+}
+
+namespace MyCompany
+{
+    using System;
+    using System.Linq;
+    using System.Linq.Expressions;
+
+    public static class QueryableExtensions
+    {
+        public static IQueryable<TEntity> ThenInclude<TEntity, TProperty>(
+            this IQueryable<TEntity> source,
+            Expression<Func<TEntity, TProperty>> nav) => source;
+    }
 }
 ";
 
@@ -76,6 +92,30 @@ namespace TestApp
                 .ThenInclude(a => a.Country)
                 .ThenInclude(c => c.Region)
                 {|LC028:.ThenInclude(r => r.Continent)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThenInclude_Depth5_ShouldTriggerOnceAtFirstThresholdBreach()
+    {
+        var test = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                {|LC028:.ThenInclude(r => r.Continent)|}
+                .ThenInclude(c => c.Planet);
         }
     }
 }";
@@ -136,6 +176,99 @@ namespace TestApp
         {
             var result = orders
                 .Include(o => o.Customer);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThenInclude_ConfiguredMaxDepth4_ShouldNotTriggerAtDepth4()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC028_DeepThenInclude.DeepThenIncludeAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                .ThenInclude(r => r.Continent);
+        }
+    }
+}"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC028.max_depth = 4
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task ThenInclude_ConfiguredMaxDepth2_ShouldTriggerAtDepth3()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC028_DeepThenInclude.DeepThenIncludeAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                {|LC028:.ThenInclude(c => c.Region)|};
+        }
+    }
+}"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC028.max_depth = 2
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task NonEfCoreThenInclude_ShouldNotTrigger()
+    {
+        var test = Preamble + @"
+namespace TestApp
+{
+    using MyCompany;
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .ThenInclude(o => o.Customer)
+                .ThenInclude(o => o.Customer)
+                .ThenInclude(o => o.Customer)
+                .ThenInclude(o => o.Customer);
         }
     }
 }";
