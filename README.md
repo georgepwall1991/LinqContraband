@@ -970,6 +970,10 @@ public class Order
 `ThenInclude` chains deeper than 3 levels generate complex SQL with many LEFT JOINs. This is usually a sign of
 over-fetching — loading deeply nested data that should be projected with `Select` instead.
 
+LC028 reports the first `ThenInclude(...)` call that exceeds the configured depth. The default maximum depth is `3`;
+raise `dotnet_code_quality.LC028.max_depth` in `.editorconfig` for reviewed queries where deeper eager loading is
+intentional.
+
 **👶 Explain it like I'm a ten year old:** Imagine asking your friend to bring their mom, who brings their grandma, who
 brings their great-grandma, who brings their great-great-grandma. At some point, the car is full and everyone is
 uncomfortable. It's better to just ask for the specific people you actually need.
@@ -988,7 +992,8 @@ var orders = db.Orders
 ```
 
 **✅ The Fix:**
-Use `Select` projection to load only the needed nested data.
+Use `Select` projection to load only the needed nested data, split the query, or suppress the diagnostic with a local
+justification when the deep graph is intentional.
 
 ```csharp
 var orders = db.Orders.Select(o => new {

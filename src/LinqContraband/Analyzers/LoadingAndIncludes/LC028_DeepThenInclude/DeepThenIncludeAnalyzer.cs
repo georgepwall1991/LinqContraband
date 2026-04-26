@@ -1,9 +1,11 @@
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC028_DeepThenInclude;
 
@@ -15,8 +17,10 @@ namespace LinqContraband.Analyzers.LC028_DeepThenInclude;
 public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC028";
+    internal const string MaxDepthOptionKey = "dotnet_code_quality.LC028.max_depth";
+
     private const string Category = "Performance";
-    private const int MaxDepth = 3;
+    private const int DefaultMaxDepth = 3;
     private static readonly LocalizableString Title = "Deep ThenInclude Chain";
 
     private static readonly LocalizableString MessageFormat =
@@ -40,10 +44,16 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
+    {
+        var maxDepthCache = new ConditionalWeakTable<SyntaxTree, StrongBox<int>>();
+        context.RegisterOperationAction(operationContext => AnalyzeInvocation(operationContext, maxDepthCache), OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(OperationAnalysisContext context, ConditionalWeakTable<SyntaxTree, StrongBox<int>> maxDepthCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -70,7 +80,8 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        if (depth > MaxDepth)
+        var maxDepth = GetMaxDepth(context, maxDepthCache);
+        if (depth == maxDepth + 1)
         {
             // Narrow the diagnostic to just the ".ThenInclude(...)" portion, excluding the receiver
             var location = invocation.Syntax.GetLocation();
@@ -79,12 +90,32 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
                 // Span from the dot before ThenInclude through the closing paren
                 var start = memberAccess.OperatorToken.SpanStart;
                 var end = invocation.Syntax.Span.End;
-                var textSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(start, end);
+                var textSpan = TextSpan.FromBounds(start, end);
                 location = Location.Create(invocation.Syntax.SyntaxTree, textSpan);
             }
 
-            context.ReportDiagnostic(Diagnostic.Create(Rule, location, depth, MaxDepth));
+            context.ReportDiagnostic(Diagnostic.Create(Rule, location, depth, maxDepth));
         }
+    }
+
+    private static int GetMaxDepth(OperationAnalysisContext context, ConditionalWeakTable<SyntaxTree, StrongBox<int>> maxDepthCache)
+    {
+        var syntaxTree = context.Operation.Syntax.SyntaxTree;
+        if (maxDepthCache.TryGetValue(syntaxTree, out var cached))
+            return cached.Value;
+
+        var options = context.Options.AnalyzerConfigOptionsProvider.GetOptions(syntaxTree);
+        var maxDepth = DefaultMaxDepth;
+
+        if (options.TryGetValue(MaxDepthOptionKey, out var value) &&
+            int.TryParse(value, out var configuredMaxDepth) &&
+            configuredMaxDepth > 0)
+        {
+            maxDepth = configuredMaxDepth;
+        }
+
+        maxDepthCache.Add(syntaxTree, new StrongBox<int>(maxDepth));
+        return maxDepth;
     }
 
     private static bool IsEfCoreMethod(IMethodSymbol method)

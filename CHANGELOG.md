@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.13] - 2026-04-26
+
+### Changed
+- Hardened `LC028` deep `ThenInclude` reporting so each over-threshold chain reports once at the first threshold breach instead of repeating on later links
+- Added `dotnet_code_quality.LC028.max_depth` for teams with reviewed deep eager-loading graphs
+- Expanded `LC028` default, configured-threshold, and non-EF boundary coverage, and refreshed docs/analyzer-health status to describe the manual-only review contract
+
 ## [5.2.12] - 2026-04-26
 
 ### Changed

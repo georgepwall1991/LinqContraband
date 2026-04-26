@@ -157,6 +157,7 @@ indent_size = 2
 
 # LC028: Deep ThenInclude Chain - ThenInclude depth exceeds 3 levels
 # dotnet_diagnostic.LC028.severity = warning
+# dotnet_code_quality.LC028.max_depth = 3
 
 # LC030: DbContext in Singleton - Potential lifetime mismatch
 # dotnet_diagnostic.LC030.severity = info
