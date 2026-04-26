@@ -39,7 +39,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC016 | Avoid DateTime.Now/UtcNow in queries | Query Shape & Translation | Warning | 5 | 5 | 4 | 5 | 4 | 3 | Low | Well-tested rule; importance is moderate because impact is usually cacheability/testability. |
 | LC017 | Whole entity projection | Materialization & Projection | Info | 5 | 5 | 5 | 5 | 4 | 4 | Low | Very strong edge-case coverage for a heuristic Info rule. |
 | LC018 | FromSqlRaw with interpolated strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Brought closer to LC034 parity with named SQL argument handling, nested concatenation coverage, alias boundary tests, and narrow fixer guardrails. |
-| LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 5 | 3 | 4 | 5 | Medium | Manual-only rationale is sound; add more Include/ThenInclude shape and non-EF negative tests. |
+| LC019 | Conditional Include expression | Loading & Includes | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Hardened path analysis now catches conditional receivers in longer Include chains while preserving filtered Include predicate and non-EF Include boundaries. |
 | LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Medium | Add explicit fixer tests and provider translation edge cases. |
 | LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 4 | 3 | 4 | 3 | 4 | 4 | Medium | Intentional bypasses can be valid; consider suppression/allow-list guidance and more negative tests. |
 | LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Medium | Analyzer coverage is decent; add dedicated fixer tests if fixer behavior is meant to be supported. |
@@ -72,7 +72,7 @@ The next improvement batch should focus on rules that combine high importance wi
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| Medium | LC019, LC028, LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
+| Medium | LC028, LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
 | Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC030, LC034, LC035, LC036, LC037, LC041, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
 
 ## Verification Baseline
@@ -85,6 +85,6 @@ Architecture tests now enforce the rule quality contract for public package meta
 
 `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` currently verifies 43 diagnostic paths.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 613 passing tests.
+`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 618 passing tests.
 
 `dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.

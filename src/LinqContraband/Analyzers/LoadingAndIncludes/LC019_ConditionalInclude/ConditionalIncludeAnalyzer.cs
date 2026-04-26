@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -52,12 +53,9 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
         // Find the lambda argument
         foreach (var arg in invocation.Arguments)
         {
-            var value = arg.Value;
-            // Unwrap conversions
-            while (value is IConversionOperation conv)
-                value = conv.Operand;
+            var value = arg.Value.UnwrapConversions();
             while (value is IDelegateCreationOperation del)
-                value = del.Target;
+                value = del.Target.UnwrapConversions();
 
             if (value is not IAnonymousFunctionOperation lambda) continue;
 
@@ -70,7 +68,7 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
                 {
                     if (op is IReturnOperation ret && ret.ReturnedValue != null)
                     {
-                        if (IsConditionalExpression(ret.ReturnedValue))
+                        if (HasConditionalIncludePath(ret.ReturnedValue))
                         {
                             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
                             return;
@@ -78,7 +76,7 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
                     }
                 }
             }
-            else if (IsConditionalExpression(body))
+            else if (HasConditionalIncludePath(body))
             {
                 // Non-block lambda body (expression lambda directly)
                 context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
@@ -87,12 +85,25 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool IsConditionalExpression(IOperation operation)
+    private static bool HasConditionalIncludePath(IOperation operation)
     {
-        var current = operation;
-        while (current is IConversionOperation conv)
-            current = conv.Operand;
+        var current = operation.UnwrapConversions();
 
-        return current is IConditionalOperation or ICoalesceOperation;
+        return current switch
+        {
+            IConditionalOperation or ICoalesceOperation => true,
+            IPropertyReferenceOperation property => property.Instance != null &&
+                                                    HasConditionalIncludePath(property.Instance),
+            IFieldReferenceOperation field => field.Instance != null &&
+                                              HasConditionalIncludePath(field.Instance),
+            IInvocationOperation invocation => HasConditionalIncludeInvocationSource(invocation),
+            _ => false
+        };
+    }
+
+    private static bool HasConditionalIncludeInvocationSource(IInvocationOperation invocation)
+    {
+        var receiver = invocation.GetInvocationReceiver();
+        return receiver != null && HasConditionalIncludePath(receiver);
     }
 }
