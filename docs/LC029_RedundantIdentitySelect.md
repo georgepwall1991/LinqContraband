@@ -43,7 +43,6 @@ query.Select(x => x);
 query.Select(x => x.Name);
 ```
 
-## Implementation Plan
-1.  Create `LC029_RedundantIdentitySelect` directory.
-2.  Implement `RedundantIdentitySelectAnalyzer`.
-3.  Implement tests.
+## Shipped Behavior
+
+LC029 reports identity projections such as `Select(x => x)` on queryable chains. The fixer removes the redundant projection while preserving the rest of the fluent query.

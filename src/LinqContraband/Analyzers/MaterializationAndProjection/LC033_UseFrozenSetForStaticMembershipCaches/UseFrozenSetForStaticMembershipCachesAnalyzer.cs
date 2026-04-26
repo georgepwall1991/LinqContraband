@@ -27,7 +27,7 @@ public sealed partial class UseFrozenSetForStaticMembershipCachesAnalyzer : Diag
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC033_UseFrozenSetForStaticMembershipCaches.md",
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC033_UseFrozenSetForStaticMembershipCaches.md",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

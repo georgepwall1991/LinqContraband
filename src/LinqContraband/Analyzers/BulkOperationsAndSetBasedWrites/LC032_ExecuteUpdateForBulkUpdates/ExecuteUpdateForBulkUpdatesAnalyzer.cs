@@ -30,7 +30,7 @@ public sealed partial class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnal
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC032_ExecuteUpdateForBulkUpdates.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC032_ExecuteUpdateForBulkUpdates.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

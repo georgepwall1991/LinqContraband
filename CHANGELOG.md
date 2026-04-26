@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.10] - 2026-04-26
+
+### Changed
+- Added rule quality governance for package metadata, code-fix exports, documentation drift, and sample diagnostic expectations
+- Moved sample diagnostic expectations into `samples/LinqContraband.Sample/sample-diagnostics.json` so cross-rule sample coverage is versioned with the samples
+- Corrected package repository metadata and analyzer help links to point to the public `georgepwall1991/LinqContraband` repository
+
 ## [5.2.9] - 2026-04-26
 
 ### Changed

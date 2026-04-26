@@ -20,7 +20,7 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC007";
     private const string Category = "Performance";
-    private const string HelpLinkUri = "https://github.com/georgewall/LinqContraband/blob/main/docs/LC007_NPlusOneLooper.md";
+    private const string HelpLinkUri = "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC007_NPlusOneLooper.md";
 
     private static readonly LocalizableString Title = "N+1 Problem: Database execution inside loop";
 

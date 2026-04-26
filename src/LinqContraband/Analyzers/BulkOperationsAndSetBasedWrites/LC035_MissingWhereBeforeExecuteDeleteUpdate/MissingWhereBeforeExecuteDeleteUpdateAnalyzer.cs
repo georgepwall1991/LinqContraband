@@ -29,7 +29,7 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "ExecuteDelete",

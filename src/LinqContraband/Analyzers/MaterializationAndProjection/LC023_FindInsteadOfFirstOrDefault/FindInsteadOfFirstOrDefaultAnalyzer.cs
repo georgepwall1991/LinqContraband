@@ -24,7 +24,7 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         "Find() first checks the local change tracker before hitting the database, which can be significantly faster if the entity is already loaded.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC023_FindInsteadOfFirstOrDefault.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC023_FindInsteadOfFirstOrDefault.md");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "FirstOrDefault", "SingleOrDefault",

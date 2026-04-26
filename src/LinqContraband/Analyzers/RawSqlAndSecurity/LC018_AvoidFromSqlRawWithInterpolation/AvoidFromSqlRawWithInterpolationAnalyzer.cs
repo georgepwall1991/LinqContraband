@@ -24,7 +24,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
         "Using interpolated strings with FromSqlRaw can lead to SQL injection. Use FromSqlInterpolated for safe parameterization.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC018_AvoidFromSqlRawWithInterpolation.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC018_AvoidFromSqlRawWithInterpolation.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

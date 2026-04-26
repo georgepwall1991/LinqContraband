@@ -28,7 +28,7 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC034_AvoidExecuteSqlRawWithInterpolation.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC034_AvoidExecuteSqlRawWithInterpolation.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

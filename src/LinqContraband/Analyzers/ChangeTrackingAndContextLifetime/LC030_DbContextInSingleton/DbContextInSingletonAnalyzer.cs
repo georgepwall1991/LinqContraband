@@ -36,7 +36,7 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC030_DbContextInSingleton.md",
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC030_DbContextInSingleton.md",
         customTags: WellKnownDiagnosticTags.CompilationEnd);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

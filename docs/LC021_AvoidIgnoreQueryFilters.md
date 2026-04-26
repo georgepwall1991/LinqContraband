@@ -37,7 +37,6 @@ db.Users.IgnoreQueryFilters().Where(x => x.Active);
 db.Users.Where(x => x.Active);
 ```
 
-## Implementation Plan
-1.  Create `LC021_AvoidIgnoreQueryFilters` directory.
-2.  Implement `AvoidIgnoreQueryFiltersAnalyzer`.
-3.  Implement tests.
+## Shipped Behavior
+
+LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. The fixer removes the call when the bypass is accidental; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.

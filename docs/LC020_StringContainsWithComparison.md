@@ -52,7 +52,6 @@ db.Users.Where(x => x.Name.Contains("abc"));
 "some string".Contains("abc", StringComparison.OrdinalIgnoreCase); // Not in IQueryable context
 ```
 
-## Implementation Plan
-1.  Create `LC020_StringContainsWithComparison` directory.
-2.  Implement `StringContainsWithComparisonAnalyzer`.
-3.  Implement tests.
+## Shipped Behavior
+
+LC020 reports `Contains`, `StartsWith`, and `EndsWith` overloads that use `StringComparison` inside queryable EF expressions. The fixer removes the comparison argument only for straightforward call shapes where the resulting simple string overload preserves the provider-side query shape.
