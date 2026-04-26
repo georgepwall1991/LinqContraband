@@ -39,6 +39,10 @@ namespace Microsoft.EntityFrameworkCore
         public static IIncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(
             this IIncludableQueryable<TEntity, TPreviousProperty> source,
             Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => null;
+
+        public static IIncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(
+            this IIncludableQueryable<TEntity, IEnumerable<TPreviousProperty>> source,
+            Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => null;
     }
 }
 ";
@@ -79,6 +83,50 @@ namespace TestApp
         public void TestMethod(DbSet<Order> orders)
         {
             var result = {|LC019:orders.Include(o => o.Customer ?? o.FallbackCustomer)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Include_WithConditionalReceiverInPath_ShouldTriggerLC019()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public Customer PrimaryCustomer { get; set; } public Customer FallbackCustomer { get; set; } }
+    public class Customer { public int Id { get; set; } public Address Address { get; set; } }
+    public class Address { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders, bool usePrimary)
+        {
+            var result = {|LC019:orders.Include(o => (usePrimary ? o.PrimaryCustomer : o.FallbackCustomer).Address)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Include_WithCoalescedReceiverInPath_ShouldTriggerLC019()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public Customer PrimaryCustomer { get; set; } public Customer FallbackCustomer { get; set; } }
+    public class Customer { public int Id { get; set; } public Address Address { get; set; } }
+    public class Address { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = {|LC019:orders.Include(o => (o.PrimaryCustomer ?? o.FallbackCustomer).Address)|};
         }
     }
 }";
@@ -130,6 +178,28 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task CollectionThenInclude_WithTernary_ShouldTriggerLC019()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public ICollection<OrderLine> Lines { get; set; } }
+    public class OrderLine { public int Id { get; set; } public Product PrimaryProduct { get; set; } public Product FallbackProduct { get; set; } }
+    public class Product { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders, bool usePrimary)
+        {
+            var result = {|LC019:orders.Include(o => o.Lines).ThenInclude(l => usePrimary ? l.PrimaryProduct : l.FallbackProduct)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ThenInclude_Normal_ShouldNotTrigger()
     {
         var test = EFCoreMock + @"
@@ -144,6 +214,56 @@ namespace TestApp
         public void TestMethod(DbSet<Order> orders)
         {
             var result = orders.Include(o => o.Customer).ThenInclude(c => c.Address);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FilteredInclude_WithConditionalPredicate_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public ICollection<OrderLine> Lines { get; set; } }
+    public class OrderLine { public int Id { get; set; } public bool IsPriority { get; set; } public bool IsBackordered { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders, bool priorityOnly)
+        {
+            var result = orders.Include(o => o.Lines.Where(l => priorityOnly ? l.IsPriority : l.IsBackordered));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NonEfInclude_WithTernary_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    using System;
+    using System.Collections.Generic;
+
+    public static class IncludeExtensions
+    {
+        public static IEnumerable<T> Include<T, TProperty>(this IEnumerable<T> source, Func<T, TProperty> selector) => source;
+    }
+
+    public class Order { public int Id { get; set; } public Customer Customer { get; set; } public Customer FallbackCustomer { get; set; } }
+    public class Customer { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IEnumerable<Order> orders, bool usePrimary)
+        {
+            var result = orders.Include(o => usePrimary ? o.Customer : o.FallbackCustomer);
         }
     }
 }";

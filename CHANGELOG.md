@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.12] - 2026-04-26
+
+### Changed
+- Hardened `LC019` conditional Include analysis so ternary and null-coalescing receivers inside longer Include paths are reported
+- Preserved safe filtered Include predicate and non-EF `Include` extension boundaries to avoid broad false positives
+- Expanded `LC019` Include/ThenInclude coverage and refreshed docs/analyzer-health status to describe the manual-only query-shape guidance
+
 ## [5.2.11] - 2026-04-26
 
 ### Changed
