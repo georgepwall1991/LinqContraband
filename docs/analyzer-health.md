@@ -2,18 +2,25 @@
 
 Reviewed: 2026-04-26
 
-This is an actionable health audit for the 44 analyzers in `RuleCatalog`. The current catalog declares 29 rules with code fixes and 15 rules as manual-only with explicit rationale. Scores are 1-5, where `5` is excellent, `3` is usable with gaps, and `1` needs urgent attention.
+This is a deliberately harsh health audit for the 44 analyzers in `RuleCatalog`. The catalog currently declares 29 rules with code fixes and 15 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
 ## Rubric
 
 | Metric | Meaning |
 | --- | --- |
-| Analyzer | Accuracy and semantic depth of the analyzer implementation. |
-| False Positives | Conservatism around ambiguous sources, opt-outs, edge cases, and intentional usage. |
-| Fix Strategy | Quality of the fixer, or quality of the manual-only rationale when no safe fixer exists. |
-| Tests | Strength of analyzer, fixer, negative, edge-case, and cross-analyzer tests. |
-| Docs/Samples | Clarity and consistency of rule docs, sample coverage, metadata, and documented non-goals. |
+| Analyzer | Semantic depth, EF-awareness, flow/alias handling, and diagnostic placement accuracy. |
+| False Positives | Conservatism around ambiguous sources, intentional usage, provider/version differences, opt-outs, and non-EF boundaries. |
+| Fix Strategy | Safety and completeness of the fixer, or the strength of the manual-only rationale when no safe fixer exists. |
+| Tests | Strength of analyzer, fixer, negative, edge-case, config, and cross-analyzer tests. |
+| Docs/Samples | Clarity and consistency of rule docs, sample coverage, metadata, documented safe cases, and documented non-goals. |
 | Importance | User-facing usefulness based on frequency, severity, security/reliability/performance impact, and actionability. |
+
+Harsh calibration notes:
+
+- A `5` is rare. For a fixable rule it requires broad analyzer coverage plus dedicated fixer coverage and strong negative tests.
+- A manual-only rule can score well on Fix Strategy, but it still needs explicit intentional-use guidance and negative tests.
+- Info rules are scored by product value, not implementation effort. Some are healthy but still low importance.
+- Docs/Samples score existence and quality. Every rule has a doc and sample, but thin docs do not get a free `5`.
 
 Priority is a planning signal: `High` means the analyzer is important and has meaningful health gaps, `Medium` means useful follow-up work is warranted, and `Low` means no immediate work is needed.
 
@@ -21,70 +28,76 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 | Rule | Title | Domain | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| LC001 | Local method usage in IQueryable | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Healthy core translation rule; keep expanding negative tests as new LINQ patterns appear. |
-| LC002 | Premature query continuation after materialization | Materialization & Projection | Warning | 5 | 4 | 5 | 5 | 5 | 5 | Low | Strong analyzer/fixer/test depth; good model for complex performance rules. |
-| LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 5 | 5 | 5 | 5 | 4 | 4 | Low | Mature rule with broad edge-case and fixer coverage. |
-| LC004 | IQueryable passed as IEnumerable | Query Shape & Translation | Warning | 5 | 4 | 4 | 4 | 5 | 4 | Low | Strong semantic implementation; keep watching for intentional API-boundary cases. |
-| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 3 | Low | Fixer coverage now includes explicit generic calls and descending chained sorts while preserving typed method syntax. |
-| LC006 | Multiple collection Includes | Loading & Includes | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Useful high-impact EF performance rule; fixer to `AsSplitQuery` is appropriately conservative. |
-| LC007 | Database execution inside loop | Execution & Async | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Excellent rule with clear ignored cases and conservative explicit-loading fixer behavior. |
-| LC008 | Synchronous EF method in async context | Execution & Async | Warning | 5 | 4 | 4 | 5 | 4 | 4 | Low | Strong coverage including edge cases; keep async API mapping current. |
-| LC009 | Missing AsNoTracking in read-only path | Change Tracking & Context Lifetime | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | Good write-detection coverage; low severity makes this a tuning rule, not a top priority. |
-| LC010 | SaveChanges inside loop | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | High-value write-side N+1 rule; current fixer guidance appears sufficient. |
-| LC011 | Entity missing primary key | Schema & Modeling | Warning | 5 | 5 | 4 | 5 | 4 | 4 | Low | Strong convention/configuration handling and broad edge-case tests. |
-| LC012 | Use ExecuteDelete instead of RemoveRange | Bulk Operations & Set-Based Writes | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Narrowed to query-shaped sources with materialized-list and params-array guardrails; revisit provider/version capability only if configurable EF targeting is added. |
-| LC013 | Disposed context query | Change Tracking & Context Lifetime | Warning | 5 | 5 | 5 | 5 | 4 | 5 | Low | Excellent manual-only candidate with strong lifetime edge-case coverage. |
-| LC014 | Avoid string case conversion in queries | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Healthy rule; future work is provider/collation nuance rather than core correctness. |
-| LC015 | Missing OrderBy before pagination | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | High-value reliability rule with docs now focused on shipped behavior rather than implementation-planning notes. |
-| LC016 | Avoid DateTime.Now/UtcNow in queries | Query Shape & Translation | Warning | 5 | 5 | 4 | 5 | 4 | 3 | Low | Well-tested rule; importance is moderate because impact is usually cacheability/testability. |
-| LC017 | Whole entity projection | Materialization & Projection | Info | 5 | 5 | 5 | 5 | 4 | 4 | Low | Very strong edge-case coverage for a heuristic Info rule. |
-| LC018 | FromSqlRaw with interpolated strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Brought closer to LC034 parity with named SQL argument handling, nested concatenation coverage, alias boundary tests, and narrow fixer guardrails. |
-| LC019 | Conditional Include expression | Loading & Includes | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Hardened path analysis now catches conditional receivers in longer Include chains while preserving filtered Include predicate and non-EF Include boundaries. |
-| LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Medium | Add explicit fixer tests and provider translation edge cases. |
-| LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 4 | 3 | 4 | 3 | 4 | 4 | Medium | Intentional bypasses can be valid; consider suppression/allow-list guidance and more negative tests. |
-| LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Medium | Analyzer coverage is decent; add dedicated fixer tests if fixer behavior is meant to be supported. |
-| LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 3 | 4 | 4 | 4 | 5 | 3 | Low | Fixer now preserves awaited async cancellation tokens and avoids unsafe non-awaited async rewrites; revisit composite-key metadata only if stronger model analysis is added. |
-| LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Reference-quality manual rule with aggregate-only exclusions, helper/string-comparison/object-construction coverage, nested projection tests, and LINQ-to-Objects boundary coverage. |
-| LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 5 | 5 | 4 | 5 | 5 | 4 | Low | Hardened with order-aware local origin tracking, query-alias and range-call coverage, assignment/foreach fixer tests, and refreshed docs/sample guidance. |
-| LC026 | Missing CancellationToken in async call | Execution & Async | Info | 4 | 4 | 5 | 5 | 4 | 3 | Low | Hardened fixer coverage for omitted, preferred-name, local, default-token, named-default, and `CancellationToken.None` call shapes. |
-| LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 5 | 5 | 5 | 5 | 5 | 3 | Low | Hardened around Fluent dependent-navigation resolution, optional nullable FK fixes, non-`int` key fixes, and owned/configured relationship boundaries. |
-| LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 4 | 4 | 5 | 5 | 5 | 3 | Low | Hardened manual-only heuristic with one diagnostic per over-threshold chain, configurable max depth, non-EF boundary coverage, and explicit intentional-use guidance. |
-| LC029 | Redundant identity Select | Materialization & Projection | Info | 5 | 5 | 5 | 3 | 4 | 2 | Low | Simple, safe cleanup rule; low importance but healthy implementation. |
-| LC030 | DbContext lifetime mismatch | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 4 | 5 | 4 | Low | Broadened DI lifetime coverage across generic/type singleton registrations, configured base/interface types, and factory/scope-safe patterns; manual-only rationale is explicit. |
-| LC031 | Unbounded query materialization | Materialization & Projection | Info | 3 | 3 | 5 | 3 | 4 | 4 | Medium | Valuable but heuristic; expand safe opt-out, Take/Where ordering, and intentional full-scan coverage. |
-| LC032 | ExecuteUpdate for bulk scalar updates | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 5 | 4 | 4 | 4 | Low | Conservative manual-only rule with solid analysis split; revisit fixer only after more semantics are modeled. |
-| LC033 | Use FrozenSet for static membership caches | Materialization & Projection | Info | 5 | 5 | 5 | 4 | 4 | 2 | Low | Strong implementation for a niche optimization; not a planning priority. |
-| LC034 | ExecuteSqlRaw with interpolated strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Hardened to reference quality with parameter-aware SQL argument resolution, narrow safe fixer behavior, raw-parameter guardrails, LC037 boundary coverage, and aligned docs/sample guidance. |
-| LC035 | Missing Where before bulk execute | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 5 | 4 | 4 | 5 | Low | Added async, chained-query, and simple filtered-local coverage while keeping the rule advisory and manual-only. |
-| LC036 | DbContext captured by thread work item | Execution & Async | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Reference-quality thread-safety rule covering Task, TaskFactory, Thread, ThreadPool, Parallel, timer callbacks, async lambdas, member capture, and factory/scope/materialized-value safe patterns. |
-| LC037 | Constructed raw SQL strings | Raw SQL & Security | Warning | 5 | 5 | 5 | 5 | 4 | 5 | Low | Strong manual-only security rule with broad string-construction coverage. |
-| LC038 | Excessive eager loading | Loading & Includes | Info | 3 | 3 | 5 | 3 | 4 | 3 | Medium | Heuristic rule; add threshold documentation and more examples of legitimate deep loads. |
-| LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 3 | 4 | 4 | Medium | Useful reliability smell; add more transaction, branch, and intentional boundary tests. |
-| LC040 | Mixed tracking and no-tracking modes | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 3 | 4 | 4 | Medium | Manual-only is appropriate; add broader context-resolution and split-workflow tests. |
-| LC041 | Single entity over-fetches one consumed property | Materialization & Projection | Info | 5 | 5 | 4 | 5 | 5 | 3 | Low | Hardened around entity escapes, property writes, and `*OrDefault` no-fix boundaries while keeping the projection fixer narrow. |
-| LC042 | Complex query should be tagged | Loading & Includes | Info | 3 | 3 | 5 | 3 | 4 | 2 | Low | Team-policy rule; low importance unless observability standards require tags. |
-| LC043 | Prefer await foreach over buffering async streams | Execution & Async | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | Hardened narrow fixer behavior around cancellation-token arguments and reused buffers. |
-| LC044 | AsNoTracking entity mutated then SaveChanges | Change Tracking & Context Lifetime | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Excellent high-impact data-loss rule with strong edge-case coverage and clear manual guidance. |
+| LC001 | Local method usage in IQueryable | Query Shape & Translation | Warning | 4 | 3 | 3 | 3 | 3 | 4 | Low | Useful semantic rule, but still needs more non-query, provider, and expression-shape negatives before it is truly hardened. |
+| LC002 | Premature query continuation after materialization | Materialization & Projection | Warning | 4 | 4 | 4 | 5 | 4 | 5 | Low | One of the stronger rules; remaining risk is mostly long-tail query-shape precision. |
+| LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Mature simple rewrite rule, but docs are fairly thin for provider/perf nuance. |
+| LC004 | IQueryable passed as IEnumerable | Query Shape & Translation | Warning | 4 | 3 | 3 | 3 | 3 | 4 | Medium | Valuable API-boundary rule; intentional abstractions and library boundary cases need more negative coverage. |
+| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 4 | 3 | 3 | 3 | Low | Safe, focused rule; more explicit edge/fixer tests would raise confidence. |
+| LC006 | Multiple collection Includes | Loading & Includes | Warning | 4 | 4 | 4 | 4 | 3 | 5 | Low | High-impact EF performance rule with a conservative `AsSplitQuery` fixer; docs should explain when split queries are not a free win. |
+| LC007 | Database execution inside loop | Execution & Async | Warning | 5 | 4 | 4 | 4 | 5 | 5 | Low | Strong analyzer and docs; remaining gaps are around rarer loop/dataflow shapes and fixer boundaries. |
+| LC008 | Synchronous EF method in async context | Execution & Async | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Good coverage for common sync-over-async shapes; fixer confidence depends on keeping API mappings current. |
+| LC009 | Missing AsNoTracking in read-only path | Change Tracking & Context Lifetime | Info | 4 | 4 | 3 | 4 | 3 | 3 | Low | Good write-detection coverage for a tuning rule; fixer/docs need clearer identity-resolution and intentional tracking guidance. |
+| LC010 | SaveChanges inside loop | Change Tracking & Context Lifetime | Warning | 3 | 3 | 3 | 3 | 3 | 5 | Medium | Very important rule, but current health is more basic than the impact justifies; add branch, loop, async, and unit-of-work negatives. |
+| LC011 | Entity missing primary key | Schema & Modeling | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Solid convention/configuration handling; fixer safety and non-standard key modeling keep it below reference quality. |
+| LC012 | Use ExecuteDelete instead of RemoveRange | Bulk Operations & Set-Based Writes | Warning | 3 | 3 | 3 | 2 | 3 | 4 | Medium | Useful but risky rewrite space; needs more source-shape, provider/version, and fixer safety tests. |
+| LC013 | Disposed context query | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Strong manual-only reliability rule; keep expanding lifetime-alias and ownership boundary coverage. |
+| LC014 | Avoid string case conversion in queries | Query Shape & Translation | Warning | 3 | 3 | 3 | 3 | 3 | 4 | Medium | Correct basic smell, but provider/collation nuance is under-modeled and should be documented more clearly. |
+| LC015 | Missing OrderBy before pagination | Query Shape & Translation | Warning | 4 | 4 | 3 | 3 | 4 | 5 | Medium | High-value reliability rule; fixer remains inherently advisory because choosing a stable key is domain-specific. |
+| LC016 | Avoid DateTime.Now/UtcNow in queries | Query Shape & Translation | Warning | 4 | 4 | 3 | 4 | 3 | 3 | Low | Good focused detection; importance is moderate because impact is usually cacheability/testability rather than correctness. |
+| LC017 | Whole entity projection | Materialization & Projection | Info | 4 | 4 | 4 | 5 | 5 | 3 | Low | Very healthy for a heuristic Info rule; keep no-fix/escape boundaries tight. |
+| LC018 | FromSqlRaw with interpolated strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | Security-critical and mostly sound, but one test file and limited dedicated fixer coverage leave avoidable risk. |
+| LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 4 | 3 | 4 | 4 | Low | Good manual-only rule; would benefit from more filtered Include and non-EF Include edge cases. |
+| LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 3 | 2 | 2 | 2 | 4 | 4 | High | Analyzer and fixer are basic; provider differences, query-context proof, and fixer safety need serious hardening. |
+| LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 3 | 2 | 2 | 2 | 3 | 4 | High | Intentional bypasses are common enough that the rule needs suppression/allow-list guidance and stronger negative tests. |
+| LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 3 | 3 | 2 | 3 | 3 | 4 | High | Important performance smell; fixer behavior needs dedicated tests or a clearer supported-boundary statement. |
+| LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 3 | 3 | 3 | 2 | 4 | 3 | Medium | Helpful cleanup rule, but key-shape/model-awareness and async fixer cases remain thin. |
+| LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | High-impact manual rule; add more provider/LINQ-to-Objects boundaries and nested projection negatives. |
+| LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Medium | Good core data-loss guardrail; fixer and alias/order coverage should be broadened. |
+| LC026 | Missing CancellationToken in async call | Execution & Async | Info | 3 | 3 | 4 | 3 | 4 | 3 | Low | Fix strategy is comparatively strong; analyzer value and ambiguous-token boundaries keep priority low. |
+| LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 4 | 4 | 4 | 3 | 4 | 3 | Low | Solid modeling rule for teams that want explicit FKs; low severity limits planning urgency. |
+| LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 3 | 3 | 4 | 3 | 4 | 3 | Low | Reasonable manual-only heuristic; threshold and legitimate aggregate-load examples need ongoing attention. |
+| LC029 | Redundant identity Select | Materialization & Projection | Info | 4 | 4 | 3 | 2 | 4 | 2 | Low | Simple, safe cleanup rule; not worth prioritizing unless tests are being rounded out opportunistically. |
+| LC030 | DbContext lifetime mismatch | Change Tracking & Context Lifetime | Info | 4 | 4 | 4 | 4 | 5 | 4 | Low | Strong manual-only lifetime rule with useful docs; severity keeps it out of the urgent stack. |
+| LC031 | Unbounded query materialization | Materialization & Projection | Info | 2 | 2 | 4 | 2 | 3 | 4 | High | Valuable idea, but source tracking, intentional full scans, existing filters, config opt-outs, and tests are too shallow. |
+| LC032 | ExecuteUpdate for bulk scalar updates | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 4 | 3 | 4 | 4 | Low | Conservative manual-only design is appropriate; revisit only after higher-risk bulk rules are healthier. |
+| LC033 | Use FrozenSet for static membership caches | Materialization & Projection | Info | 4 | 4 | 4 | 4 | 4 | 2 | Low | Healthy niche optimization; low user impact makes it a poor near-term investment. |
+| LC034 | ExecuteSqlRaw with interpolated strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | Security-critical and broadly covered, but dedicated fixer/negative test organization should be stronger. |
+| LC035 | Missing Where before bulk execute | Bulk Operations & Set-Based Writes | Info | 3 | 3 | 4 | 3 | 3 | 5 | Medium | High-impact safety smell despite Info severity; needs richer intentional bulk-operation guidance and negatives. |
+| LC036 | DbContext captured by thread work item | Execution & Async | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | High-value thread-safety rule; add more callback, closure, scope-factory, and materialized-value boundary tests. |
+| LC037 | Constructed raw SQL strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 4 | 3 | 5 | Low | Strong manual security rule; docs should better explain parameterized construction patterns and LC018/LC034 overlap. |
+| LC038 | Excessive eager loading | Loading & Includes | Info | 3 | 2 | 4 | 2 | 3 | 3 | Medium | Configurable heuristic, but false-positive boundaries and intentional deep-load documentation are thin. |
+| LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 3 | 3 | 4 | 2 | 2 | 4 | High | Useful reliability smell, but branch, transaction, local-function, and unit-of-work cases need much more coverage. |
+| LC040 | Mixed tracking and no-tracking modes | Change Tracking & Context Lifetime | Info | 3 | 3 | 4 | 2 | 2 | 4 | High | Important data-behavior smell; context-resolution and legitimate split-workflow tests/docs are underbuilt. |
+| LC041 | Single entity over-fetches one consumed property | Materialization & Projection | Info | 4 | 4 | 3 | 3 | 3 | 3 | Low | Solid heuristic projection rule; more fixer and entity-escape coverage would help but is not urgent. |
+| LC042 | Complex query should be tagged | Loading & Includes | Info | 2 | 2 | 4 | 2 | 3 | 2 | Low | Team-policy rule with low general importance; weak coverage is acceptable unless observability becomes a product goal. |
+| LC043 | Prefer await foreach over buffering async streams | Execution & Async | Info | 3 | 3 | 3 | 2 | 3 | 3 | Medium | Useful async guidance, but fixer and reused-buffer boundaries need more tests before trusting broad application. |
+| LC044 | AsNoTracking entity mutated then SaveChanges | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 5 | 5 | Low | Strong high-impact manual rule with clear data-loss framing; keep adding mutation and escape edge cases over time. |
 
 ## Planning Shortlist
 
-The next improvement batch should focus on rules that combine high importance with weaker health:
+The next improvement batch should focus on rules where user impact and health gaps overlap:
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| Medium | LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
-| Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC028, LC030, LC034, LC035, LC036, LC037, LC041, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
+| High | LC020, LC021, LC022 | Harden Warning rules with weak fixer/test confidence. Add dedicated fixer tests, provider/non-EF boundaries, intentional-use guidance, and tighter diagnostic placement. |
+| High | LC031, LC039, LC040 | Build out high-value heuristic rules. Add source/context aliasing, branch/transaction/workflow negatives, opt-out guidance, and richer docs before raising scores. |
+| Medium | LC010, LC012, LC014, LC015, LC018, LC023, LC024, LC025, LC034, LC035, LC036, LC038, LC043 | Improve targeted tests and docs, especially around safe/unsafe fixer boundaries and intentional-use cases. |
+| Low | LC002, LC003, LC005, LC006, LC007, LC008, LC009, LC011, LC013, LC016, LC017, LC019, LC026, LC027, LC028, LC029, LC030, LC032, LC033, LC037, LC041, LC042, LC044 | Treat as currently acceptable, reference examples, or low-impact tuning rules. |
 
 ## Verification Baseline
 
-Architecture tests now enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
+Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-`dotnet restore LinqContraband.sln` completed successfully.
+This audit was recalibrated against the current `RuleCatalog`, analyzer/fixer source layout, per-rule test directories, docs, samples, and local verification. The scorecard intentionally does not treat file existence as sufficient evidence of rule quality.
 
-`dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` currently reports `docs/rule-catalog.md` is up to date.
+Current local verification:
 
-`dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` currently verifies 43 diagnostic paths.
+- `/opt/homebrew/bin/dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
+- `/opt/homebrew/bin/dotnet test LinqContraband.sln --no-restore --framework net10.0` passed with 622 tests.
+- `git diff --check` passed.
+- `/opt/homebrew/bin/dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 622 passing tests.
+Not rerun for this doc-only audit:
 
-`dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
+- `dotnet restore LinqContraband.sln`
+- `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0`
