@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.15] - 2026-04-27
+
+### Changed
+- Hardened `LC010`, `LC012`, `LC014`, `LC015`, `LC016`, `LC018`, `LC020`, `LC021`, `LC022`, `LC023`, `LC024`, `LC031`, `LC034`, `LC037`, `LC039`, and `LC040` analyzer/fixer safety to reduce false positives, false negatives, and unsafe automated rewrites
+- Removed the unsafe `LC014` code fix and documented manual remediation where database collation, provider translation, and index design determine the correct fix
+- Added sample and architecture governance for safe sample coverage, catalog metadata, package release-note drift, and editorconfig severity coverage
+
 ## [5.2.14] - 2026-04-26
 
 ### Changed
