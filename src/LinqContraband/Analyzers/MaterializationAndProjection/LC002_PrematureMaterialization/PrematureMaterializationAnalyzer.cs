@@ -17,7 +17,7 @@ public sealed partial class PrematureMaterializationAnalyzer : DiagnosticAnalyze
     public const string DiagnosticId = "LC002";
     private const string Category = "Performance";
     private const string HelpLinkUri =
-        "https://github.com/georgewall/LinqContraband/blob/main/docs/LC002_PrematureMaterialization.md";
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC002_PrematureMaterialization.md";
 
     internal const string DiagnosticKindKey = "DiagnosticKind";
     internal const string OriginKindKey = "OriginKind";

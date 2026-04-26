@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 var repoRoot = FindRepoRoot();
 var sourceSampleProjectDirectory = Path.Combine(repoRoot, "samples", "LinqContraband.Sample");
 var sourceSampleProjectPath = Path.Combine(sourceSampleProjectDirectory, "LinqContraband.Sample.csproj");
-var sourceSampleRoot = Path.Combine(sourceSampleProjectDirectory, "Samples");
+var sourceSampleManifestPath = Path.Combine(sourceSampleProjectDirectory, "sample-diagnostics.json");
 
 var options = ParseArgs(args);
 var frameworks = options.Frameworks.Count == 0 ? new[] { "net8.0", "net9.0", "net10.0" } : options.Frameworks.ToArray();
@@ -16,22 +16,17 @@ if (!File.Exists(sourceSampleProjectPath))
     return 1;
 }
 
-var expectedSampleGroups = Directory
-    .EnumerateFiles(sourceSampleRoot, "*.cs", SearchOption.AllDirectories)
-    .Select(path => CreateExpectation(sourceSampleProjectDirectory, path))
-    .GroupBy(sample => sample.DiagnosticPath, StringComparer.Ordinal)
-    .Select(group => new SampleExpectationGroup(
-        group.Key,
-        group.SelectMany(sample => sample.SamplePaths).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray(),
-        ExpandExpectedRuleIds(
-            group.Key,
-            group.SelectMany(sample => sample.ExpectedRuleIds).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray())))
-    .OrderBy(group => group.DiagnosticPath, StringComparer.Ordinal)
-    .ToArray();
+if (!File.Exists(sourceSampleManifestPath))
+{
+    Console.Error.WriteLine($"Sample diagnostic manifest not found: {sourceSampleManifestPath}");
+    return 1;
+}
+
+var expectedSampleGroups = LoadExpectationGroups(sourceSampleManifestPath, sourceSampleProjectDirectory);
 
 if (expectedSampleGroups.Length == 0)
 {
-    Console.Error.WriteLine($"No sample files found under {sourceSampleRoot}");
+    Console.Error.WriteLine($"No sample diagnostic expectations found in {sourceSampleManifestPath}");
     return 1;
 }
 
@@ -347,53 +342,64 @@ static bool TryNormalizeUriPath(JsonElement uriProperty, out string path)
     return true;
 }
 
-static SampleExpectation CreateExpectation(string sampleProjectDirectory, string samplePath)
+static SampleExpectationGroup[] LoadExpectationGroups(string manifestPath, string sampleProjectDirectory)
 {
-    var relativePath = Path.GetRelativePath(sampleProjectDirectory, samplePath).Replace('\\', '/');
-    var ruleId = Path.GetFileName(Path.GetDirectoryName(samplePath)!)!.Split('_', 2)[0];
-    var diagnosticPath = ruleId switch
+    using var stream = File.OpenRead(manifestPath);
+    using var document = JsonDocument.Parse(stream);
+    var expectations = new List<SampleExpectation>();
+
+    foreach (var expectation in document.RootElement.GetProperty("expectations").EnumerateArray())
     {
-        "LC011" or "LC027" => "Data/AppDbContext.cs",
-        _ => relativePath
-    };
+        var diagnosticPath = expectation.GetProperty("diagnosticPath").GetString();
+        if (string.IsNullOrWhiteSpace(diagnosticPath))
+        {
+            throw new InvalidOperationException($"{manifestPath} contains an expectation with no diagnosticPath.");
+        }
 
-    return new SampleExpectation(diagnosticPath, new[] { relativePath }, new[] { ruleId });
-}
+        var samplePaths = expectation.GetProperty("samplePaths")
+            .EnumerateArray()
+            .Select(value => value.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .ToArray();
+        var expectedRuleIds = expectation.GetProperty("ruleIds")
+            .EnumerateArray()
+            .Select(value => value.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .ToArray();
 
-static IReadOnlyList<string> ExpandExpectedRuleIds(string diagnosticPath, IReadOnlyList<string> baseRuleIds)
-{
-    var expected = baseRuleIds.ToHashSet(StringComparer.Ordinal);
+        if (samplePaths.Length == 0 || expectedRuleIds.Length == 0)
+        {
+            throw new InvalidOperationException($"{manifestPath} expectation '{diagnosticPath}' must declare samplePaths and ruleIds.");
+        }
 
-    foreach (var additionalRule in diagnosticPath switch
-             {
-                 "Samples/LC009_MissingAsNoTracking/MissingAsNoTrackingSample.cs" => new[] { "LC015", "LC042" },
-                 "Samples/LC013_DisposedContextQuery/DisposedContextQuerySample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC016_AvoidDateTimeNow/AvoidDateTimeNowSample.cs" => new[] { "LC042" },
-                 "Samples/LC017_WholeEntityProjection/WholeEntityProjectionSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC018_AvoidFromSqlRawWithInterpolation/AvoidFromSqlRawWithInterpolationSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC020_StringContainsWithComparison/StringContainsWithComparisonSample.cs" => new[] { "LC042" },
-                 "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSample.cs" => new[] { "LC042" },
-                 "Samples/LC023_FindInsteadOfFirstOrDefault/FindInsteadOfFirstOrDefaultSample.cs" => new[] { "LC009" },
-                 "Samples/LC024_GroupByNonTranslatable/GroupByNonTranslatableSample.cs" => Array.Empty<string>(),
-                 "Samples/LC025_AsNoTrackingWithUpdate/AsNoTrackingWithUpdateSample.cs" => new[] { "LC023", "LC031", "LC040" },
-                 "Samples/LC026_MissingCancellationToken/MissingCancellationTokenSample.cs" => new[] { "LC031", "LC039" },
-                 "Samples/LC031_UnboundedQueryMaterialization/UnboundedQueryMaterializationSample.cs" => new[] { "LC009", "LC042" },
-                 "Samples/LC034_AvoidExecuteSqlRawWithInterpolation/ExecuteSqlRawInterpolationSample.cs" => Array.Empty<string>(),
-                 "Samples/LC036_DbContextCapturedAcrossThreads/DbContextCapturedAcrossThreadsSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC037_RawSqlStringConstruction/RawSqlStringConstructionSample.cs" => new[] { "LC009" },
-                 "Samples/LC038_ExcessiveEagerLoading/ExcessiveEagerLoadingSample.cs" => new[] { "LC009", "LC031", "LC042" },
-                 "Samples/LC040_MixedTrackingAndNoTracking/MixedTrackingAndNoTrackingSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC042_MissingQueryTags/MissingQueryTagsSample.cs" => new[] { "LC009" },
-                 "Samples/LC043_AsyncEnumerableBuffering/AsyncEnumerableBufferingSample.cs" => new[] { "LC009", "LC031" },
-                 "Samples/LC044_AsNoTrackingThenModify/AsNoTrackingThenModifySample.cs" => new[] { "LC023", "LC025", "LC039", "LC040" },
-                 _ => Array.Empty<string>()
-             })
-    {
-        expected.Add(additionalRule);
+        if (!File.Exists(Path.Combine(sampleProjectDirectory, diagnosticPath.Replace('/', Path.DirectorySeparatorChar))))
+        {
+            throw new InvalidOperationException($"{manifestPath} diagnosticPath does not exist: {diagnosticPath}");
+        }
+
+        foreach (var samplePath in samplePaths)
+        {
+            if (!File.Exists(Path.Combine(sampleProjectDirectory, samplePath.Replace('/', Path.DirectorySeparatorChar))))
+            {
+                throw new InvalidOperationException($"{manifestPath} samplePath does not exist: {samplePath}");
+            }
+        }
+
+        expectations.Add(new SampleExpectation(diagnosticPath, samplePaths, expectedRuleIds));
     }
 
-    return expected.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+    return expectations
+        .GroupBy(sample => sample.DiagnosticPath, StringComparer.Ordinal)
+        .Select(group => new SampleExpectationGroup(
+            group.Key,
+            group.SelectMany(sample => sample.SamplePaths).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray(),
+            group.SelectMany(sample => sample.ExpectedRuleIds).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray()))
+        .OrderBy(group => group.DiagnosticPath, StringComparer.Ordinal)
+        .ToArray();
 }
 
 static string Quote(string value)

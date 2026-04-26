@@ -23,7 +23,7 @@ public sealed partial class MissingCancellationTokenAnalyzer : DiagnosticAnalyze
         "Always pass a CancellationToken to EF Core async operations to prevent resource waste when requests are cancelled.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC026_MissingCancellationToken.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC026_MissingCancellationToken.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

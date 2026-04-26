@@ -2,7 +2,7 @@
 
 Reviewed: 2026-04-26
 
-This is an actionable health audit for the 44 analyzers in `RuleCatalog`. The current catalog declares 30 rules with code fixes and 14 rules as manual-only with explicit rationale. Scores are 1-5, where `5` is excellent, `3` is usable with gaps, and `1` needs urgent attention.
+This is an actionable health audit for the 44 analyzers in `RuleCatalog`. The current catalog declares 29 rules with code fixes and 15 rules as manual-only with explicit rationale. Scores are 1-5, where `5` is excellent, `3` is usable with gaps, and `1` needs urgent attention.
 
 ## Rubric
 
@@ -77,6 +77,8 @@ The next improvement batch should focus on rules that combine high importance wi
 | Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC030, LC034, LC035, LC036, LC037, LC041, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
 
 ## Verification Baseline
+
+Architecture tests now enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
 `dotnet restore LinqContraband.sln` completed successfully.
 

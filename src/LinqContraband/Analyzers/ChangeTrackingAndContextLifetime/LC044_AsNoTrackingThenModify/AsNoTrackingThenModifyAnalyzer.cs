@@ -36,7 +36,7 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC044_AsNoTrackingThenModifySilentWrite.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC044_AsNoTrackingThenModifySilentWrite.md");
 
     private static readonly ImmutableHashSet<string> ReattachMethodNames = ImmutableHashSet.Create(
         "Update", "UpdateRange", "Attach", "AttachRange");

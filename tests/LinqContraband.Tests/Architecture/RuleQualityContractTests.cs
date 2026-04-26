@@ -1,0 +1,166 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Xml.Linq;
+using LinqContraband.Catalog;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Xunit;
+
+namespace LinqContraband.Tests.Architecture;
+
+public sealed class RuleQualityContractTests
+{
+    private const string RepositoryUrl = "https://github.com/georgepwall1991/LinqContraband";
+    private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
+
+    [Fact]
+    public void PackageMetadata_PointsToThePublicRepository()
+    {
+        var projectPath = Path.Combine(_repoRoot, "src", "LinqContraband", "LinqContraband.csproj");
+        var document = XDocument.Load(projectPath);
+        var properties = document.Descendants("PropertyGroup").Elements()
+            .GroupBy(element => element.Name.LocalName, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Value.Trim(), StringComparer.Ordinal);
+
+        Assert.Equal("LinqContraband", properties["PackageId"]);
+        Assert.Equal("LinqContraband", properties["Title"]);
+        Assert.Equal(RepositoryUrl, properties["RepositoryUrl"]);
+        Assert.Equal(RepositoryUrl, properties["PackageProjectUrl"]);
+        Assert.True(properties.TryGetValue("PackageReleaseNotes", out var releaseNotes) && !string.IsNullOrWhiteSpace(releaseNotes));
+    }
+
+    [Fact]
+    public void FixerRules_ExportCodeFixProvidersForTheirRuleIds()
+    {
+        var analyzerAssembly = typeof(LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer).Assembly;
+        var failures = new List<string>();
+
+        foreach (var rule in RuleCatalog.All.Where(rule => rule.HasCodeFix))
+        {
+            var fixerType = analyzerAssembly.GetTypes().SingleOrDefault(type => type.Name == rule.FixerTypeName);
+            if (fixerType is null)
+            {
+                failures.Add($"{rule.Id}: could not find fixer type '{rule.FixerTypeName}'.");
+                continue;
+            }
+
+            if (!typeof(CodeFixProvider).IsAssignableFrom(fixerType))
+            {
+                failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' does not inherit from CodeFixProvider.");
+                continue;
+            }
+
+            var export = fixerType.GetCustomAttributes(typeof(ExportCodeFixProviderAttribute), inherit: false)
+                .Cast<ExportCodeFixProviderAttribute>()
+                .SingleOrDefault();
+            if (export is null)
+            {
+                failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' is missing ExportCodeFixProviderAttribute.");
+            }
+            else if (!export.Languages.Contains(LanguageNames.CSharp, StringComparer.Ordinal))
+            {
+                failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' is not exported for C#.");
+            }
+
+            var fixer = (CodeFixProvider)Activator.CreateInstance(fixerType)!;
+            if (!fixer.FixableDiagnosticIds.Contains(rule.Id, StringComparer.Ordinal))
+            {
+                failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' does not list the rule id in FixableDiagnosticIds.");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
+    public void RuleDocs_DeclareShippedBehaviorAndFixStrategy()
+    {
+        var failures = new List<string>();
+
+        foreach (var rule in RuleCatalog.All)
+        {
+            var docPath = Path.Combine(_repoRoot, rule.DocumentationPath.Replace('/', Path.DirectorySeparatorChar));
+            var markdown = File.ReadAllText(docPath);
+
+            if (!markdown.Contains(rule.Id, StringComparison.Ordinal))
+                failures.Add($"{rule.Id}: documentation should mention the rule id.");
+
+            if (markdown.Contains("## Implementation Plan", StringComparison.OrdinalIgnoreCase))
+                failures.Add($"{rule.Id}: documentation should describe shipped behavior, not an implementation plan.");
+
+            if (rule.HasCodeFix && ContainsAny(markdown, "no automatic fix", "no code fix", "manual-only", "manual only"))
+                failures.Add($"{rule.Id}: fixer-enabled documentation should not describe the rule as manual-only.");
+
+            if (!rule.HasCodeFix && ContainsAny(markdown, "## Code Fix", "## Fixer Behavior"))
+                failures.Add($"{rule.Id}: manual-only documentation should not advertise fixer behavior.");
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
+    public void SampleDiagnosticManifest_MatchesCatalogAndFiles()
+    {
+        var manifestPath = Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "sample-diagnostics.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        var expectations = document.RootElement.GetProperty("expectations").EnumerateArray().ToArray();
+        var knownRuleIds = RuleCatalog.All.Select(rule => rule.Id).ToHashSet(StringComparer.Ordinal);
+        var catalogSamplePaths = RuleCatalog.All
+            .Select(rule => rule.SamplePath.Replace("samples/LinqContraband.Sample/", string.Empty, StringComparison.Ordinal))
+            .ToHashSet(StringComparer.Ordinal);
+        var manifestSamplePaths = new HashSet<string>(StringComparer.Ordinal);
+        var failures = new List<string>();
+
+        foreach (var expectation in expectations)
+        {
+            var diagnosticPath = expectation.GetProperty("diagnosticPath").GetString();
+            if (string.IsNullOrWhiteSpace(diagnosticPath))
+            {
+                failures.Add("Manifest contains an expectation with no diagnosticPath.");
+                continue;
+            }
+
+            var diagnosticFile = Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", diagnosticPath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(diagnosticFile))
+                failures.Add($"Manifest diagnosticPath does not exist: {diagnosticPath}");
+
+            var samplePaths = expectation.GetProperty("samplePaths").EnumerateArray().Select(value => value.GetString()).ToArray();
+            foreach (var samplePath in samplePaths)
+            {
+                if (string.IsNullOrWhiteSpace(samplePath))
+                {
+                    failures.Add($"{diagnosticPath}: samplePaths contains a blank value.");
+                    continue;
+                }
+
+                manifestSamplePaths.Add(samplePath);
+                var sampleFile = Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", samplePath.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(sampleFile))
+                    failures.Add($"Manifest samplePath does not exist: {samplePath}");
+            }
+
+            var ruleIds = expectation.GetProperty("ruleIds").EnumerateArray().Select(value => value.GetString()).ToArray();
+            foreach (var ruleId in ruleIds)
+            {
+                if (string.IsNullOrWhiteSpace(ruleId) || !knownRuleIds.Contains(ruleId))
+                    failures.Add($"{diagnosticPath}: unknown expected rule id '{ruleId}'.");
+            }
+        }
+
+        foreach (var missingSamplePath in catalogSamplePaths.Except(manifestSamplePaths, StringComparer.Ordinal))
+            failures.Add($"Manifest is missing catalog sample path: {missingSamplePath}");
+
+        foreach (var extraSamplePath in manifestSamplePaths.Except(catalogSamplePaths, StringComparer.Ordinal))
+            failures.Add($"Manifest contains non-catalog sample path: {extraSamplePath}");
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    private static bool ContainsAny(string value, params string[] terms)
+    {
+        return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+}

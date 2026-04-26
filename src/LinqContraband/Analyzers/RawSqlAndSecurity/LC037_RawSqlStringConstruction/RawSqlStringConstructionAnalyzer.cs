@@ -27,7 +27,7 @@ public sealed partial class RawSqlStringConstructionAnalyzer : DiagnosticAnalyze
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC037_RawSqlStringConstruction.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC037_RawSqlStringConstruction.md");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "FromSqlRaw",

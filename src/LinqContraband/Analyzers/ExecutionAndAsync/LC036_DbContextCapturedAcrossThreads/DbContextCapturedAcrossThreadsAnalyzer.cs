@@ -31,7 +31,7 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgewall/LinqContraband/blob/main/docs/LC036_DbContextCapturedAcrossThreads.md");
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC036_DbContextCapturedAcrossThreads.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

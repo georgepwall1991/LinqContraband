@@ -34,7 +34,7 @@ public sealed class RuleCatalogDescriptorTests
             Assert.Equal(rule.Category, descriptor.Category);
             Assert.Equal(rule.Severity, descriptor.DefaultSeverity);
 
-            var expectedHelpLink = $"https://github.com/georgewall/LinqContraband/blob/main/{rule.DocumentationPath}";
+            var expectedHelpLink = $"https://github.com/georgepwall1991/LinqContraband/blob/master/{rule.DocumentationPath}";
             if (!string.IsNullOrWhiteSpace(descriptor.HelpLinkUri))
                 Assert.Equal(expectedHelpLink, descriptor.HelpLinkUri);
         }
