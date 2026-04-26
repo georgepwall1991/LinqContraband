@@ -1,23 +1,29 @@
-# Spec: LC020 - Avoid String.Contains with StringComparison in LINQ to Entities
+# Spec: LC020 - Avoid StringComparison overloads in query expressions
 
 ## Goal
-Detect usage of `string.Contains(string, StringComparison)` (and similar overloads for `StartsWith`, `EndsWith`) within LINQ queries targeted at Entity Framework Core. These overloads often cannot be translated to SQL, leading to client-side evaluation.
+Detect `string.Contains(...)`, `StartsWith(...)`, and `EndsWith(...)` overloads that pass `StringComparison` inside `System.Linq.Queryable` expression lambdas. These overloads often cannot be translated by EF Core providers, or they translate with provider-specific semantics that do not match the requested .NET comparison.
 
 ## The Problem
-EF Core's SQL translation logic is optimized for the simple `string.Contains(string)` overload, which it maps to SQL `LIKE` or `CHARINDEX`. When a `StringComparison` argument is provided, EF Core frequently fails to find a direct SQL equivalent that matches the exact .NET comparison semantics, resulting either in a translation error or (in older versions) silent client-side evaluation of the entire dataset.
+EF Core's SQL translation logic is optimized for simple string predicate overloads such as `Contains(string)`, `StartsWith(string)`, and `EndsWith(string)`. Passing `StringComparison` asks for .NET comparison semantics that many database providers cannot express directly. Depending on the provider and EF Core version, the query may fail translation or use semantics that are not what the application intended.
 
 ### Example Violation
 ```csharp
-// Violation: Likely to trigger client-side evaluation or translation error
+// Violation: likely to fail translation or depend on provider-specific behavior
 var users = db.Users.Where(u => u.Name.Contains("admin", StringComparison.OrdinalIgnoreCase)).ToList();
 ```
 
 ### The Fix
-Use the simple overload. Most databases are case-insensitive by default, or you can configure the collation in EF Core. If you need specific comparison logic, it's better to handle it via database collation or explicit SQL functions.
+Use the simple overload when the configured database collation already gives the desired behavior. When the comparison semantics are intentional, prefer a database collation, normalized search column, or provider-specific function that keeps the behavior explicit and server-side.
 
 ```csharp
-// Correct: Translates to SQL LIKE
+// Correct when the database collation supplies the desired comparison semantics
 var users = db.Users.Where(u => u.Name.Contains("admin")).ToList();
+```
+
+```csharp
+// Also correct: comparison happens on a captured local before query translation
+var needle = "admin";
+var users = db.Users.Where(u => needle.Contains("a", StringComparison.OrdinalIgnoreCase));
 ```
 
 ## Analyzer Logic
@@ -27,16 +33,15 @@ var users = db.Users.Where(u => u.Name.Contains("admin")).ToList();
 ### Severity: `Warning`
 
 ### Algorithm
-1.  **Target Methods**: Intercept invocations of:
-    -   `string.Contains`
-    -   `string.StartsWith`
-    -   `string.EndsWith`
-2.  **Overload Check**: Check if the invocation has an argument of type `System.StringComparison`.
-3.  **Context Check**: Ensure the call is inside an `IQueryable` expression tree (e.g., inside a `Where`, `FirstOrDefault`, etc., that is eventually called on an `IQueryable`).
-    -   *Simplification*: Check if the method is called on a property of an entity or within a LINQ extension method that takes a lambda.
+1. **Target methods**: inspect `string.Contains`, `string.StartsWith`, and `string.EndsWith`.
+2. **Overload check**: require an argument or bound parameter of type `System.StringComparison`.
+3. **Queryable context check**: require an enclosing lambda passed to a `System.Linq.Queryable` invocation over an `IQueryable` source.
+4. **Parameter-dependency check**: require the string receiver to depend on a query lambda parameter, such as `u.Name.Contains(...)` or a nested collection predicate like `u.Orders.Any(o => o.Number.Contains(...))`. Captured locals, constants, and other client-side strings are ignored.
 
 ### Exceptions
--   Calls on in-memory strings or `IEnumerable`.
+- Calls on in-memory strings or `IEnumerable`.
+- Calls on captured locals or constants inside a query predicate.
+- Calls inside custom `IQueryable` helpers that take delegate predicates instead of `Queryable` expression lambdas.
 
 ## Test Cases
 
@@ -44,14 +49,19 @@ var users = db.Users.Where(u => u.Name.Contains("admin")).ToList();
 ```csharp
 db.Users.Where(x => x.Name.Contains("abc", StringComparison.OrdinalIgnoreCase));
 db.Users.Any(x => x.Email.StartsWith("test", StringComparison.CurrentCulture));
+db.Users.Where(x => x.Name.EndsWith(".org", StringComparison.OrdinalIgnoreCase));
+db.Users.Where(x => x.Orders.Any(o => o.Number.Contains("rush", StringComparison.OrdinalIgnoreCase)));
 ```
 
 ### Valid
 ```csharp
 db.Users.Where(x => x.Name.Contains("abc"));
 "some string".Contains("abc", StringComparison.OrdinalIgnoreCase); // Not in IQueryable context
+
+var search = "abc";
+db.Users.Where(x => search.Contains("a", StringComparison.OrdinalIgnoreCase)); // Not query-parameter dependent
 ```
 
 ## Shipped Behavior
 
-LC020 reports `Contains`, `StartsWith`, and `EndsWith` overloads that use `StringComparison` inside queryable EF expressions. The fixer removes the comparison argument only for straightforward call shapes where the resulting simple string overload preserves the provider-side query shape.
+LC020 reports query-parameter-dependent `Contains`, `StartsWith`, and `EndsWith` overloads that use `StringComparison` inside `System.Linq.Queryable` expression lambdas. The fixer removes the semantically bound `StringComparison` argument for straightforward calls, preserving the provider-side string predicate shape. It intentionally does not rewrite to `ToLower`, `ToUpper`, or provider-specific collation APIs because those choices are database- and domain-specific.
