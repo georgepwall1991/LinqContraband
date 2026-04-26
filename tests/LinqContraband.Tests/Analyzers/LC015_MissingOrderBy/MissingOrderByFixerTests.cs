@@ -143,6 +143,24 @@ class Program {
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
     }
 
+    [Fact]
+    public async Task OrderByAfterSkip_HasNoFix()
+    {
+        var test = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } public string Name { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Users.Skip(10).OrderBy(u => u.Name);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule).WithLocation(35, 35).WithArguments("OrderBy");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
     /// <summary>
     /// Tests that the fixer correctly uses EntityNameId convention.
     /// </summary>

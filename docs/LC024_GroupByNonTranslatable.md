@@ -30,7 +30,7 @@ var query = db.Orders
     });
 ```
 
-Other risky shapes include calling local helpers over `g.Key`, using client-only string comparison overloads in the grouped projection, constructing objects from `g` directly, or nesting non-aggregate group access inside another projection object.
+Other risky shapes include calling local helpers over `g.Key`, using client-only string comparison overloads in the grouped projection, constructing objects from `g` directly, invoking local helpers named like aggregates with `g`, or nesting non-aggregate group access inside another projection object.
 
 ## A better shape
 
@@ -45,4 +45,4 @@ var query = db.Orders
     });
 ```
 
-LC024 stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
+LC024 stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`. Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()` or `g.Sum(...)`.

@@ -294,6 +294,26 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsInsideSqlStringLiteral()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var name = ""admin"";
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:$""SELECT * FROM Table WHERE Name = '{name}'""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldNotRegister_ForConcatenation()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"

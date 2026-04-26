@@ -29,7 +29,7 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 ### Severity: `Warning`
 
 ### Notes
-LC018 reports direct interpolated strings and direct non-constant string concatenations passed to the `sql` argument of `FromSqlRaw(...)`, including named `sql:` arguments. The fixer is intentionally narrow: it is offered only for direct interpolated-string calls with no additional raw SQL parameters, where changing the method name to `FromSqlInterpolated` preserves the argument flow.
+LC018 reports direct interpolated strings and direct non-constant string concatenations passed to the `sql` argument of `FromSqlRaw(...)`, including named `sql:` arguments. The fixer is intentionally narrow: it is offered only for direct interpolated-string calls with no additional raw SQL parameters, where changing the method name to `FromSqlInterpolated` preserves the argument flow. It is not offered when an interpolation hole appears inside SQL single quotes, such as `'{name}'`; remove the SQL quotes manually before using `FromSqlInterpolated(...)` so EF can parameterize the value correctly.
 
 ## Test Cases
 

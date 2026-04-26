@@ -77,8 +77,9 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         public void AnalyzeInvocation(OperationAnalysisContext context)
         {
             var invocation = (IInvocationOperation)context.Operation;
-            if (!SaveMethodNames.Contains(invocation.TargetMethod.Name) &&
-                !TransactionBoundaryMethodNames.Contains(invocation.TargetMethod.Name))
+            var isSaveMethod = SaveMethodNames.Contains(invocation.TargetMethod.Name);
+            var isTransactionBoundary = IsTransactionBoundaryInvocation(invocation);
+            if (!isSaveMethod && !isTransactionBoundary)
             {
                 return;
             }
@@ -87,7 +88,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
             if (root == null)
                 return;
 
-            if (invocation.TargetMethod.Name is not ("SaveChanges" or "SaveChangesAsync"))
+            if (!isSaveMethod)
             {
                 _records.Add(new InvocationRecord(root, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, null, true, invocation.TargetMethod.Name));
                 return;
@@ -100,6 +101,38 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
                 return;
 
             _records.Add(new InvocationRecord(root, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, false, invocation.TargetMethod.Name));
+        }
+
+        private static bool IsTransactionBoundaryInvocation(IInvocationOperation invocation)
+        {
+            if (!TransactionBoundaryMethodNames.Contains(invocation.TargetMethod.Name))
+                return false;
+
+            var receiverType = invocation.GetInvocationReceiverType();
+            return IsEfCoreTransactionBoundaryType(receiverType);
+        }
+
+        private static bool IsEfCoreTransactionBoundaryType(ITypeSymbol? type)
+        {
+            if (type == null)
+                return false;
+
+            if (IsEfCoreTransactionBoundaryNamedType(type))
+                return true;
+
+            return type.AllInterfaces.Any(IsEfCoreTransactionBoundaryNamedType);
+        }
+
+        private static bool IsEfCoreTransactionBoundaryNamedType(ITypeSymbol type)
+        {
+            var namespaceName = type.ContainingNamespace?.ToString();
+            if (namespaceName == null ||
+                !namespaceName.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return type.Name is "DatabaseFacade" or "IDbContextTransaction" or "DbContextTransaction";
         }
 
         public void ReportDiagnostics(CompilationAnalysisContext context)

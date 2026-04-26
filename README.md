@@ -536,13 +536,11 @@ var user = db.Users.Where(u => u.Name.ToLower() == "john").FirstOrDefault();
 
 **✅ The Fix:**
 
-Use `string.Equals` with a case-insensitive comparison, or configure the database collation to be case-insensitive.
+Use database collation, a normalized search column, or provider-specific collation support. Do not blindly rewrite EF
+queries to `string.Equals(..., StringComparison.OrdinalIgnoreCase)`; provider translation and index behavior vary.
 
 ```csharp
-// 1. Use string.Equals (translated to efficient SQL if supported)
-var user = db.Users.Where(u => string.Equals(u.Name, "john", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
-
-// 2. Or, rely on DB collation (if case-insensitive by default)
+// Rely on DB collation when the column/index is configured case-insensitively.
 var user = db.Users.Where(u => u.Name == "john").FirstOrDefault();
 ```
 
@@ -554,6 +552,7 @@ Pagination (`Skip`/`Take`) and fetching the `Last` item rely on a specific sort 
 database can return results in any random order, making pagination unpredictable and `Last()` results non-deterministic.
 When a single query chain contains both `Skip(...)` and `Take(...)`, LinqContraband reports one primary warning for the
 unordered chain instead of duplicating the same root-cause message on both calls.
+LC015 is scoped to EF-backed query chains and stays quiet for explicit LINQ-to-Objects `AsQueryable()` sources.
 
 **👶 Explain it like I'm a ten year old:** Imagine a teacher asks you to "Skip the first 5 students and pick the next
 one." If the students are standing in a line, you know who to pick. But if they are running around the playground
@@ -574,6 +573,8 @@ var chunks = db.Users.Chunk(10).ToList();
 
 **✅ The Fix:**
 Explicitly sort the data first.
+For misplaced sorts such as `db.Users.Skip(10).OrderBy(...)`, move the existing `OrderBy` before `Skip`/`Take`; the fixer
+does not add another sort after pagination.
 
 ```csharp
 // Defined order: Sort by ID, then skip.
@@ -590,7 +591,7 @@ var chunks = db.Users.OrderBy(u => u.Name).Chunk(10).ToList();
 
 ### LC016: Avoid DateTime.Now in Queries
 
-Using `DateTime.Now` (or `UtcNow`) inside a LINQ query prevents the database execution plan from being cached
+Using `DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.Now`, or `DateTimeOffset.UtcNow` inside a LINQ query prevents the database execution plan from being cached
 efficiently because the constant value changes every millisecond. It also makes unit testing impossible without mocking
 the system clock.
 
@@ -608,6 +609,7 @@ var query = db.Users.Where(u => u.Dob < DateTime.Now);
 
 **✅ The Fix:**
 Store the date in a variable before the query.
+The fixer uses a unique local name if `now` is already in scope.
 
 ```csharp
 // The variable is passed as a parameter (@p0). The plan is cached.
@@ -673,7 +675,7 @@ var users = db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'").To
 ```
 
 **✅ The Fix:**
-Use `FromSqlInterpolated` or `FromSql` (EF Core 7+), which automatically parameterize the string.
+Use `FromSqlInterpolated` or `FromSql` (EF Core 7+), and remove SQL quotes around interpolated values so EF can parameterize them.
 
 ```csharp
 // Safe: EF Core handles parameterization
@@ -682,6 +684,7 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 
 **🛡️ Reliability Notes:**
 - LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- The fixer is not offered when an interpolation hole is inside SQL quotes, such as `'{name}'`; that rewrite needs manual quote removal.
 - Broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder` are covered by `LC037`.
 
 ---
@@ -720,6 +723,8 @@ var orders = query.ToList();
 
 Using `string.Contains`, `StartsWith`, or `EndsWith` with a `StringComparison` argument in a LINQ query often cannot be
 translated to SQL. This forces EF Core to pull all records from the database and filter them in your app's memory.
+LC020 only reports when the string receiver depends on the query parameter; local enumerable predicates inside a query
+predicate are ignored.
 
 **👶 Explain it like I'm a ten year old:** Imagine asking a robot to find all red blocks in a giant bin. But you give
 the robot a very complicated rule: "Find blocks that are red, but only if they are the exact shade of 'Sunset Crimson'
@@ -818,11 +823,14 @@ Use `Find` or `FindAsync` for primary key lookups.
 var user = db.Users.Find(userId);
 ```
 
+LC023 honors visible Fluent API `HasKey(...)` configuration before falling back to `Id`/`{EntityName}Id` conventions or
+`[Key]`. It stays silent for partial composite-key lookups because `Find(...)` needs the complete configured key value set.
+
 ---
 
 ### LC024: GroupBy with Non-Translatable Projection
 
-EF Core can only translate `g.Key` and aggregate functions (`Count`, `Sum`, `Average`, `Min`, `Max`) inside a
+EF Core can only translate `g.Key` and aggregate functions (`Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) inside a
 `GroupBy().Select()` projection. Accessing group elements directly (e.g., `g.ToList()`, `g.Where()`, `g.First()`)
 forces client-side evaluation or throws.
 
@@ -848,6 +856,7 @@ var result = db.Orders.GroupBy(o => o.CustomerId)
 
 **🛡️ Reliability Notes:**
 - LC024 owns grouped element access such as `g.ToList()`, `g.Where(...)`, and `g.First()` inside `GroupBy(...).Select(...)`.
+- Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()`.
 - That grouped-projection case is intentionally excluded from `LC022` so one rule owns the diagnostic.
 
 ---
@@ -1195,7 +1204,7 @@ await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = '{name}'")
 ```
 
 **✅ The Fix:**
-Use EF Core's safe interpolated API.
+Use EF Core's safe interpolated API and remove SQL quotes around interpolated values so EF can parameterize them.
 
 ```csharp
 await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
@@ -1203,6 +1212,7 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 
 **🛡️ Reliability Notes:**
 - LC034 only offers a fixer for direct interpolated-string calls with no additional raw SQL parameters.
+- The fixer is not offered when an interpolation hole is inside SQL quotes, such as `'{name}'`; that rewrite needs manual quote removal.
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
 - More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
 
@@ -1293,6 +1303,7 @@ var users = db.Users
 
 **🛡️ Reliability Notes:**
 - LC037 catches `string.Concat(...)`, `string.Format(...)`, `StringBuilder`, and local alias hops when the raw SQL flow is provable.
+- For simple local variables, LC037 uses the latest guaranteed declaration or assignment before the raw SQL call; conditional constructed writes remain suspicious unless a later guaranteed assignment overwrites them.
 - Direct interpolated-string and direct non-constant `+` call-site patterns are intentionally owned by `LC018` (`FromSqlRaw`) and `LC034` (`ExecuteSqlRaw*`).
 
 ---

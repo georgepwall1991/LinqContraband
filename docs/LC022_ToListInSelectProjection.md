@@ -12,6 +12,8 @@ LinqContraband reports this rule when the query shape suggests a risky or non-tr
 
 Keep the projection provider-friendly, flatten the shape, or materialize once at the outer boundary when nested collections are intentional.
 
+The code fix is intentionally conservative. It only removes `ToList()` when the receiver type already matches the materialized type, such as a `List<T>` navigation projected as `navigation.ToList()`. It does not rewrite `ToArray()`, dictionary/set materializers, anonymous/object initializer members, or type-changing shapes such as `stringValue.ToList()`.
+
 ## Samples
 
 See `samples/LinqContraband.Sample/Samples/LC022_ToListInSelectProjection/` for a focused example.

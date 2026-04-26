@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
@@ -54,6 +55,8 @@ public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
 
         if (method.Name != "RemoveRange") return;
 
+        if (!HasExecuteDeleteSupport(context.Compilation)) return;
+
         // Check if it's DbSet.RemoveRange or DbContext.RemoveRange
         // Use shared extension methods for type checking
         var type = method.ContainingType;
@@ -69,5 +72,34 @@ public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
     {
         var deleteSource = invocation.Arguments.FirstOrDefault()?.Value.UnwrapConversions();
         return deleteSource?.Type.IsIQueryable() == true || deleteSource?.Type.IsDbSet() == true;
+    }
+
+    private static bool HasExecuteDeleteSupport(Compilation compilation)
+    {
+        if (HasExecuteDeleteMethod(compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions")) ||
+            HasExecuteDeleteMethod(compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.RelationalQueryableExtensions")))
+        {
+            return true;
+        }
+
+        return compilation.GetSymbolsWithName("ExecuteDelete", SymbolFilter.Member)
+            .OfType<IMethodSymbol>()
+            .Any(IsExecuteDeleteLikeMethod);
+    }
+
+    private static bool HasExecuteDeleteMethod(INamedTypeSymbol? type)
+    {
+        return type?.GetMembers("ExecuteDelete").OfType<IMethodSymbol>().Any(IsExecuteDeleteLikeMethod) == true;
+    }
+
+    private static bool IsExecuteDeleteLikeMethod(IMethodSymbol method)
+    {
+        if (!method.IsExtensionMethod || method.Parameters.Length == 0)
+            return false;
+
+        if (method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) != true)
+            return false;
+
+        return method.Parameters[0].Type.IsIQueryable();
     }
 }

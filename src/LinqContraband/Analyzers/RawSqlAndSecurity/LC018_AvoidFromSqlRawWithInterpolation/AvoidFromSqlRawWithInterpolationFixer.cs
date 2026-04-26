@@ -43,7 +43,10 @@ public class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
             return;
 
         var sqlArgument = GetSqlArgument(invocation);
-        if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax)
+        if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax interpolatedSql)
+            return;
+
+        if (HasInterpolationInsideSqlStringLiteral(interpolatedSql))
             return;
 
         if (invocation.ArgumentList.Arguments.Count != 1)
@@ -73,5 +76,42 @@ public class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
         }
 
         return invocation.ArgumentList.Arguments.FirstOrDefault(argument => argument.NameColon is null);
+    }
+
+    private static bool HasInterpolationInsideSqlStringLiteral(InterpolatedStringExpressionSyntax interpolatedSql)
+    {
+        var insideSqlStringLiteral = false;
+        foreach (var content in interpolatedSql.Contents)
+        {
+            switch (content)
+            {
+                case InterpolatedStringTextSyntax text:
+                    insideSqlStringLiteral = ToggleSqlStringLiteralState(text.TextToken.ValueText, insideSqlStringLiteral);
+                    break;
+                case InterpolationSyntax when insideSqlStringLiteral:
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ToggleSqlStringLiteralState(string text, bool insideSqlStringLiteral)
+    {
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] != '\'')
+                continue;
+
+            if (index + 1 < text.Length && text[index + 1] == '\'')
+            {
+                index++;
+                continue;
+            }
+
+            insideSqlStringLiteral = !insideSqlStringLiteral;
+        }
+
+        return insideSqlStringLiteral;
     }
 }

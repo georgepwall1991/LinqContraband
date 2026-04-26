@@ -390,6 +390,25 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsInsideSqlStringLiteral()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, string name)
+        {
+            var result = db.Database.ExecuteSqlRaw($""DELETE FROM Users WHERE Name = '{name}'"");
+        }
+    }
+}";
+
+        var expected = VerifyFix.Diagnostic("LC034").WithSpan(31, 52, 31, 94).WithArguments("ExecuteSql", "ExecuteSqlRaw");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldNotRegister_ForConcatenation()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

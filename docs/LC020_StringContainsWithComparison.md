@@ -36,11 +36,12 @@ var users = db.Users.Where(u => needle.Contains("a", StringComparison.OrdinalIgn
 1. **Target methods**: inspect `string.Contains`, `string.StartsWith`, and `string.EndsWith`.
 2. **Overload check**: require an argument or bound parameter of type `System.StringComparison`.
 3. **Queryable context check**: require an enclosing lambda passed to a `System.Linq.Queryable` invocation over an `IQueryable` source.
-4. **Parameter-dependency check**: require the string receiver to depend on a query lambda parameter, such as `u.Name.Contains(...)` or a nested collection predicate like `u.Orders.Any(o => o.Number.Contains(...))`. Captured locals, constants, and other client-side strings are ignored.
+4. **Parameter-dependency check**: require the string receiver to depend on a query lambda parameter, such as `u.Name.Contains(...)` or a nested collection predicate like `u.Orders.Any(o => o.Number.Contains(...))`. Nested local enumerable predicates, captured locals, constants, and other client-side strings are ignored.
 
 ### Exceptions
 - Calls on in-memory strings or `IEnumerable`.
 - Calls on captured locals or constants inside a query predicate.
+- Calls inside nested local enumerable predicates that do not depend on the query parameter.
 - Calls inside custom `IQueryable` helpers that take delegate predicates instead of `Queryable` expression lambdas.
 
 ## Test Cases
@@ -60,6 +61,9 @@ db.Users.Where(x => x.Name.Contains("abc"));
 
 var search = "abc";
 db.Users.Where(x => search.Contains("a", StringComparison.OrdinalIgnoreCase)); // Not query-parameter dependent
+
+var tags = new List<string> { "admin" };
+db.Users.Where(x => tags.Any(tag => tag.Contains("a", StringComparison.OrdinalIgnoreCase))); // Local predicate
 ```
 
 ## Shipped Behavior

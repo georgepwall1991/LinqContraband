@@ -10,14 +10,9 @@ This file tracks planned improvements and technical debt cleanup for the LinqCon
     - **Action:** Rename the file to match the project standard.
 
 ### 2. New Code Fixes
-- [x] **Implement Code Fix for LC014 (AvoidStringCaseConversion)**
-    - **Context:** The analyzer flags usage of `.ToLower()`/`.ToUpper()` in LINQ predicates, but doesn't offer an automatic fix.
-    - **Action:** Create a Code Fix Provider that replaces:
-        - `x.Name.ToLower() == "value"` -> `string.Equals(x.Name, "value", StringComparison.OrdinalIgnoreCase)`
-        - `x.Name.ToLower() != "value"` -> `!string.Equals(x.Name, "value", StringComparison.OrdinalIgnoreCase)`
-    - **Files:**
-        - Create `src/LinqContraband/Analyzers/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionFixer.cs`
-        - Create `tests/LinqContraband.Tests/Analyzers/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionFixerTests.cs`
+- [x] **Remove unsafe Code Fix for LC014 (AvoidStringCaseConversion)**
+    - **Context:** The original fixer rewrote `.ToLower()`/`.ToUpper()` comparisons to `string.Equals(..., StringComparison.OrdinalIgnoreCase)`, which is provider-sensitive and can be untranslatable in EF queries.
+    - **Action:** Keep LC014 analyzer-only and document database-specific remediation through collation, normalized columns, or provider-specific APIs.
 
 ### 3. Future Considerations (Backlog)
 - [x] **Implement Code Fix for LC015 (MissingOrderBy)**

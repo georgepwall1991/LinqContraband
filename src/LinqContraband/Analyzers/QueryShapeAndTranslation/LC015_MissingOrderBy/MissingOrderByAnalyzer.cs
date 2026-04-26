@@ -69,6 +69,9 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         if (receiver == null || !receiver.Type.IsIQueryable())
             return;
 
+        if (!HasEntityFrameworkQuerySource(receiver))
+            return;
+
         if (isSorting)
         {
             if (HasPaginationUpstream(receiver))
@@ -82,6 +85,97 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, GetMethodLocation(invocation), method.Name));
         }
+    }
+
+    private static bool HasEntityFrameworkQuerySource(IOperation operation)
+    {
+        var current = operation;
+        while (current != null)
+        {
+            current = current.UnwrapConversions();
+
+            if (current.Type.IsDbSet())
+                return true;
+
+            switch (current)
+            {
+                case IInvocationOperation invocation:
+                    if (invocation.TargetMethod.Name == "Set" && invocation.TargetMethod.ContainingType.IsDbContext())
+                        return true;
+
+                    current = invocation.GetInvocationReceiver();
+                    continue;
+
+                case IPropertyReferenceOperation propertyReference:
+                    current = propertyReference.Instance;
+                    continue;
+
+                case IFieldReferenceOperation fieldReference:
+                    current = fieldReference.Instance;
+                    continue;
+
+                case ILocalReferenceOperation localReference:
+                    if (localReference.Type.IsDbSet())
+                        return true;
+
+                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue))
+                    {
+                        current = resolvedValue;
+                        continue;
+                    }
+
+                    return false;
+
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveLocalValue(ILocalSymbol local, IOperation reference, IOperation? executableRoot, out IOperation value)
+    {
+        value = null!;
+
+        if (executableRoot == null)
+            return false;
+
+        var referenceStart = reference.Syntax.SpanStart;
+        var bestWriteStart = -1;
+
+        foreach (var descendant in executableRoot.Descendants())
+        {
+            if (descendant is IVariableDeclarationOperation declaration)
+            {
+                foreach (var declarator in declaration.Declarators)
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) || declarator.Initializer == null)
+                        continue;
+
+                    var writeStart = declarator.Syntax.SpanStart;
+                    if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                        continue;
+
+                    bestWriteStart = writeStart;
+                    value = declarator.Initializer.Value;
+                }
+            }
+
+            if (descendant is ISimpleAssignmentOperation assignment &&
+                assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
+                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
+            {
+                var writeStart = assignment.Syntax.SpanStart;
+                if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                    continue;
+
+                bestWriteStart = writeStart;
+                value = assignment.Value;
+            }
+        }
+
+        return bestWriteStart >= 0;
     }
 
     private static Location GetMethodLocation(IInvocationOperation invocation)

@@ -149,6 +149,29 @@ class Program
     }
 
     [Fact]
+    public async Task UnrelatedCommitBetweenSaves_DoesNotSuppressDiagnostic()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        Commit();
+        {|LC039:db.SaveChanges()|};
+    }
+
+    void Commit()
+    {
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SeparateContexts_DoNotTrigger()
     {
         var test = EFCoreMock + Types + @"

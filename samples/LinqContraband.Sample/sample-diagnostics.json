@@ -1,5 +1,8 @@
 {
   "schemaVersion": 1,
+  "safeSamples": [
+    "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSafeSample.cs"
+  ],
   "expectations": [
     { "diagnosticPath": "Samples/LC001_LocalMethod/LocalMethodSample.cs", "samplePaths": ["Samples/LC001_LocalMethod/LocalMethodSample.cs"], "ruleIds": ["LC001"] },
     { "diagnosticPath": "Samples/LC002_PrematureMaterialization/PrematureMaterializationSample.cs", "samplePaths": ["Samples/LC002_PrematureMaterialization/PrematureMaterializationSample.cs"], "ruleIds": ["LC002"] },
@@ -14,7 +17,7 @@
     { "diagnosticPath": "Data/AppDbContext.cs", "samplePaths": ["Samples/LC011_EntityMissingPrimaryKey/EntityMissingPrimaryKeySample.cs"], "ruleIds": ["LC011"] },
     { "diagnosticPath": "Samples/LC012_OptimizeRemoveRange/OptimizeRemoveRangeSample.cs", "samplePaths": ["Samples/LC012_OptimizeRemoveRange/OptimizeRemoveRangeSample.cs"], "ruleIds": ["LC012"] },
     { "diagnosticPath": "Samples/LC013_DisposedContextQuery/DisposedContextQuerySample.cs", "samplePaths": ["Samples/LC013_DisposedContextQuery/DisposedContextQuerySample.cs"], "ruleIds": ["LC009", "LC013", "LC031"] },
-    { "diagnosticPath": "Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs", "samplePaths": ["Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs"], "ruleIds": ["LC009", "LC014", "LC031"] },
+    { "diagnosticPath": "Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs", "samplePaths": ["Samples/LC014_AvoidStringCaseConversion/AvoidStringCaseConversionSample.cs"], "ruleIds": ["LC014", "LC031"] },
     { "diagnosticPath": "Samples/LC015_MissingOrderBy/MissingOrderBySample.cs", "samplePaths": ["Samples/LC015_MissingOrderBy/MissingOrderBySample.cs"], "ruleIds": ["LC015"] },
     { "diagnosticPath": "Samples/LC016_AvoidDateTimeNow/AvoidDateTimeNowSample.cs", "samplePaths": ["Samples/LC016_AvoidDateTimeNow/AvoidDateTimeNowSample.cs"], "ruleIds": ["LC016", "LC042"] },
     { "diagnosticPath": "Samples/LC017_WholeEntityProjection/WholeEntityProjectionSample.cs", "samplePaths": ["Samples/LC017_WholeEntityProjection/WholeEntityProjectionSample.cs"], "ruleIds": ["LC009", "LC017", "LC031"] },

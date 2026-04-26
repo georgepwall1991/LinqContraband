@@ -39,16 +39,17 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        if (method.Name != "IgnoreQueryFilters") return;
+        if (!IsEfCoreIgnoreQueryFiltersMethod(method)) return;
 
-        // Verify it's an EF Core method
-        if (!IsEfCoreMethod(method)) return;
+        if (!invocation.GetInvocationReceiverType().IsIQueryable()) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
     }
 
-    private bool IsEfCoreMethod(IMethodSymbol method)
+    private static bool IsEfCoreIgnoreQueryFiltersMethod(IMethodSymbol method)
     {
-        return method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) == true;
+        return method.Name == "IgnoreQueryFilters" &&
+               method.ContainingType?.Name == "EntityFrameworkQueryableExtensions" &&
+               method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
     }
 }

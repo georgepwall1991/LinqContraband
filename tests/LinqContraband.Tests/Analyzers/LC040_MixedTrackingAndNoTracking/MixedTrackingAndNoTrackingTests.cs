@@ -105,6 +105,31 @@ class Program
     }
 
     [Fact]
+    public async Task CustomAsNoTrackingExtension_DoesNotCountAsEfNoTracking()
+    {
+        var test = EFCoreMock + Types + @"
+
+namespace CustomQueryExtensions
+{
+    public static class QueryableExtensions
+    {
+        public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
+    }
+}
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var first = db.Users.ToList();
+        var second = CustomQueryExtensions.QueryableExtensions.AsNoTracking(db.Users).ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SameTrackingMode_DoesNotTrigger()
     {
         var test = EFCoreMock + Types + @"

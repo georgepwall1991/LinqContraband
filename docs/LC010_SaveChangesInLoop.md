@@ -33,3 +33,8 @@ db.SaveChanges();
 ### ID: `LC010`
 ### Category: `Performance`
 ### Severity: `Warning`
+
+### Notes
+LC010 reports direct `SaveChanges()`/`SaveChangesAsync()` calls inside loops when the save call and loop are part of the same executable body. It does not report saves inside a local function or lambda that is merely declared inside a loop, because that delegate is not necessarily executed once per iteration.
+
+The code fix is conservative. It only offers to move a terminal save out of a `do` loop, where the loop body executes at least once, and it skips loops containing control-flow statements such as `break`, `continue`, `return`, `throw`, `yield`, `try`, or `goto`. For `for`, `foreach`, and `while`, move the save manually after checking that per-item commits, retry boundaries, progress durability, and transaction semantics are not required.

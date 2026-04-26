@@ -15,16 +15,15 @@ using TestNamespace;
 ";
 
     private const string MockNamespace = @"
-namespace TestNamespace
+namespace Microsoft.EntityFrameworkCore
 {
-    public class User { public int Id { get; set; } public string Name { get; set; } }
-    
-    public class DbContext : IDisposable 
-    { 
+    public class DbContext : System.IDisposable
+    {
         public void Dispose() {}
+        public DbSet<T> Set<T>() where T : class => null;
     }
-    
-    public class DbSet<T> : IQueryable<T>
+
+    public class DbSet<T> : IQueryable<T> where T : class
     {
         public Type ElementType => typeof(T);
         public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
@@ -33,22 +32,31 @@ namespace TestNamespace
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
 }
+
+namespace TestNamespace
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+
+    public class DbContext : Microsoft.EntityFrameworkCore.DbContext {}
+
+    public class DbSet<T> : Microsoft.EntityFrameworkCore.DbSet<T> where T : class {}
+}
 ";
 
     [Fact]
     public async Task Skip_WithoutOrderBy_ShouldTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
 
     public class Program
     {
         public void Main()
         {
             using var db = new AppDbContext();
-            
+
             // Trigger: Skip without OrderBy
             var result = db.Users.Skip(10);
         }
@@ -63,19 +71,46 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task Last_WithoutOrderBy_ShouldTrigger()
+    public async Task Skip_OnIQueryableAliasFromDbSet_ShouldTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
 
     public class Program
     {
         public void Main()
         {
             using var db = new AppDbContext();
-            
+            IQueryable<User> query = db.Users;
+
+            var result = query.Skip(10);
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(18, 32)
+            .WithArguments("Skip");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Last_WithoutOrderBy_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+
             // Trigger: Last without OrderBy
             var result = db.Users.Last();
         }
@@ -93,7 +128,7 @@ namespace TestApp
     public async Task Skip_WithOrderBy_ShouldNotTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
     public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
 
@@ -102,7 +137,7 @@ namespace TestApp
         public void Main()
         {
             using var db = new AppDbContext();
-            
+
             // Valid: OrderBy present
             var result = db.Users.OrderBy(u => u.Id).Skip(10);
         }
@@ -123,9 +158,28 @@ namespace TestApp
         public void Main()
         {
             var list = new List<User>();
-            
+
             // Valid: IEnumerable (in-memory)
             var result = list.Skip(10);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Skip_OnLinqToObjectsAsQueryable_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Program
+    {
+        public void Main()
+        {
+            var query = new List<User>().AsQueryable();
+            var result = query.Skip(10);
         }
     }
 }" + MockNamespace;
@@ -203,7 +257,7 @@ namespace Microsoft.EntityFrameworkCore
 }
 namespace TestApp
 {
-    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
 
     public class Program
     {

@@ -36,7 +36,9 @@ public class ToListInSelectProjectionFixer : CodeFixProvider
                          ?? node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 
         if (invocation == null) return;
-        if (!CanSafelyRemoveMaterializer(invocation)) return;
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel is null) return;
+        if (!CanSafelyRemoveMaterializer(invocation, semanticModel, context.CancellationToken)) return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -64,7 +66,10 @@ public class ToListInSelectProjectionFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private static bool CanSafelyRemoveMaterializer(InvocationExpressionSyntax invocation)
+    private static bool CanSafelyRemoveMaterializer(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return false;
         if (invocation.Ancestors().Any(ancestor =>
@@ -72,6 +77,11 @@ public class ToListInSelectProjectionFixer : CodeFixProvider
         {
             return false;
         }
-        return memberAccess.Name.Identifier.Text == "ToList";
+
+        if (memberAccess.Name.Identifier.Text != "ToList") return false;
+
+        var materializedType = semanticModel.GetTypeInfo(invocation, cancellationToken).Type;
+        var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type;
+        return SymbolEqualityComparer.Default.Equals(materializedType, receiverType);
     }
 }

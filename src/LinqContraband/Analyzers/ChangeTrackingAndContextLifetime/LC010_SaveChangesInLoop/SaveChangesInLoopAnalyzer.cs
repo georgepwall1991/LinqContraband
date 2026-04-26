@@ -58,14 +58,11 @@ public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         if (!method.ContainingType.IsDbContext())
             return;
 
-        // 3. Check if inside a loop
-        if (IsInsideLoop(invocation))
+        // 3. Check if inside a loop in the same executable body.
+        // A local function or lambda declared inside a loop is not necessarily executed per iteration.
+        var loop = invocation.FindEnclosingLoop();
+        if (loop != null && invocation.SharesOwningExecutableRoot(loop))
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
-    }
-
-    private bool IsInsideLoop(IOperation operation)
-    {
-        return operation.IsInsideLoop();
     }
 }

@@ -133,6 +133,31 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task StringContains_WithComparison_InNestedLocalEnumerablePredicateInsideQueryable_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        public string Name { get; set; } = """";
+    }
+
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var tags = new List<string> { ""admin"" };
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => tags.Any(tag => tag.Contains(""a"", StringComparison.OrdinalIgnoreCase))).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task StringContains_WithoutComparison_InWhere_ShouldNotTrigger()
     {
         var test = Usings + @"
