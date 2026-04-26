@@ -959,6 +959,10 @@ public class Order
 }
 ```
 
+**Reliability Notes:**
+- LC027 ignores collection navigations, owned types, `[ForeignKey]` annotations, and relationships configured with `HasForeignKey(...)`.
+- The fixer preserves the principal key type and emits nullable FK properties for optional nullable navigations.
+
 ---
 
 ### LC028: Deep ThenInclude Chain

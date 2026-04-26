@@ -62,6 +62,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         where TRelated : class
     {
         public ReferenceCollectionBuilder<TEntity, TRelated> HasForeignKey<TDependent>(Expression<Func<TDependent, object>> foreignKeyExpression) where TDependent : class => this;
+        public ReferenceCollectionBuilder<TEntity, TRelated> HasForeignKey(params string[] foreignKeyPropertyNames) => this;
     }
 
     public class OwnedNavigationBuilder<TEntity, TOwned>
@@ -169,6 +170,73 @@ namespace TestApp
     {
         public DbSet<Order> Orders { get; set; }
         public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Navigation_WithShadowForeignKeyConfiguredByString_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer Customer { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } public System.Collections.Generic.List<Order> Orders { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.Customer)
+                .WithMany(c => c.Orders)
+                .HasForeignKey(""CustomerShadowId"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Navigation_WithOwnedTypeConfiguredByExplicitGeneric_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Address Address { get; set; }
+    }
+
+    public class Address
+    {
+        public string Street { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Address> Addresses { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Order>().OwnsOne<Address>(o => o.Address);
+        }
     }
 }";
 

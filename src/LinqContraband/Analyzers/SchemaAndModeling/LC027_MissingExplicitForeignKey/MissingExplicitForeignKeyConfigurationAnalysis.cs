@@ -109,17 +109,23 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
     private static string? ExtractNavigationNameFromChain(ExpressionSyntax expression)
     {
         var current = expression;
+        string? withOneNavigationName = null;
+
         while (current != null)
         {
             if (current is InvocationExpressionSyntax invocation &&
                 invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
                 var methodName = memberAccess.Name.Identifier.Text;
-                if (methodName is "HasOne" or "HasMany" or "WithOne" or "WithMany")
+                if (methodName == "HasOne")
                 {
                     var navName = ExtractNavigationNameFromArgument(invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression);
                     if (navName != null)
                         return navName;
+                }
+                else if (methodName == "WithOne")
+                {
+                    withOneNavigationName ??= ExtractNavigationNameFromArgument(invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression);
                 }
 
                 current = memberAccess.Expression;
@@ -133,7 +139,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             };
         }
 
-        return null;
+        return withOneNavigationName;
     }
 
     private static string? ExtractNavigationNameFromArgument(ExpressionSyntax? argument)

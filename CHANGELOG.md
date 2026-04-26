@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.11] - 2026-04-26
+
+### Changed
+- Hardened `LC027` Fluent API configuration analysis so `HasOne(...).WithMany(...).HasForeignKey(...)` suppresses diagnostics for the dependent reference navigation instead of the inverse collection
+- Hardened the `LC027` fixer so optional nullable navigations generate nullable FK properties and non-`int` primary key types are preserved
+- Expanded `LC027` fixer and model-configuration coverage and refreshed docs/analyzer-health status to describe the safer schema guidance
+
 ## [5.2.10] - 2026-04-26
 
 ### Changed

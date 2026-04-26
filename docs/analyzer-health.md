@@ -47,7 +47,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Reference-quality manual rule with aggregate-only exclusions, helper/string-comparison/object-construction coverage, nested projection tests, and LINQ-to-Objects boundary coverage. |
 | LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 5 | 5 | 4 | 5 | 5 | 4 | Low | Hardened with order-aware local origin tracking, query-alias and range-call coverage, assignment/foreach fixer tests, and refreshed docs/sample guidance. |
 | LC026 | Missing CancellationToken in async call | Execution & Async | Info | 4 | 4 | 5 | 5 | 4 | 3 | Low | Hardened fixer coverage for omitted, preferred-name, local, default-token, named-default, and `CancellationToken.None` call shapes. |
-| LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 4 | 4 | 3 | 4 | 4 | 3 | Medium | Design guidance is useful; add fixer tests and more model-configuration negative cases. |
+| LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 5 | 5 | 5 | 5 | 5 | 3 | Low | Hardened around Fluent dependent-navigation resolution, optional nullable FK fixes, non-`int` key fixes, and owned/configured relationship boundaries. |
 | LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 3 | 3 | 5 | 3 | 4 | 3 | Medium | Heuristic rule; manual-only is right, but thresholds and false-positive guidance need more tests. |
 | LC029 | Redundant identity Select | Materialization & Projection | Info | 5 | 5 | 5 | 3 | 4 | 2 | Low | Simple, safe cleanup rule; low importance but healthy implementation. |
 | LC030 | DbContext lifetime mismatch | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 4 | 5 | 4 | Low | Broadened DI lifetime coverage across generic/type singleton registrations, configured base/interface types, and factory/scope-safe patterns; manual-only rationale is explicit. |
@@ -72,7 +72,6 @@ The next improvement batch should focus on rules that combine high importance wi
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| Medium | LC027 | Expand existing fixer coverage for schema-sensitive rewrites. |
 | Medium | LC019, LC028, LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
 | Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC030, LC034, LC035, LC036, LC037, LC041, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
 
@@ -86,6 +85,6 @@ Architecture tests now enforce the rule quality contract for public package meta
 
 `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` currently verifies 43 diagnostic paths.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 605 passing tests.
+`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 613 passing tests.
 
 `dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
