@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.9] - 2026-04-26
+
+### Changed
+- Hardened `LC041` so entity property writes and entity escape patterns are not treated as safe single-scalar consumption
+- Narrowed the `LC041` fixer to `First`/`Single` materializers, avoiding unsafe `*OrDefault` rewrites that can change no-row/null behavior
+- Expanded `LC041` analyzer and fixer coverage and refreshed docs/analyzer-health status to describe the safer projection contract
+
 ## [5.2.8] - 2026-04-26
 
 ### Changed

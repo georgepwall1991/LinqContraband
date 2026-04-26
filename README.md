@@ -1408,8 +1408,9 @@ return await db.Users
 ```
 
 **🛡️ Reliability Notes:**
-- LC041 only fixes analyzer-proven single-property usages.
-- The fixer currently targets guarded `var` local patterns and stays silent on escape-heavy or shape-changing cases.
+- LC041 only reports analyzer-proven single-property reads and ignores entity escapes or property writes.
+- The fixer targets guarded `var` local patterns with `First`/`Single` materializers.
+- `*OrDefault` diagnostics stay manual-only because projecting first can change no-row/null behavior.
 
 ---
 

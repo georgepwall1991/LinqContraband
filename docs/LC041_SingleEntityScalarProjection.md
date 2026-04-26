@@ -8,18 +8,18 @@ Calling `First*` or `Single*` to fetch a whole row and then reading one property
 
 ### Example Violation
 ```csharp
-var user = db.Users.FirstOrDefault(u => u.IsActive);
+var user = db.Users.First(u => u.IsActive);
 Console.WriteLine(user.Name);
 ```
 
 ### The Fix
-Project the consumed property before materializing.
+Project the consumed property before materializing when the materializer preserves no-row semantics.
 
 ```csharp
 var user = db.Users
     .Where(u => u.IsActive)
     .Select(u => u.Name)
-    .FirstOrDefault();
+    .First();
 Console.WriteLine(user);
 ```
 
@@ -30,4 +30,6 @@ Console.WriteLine(user);
 ### Severity: `Info`
 
 ### Notes
-The fixer is intentionally guarded. It appears only for `var` locals whose downstream usage is proven to be a single scalar property read.
+The analyzer reports only when a `var` local is consumed through one scalar property read in the same executable scope. It stays silent when the entity escapes, multiple properties are read, or the property is written.
+
+The fixer is intentionally narrower than the analyzer. It appears for `First`, `FirstAsync`, `Single`, and `SingleAsync` because those rewrites preserve no-row behavior. It does not rewrite `FirstOrDefault`, `FirstOrDefaultAsync`, `SingleOrDefault`, or `SingleOrDefaultAsync`; projecting before those calls can turn an entity-null property access into a scalar default/null value instead of preserving the original runtime behavior.

@@ -61,7 +61,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC038 | Excessive eager loading | Loading & Includes | Info | 3 | 3 | 5 | 3 | 4 | 3 | Medium | Heuristic rule; add threshold documentation and more examples of legitimate deep loads. |
 | LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 3 | 4 | 4 | Medium | Useful reliability smell; add more transaction, branch, and intentional boundary tests. |
 | LC040 | Mixed tracking and no-tracking modes | Change Tracking & Context Lifetime | Info | 4 | 4 | 5 | 3 | 4 | 4 | Medium | Manual-only is appropriate; add broader context-resolution and split-workflow tests. |
-| LC041 | Single entity over-fetches one consumed property | Materialization & Projection | Info | 4 | 4 | 3 | 3 | 4 | 3 | Medium | Useful but subtle; add explicit fixer tests and more multi-use/side-effect negative cases. |
+| LC041 | Single entity over-fetches one consumed property | Materialization & Projection | Info | 5 | 5 | 4 | 5 | 5 | 3 | Low | Hardened around entity escapes, property writes, and `*OrDefault` no-fix boundaries while keeping the projection fixer narrow. |
 | LC042 | Complex query should be tagged | Loading & Includes | Info | 3 | 3 | 5 | 3 | 4 | 2 | Low | Team-policy rule; low importance unless observability standards require tags. |
 | LC043 | Prefer await foreach over buffering async streams | Execution & Async | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | Hardened narrow fixer behavior around cancellation-token arguments and reused buffers. |
 | LC044 | AsNoTracking entity mutated then SaveChanges | Change Tracking & Context Lifetime | Warning | 5 | 5 | 5 | 5 | 5 | 5 | Low | Excellent high-impact data-loss rule with strong edge-case coverage and clear manual guidance. |
@@ -72,9 +72,9 @@ The next improvement batch should focus on rules that combine high importance wi
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| Medium | LC027, LC041 | Expand existing fixer coverage for schema-sensitive and subtle projection/tracking rewrites. |
+| Medium | LC027 | Expand existing fixer coverage for schema-sensitive rewrites. |
 | Medium | LC019, LC028, LC031, LC038, LC039, LC040 | Expand negative tests and documented intentional-use guidance for manual-only heuristics. |
-| Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC030, LC034, LC035, LC036, LC037, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
+| Low | LC002, LC003, LC007, LC012, LC013, LC015, LC017, LC018, LC023, LC024, LC025, LC026, LC030, LC034, LC035, LC036, LC037, LC041, LC043, LC044 | Treat as reference-quality or recently hardened examples for future analyzer work. |
 
 ## Verification Baseline
 
@@ -84,6 +84,6 @@ The next improvement batch should focus on rules that combine high importance wi
 
 `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` currently verifies 43 diagnostic paths.
 
-`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 601 passing tests.
+`dotnet test LinqContraband.sln --no-restore --framework net10.0` currently builds and runs successfully with 605 passing tests.
 
 `dotnet --list-runtimes` currently shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
