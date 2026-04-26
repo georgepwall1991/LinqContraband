@@ -3,12 +3,14 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 
@@ -38,22 +40,29 @@ public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
         var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null) return;
 
-        if (!await CanApplyFixAsync(context.Document, invocation, context.CancellationToken).ConfigureAwait(false))
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
+        if (!TryCreateFixContext(invocation, semanticModel, context.CancellationToken, out var fixContext))
             return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Use Find/FindAsync",
-                c => ApplyFixAsync(context.Document, invocation, c),
+                c => ApplyFixAsync(context.Document, invocation, fixContext, c),
                 "UseFind"),
             diagnostic);
     }
 
-    private static async Task<bool> CanApplyFixAsync(
-        Document document,
+    private static bool TryCreateFixContext(
         InvocationExpressionSyntax invocation,
-        CancellationToken cancellationToken)
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken,
+        out FixContext fixContext)
     {
+        fixContext = null!;
+
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
             return false;
 
@@ -61,65 +70,155 @@ public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
         if (methodName is not ("FirstOrDefault" or "SingleOrDefault" or "FirstOrDefaultAsync" or "SingleOrDefaultAsync"))
             return false;
 
-        if (invocation.ArgumentList.Arguments.Count == 0)
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
             return false;
 
-        if (invocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda)
+        if (!operation.GetInvocationReceiverType().IsDbSet())
             return false;
 
-        if (lambda.Body is not BinaryExpressionSyntax binary || !binary.IsKind(SyntaxKind.EqualsExpression))
+        var isAsync = methodName.EndsWith("Async");
+        if (isAsync && !IsAwaited(invocation))
             return false;
 
-        if (binary.Left is not MemberAccessExpressionSyntax && binary.Right is not MemberAccessExpressionSyntax)
+        var predicateArgument = operation.Arguments
+            .FirstOrDefault(argument => argument.Value.UnwrapConversions() is IAnonymousFunctionOperation);
+        if (predicateArgument == null || predicateArgument.Syntax is not ArgumentSyntax predicateSyntax)
             return false;
 
-        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-        if (semanticModel == null)
-            return false;
-
-        return semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type?.Name == "DbSet";
-    }
-
-    private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation, CancellationToken cancellationToken)
-    {
-        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-            invocation.ArgumentList.Arguments.Count > 0)
+        if (predicateSyntax.Expression is not LambdaExpressionSyntax lambda ||
+            lambda.Body is not BinaryExpressionSyntax binary ||
+            !binary.IsKind(SyntaxKind.EqualsExpression))
         {
-            var firstArg = invocation.ArgumentList.Arguments[0].Expression;
-            if (firstArg is LambdaExpressionSyntax lambda)
-            {
-                ExpressionSyntax? valueExpression = null;
-                if (lambda.Body is BinaryExpressionSyntax binary && binary.IsKind(SyntaxKind.EqualsExpression))
-                {
-                    // Basic logic: if left is property access, right is the value (or vice versa)
-                    // The analyzer already verified it's a PK equality.
-                    if (binary.Left is MemberAccessExpressionSyntax)
-                        valueExpression = binary.Right;
-                    else
-                        valueExpression = binary.Left;
-                }
-
-                if (valueExpression != null)
-                {
-                    var methodName = memberAccess.Name.Identifier.Text;
-                    var isAsync = methodName.EndsWith("Async");
-                    var newMethodName = isAsync ? "FindAsync" : "Find";
-
-                    var newMemberAccess = memberAccess.WithName(SyntaxFactory.IdentifierName(newMethodName));
-                    var newArguments = SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(valueExpression)));
-
-                    var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, newArguments)
-                        .WithLeadingTrivia(invocation.GetLeadingTrivia())
-                        .WithTrailingTrivia(invocation.GetTrailingTrivia());
-
-                    editor.ReplaceNode(invocation, newInvocation);
-                }
-            }
+            return false;
         }
 
+        if (!TryGetKeyValueExpression(binary, semanticModel, cancellationToken, out var valueExpression))
+            return false;
+
+        var cancellationTokenArgument = operation.Arguments
+            .FirstOrDefault(argument => IsCancellationTokenParameter(argument.Parameter));
+
+        var tokenSyntax = cancellationTokenArgument?.Syntax as ArgumentSyntax;
+        fixContext = new FixContext(methodName, valueExpression, tokenSyntax);
+        return true;
+    }
+
+    private async Task<Document> ApplyFixAsync(
+        Document document,
+        InvocationExpressionSyntax invocation,
+        FixContext fixContext,
+        CancellationToken cancellationToken)
+    {
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return document;
+
+        var newMethodName = fixContext.IsAsync ? "FindAsync" : "Find";
+        var newMemberAccess = memberAccess.WithName(SyntaxFactory.IdentifierName(newMethodName));
+        var newArguments = CreateFindArgumentList(fixContext);
+
+        var newInvocation = SyntaxFactory.InvocationExpression(newMemberAccess, newArguments)
+            .WithLeadingTrivia(invocation.GetLeadingTrivia())
+            .WithTrailingTrivia(invocation.GetTrailingTrivia());
+
+        editor.ReplaceNode(invocation, newInvocation);
         return editor.GetChangedDocument();
+    }
+
+    private static bool TryGetKeyValueExpression(
+        BinaryExpressionSyntax binary,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken,
+        out ExpressionSyntax valueExpression)
+    {
+        if (IsPrimaryKeyAccess(binary.Left, semanticModel, cancellationToken))
+        {
+            valueExpression = binary.Right.WithoutTrivia();
+            return true;
+        }
+
+        if (IsPrimaryKeyAccess(binary.Right, semanticModel, cancellationToken))
+        {
+            valueExpression = binary.Left.WithoutTrivia();
+            return true;
+        }
+
+        valueExpression = null!;
+        return false;
+    }
+
+    private static bool IsPrimaryKeyAccess(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken cancellationToken)
+    {
+        var operation = semanticModel.GetOperation(expression, cancellationToken)?.UnwrapConversions();
+        if (operation is not IPropertyReferenceOperation propertyReference)
+            return false;
+
+        return propertyReference.Instance?.UnwrapConversions() is IParameterReferenceOperation &&
+               propertyReference.Property.ContainingType.TryFindPrimaryKey() == propertyReference.Property.Name;
+    }
+
+    private static ArgumentListSyntax CreateFindArgumentList(FixContext fixContext)
+    {
+        if (!fixContext.IsAsync || fixContext.CancellationTokenArgument == null)
+        {
+            return SyntaxFactory.ArgumentList(
+                SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(fixContext.KeyValueExpression)));
+        }
+
+        var keyArray = SyntaxFactory.ArrayCreationExpression(
+            SyntaxFactory.ArrayType(
+                SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword)),
+                SyntaxFactory.SingletonList(
+                    SyntaxFactory.ArrayRankSpecifier(
+                        SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(
+                            SyntaxFactory.OmittedArraySizeExpression())))),
+            SyntaxFactory.InitializerExpression(
+                SyntaxKind.ArrayInitializerExpression,
+                SyntaxFactory.SingletonSeparatedList(fixContext.KeyValueExpression)));
+
+        return SyntaxFactory.ArgumentList(
+            SyntaxFactory.SeparatedList(new[]
+            {
+                SyntaxFactory.Argument(keyArray),
+                fixContext.CancellationTokenArgument.WithoutTrivia()
+            }));
+    }
+
+    private static bool IsAwaited(SyntaxNode node)
+    {
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            if (current is AwaitExpressionSyntax)
+                return true;
+
+            if (current is ParenthesizedExpressionSyntax)
+                continue;
+
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsCancellationTokenParameter(IParameterSymbol? parameter)
+    {
+        return parameter?.Type.Name == nameof(CancellationToken) &&
+               parameter.Type.ContainingNamespace?.ToString() == "System.Threading";
+    }
+
+    private sealed class FixContext
+    {
+        public FixContext(string methodName, ExpressionSyntax keyValueExpression, ArgumentSyntax? cancellationTokenArgument)
+        {
+            IsAsync = methodName.EndsWith("Async");
+            KeyValueExpression = keyValueExpression;
+            CancellationTokenArgument = cancellationTokenArgument;
+        }
+
+        public bool IsAsync { get; }
+
+        public ExpressionSyntax KeyValueExpression { get; }
+
+        public ArgumentSyntax? CancellationTokenArgument { get; }
     }
 }

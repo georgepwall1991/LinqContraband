@@ -1,60 +1,47 @@
-# Spec: LC023 - Suggest Find/FindAsync for Primary Key Lookups
+# LC023 - Use Find/FindAsync for Primary Key Lookups
 
 ## Goal
-Detect usage of `FirstOrDefault(x => x.Id == id)` or `SingleOrDefault(x => x.Id == id)` and suggest using `Find(id)` or `FindAsync(id)` instead.
 
-## The Problem
-`FirstOrDefault` always executes a database query. In contrast, `Find` first checks the local change tracker. If the entity is already loaded, `Find` returns it without hitting the database. This can provide a significant performance boost in scenarios where the same entity is requested multiple times in the same context (e.g., in a complex transaction or nested logic).
+Suggest `Find(...)` or `FindAsync(...)` when a query directly looks up a `DbSet` entity by its primary key with `FirstOrDefault`, `SingleOrDefault`, `FirstOrDefaultAsync`, or `SingleOrDefaultAsync`.
 
-### Example Violation
+## Why It Matters
+
+`FirstOrDefault` and `SingleOrDefault` always execute a query. `Find` first checks the EF Core change tracker and can return an already-loaded entity without another database round trip.
+
+## Violation
+
 ```csharp
-// Violation: Always hits the database
-var user = db.Users.FirstOrDefault(u => u.Id == userId);
+var user = db.Users.FirstOrDefault(user => user.Id == userId);
 ```
 
-### The Fix
-Use `Find()` or `FindAsync()`.
+## Preferred
 
 ```csharp
-// Correct: Checks local cache first
 var user = db.Users.Find(userId);
 ```
 
-## Analyzer Logic
+For awaited async lookups, the fixer preserves explicit cancellation tokens by using EF Core's token-aware overload:
 
-### ID: `LC023`
-### Category: `Performance`
-### Severity: `Info`
-
-### Algorithm
-1.  **Target Methods**: Intercept invocations of:
-    -   `FirstOrDefault`, `FirstOrDefaultAsync`
-    -   `SingleOrDefault`, `SingleOrDefaultAsync`
-2.  **Receiver Check**: Ensure it's called directly on a `DbSet`.
-3.  **Predicate Analysis**: 
-    -   Check if the method has a lambda predicate.
-    -   Analyze the predicate to see if it's a simple equality check: `x => x.PrimaryKey == someValue`.
-    -   Use `AnalysisExtensions.TryFindPrimaryKey` to identify the primary key property.
-4.  **Exceptions**:
-    -   If the query has other operators like `Include`, `AsNoTracking`, etc., `Find` cannot be used directly as it returns the tracked entity and doesn't support fluent chaining in the same way.
-    -   *Constraint*: Only suggest if the chain is `db.Entities.FirstOrDefault(...)`.
-
-## Test Cases
-
-### Violations
 ```csharp
-db.Users.FirstOrDefault(x => x.Id == 1);
-db.Users.SingleOrDefaultAsync(x => x.Id == id);
+var user = await db.Users.FindAsync(new object[] { userId }, cancellationToken);
 ```
 
-### Valid
-```csharp
-db.Users.Find(1);
-db.Users.Include(x => x.Profile).FirstOrDefault(x => x.Id == 1); // Complex query, Find not suitable
-db.Users.AsNoTracking().FirstOrDefault(x => x.Id == 1); // Find always tracks
-```
+## Analyzer Behavior
 
-## Implementation Plan
-1.  Create `LC023_FindInsteadOfFirstOrDefault` directory.
-2.  Implement `FindInsteadOfFirstOrDefaultAnalyzer`.
-3.  Implement tests.
+`LC023` reports only when all of these are true:
+
+- The method is `FirstOrDefault`, `SingleOrDefault`, `FirstOrDefaultAsync`, or `SingleOrDefaultAsync`.
+- The receiver is directly a `DbSet<TEntity>`.
+- The predicate is a simple equality check against the entity primary key convention or `[Key]` property.
+
+The analyzer intentionally stays silent for chained queries such as `AsNoTracking()`, `Include(...)`, `Where(...)`, and other shapes where replacing the materializer with `Find` would change tracking, includes, filters, or return semantics.
+
+## Fixer Behavior
+
+The code fix rewrites simple synchronous lookups to `Find(key)` and awaited async lookups to `FindAsync(key)`.
+
+When the awaited async lookup passes an explicit cancellation token, the fixer rewrites to `FindAsync(new object[] { key }, cancellationToken)` so the token is preserved. The fixer does not rewrite non-awaited async calls because EF Core `FindAsync` returns `ValueTask<TEntity?>`, which can be incompatible with a call site expecting `Task<TEntity?>`.
+
+## Non-Goals
+
+`LC023` does not infer composite keys, Fluent API key configuration, or provider-specific behavior beyond the repository's primary-key helper. Those shapes should be handled manually unless future analyzer metadata can prove the rewrite is safe.
