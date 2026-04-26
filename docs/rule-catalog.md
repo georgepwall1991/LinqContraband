@@ -65,7 +65,7 @@ This page is generated from that catalog and grouped by domain.
 | `LC001` Client-side evaluation risk: Local method usage in IQueryable | `Warning` | `Performance` | Code fix | [`LC001_LocalMethod`](./LC001_LocalMethod.md) | `Samples/LC001_LocalMethod/` |
 | `LC004` Deferred Execution Leak: IQueryable passed as IEnumerable | `Warning` | `Performance` | Code fix | [`LC004_IQueryableLeak`](./LC004_IQueryableLeak.md) | `Samples/LC004_IQueryableLeak/` |
 | `LC005` Multiple OrderBy calls | `Warning` | `Performance` | Code fix | [`LC005_MultipleOrderBy`](./LC005_MultipleOrderBy.md) | `Samples/LC005_MultipleOrderBy/` |
-| `LC014` Avoid String.ToLower() or ToUpper() in LINQ queries | `Warning` | `Performance` | Code fix | [`LC014_AvoidStringCaseConversion`](./LC014_AvoidStringCaseConversion.md) | `Samples/LC014_AvoidStringCaseConversion/` |
+| `LC014` Avoid String.ToLower() or ToUpper() in LINQ queries | `Warning` | `Performance` | Manual only | [`LC014_AvoidStringCaseConversion`](./LC014_AvoidStringCaseConversion.md) | `Samples/LC014_AvoidStringCaseConversion/` |
 | `LC015` Deterministic Pagination: OrderBy required before Skip/Take | `Warning` | `Reliability` | Code fix | [`LC015_MissingOrderBy`](./LC015_MissingOrderBy.md) | `Samples/LC015_MissingOrderBy/` |
 | `LC016` Avoid DateTime.Now/UtcNow in LINQ queries | `Warning` | `Performance` | Code fix | [`LC016_AvoidDateTimeNow`](./LC016_AvoidDateTimeNow.md) | `Samples/LC016_AvoidDateTimeNow/` |
 | `LC020` Avoid untranslatable string comparison overloads | `Warning` | `Performance` | Code fix | [`LC020_StringContainsWithComparison`](./LC020_StringContainsWithComparison.md) | `Samples/LC020_StringContainsWithComparison/` |

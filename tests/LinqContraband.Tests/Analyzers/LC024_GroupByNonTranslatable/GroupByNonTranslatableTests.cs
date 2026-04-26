@@ -78,6 +78,30 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task GroupBy_Select_CustomMethodNamedCountWithGroup_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => {|LC024:Count(g)|});
+        }
+
+        private static int Count(IGrouping<int, Order> group) => group.Count();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GroupBy_Select_LocalHelperOverKey_ShouldTriggerLC024()
     {
         var test = Usings + @"

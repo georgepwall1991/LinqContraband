@@ -32,8 +32,8 @@ public sealed partial class RawSqlStringConstructionAnalyzer
             IInterpolatedStringOperation => true,
             IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot),
             IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot),
-            ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, executableRoot, out var resolvedValue) &&
-                                                       IsConstructedRawSql(resolvedValue, executableRoot),
+            ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
+                                                        IsConstructedRawSql(resolvedValue, executableRoot),
             _ => false
         };
     }
@@ -54,8 +54,8 @@ public sealed partial class RawSqlStringConstructionAnalyzer
             IInterpolatedStringOperation => true,
             IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot),
             IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot),
-            ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, executableRoot, out var resolvedValue) &&
-                                                       IsConstructedRawSql(resolvedValue, executableRoot),
+            ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
+                                                        IsConstructedRawSql(resolvedValue, executableRoot),
             IFieldReferenceOperation => true,
             IPropertyReferenceOperation => true,
             _ => true
@@ -122,7 +122,7 @@ public sealed partial class RawSqlStringConstructionAnalyzer
 
         if (current is ILocalReferenceOperation localReference)
         {
-            return TryResolveLocalValue(localReference.Local, executableRoot, out var resolvedValue) &&
+            return TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
                    ContainsSuspiciousStringBuilderAppend(resolvedValue, executableRoot);
         }
 

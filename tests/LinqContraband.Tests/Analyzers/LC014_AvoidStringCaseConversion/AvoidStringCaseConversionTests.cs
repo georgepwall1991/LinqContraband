@@ -9,9 +9,28 @@ public class AvoidStringCaseConversionTests
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
 ";
 
     private const string TestClasses = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext : IDisposable
+    {
+        public void Dispose() {}
+        public DbSet<T> Set<T>() where T : class => null;
+    }
+
+    public class DbSet<T> : IQueryable<T> where T : class
+    {
+        public Type ElementType => typeof(T);
+        public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
+        public IQueryProvider Provider => null;
+        public IEnumerator<T> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
+}
+
 namespace LinqContraband.Test
 {
     public class User
@@ -23,6 +42,11 @@ namespace LinqContraband.Test
     public class Address
     {
         public string City { get; set; }
+    }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
     }
 }
 ";
@@ -37,7 +61,27 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
+            var result = query.Where(u => {|LC014:u.Name.ToLower()|} == ""test"");
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToLower_OnIQueryableAliasFromDbSet_ShouldTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> query = db.Users;
             var result = query.Where(u => {|LC014:u.Name.ToLower()|} == ""test"");
         }
     }
@@ -55,7 +99,8 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             var result = query.Where(u => {|LC014:u.Name.ToUpper()|} == ""test"");
         }
     }
@@ -73,7 +118,8 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             var result = query.OrderBy(u => {|LC014:u.Name.ToLowerInvariant()|});
         }
     }
@@ -91,7 +137,8 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             var result = query.Where(u => {|LC014:u.Address.City.ToLower()|} == ""ny"");
         }
     }
@@ -109,7 +156,8 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             // ""test"".ToLower() is a constant expression, not on the column.
             var result = query.Where(u => u.Name == ""TEST"".ToLower());
         }
@@ -129,7 +177,8 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var search = ""TEST"";
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             // search.ToLower() executes on client before query or as constant.
             var result = query.Where(u => u.Name == search.ToLower());
         }
@@ -157,6 +206,24 @@ namespace LinqContraband.Test
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    [Fact]
+    public async Task LinqToObjectsAsQueryable_ShouldNotTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => u.Name.ToLower() == ""test"");
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     /*
     // Null propagation is not supported in Expression Trees by the C# compiler (CS8072),
     // so this code is technically impossible to write for IQueryable.
@@ -178,7 +245,8 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             var result = query.Where(u => {|LC014:(u.Name ?? """").ToLower()|} == ""test"");
         }
     }
@@ -199,7 +267,8 @@ namespace LinqContraband.Test
 
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            using var db = new AppDbContext();
+            var query = db.Users;
             // The ToLower is an argument to MyHelper, which is the argument to Where
             var result = query.Where(u => MyHelper({|LC014:u.Name.ToLower()|}));
         }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -84,11 +85,12 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
         var foundBounding = false;
         string? dbSetName = null;
         var current = invocation.GetInvocationReceiver();
+        var executableRoot = invocation.FindOwningExecutableRoot();
+        var visitedLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
         while (current != null)
         {
-            while (current is IConversionOperation conversion)
-                current = conversion.Operand;
+            current = current.UnwrapConversions();
 
             if (current is IInvocationOperation prevInvocation)
             {
@@ -101,6 +103,21 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
                 }
 
                 current = prevInvocation.GetInvocationReceiver();
+            }
+            else if (current is ILocalReferenceOperation localReference)
+            {
+                if (executableRoot == null ||
+                    !visitedLocals.Add(localReference.Local) ||
+                    !TryResolveSingleAssignedValue(
+                        executableRoot,
+                        localReference.Local,
+                        invocation.Syntax.SpanStart,
+                        out var localValue))
+                {
+                    break;
+                }
+
+                current = localValue;
             }
             else if (current is IPropertyReferenceOperation propRef)
             {
@@ -135,6 +152,62 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
         {
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), dbSetName ?? "DbSet"));
+        }
+    }
+
+    private static bool TryResolveSingleAssignedValue(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int position,
+        out IOperation value)
+    {
+        value = null!;
+        IOperation? latestValue = null;
+        var latestPosition = -1;
+        var assignmentCount = 0;
+
+        foreach (var operation in EnumerateOperations(executableRoot))
+        {
+            if (operation.Syntax.SpanStart >= position)
+                continue;
+
+            switch (operation)
+            {
+                case IVariableDeclaratorOperation declarator
+                    when SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
+                         declarator.Initializer != null &&
+                         declarator.Syntax.SpanStart > latestPosition:
+                    latestValue = declarator.Initializer.Value;
+                    latestPosition = declarator.Syntax.SpanStart;
+                    assignmentCount++;
+                    break;
+
+                case ISimpleAssignmentOperation assignment
+                    when assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
+                         SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
+                         assignment.Syntax.SpanStart > latestPosition:
+                    latestValue = assignment.Value;
+                    latestPosition = assignment.Syntax.SpanStart;
+                    assignmentCount++;
+                    break;
+            }
+        }
+
+        if (latestValue == null || assignmentCount != 1)
+            return false;
+
+        value = latestValue.UnwrapConversions();
+        return true;
+    }
+
+    private static IEnumerable<IOperation> EnumerateOperations(IOperation root)
+    {
+        yield return root;
+
+        foreach (var child in root.ChildOperations)
+        {
+            foreach (var descendant in EnumerateOperations(child))
+                yield return descendant;
         }
     }
 }

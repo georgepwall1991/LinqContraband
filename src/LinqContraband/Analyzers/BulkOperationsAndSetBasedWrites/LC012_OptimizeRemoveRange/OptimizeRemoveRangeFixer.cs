@@ -87,6 +87,43 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
             return false;
 
         var sourceType = semanticModel.GetTypeInfo(invocation.ArgumentList.Arguments[0].Expression, cancellationToken).Type;
-        return sourceType.IsIQueryable() || sourceType.IsDbSet();
+        if (!sourceType.IsIQueryable() && !sourceType.IsDbSet())
+            return false;
+
+        return !HasSubsequentSaveChangesInvocation(invocation, semanticModel, cancellationToken);
+    }
+
+    private static bool HasSubsequentSaveChangesInvocation(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var statement = invocation.FirstAncestorOrSelf<StatementSyntax>();
+        if (statement?.Parent is not BlockSyntax block)
+            return false;
+
+        var statementIndex = block.Statements.IndexOf(statement);
+        if (statementIndex < 0)
+            return false;
+
+        foreach (var subsequentStatement in block.Statements.Skip(statementIndex + 1))
+        {
+            foreach (var subsequentInvocation in subsequentStatement.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            {
+                if (semanticModel.GetSymbolInfo(subsequentInvocation, cancellationToken).Symbol is IMethodSymbol method &&
+                    IsSaveChangesMethod(method))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSaveChangesMethod(IMethodSymbol method)
+    {
+        return (method.Name is "SaveChanges" or "SaveChangesAsync") &&
+               method.ContainingType.IsDbContext();
     }
 }

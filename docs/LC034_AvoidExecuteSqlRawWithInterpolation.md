@@ -27,7 +27,9 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 
 ### Notes
 The fixer is intentionally narrow. It appears only for direct interpolated-string calls with no additional raw SQL
-parameters, where the method-name rewrite keeps the SQL text and argument flow semantically safe.
+parameters, where the method-name rewrite keeps the SQL text and argument flow semantically safe. It is not offered when
+an interpolation hole appears inside SQL single quotes, such as `'{name}'`; remove the SQL quotes manually before using
+`ExecuteSql(...)` or `ExecuteSqlAsync(...)` so EF can parameterize the value correctly.
 
 ## Rule Boundary
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` or `ExecuteSqlRawAsync(...)`.

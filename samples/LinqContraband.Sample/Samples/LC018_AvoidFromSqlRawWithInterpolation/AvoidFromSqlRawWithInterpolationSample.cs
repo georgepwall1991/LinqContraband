@@ -20,7 +20,7 @@ public class AvoidFromSqlRawWithInterpolationSample
         // CORRECT: Safe parameterization
         var users3 = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = {0}", name).ToList();
 
-        // CORRECT: Using FromSqlInterpolated
+        // CORRECT: Use FromSqlInterpolated and remove SQL quotes around interpolated values.
         var users4 = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {name}").ToList();
     }
 }

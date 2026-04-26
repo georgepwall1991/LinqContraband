@@ -18,6 +18,24 @@ namespace Microsoft.EntityFrameworkCore
 }
 ";
 
+    private const string NonQueryableEFCoreMock = @"
+using System;
+using System.Collections.Generic;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public sealed class AuditQuery
+    {
+        public AuditQuery IgnoreQueryFilters() => this;
+    }
+
+    public static class CustomEnumerableExtensions
+    {
+        public static IEnumerable<TEntity> IgnoreQueryFilters<TEntity>(this IEnumerable<TEntity> source) => source;
+    }
+}
+";
+
     [Fact]
     public async Task IgnoreQueryFilters_OnIQueryable_ShouldTriggerLC021()
     {
@@ -49,6 +67,44 @@ namespace LinqContraband.Test
         {
             var query = new int[0].AsQueryable();
             var result = query.Where(x => x > 0).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_InstanceMethodInEfNamespace_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + NonQueryableEFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new AuditQuery();
+            var result = query.IgnoreQueryFilters();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_ExtensionOnEnumerable_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + NonQueryableEFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var values = new[] { 1, 2, 3 };
+            var result = values.IgnoreQueryFilters();
         }
     }
 }";

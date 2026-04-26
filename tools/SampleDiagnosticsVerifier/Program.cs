@@ -23,6 +23,7 @@ if (!File.Exists(sourceSampleManifestPath))
 }
 
 var expectedSampleGroups = LoadExpectationGroups(sourceSampleManifestPath, sourceSampleProjectDirectory);
+var safeSamplePaths = LoadSafeSamplePaths(sourceSampleManifestPath, sourceSampleProjectDirectory);
 
 if (expectedSampleGroups.Length == 0)
 {
@@ -30,7 +31,7 @@ if (expectedSampleGroups.Length == 0)
     return 1;
 }
 
-Console.WriteLine($"Verifying {expectedSampleGroups.Sum(group => group.SamplePaths.Count)} sample files across {expectedSampleGroups.Length} diagnostic paths in {sourceSampleProjectPath}");
+Console.WriteLine($"Verifying {expectedSampleGroups.Sum(group => group.SamplePaths.Count)} diagnostic sample files and {safeSamplePaths.Length} safe sample files across {expectedSampleGroups.Length} diagnostic paths in {sourceSampleProjectPath}");
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "LinqContraband.SampleDiagnosticsVerifier", Guid.NewGuid().ToString("N"));
 var tempSampleProjectDirectory = Path.Combine(tempRoot, "LinqContraband.Sample");
@@ -83,9 +84,14 @@ try
         }
 
         var expectedPaths = expectedSampleGroups.Select(group => group.DiagnosticPath).ToHashSet(StringComparer.Ordinal);
+        var safePaths = safeSamplePaths.ToHashSet(StringComparer.Ordinal);
         foreach (var pair in observedByPath.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            if (!expectedPaths.Contains(pair.Key))
+            if (safePaths.Contains(pair.Key))
+            {
+                failures.Add($"{pair.Key} is listed as a safe sample but reported diagnostics [{string.Join(", ", pair.Value)}].");
+            }
+            else if (!expectedPaths.Contains(pair.Key))
             {
                 failures.Add($"{pair.Key} reported unexpected diagnostics [{string.Join(", ", pair.Value)}] with no matching sample expectation.");
             }
@@ -271,6 +277,11 @@ static IReadOnlyList<SampleDiagnostic> ParseDiagnostics(string errorLogPath, str
 
         foreach (var result in results.EnumerateArray())
         {
+            if (IsSuppressed(result))
+            {
+                continue;
+            }
+
             if (!result.TryGetProperty("ruleId", out var ruleIdProperty))
             {
                 continue;
@@ -292,6 +303,27 @@ static IReadOnlyList<SampleDiagnostic> ParseDiagnostics(string errorLogPath, str
     }
 
     return diagnostics;
+}
+
+static bool IsSuppressed(JsonElement result)
+{
+    if (result.TryGetProperty("suppressions", out var suppressions) &&
+        suppressions.ValueKind == JsonValueKind.Array &&
+        suppressions.GetArrayLength() > 0)
+    {
+        return true;
+    }
+
+    if (!result.TryGetProperty("suppressionStates", out var suppressionStates) ||
+        suppressionStates.ValueKind != JsonValueKind.Array)
+    {
+        return false;
+    }
+
+    return suppressionStates.EnumerateArray()
+        .Select(state => state.GetString())
+        .Any(state => string.Equals(state, "suppressedInSource", StringComparison.Ordinal) ||
+                      string.Equals(state, "suppressedExternally", StringComparison.Ordinal));
 }
 
 static bool TryGetDiagnosticPath(JsonElement result, out string path)
@@ -400,6 +432,41 @@ static SampleExpectationGroup[] LoadExpectationGroups(string manifestPath, strin
             group.SelectMany(sample => sample.ExpectedRuleIds).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray()))
         .OrderBy(group => group.DiagnosticPath, StringComparer.Ordinal)
         .ToArray();
+}
+
+static string[] LoadSafeSamplePaths(string manifestPath, string sampleProjectDirectory)
+{
+    using var stream = File.OpenRead(manifestPath);
+    using var document = JsonDocument.Parse(stream);
+
+    if (!document.RootElement.TryGetProperty("safeSamples", out var safeSamplesElement))
+    {
+        throw new InvalidOperationException($"{manifestPath} must declare safeSamples for false-positive regression coverage.");
+    }
+
+    var safeSamplePaths = safeSamplesElement
+        .EnumerateArray()
+        .Select(value => value.GetString())
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(value => value, StringComparer.Ordinal)
+        .ToArray();
+
+    if (safeSamplePaths.Length == 0)
+    {
+        throw new InvalidOperationException($"{manifestPath} must declare at least one safeSamples path.");
+    }
+
+    foreach (var safeSamplePath in safeSamplePaths)
+    {
+        if (!File.Exists(Path.Combine(sampleProjectDirectory, safeSamplePath.Replace('/', Path.DirectorySeparatorChar))))
+        {
+            throw new InvalidOperationException($"{manifestPath} safeSample path does not exist: {safeSamplePath}");
+        }
+    }
+
+    return safeSamplePaths;
 }
 
 static string Quote(string value)

@@ -10,9 +10,16 @@ public class OptimizeRemoveRangeFixerTests
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Microsoft.EntityFrameworkCore
 {
+    public class DbContext
+    {
+        public int SaveChanges() => 0;
+        public Task<int> SaveChangesAsync() => Task.FromResult(0);
+    }
+
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
     {
         public void RemoveRange(IEnumerable<TEntity> entities) { }
@@ -22,7 +29,8 @@ namespace Microsoft.EntityFrameworkCore
         public System.Collections.IEnumerator GetEnumerator() => null;
         System.Collections.Generic.IEnumerator<TEntity> System.Collections.Generic.IEnumerable<TEntity>.GetEnumerator() => null;
     }
-    public static class RelationalQueryableExtensions
+
+    public static class EntityFrameworkQueryableExtensions
     {
         public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
     }
@@ -64,6 +72,33 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenRemoveRangeIsFollowedBySaveChanges()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Users.Where(x => x.Id > 0);
+            {|LC012:db.Users.RemoveRange(query)|};
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]

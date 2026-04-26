@@ -1,4 +1,5 @@
 using LinqContraband.Sample.Data;
+using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
 namespace LinqContraband.Sample.Samples.LC015_MissingOrderBy;
@@ -27,19 +28,19 @@ public class MissingOrderBySample
     /// <summary>
     ///     Runs the sample demonstrating the pagination bug.
     /// </summary>
-    /// <param name="users">The source queryable of users.</param>
-    public static void Run(IQueryable<User> users)
+    /// <param name="users">The EF source set of users.</param>
+    public static void Run(DbSet<User> users)
     {
         Console.WriteLine("Testing LC015...");
 
         // VIOLATION: Skipping 10 users without sorting. Which 10 are skipped? It's undefined.
-        var page2 = users.OrderBy(x => x.Id).Skip(10).Take(10).ToList();
+        var page2 = users.Skip(10).Take(10).ToList();
 
         // VIOLATION: Getting the last user without sorting. Which user is "Last"? Undefined.
         // Note: Last() isn't supported directly in some EF Core providers without ordering, but LINQ allows compilation.
         try
         {
-            var last = users.OrderBy(x => x.Id).Last();
+            var last = users.Last();
         }
         catch (Exception ex)
         {
@@ -50,7 +51,7 @@ public class MissingOrderBySample
         var chunks = users.Chunk(5).ToList();
 
         // VIOLATION: Misplaced sorting (Merged from LC027).
-        // Sorting happens AFTER Skip/Take, so it only sorts the page, not the source.
-        var misplacedSort = users.Skip(10).Take(10).OrderBy(u => u.Name).ToList();
+        // Sorting happens AFTER Take, so it only sorts the page, not the source.
+        var misplacedSort = users.Take(10).OrderBy(u => u.Name).ToList();
     }
 }

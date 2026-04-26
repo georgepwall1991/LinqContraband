@@ -35,7 +35,7 @@ namespace TestNamespace
 }";
 
     [Fact]
-    public async Task SaveChangesInForeach_ShouldMoveAfterLoop()
+    public async Task SaveChangesInForeach_HasNoFix()
     {
         var test = Usings + @"
 class Program
@@ -52,27 +52,11 @@ class Program
     }
 }" + MockNamespace;
 
-        var fixedCode = Usings + @"
-class Program
-{
-    void Main()
-    {
-        using var db = new MyDbContext();
-        var items = new List<int> { 1, 2, 3 };
-
-        foreach (var item in items)
-        {
-        }
-
-        db.SaveChanges();
-    }
-}" + MockNamespace;
-
-        await VerifyFix(test, fixedCode);
+        await VerifyFix(test, test);
     }
 
     [Fact]
-    public async Task SaveChangesAsyncInFor_ShouldMoveAfterLoop()
+    public async Task SaveChangesAsyncInFor_HasNoFix()
     {
         var test = Usings + @"
 class Program
@@ -88,26 +72,11 @@ class Program
     }
 }" + MockNamespace;
 
-        var fixedCode = Usings + @"
-class Program
-{
-    async Task Main()
-    {
-        using var db = new MyDbContext();
-
-        for (int i = 0; i < 10; i++)
-        {
-        }
-
-        await db.SaveChangesAsync();
-    }
-}" + MockNamespace;
-
-        await VerifyFix(test, fixedCode);
+        await VerifyFix(test, test);
     }
 
     [Fact]
-    public async Task SaveChangesInWhile_ShouldMoveAfterLoop()
+    public async Task SaveChangesInWhile_HasNoFix()
     {
         var test = Usings + @"
 class Program
@@ -124,6 +93,28 @@ class Program
     }
 }" + MockNamespace;
 
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
+    public async Task SaveChangesInDoWhile_ShouldMoveAfterLoop()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+            {|LC010:db.SaveChanges()|};
+        }
+        while (i < 10);
+    }
+}" + MockNamespace;
+
         var fixedCode = Usings + @"
 class Program
 {
@@ -131,10 +122,11 @@ class Program
     {
         using var db = new MyDbContext();
         int i = 0;
-        while (i < 10)
+        do
         {
             i++;
         }
+        while (i < 10);
         db.SaveChanges();
     }
 }" + MockNamespace;
@@ -156,6 +148,27 @@ class Program
             if (item == 2)
                 break;
 
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
+    public async Task SaveChangesInForeach_HasNoFix_BecauseLoopMayNotRun()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int>();
+
+        foreach (var item in items)
+        {
             {|LC010:db.SaveChanges()|};
         }
     }

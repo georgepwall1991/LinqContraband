@@ -20,8 +20,8 @@ namespace LinqContraband.Sample.Samples.LC014_AvoidStringCaseConversion;
 ///         into a slow <c>Index Scan</c> or <c>Table Scan</c> (O(n)).
 ///     </para>
 ///     <para>
-///         <strong>The Fix:</strong> Use case-insensitive collation, <c>string.Equals</c> with <c>OrdinalIgnoreCase</c>,
-///         or <c>EF.Functions.Collate</c>.
+///         <strong>The Fix:</strong> Use case-insensitive collation, a normalized search column, or
+///         provider-specific collation support such as <c>EF.Functions.Collate</c> when it remains index-friendly.
 ///     </para>
 /// </remarks>
 [SuppressMessage("Performance", "LC009:Performance: Missing AsNoTracking() in Read-Only path")]
@@ -38,7 +38,7 @@ public static class AvoidStringCaseConversionSample
         // This query forces the database to scan the entire Users table.
         // SQL Translation: SELECT ... WHERE LOWER(u.Name) = 'admin'
         var slowQuery = db.Users
-            .Where(u => string.Equals(u.Name, "admin", StringComparison.OrdinalIgnoreCase)) // LC014 Violation
+            .Where(u => u.Name.ToLower() == "admin") // LC014 Violation
             .ToList();
 
         // Even in OrderBy, this prevents using the index for sorting, forcing a sort in memory/tempdb.
@@ -50,17 +50,16 @@ public static class AvoidStringCaseConversionSample
         // THE FIX: Efficient Index Usage
         // ====================================================================================
 
-        // Option 1: Use string.Equals (if your DB provider translates it to case-insensitive SQL)
-        // SQL Translation (e.g. SQL Server): SELECT ... WHERE u.Name = 'admin'
-        var fastQuery1 = db.Users
-            .Where(u => string.Equals(u.Name, "admin", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        // Option 2: Rely on Database Collation (Best Practice)
+        // Option 1: Rely on Database Collation (Best Practice)
         // If your column is defined as Case-Insensitive (CI) in the database (e.g., SQL_Latin1_General_CP1_CI_AS),
         // simple equality is already case-insensitive and uses the index.
-        var fastQuery2 = db.Users
+        var fastQuery1 = db.Users
             .Where(u => u.Name == "admin")
+            .ToList();
+
+        // Option 2: Pre-normalize the search value, not the column; pair this with matching schema/collation design.
+        var fastQuery2 = db.Users
+            .Where(u => u.Name == "ADMIN")
             .ToList();
 
         // Option 3: Explicit Collation (Postgres/Others)

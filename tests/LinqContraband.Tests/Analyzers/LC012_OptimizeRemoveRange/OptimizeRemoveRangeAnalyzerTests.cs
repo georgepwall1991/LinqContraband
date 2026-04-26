@@ -14,7 +14,7 @@ using TestNamespace;
 using Microsoft.EntityFrameworkCore;
 ";
 
-    private const string MockNamespace = @"
+    private const string MockNamespaceWithoutExecuteDelete = @"
 namespace TestNamespace
 {
     public class User { public int Id { get; set; } }
@@ -42,6 +42,18 @@ namespace Microsoft.EntityFrameworkCore
     }
 }
 ";
+
+    private const string ExecuteDeleteSupport = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
+    }
+}
+";
+
+    private const string MockNamespace = MockNamespaceWithoutExecuteDelete + ExecuteDeleteSupport;
 
     [Fact]
     public async Task RemoveRange_OnDbSetWithQueryableSource_ShouldTrigger()
@@ -109,6 +121,57 @@ namespace TestApp
         }
     }
 }" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WhenExecuteDeleteIsUnavailable_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + MockNamespaceWithoutExecuteDelete;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithCustomExecuteDeleteExtension_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + MockNamespaceWithoutExecuteDelete + @"
+namespace CustomExtensions
+{
+    public static class QueryExtensions
+    {
+        public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
+    }
+}";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

@@ -131,7 +131,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
     {
         foreach (var invocation in GetAllOperations(operation).OfType<IInvocationOperation>())
         {
-            if (IsAllowedAggregateMethod(invocation.TargetMethod.Name))
+            if (IsAllowedAggregateInvocation(invocation, groupParam))
                 continue;
 
             if (!invocation.ReferencesParameter(groupParam))
@@ -160,7 +160,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
                 // Allow aggregate methods: g.Count(), g.Sum(), g.Average(), g.Min(), g.Max(), g.LongCount()
                 if (usage is IArgumentOperation argOp && argOp.Parent is IInvocationOperation aggInvocation)
                 {
-                    if (IsAllowedAggregateMethod(aggInvocation.TargetMethod.Name))
+                    if (IsAllowedAggregateInvocation(aggInvocation, groupParam))
                         continue;
 
                     context.ReportDiagnostic(
@@ -170,7 +170,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
 
                 if (usage is IInvocationOperation directInvocation)
                 {
-                    if (IsAllowedAggregateMethod(directInvocation.TargetMethod.Name))
+                    if (IsAllowedAggregateInvocation(directInvocation, groupParam))
                         continue;
 
                     context.ReportDiagnostic(
@@ -190,6 +190,25 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
     {
         return methodName is "Count" or "LongCount" or "Sum" or "Average" or "Min" or "Max"
             or "CountAsync" or "LongCountAsync" or "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync";
+    }
+
+    private static bool IsAllowedAggregateInvocation(IInvocationOperation invocation, IParameterSymbol groupParam)
+    {
+        if (!IsAllowedAggregateMethod(invocation.TargetMethod.Name))
+            return false;
+
+        if (!IsKnownAggregateContainingType(invocation.TargetMethod.ContainingType))
+            return false;
+
+        return invocation.GetInvocationReceiver() is IParameterReferenceOperation parameterReference &&
+               SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, groupParam);
+    }
+
+    private static bool IsKnownAggregateContainingType(INamedTypeSymbol? containingType)
+    {
+        var containingNamespace = containingType?.ContainingNamespace?.ToString();
+        return containingNamespace == "System.Linq" && containingType is { Name: "Enumerable" or "Queryable" } ||
+               containingNamespace == "Microsoft.EntityFrameworkCore" && containingType?.Name == "EntityFrameworkQueryableExtensions";
     }
 
     private static System.Collections.Generic.IEnumerable<IOperation> GetAllOperations(IOperation root)

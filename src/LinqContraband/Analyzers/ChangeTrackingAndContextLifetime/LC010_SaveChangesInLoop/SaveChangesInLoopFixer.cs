@@ -98,6 +98,13 @@ public class SaveChangesInLoopFixer : CodeFixProvider
             return false;
         }
 
+        if (containingLoop is not DoStatementSyntax)
+        {
+            expressionStatement = null!;
+            loop = null!;
+            return false;
+        }
+
         expressionStatement = statement;
         loop = containingLoop;
 

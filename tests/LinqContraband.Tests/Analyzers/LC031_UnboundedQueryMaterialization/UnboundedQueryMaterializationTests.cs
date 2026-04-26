@@ -81,6 +81,25 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ToList_FromLocalQueryAlias_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Users.Where(u => u.IsActive);
+            var result = {|LC031:query.ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToList_WithTake_ShouldNotTrigger()
     {
         var test = Usings + EFCoreMock + Entities + @"
@@ -91,6 +110,49 @@ namespace TestApp
         public void TestMethod(AppDbContext db)
         {
             var result = db.Users.Take(100).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromBoundedLocalQueryAlias_ShouldNotTrigger()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Users.Where(u => u.IsActive).Take(100);
+            var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromReassignedLocalQueryAlias_ShouldNotTrigger()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, bool includeAll)
+        {
+            var query = db.Users.Take(100);
+            if (includeAll)
+            {
+                query = db.Users;
+            }
+
+            var result = query.ToList();
         }
     }
 }";

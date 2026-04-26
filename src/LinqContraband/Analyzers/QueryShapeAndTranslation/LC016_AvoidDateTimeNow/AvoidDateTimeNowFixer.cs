@@ -97,6 +97,8 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
             }
         }
 
+        AddEnclosingParameterNames(node, existingNames);
+
         const string baseName = "now";
         if (!existingNames.Contains(baseName)) return baseName;
 
@@ -107,5 +109,40 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         }
 
         return baseName;
+    }
+
+    private static void AddEnclosingParameterNames(SyntaxNode node, HashSet<string> existingNames)
+    {
+        foreach (var ancestor in node.AncestorsAndSelf())
+        {
+            switch (ancestor)
+            {
+                case BaseMethodDeclarationSyntax methodDeclaration:
+                    AddParameterNames(methodDeclaration.ParameterList, existingNames);
+                    break;
+                case LocalFunctionStatementSyntax localFunction:
+                    AddParameterNames(localFunction.ParameterList, existingNames);
+                    break;
+                case ParenthesizedLambdaExpressionSyntax parenthesizedLambda:
+                    AddParameterNames(parenthesizedLambda.ParameterList, existingNames);
+                    break;
+                case SimpleLambdaExpressionSyntax simpleLambda:
+                    existingNames.Add(simpleLambda.Parameter.Identifier.Text);
+                    break;
+                case AnonymousMethodExpressionSyntax anonymousMethod:
+                    AddParameterNames(anonymousMethod.ParameterList, existingNames);
+                    break;
+            }
+        }
+    }
+
+    private static void AddParameterNames(ParameterListSyntax? parameterList, HashSet<string> existingNames)
+    {
+        if (parameterList == null) return;
+
+        foreach (var parameter in parameterList.Parameters)
+        {
+            existingNames.Add(parameter.Identifier.Text);
+        }
     }
 }

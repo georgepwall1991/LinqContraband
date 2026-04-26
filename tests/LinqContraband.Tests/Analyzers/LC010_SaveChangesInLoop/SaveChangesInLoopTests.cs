@@ -129,6 +129,30 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_LocalFunctionDeclaredInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            void SaveLater()
+            {
+                db.SaveChanges();
+            }
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_InheritedMethodCall_ShouldTrigger()
     {
         var test = Usings + @"

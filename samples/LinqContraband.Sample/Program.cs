@@ -57,7 +57,7 @@ internal class Program
         NPlusOneLooperSample.Run(db, users);
         await SyncBlockerSample.RunAsync(users);
         MissingAsNoTrackingSample.Run();
-        SaveChangesInLoopSample.Run(await users.ToListAsync());
+        SaveChangesInLoopSample.Run(await users.OrderBy(user => user.Id).Take(100).ToListAsync());
 
         EntityMissingPrimaryKeySample.Run();
         OptimizeRemoveRangeSample.Run();
@@ -66,7 +66,7 @@ internal class Program
         AvoidStringCaseConversionSample.Run(db);
 
         // LC015: MissingOrderBy
-        MissingOrderBySample.Run(users);
+        MissingOrderBySample.Run(db.Users);
 
         // New samples
         AvoidFromSqlRawWithInterpolationSample.Run(db);

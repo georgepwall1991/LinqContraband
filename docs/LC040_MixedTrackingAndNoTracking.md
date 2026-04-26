@@ -20,3 +20,5 @@ var noTrackingUsers = db.Users.AsNoTracking().ToList();
 
 ### Notes
 This advisory reports only when the query provenance and materialization mode are both provable.
+
+Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWithIdentityResolution`, and `AsTracking` calls are treated as tracking-mode markers. Custom extension methods with the same names are followed as ordinary query-chain calls and do not create mixed-mode evidence by themselves.

@@ -31,3 +31,5 @@ This v1 surface is analyzer-only. It intentionally avoids speculative rewrites f
 ## Rule Boundary
 - LC037 intentionally yields when the raw SQL argument is passed directly as an interpolated string or direct non-constant `+` concatenation. Those direct call-site patterns are owned by LC018 (`FromSqlRaw`) and LC034 (`ExecuteSqlRaw` / `ExecuteSqlRawAsync`).
 - LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and local alias / variable flow into raw SQL APIs.
+- For simple local variables, LC037 resolves the latest guaranteed declaration or assignment before the raw SQL call, so an earlier constructed value overwritten unconditionally by a constant is ignored while later constructed overwrites are still reported.
+- Conditional overwrites are treated conservatively: a branch-only constant assignment does not suppress an earlier constructed SQL value, and a branch-only constructed assignment remains suspicious unless a later guaranteed assignment overwrites it.

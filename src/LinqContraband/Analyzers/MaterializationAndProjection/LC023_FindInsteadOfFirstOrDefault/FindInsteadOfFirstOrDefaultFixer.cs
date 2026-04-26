@@ -154,7 +154,10 @@ public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
             return false;
 
         return propertyReference.Instance?.UnwrapConversions() is IParameterReferenceOperation &&
-               propertyReference.Property.ContainingType.TryFindPrimaryKey() == propertyReference.Property.Name;
+               FindInsteadOfFirstOrDefaultKeyAnalysis.TryFindSafePrimaryKey(
+                   propertyReference.Property.ContainingType,
+                   semanticModel.Compilation,
+                   cancellationToken) == propertyReference.Property.Name;
     }
 
     private static ArgumentListSyntax CreateFindArgumentList(FixContext fixContext)

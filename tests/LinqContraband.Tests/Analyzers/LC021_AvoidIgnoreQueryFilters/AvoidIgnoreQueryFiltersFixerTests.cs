@@ -1,4 +1,3 @@
-using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersAnalyzer,
     LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersFixer,
@@ -119,8 +118,7 @@ namespace LinqContraband.Test
         var testObj = new CodeFixTest
         {
             TestCode = test,
-            FixedCode = fixedCode,
-            CompilerDiagnostics = CompilerDiagnostics.None
+            FixedCode = fixedCode
         };
 
         await testObj.RunAsync();

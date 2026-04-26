@@ -20,13 +20,15 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                 switch (current)
                 {
                     case IInvocationOperation nestedInvocation:
-                        if (nestedInvocation.TargetMethod.Name is "AsTracking")
+                        if (nestedInvocation.TargetMethod.Name is "AsTracking" &&
+                            IsEfCoreTrackingMethod(nestedInvocation.TargetMethod))
                         {
                             mode = TrackingMode.Tracked;
                             return true;
                         }
 
-                        if (nestedInvocation.TargetMethod.Name is "AsNoTracking" or "AsNoTrackingWithIdentityResolution")
+                        if (nestedInvocation.TargetMethod.Name is "AsNoTracking" or "AsNoTrackingWithIdentityResolution" &&
+                            IsEfCoreTrackingMethod(nestedInvocation.TargetMethod))
                         {
                             mode = TrackingMode.NoTracking;
                             return true;
@@ -58,6 +60,12 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
             }
 
             return true;
+        }
+
+        private static bool IsEfCoreTrackingMethod(IMethodSymbol method)
+        {
+            return method.ContainingType?.Name == "EntityFrameworkQueryableExtensions" &&
+                   method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
         }
     }
 }

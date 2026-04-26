@@ -125,7 +125,7 @@ indent_size = 2
 # LC018: Avoid FromSqlRaw with Interpolation - SQL injection risk from interpolated strings
 # dotnet_diagnostic.LC018.severity = warning
 
-# LC020: String Contains with Comparison - Missing StringComparison argument
+# LC020: Untranslatable StringComparison overloads in LINQ queries
 # dotnet_diagnostic.LC020.severity = warning
 
 # LC021: Avoid IgnoreQueryFilters - Bypassing critical global filters
@@ -204,3 +204,6 @@ indent_size = 2
 
 # LC043: Async Enumerable Buffering - Buffering IAsyncEnumerable before a single foreach
 # dotnet_diagnostic.LC043.severity = info
+
+# LC044: AsNoTracking Entity Mutated - Silent write lost before SaveChanges
+# dotnet_diagnostic.LC044.severity = warning

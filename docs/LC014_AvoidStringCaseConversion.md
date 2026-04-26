@@ -13,7 +13,7 @@ var user = db.Users.FirstOrDefault(u => u.Email.ToLower() == email.ToLower());
 ```
 
 ### The Fix
-Use `string.Equals` with a case-insensitive comparison, or rely on the database's default case-insensitive collation.
+Use the database's default case-insensitive collation, an explicitly configured column collation, a normalized search column, or provider-specific collation support such as `EF.Functions.Collate` where it remains index-friendly.
 
 ```csharp
 // Fast: Database can use index
@@ -25,3 +25,8 @@ var user = db.Users.FirstOrDefault(u => u.Email == email);
 ### ID: `LC014`
 ### Category: `Performance`
 ### Severity: `Warning`
+
+### Notes
+LC014 reports only when the query is rooted in an EF `DbSet<T>` or `DbContext.Set<T>()` chain, including simple local aliases assigned from those sources before the query operator. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()`, where database index usage is irrelevant.
+
+There is no safe automatic fix. Rewriting to `string.Equals(..., StringComparison.OrdinalIgnoreCase)` is provider- and version-sensitive in EF queries and can be untranslatable; it also overlaps with LC020's warning about `StringComparison` overloads in query expressions. Choose the database-specific fix deliberately based on collation and index design.

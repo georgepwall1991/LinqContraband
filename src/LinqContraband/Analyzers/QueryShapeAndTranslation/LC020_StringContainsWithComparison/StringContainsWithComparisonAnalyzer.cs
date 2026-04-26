@@ -74,13 +74,13 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
 
     private static ImmutableArray<IParameterSymbol> GetQueryableExpressionLambdaParameters(IOperation operation)
     {
-        var builder = ImmutableArray.CreateBuilder<IParameterSymbol>();
+        var lambdaPath = ImmutableArray.CreateBuilder<IAnonymousFunctionOperation>();
         var current = operation.Parent;
         while (current != null)
         {
             if (current is IAnonymousFunctionOperation anonymousFunction)
             {
-                builder.AddRange(anonymousFunction.Symbol.Parameters);
+                lambdaPath.Add(anonymousFunction);
 
                 var lambdaParent = anonymousFunction.Parent;
                 while (lambdaParent is IConversionOperation or IDelegateCreationOperation)
@@ -91,7 +91,7 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
                 if (lambdaParent is IArgumentOperation { Parent: IInvocationOperation parentInvocation } &&
                     IsQueryableInvocation(parentInvocation))
                 {
-                    return builder.ToImmutable();
+                    return GetQueryDependentLambdaParameters(lambdaPath);
                 }
             }
 
@@ -99,6 +99,39 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
         }
 
         return ImmutableArray<IParameterSymbol>.Empty;
+    }
+
+    private static ImmutableArray<IParameterSymbol> GetQueryDependentLambdaParameters(
+        ImmutableArray<IAnonymousFunctionOperation>.Builder lambdaPath)
+    {
+        var dependentParameters = ImmutableArray.CreateBuilder<IParameterSymbol>();
+        for (var index = lambdaPath.Count - 1; index >= 0; index--)
+        {
+            var lambda = lambdaPath[index];
+            if (index == lambdaPath.Count - 1 || LambdaSourceDependsOnParameters(lambda, dependentParameters))
+            {
+                dependentParameters.AddRange(lambda.Symbol.Parameters);
+            }
+        }
+
+        return dependentParameters.ToImmutable();
+    }
+
+    private static bool LambdaSourceDependsOnParameters(
+        IAnonymousFunctionOperation lambda,
+        ImmutableArray<IParameterSymbol>.Builder dependentParameters)
+    {
+        var lambdaParent = lambda.Parent;
+        while (lambdaParent is IConversionOperation or IDelegateCreationOperation)
+        {
+            lambdaParent = lambdaParent.Parent;
+        }
+
+        if (lambdaParent is not IArgumentOperation { Parent: IInvocationOperation parentInvocation })
+            return false;
+
+        var receiver = parentInvocation.GetInvocationReceiver();
+        return dependentParameters.Any(parameter => ReceiverDependsOnParameter(receiver, parameter));
     }
 
     private static bool IsQueryableInvocation(IInvocationOperation invocation)

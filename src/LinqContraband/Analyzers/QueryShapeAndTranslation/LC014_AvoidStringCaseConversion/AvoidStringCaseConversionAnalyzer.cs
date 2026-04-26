@@ -13,8 +13,7 @@ namespace LinqContraband.Analyzers.LC014_AvoidStringCaseConversion;
 /// <remarks>
 /// <para><b>Why this matters:</b> Using ToLower() or ToUpper() in query predicates transforms column values before comparison,
 /// making the query non-sargable (Search ARGument ABLE). This prevents the database from using indexes and forces full table
-/// scans. Instead, use string.Equals with StringComparison options or EF.Functions.Collate to perform case-insensitive
-/// comparisons while maintaining index usability.</para>
+/// scans. Instead, use database collation, a normalized column, or provider-specific collation support.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
@@ -24,7 +23,7 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Title = "Avoid String.ToLower() or ToUpper() in LINQ queries";
 
     private static readonly LocalizableString MessageFormat =
-        "Using '{0}' in a LINQ query prevents index usage. Use 'string.Equals' with 'StringComparison' or 'EF.Functions.Collate' instead.";
+        "Using '{0}' in a LINQ query prevents index usage. Use database collation, a normalized column, or EF.Functions.Collate instead.";
 
     private static readonly LocalizableString Description =
         "Using ToLower() or ToUpper() in a LINQ query predicate forces a full table scan (non-sargable) because it transforms the column value before comparison. Indexes cannot be used.";
@@ -105,10 +104,11 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
                     argument.Parent is IInvocationOperation linqInvocation)
                 {
                     var method = linqInvocation.TargetMethod;
-                    if (TargetLinqMethods.Contains(method.Name) &&
-                        method.ContainingType.Name == "Queryable" &&
-                        method.ContainingNamespace?.ToString() == "System.Linq")
+                    if (IsTargetQueryableMethod(method) &&
+                        HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver()))
+                    {
                         return lambda.Symbol.Parameters;
+                    }
                 }
             }
 
@@ -116,6 +116,113 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         }
 
         return ImmutableArray<IParameterSymbol>.Empty;
+    }
+
+    private static bool IsTargetQueryableMethod(IMethodSymbol method)
+    {
+        return TargetLinqMethods.Contains(method.Name) &&
+               method.ContainingType.Name == "Queryable" &&
+               method.ContainingNamespace?.ToString() == "System.Linq";
+    }
+
+    private static bool HasEntityFrameworkQuerySource(IOperation? operation)
+    {
+        var current = operation;
+        while (current != null)
+        {
+            current = current.UnwrapConversions();
+
+            if (current.Type.IsDbSet())
+                return true;
+
+            switch (current)
+            {
+                case IInvocationOperation invocation:
+                    if (invocation.TargetMethod.Name == "Set" && invocation.TargetMethod.ContainingType.IsDbContext())
+                        return true;
+
+                    current = invocation.GetInvocationReceiver();
+                    continue;
+
+                case IPropertyReferenceOperation propertyReference:
+                    if (propertyReference.Type.IsDbSet())
+                        return true;
+
+                    current = propertyReference.Instance;
+                    continue;
+
+                case IFieldReferenceOperation fieldReference:
+                    if (fieldReference.Type.IsDbSet())
+                        return true;
+
+                    current = fieldReference.Instance;
+                    continue;
+
+                case ILocalReferenceOperation localReference:
+                    if (localReference.Type.IsDbSet())
+                        return true;
+
+                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue))
+                    {
+                        current = resolvedValue;
+                        continue;
+                    }
+
+                    return false;
+
+                case IParameterReferenceOperation parameterReference:
+                    return parameterReference.Type.IsDbSet();
+
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveLocalValue(ILocalSymbol local, IOperation reference, IOperation? executableRoot, out IOperation value)
+    {
+        value = null!;
+
+        if (executableRoot == null)
+            return false;
+
+        var referenceStart = reference.Syntax.SpanStart;
+        var bestWriteStart = -1;
+
+        foreach (var descendant in executableRoot.Descendants())
+        {
+            if (descendant is IVariableDeclarationOperation declaration)
+            {
+                foreach (var declarator in declaration.Declarators)
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) || declarator.Initializer == null)
+                        continue;
+
+                    var writeStart = declarator.Syntax.SpanStart;
+                    if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                        continue;
+
+                    bestWriteStart = writeStart;
+                    value = declarator.Initializer.Value;
+                }
+            }
+
+            if (descendant is ISimpleAssignmentOperation assignment &&
+                assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
+                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
+            {
+                var writeStart = assignment.Syntax.SpanStart;
+                if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                    continue;
+
+                bestWriteStart = writeStart;
+                value = assignment.Value;
+            }
+        }
+
+        return bestWriteStart >= 0;
     }
 
     private bool ReceiverDependsOnParameter(IOperation? operation, ImmutableArray<IParameterSymbol> targetParameters)

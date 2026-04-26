@@ -36,6 +36,7 @@ namespace TestApp
     public class User
     {
         public int Id { get; set; }
+        public string Name { get; set; }
         public List<Order> Orders { get; set; }
     }
     public class Order { public int Id { get; set; } }
@@ -66,6 +67,22 @@ class TestClass
     void TestMethod(DbSet<User> users)
     {
         var result = users.Select(u => {|LC022:u.Orders.ToArray()|});
+    }
+}" + MockNamespaces;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task QuerySyntaxSelect_WithToList_ShouldTriggerLC022()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = from u in users
+                     select {|LC022:u.Orders.ToList()|};
     }
 }" + MockNamespaces;
 
@@ -224,6 +241,38 @@ class TestClass
     void TestMethod(DbSet<User> users)
     {
         var result = users.Select(u => new UserDto { Items = {|LC022:u.Orders.ToList()|} });
+    }
+}" + MockNamespaces;
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRemoveToList_WhenUsedAsMethodArgument()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => ConvertOrders({|LC022:u.Orders.ToList()|}));
+    }
+
+    static string ConvertOrders(List<Order> orders) => orders.Count.ToString();
+}" + MockNamespaces;
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRemoveToList_WhenReceiverTypeDiffersFromMaterializedType()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result = users.Select(u => {|LC022:u.Name.ToList()|});
     }
 }" + MockNamespaces;
 

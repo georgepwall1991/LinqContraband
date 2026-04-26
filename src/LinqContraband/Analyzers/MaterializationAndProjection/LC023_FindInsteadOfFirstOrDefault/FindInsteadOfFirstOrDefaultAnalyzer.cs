@@ -59,13 +59,17 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         if (lambda == null) return;
 
         // Analyze predicate body for x.Id == id
-        if (IsPrimaryKeyEquality(lambda, out var pkName))
+        if (IsPrimaryKeyEquality(lambda, context.Compilation, context.CancellationToken, out var pkName))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
     }
 
-    private bool IsPrimaryKeyEquality(IAnonymousFunctionOperation lambda, out string? pkName)
+    private bool IsPrimaryKeyEquality(
+        IAnonymousFunctionOperation lambda,
+        Compilation compilation,
+        System.Threading.CancellationToken cancellationToken,
+        out string? pkName)
     {
         pkName = null;
         var body = lambda.Body.Operations.FirstOrDefault();
@@ -77,14 +81,19 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         if (body is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Equals)
         {
             // Check left or right for primary key property
-            if (IsPrimaryKeyProperty(binary.LeftOperand, lambda, out pkName)) return true;
-            if (IsPrimaryKeyProperty(binary.RightOperand, lambda, out pkName)) return true;
+            if (IsPrimaryKeyProperty(binary.LeftOperand, lambda, compilation, cancellationToken, out pkName)) return true;
+            if (IsPrimaryKeyProperty(binary.RightOperand, lambda, compilation, cancellationToken, out pkName)) return true;
         }
 
         return false;
     }
 
-    private bool IsPrimaryKeyProperty(IOperation operation, IAnonymousFunctionOperation lambda, out string? pkName)
+    private bool IsPrimaryKeyProperty(
+        IOperation operation,
+        IAnonymousFunctionOperation lambda,
+        Compilation compilation,
+        System.Threading.CancellationToken cancellationToken,
+        out string? pkName)
     {
         pkName = null;
         var current = operation.UnwrapConversions();
@@ -96,7 +105,10 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
             if (receiver is IParameterReferenceOperation paramRef &&
                 SymbolEqualityComparer.Default.Equals(paramRef.Parameter, lambda.Symbol.Parameters.FirstOrDefault()))
             {
-                var pk = propRef.Property.ContainingType.TryFindPrimaryKey();
+                var pk = FindInsteadOfFirstOrDefaultKeyAnalysis.TryFindSafePrimaryKey(
+                    propRef.Property.ContainingType,
+                    compilation,
+                    cancellationToken);
                 if (pk != null && propRef.Property.Name == pk)
                 {
                     pkName = pk;
