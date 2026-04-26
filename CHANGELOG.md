@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.8] - 2026-04-26
+
+### Changed
+- Hardened the `LC023` fixer so awaited async primary-key lookups with explicit cancellation tokens rewrite to the token-preserving `FindAsync(object[] keyValues, CancellationToken)` overload
+- Suppressed unsafe `LC023` async fixes when the original call is not awaited, avoiding `Task<T>` to `ValueTask<T>` return-shape changes
+- Refreshed `LC023` docs and analyzer-health status to describe the safer fixer contract
+
 ## [5.2.7] - 2026-04-24
 
 ### Changed

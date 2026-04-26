@@ -21,6 +21,7 @@ namespace Microsoft.EntityFrameworkCore
     {
         public TEntity Find(params object[] keyValues) => null;
         public ValueTask<TEntity> FindAsync(params object[] keyValues) => default;
+        public ValueTask<TEntity> FindAsync(object[] keyValues, CancellationToken cancellationToken) => default;
 
         public Type ElementType => typeof(TEntity);
         public Expression Expression => null;
@@ -147,6 +148,66 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldPreserveCancellationTokenWhenReplacingAwaitedAsyncLookup()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users, int userId, CancellationToken cancellationToken)
+        {
+            var result = await {|LC023:users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users, int userId, CancellationToken cancellationToken)
+        {
+            var result = await users.FindAsync(new object[] { userId }, cancellationToken);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRewriteAsyncLookupWhenCallIsNotAwaited()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public Task<User> TestMethod(DbSet<User> users, int userId, CancellationToken cancellationToken)
+        {
+            return {|LC023:users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)|};
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
