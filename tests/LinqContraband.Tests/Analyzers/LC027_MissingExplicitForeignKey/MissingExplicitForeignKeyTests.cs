@@ -215,4 +215,103 @@ namespace TestApp
             CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
         }.RunAsync();
     }
+
+    [Fact]
+    public async Task Fixer_ShouldUsePrimaryKeyType()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer {|LC027:Customer|} { get; set; }
+    }
+
+    public class Customer { public Guid Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Guid CustomerId { get; set; }
+        public Customer Customer { get; set; }
+    }
+
+    public class Customer { public Guid Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        }.RunAsync();
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldPreserveOptionalNavigationWithNullableForeignKey()
+    {
+        var test = EFCoreMock + @"
+#nullable enable
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer? {|LC027:Customer|} { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+#nullable enable
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public int? CustomerId { get; set; }
+        public Customer? Customer { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        }.RunAsync();
+    }
+
 }

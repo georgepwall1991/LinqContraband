@@ -9,7 +9,6 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Editing;
 
 namespace LinqContraband.Analyzers.LC027_MissingExplicitForeignKey;
 
@@ -50,16 +49,18 @@ public class MissingExplicitForeignKeyFixer : CodeFixProvider
     private static async Task<Document> ApplyFixAsync(Document document, PropertyDeclarationSyntax navProperty,
         CancellationToken cancellationToken)
     {
-        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null) return document;
+
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         if (semanticModel == null) return document;
 
         var navSymbol = semanticModel.GetDeclaredSymbol(navProperty, cancellationToken) as IPropertySymbol;
         if (navSymbol == null) return document;
 
-        // Determine the FK type from the navigation entity's PK
         var navType = navSymbol.Type as INamedTypeSymbol;
         var fkTypeName = "int"; // default
+        var nullableForeignKey = false;
 
         if (navType != null)
         {
@@ -68,15 +69,22 @@ public class MissingExplicitForeignKeyFixer : CodeFixProvider
             {
                 var pkProp = navType.GetMembers(pkName).OfType<IPropertySymbol>().FirstOrDefault();
                 if (pkProp != null)
+                {
                     fkTypeName = pkProp.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                    nullableForeignKey = navSymbol.NullableAnnotation == NullableAnnotation.Annotated &&
+                                         pkProp.Type.IsValueType &&
+                                         pkProp.NullableAnnotation != NullableAnnotation.Annotated;
+                }
             }
         }
 
         var fkName = $"{navSymbol.Name}Id";
+        var fkType = SyntaxFactory.ParseTypeName(fkTypeName);
+        if (nullableForeignKey)
+            fkType = SyntaxFactory.NullableType(fkType);
 
-        // Create the FK property declaration
         var fkProperty = SyntaxFactory.PropertyDeclaration(
-                SyntaxFactory.ParseTypeName(fkTypeName),
+                fkType,
                 SyntaxFactory.Identifier(fkName))
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
             .AddAccessorListAccessors(
@@ -85,11 +93,28 @@ public class MissingExplicitForeignKeyFixer : CodeFixProvider
                 SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))
             .NormalizeWhitespace()
-            .WithLeadingTrivia(navProperty.GetLeadingTrivia())
+            .WithLeadingTrivia(GetIndentationTrivia(navProperty))
             .WithTrailingTrivia(SyntaxFactory.EndOfLine("\n"));
 
-        editor.InsertBefore(navProperty, fkProperty);
+        if (navProperty.Parent is not TypeDeclarationSyntax typeDeclaration)
+            return document;
 
-        return editor.GetChangedDocument();
+        var propertyIndex = typeDeclaration.Members.IndexOf(navProperty);
+        if (propertyIndex < 0)
+            return document;
+
+        var updatedType = typeDeclaration.WithMembers(typeDeclaration.Members.Insert(propertyIndex, fkProperty));
+        var updatedRoot = root.ReplaceNode(typeDeclaration, updatedType);
+        return document.WithSyntaxRoot(updatedRoot);
+    }
+
+    private static SyntaxTriviaList GetIndentationTrivia(PropertyDeclarationSyntax property)
+    {
+        var leadingTrivia = property.GetLeadingTrivia();
+        return SyntaxFactory.TriviaList(
+            leadingTrivia
+                .Reverse()
+                .TakeWhile(trivia => !trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+                .Reverse());
     }
 }
