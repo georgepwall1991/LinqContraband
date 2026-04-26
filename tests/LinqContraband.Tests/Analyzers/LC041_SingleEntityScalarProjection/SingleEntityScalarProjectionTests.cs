@@ -114,7 +114,7 @@ namespace TestApp
     {
         public void Run(DbSet<User> users)
         {
-            var user = {|LC041:users.FirstOrDefault(x => x.IsActive)|};
+            var user = {|LC041:users.First(x => x.IsActive)|};
             System.Console.WriteLine(user.Name);
         }
     }
@@ -134,7 +134,7 @@ namespace TestApp
     {
         public void Run(DbSet<User> users)
         {
-            var user = users.Where(x => x.IsActive).Select(x => x.Name).FirstOrDefault();
+            var user = users.Where(x => x.IsActive).Select(x => x.Name).First();
             System.Console.WriteLine(user);
         }
     }
@@ -161,7 +161,7 @@ namespace TestApp
     {
         public async Task Run(DbSet<User> users)
         {
-            var user = await {|LC041:users.SingleOrDefaultAsync(x => x.IsActive)|};
+            var user = await {|LC041:users.SingleAsync(x => x.IsActive)|};
             System.Console.WriteLine(user.Name.Length);
         }
     }
@@ -182,13 +182,66 @@ namespace TestApp
     {
         public async Task Run(DbSet<User> users)
         {
-            var user = await users.Where(x => x.IsActive).Select(x => x.Name).SingleOrDefaultAsync();
+            var user = await users.Where(x => x.IsActive).Select(x => x.Name).SingleAsync();
             System.Console.WriteLine(user.Length);
         }
     }
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task FirstOrDefault_ShouldNotOfferFix()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = {|LC041:users.FirstOrDefault(x => x.IsActive)|};
+            System.Console.WriteLine(user.Name);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_ShouldNotOfferFix()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public async Task Run(DbSet<User> users)
+        {
+            var user = await {|LC041:users.SingleOrDefaultAsync(x => x.IsActive)|};
+            System.Console.WriteLine(user.Name.Length);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
@@ -238,6 +291,61 @@ namespace TestApp
             System.Console.WriteLine(user.Name);
             System.Console.WriteLine(user.Email);
         }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task PropertyAssignment_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = users.First(x => x.IsActive);
+            user.Name = ""Updated"";
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EntityPassedToMethod_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = users.First(x => x.IsActive);
+            Touch(user);
+            System.Console.WriteLine(user.Name);
+        }
+
+        private static void Touch(User user) { }
     }
 }";
 

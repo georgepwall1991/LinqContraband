@@ -59,6 +59,9 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
             if (!ReferenceEquals(propertyReference.Instance?.UnwrapConversions(), localReference))
                 return false;
 
+            if (!IsReadOnlyPropertyReference(propertyReference))
+                return false;
+
             if (!IsScalarLikeType(propertyReference.Property.Type))
                 return false;
 
@@ -70,6 +73,17 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
 
         property = properties.First();
         return true;
+    }
+
+    private static bool IsReadOnlyPropertyReference(IPropertyReferenceOperation propertyReference)
+    {
+        return propertyReference.Parent switch
+        {
+            ISimpleAssignmentOperation assignment when ReferenceEquals(assignment.Target, propertyReference) => false,
+            ICompoundAssignmentOperation compoundAssignment when ReferenceEquals(compoundAssignment.Target, propertyReference) => false,
+            IIncrementOrDecrementOperation incrementOrDecrement when ReferenceEquals(incrementOrDecrement.Target, propertyReference) => false,
+            _ => true,
+        };
     }
 
     private static bool IsScalarLikeType(ITypeSymbol? type)

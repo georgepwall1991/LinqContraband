@@ -48,6 +48,9 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
         if (!TryGetFixContext(invocation, semanticModel, out var fixContext))
             return;
 
+        if (!IsSafeFixMaterializer(invocation))
+            return;
+
         if (!fixContext.IsVarDeclaration)
             return;
 
@@ -57,6 +60,15 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
                 c => ApplyFixAsync(context.Document, invocation, fixContext, c),
                 "ProjectConsumedScalar"),
             diagnostic);
+    }
+
+    private static bool IsSafeFixMaterializer(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return false;
+
+        var methodName = memberAccess.Name.Identifier.Text;
+        return methodName is "First" or "FirstAsync" or "Single" or "SingleAsync";
     }
 
     private static async Task<Document> ApplyFixAsync(
