@@ -1,5 +1,5 @@
-using System.Collections.Immutable;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -161,53 +161,10 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
         int position,
         out IOperation value)
     {
-        value = null!;
-        IOperation? latestValue = null;
-        var latestPosition = -1;
-        var assignmentCount = 0;
-
-        foreach (var operation in EnumerateOperations(executableRoot))
-        {
-            if (operation.Syntax.SpanStart >= position)
-                continue;
-
-            switch (operation)
-            {
-                case IVariableDeclaratorOperation declarator
-                    when SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
-                         declarator.Initializer != null &&
-                         declarator.Syntax.SpanStart > latestPosition:
-                    latestValue = declarator.Initializer.Value;
-                    latestPosition = declarator.Syntax.SpanStart;
-                    assignmentCount++;
-                    break;
-
-                case ISimpleAssignmentOperation assignment
-                    when assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
-                         SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
-                         assignment.Syntax.SpanStart > latestPosition:
-                    latestValue = assignment.Value;
-                    latestPosition = assignment.Syntax.SpanStart;
-                    assignmentCount++;
-                    break;
-            }
-        }
-
-        if (latestValue == null || assignmentCount != 1)
-            return false;
-
-        value = latestValue.UnwrapConversions();
-        return true;
-    }
-
-    private static IEnumerable<IOperation> EnumerateOperations(IOperation root)
-    {
-        yield return root;
-
-        foreach (var child in root.ChildOperations)
-        {
-            foreach (var descendant in EnumerateOperations(child))
-                yield return descendant;
-        }
+        return LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+            executableRoot,
+            local,
+            position,
+            out value);
     }
 }

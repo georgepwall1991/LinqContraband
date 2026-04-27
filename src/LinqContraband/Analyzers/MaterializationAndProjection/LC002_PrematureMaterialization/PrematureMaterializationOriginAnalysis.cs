@@ -143,42 +143,10 @@ public sealed partial class PrematureMaterializationAnalyzer
         value = null!;
         if (!visitedLocals.Add(local)) return false;
 
-        IOperation? latestValue = null;
-        var latestPosition = -1;
-        var assignmentCount = 0;
-
-        foreach (var descendant in executableRoot.Descendants())
-        {
-            if (descendant.Syntax.SpanStart >= position) continue;
-
-            switch (descendant)
-            {
-                case IVariableDeclaratorOperation declarator when
-                    SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
-                    declarator.Initializer != null &&
-                    declarator.Syntax.SpanStart > latestPosition:
-                    latestValue = declarator.Initializer.Value;
-                    latestPosition = declarator.Syntax.SpanStart;
-                    assignmentCount++;
-                    break;
-
-                case ISimpleAssignmentOperation assignment when
-                    assignment.Target is ILocalReferenceOperation targetLocal &&
-                    SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
-                    assignment.Syntax.SpanStart > latestPosition:
-                    latestValue = assignment.Value;
-                    latestPosition = assignment.Syntax.SpanStart;
-                    assignmentCount++;
-                    break;
-            }
-        }
-
-        if (latestValue == null || assignmentCount != 1)
-        {
-            return false;
-        }
-
-        value = latestValue.UnwrapConversions();
-        return true;
+        return LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+            executableRoot,
+            local,
+            position,
+            out value);
     }
 }
