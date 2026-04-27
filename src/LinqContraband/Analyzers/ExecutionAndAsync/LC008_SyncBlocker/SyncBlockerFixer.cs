@@ -38,6 +38,8 @@ public class SyncBlockerFixer : CodeFixProvider
         var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
         if (invocation == null) return;
 
+        if (IsInvalidAwaitContext(invocation)) return;
+
         // We need the method name to find the replacement
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
@@ -50,6 +52,45 @@ public class SyncBlockerFixer : CodeFixProvider
                         "UseAsyncMethod"),
                     diagnostic);
         }
+    }
+
+    private static bool IsInvalidAwaitContext(SyntaxNode invocation)
+    {
+        for (SyntaxNode? node = invocation; node != null; node = node.Parent)
+        {
+            var parent = node.Parent;
+            if (parent == null) continue;
+
+            switch (parent)
+            {
+                case FromClauseSyntax fromClause when fromClause.Expression == node:
+                    // 'await' is only legal in the FIRST from clause of a query
+                    // expression. Subsequent (continuation) from clauses appear
+                    // as children of QueryBodySyntax and do not allow await.
+                    return fromClause.Parent is not QueryExpressionSyntax;
+
+                case JoinClauseSyntax joinClause when joinClause.InExpression == node:
+                    // 'await' is allowed in the collection expression of a join.
+                    return false;
+
+                case QueryClauseSyntax:
+                case SelectOrGroupClauseSyntax:
+                case OrderingSyntax:
+                case QueryContinuationSyntax:
+                    return true;
+            }
+
+            if (parent is AnonymousFunctionExpressionSyntax anonymousFunction)
+                return !anonymousFunction.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword);
+
+            if (parent is LocalFunctionStatementSyntax localFunction)
+                return !localFunction.Modifiers.Any(SyntaxKind.AsyncKeyword);
+
+            if (parent is BaseMethodDeclarationSyntax method)
+                return !method.Modifiers.Any(SyntaxKind.AsyncKeyword);
+        }
+
+        return false;
     }
 
     private async Task<Document> ApplyFixAsync(Document document, InvocationExpressionSyntax invocation,

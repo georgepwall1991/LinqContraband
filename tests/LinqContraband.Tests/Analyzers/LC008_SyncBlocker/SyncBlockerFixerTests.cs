@@ -138,4 +138,135 @@ class Program
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task FixCrime_InsideLetClause_DiagnosticReportedButNoFixApplied()
+    {
+        // 'await' is illegal inside a 'let' clause of a query expression
+        // (CS1995). The analyzer should still flag the sync call, but the
+        // automated code fix must not transform it.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var q = from u in db.Users
+                let posts = db.Users.Where(x => x.Id == u.Id).ToList()
+                select new { u, posts };
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(15, 29, 15, 71)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_InsideWhereClause_DiagnosticReportedButNoFixApplied()
+    {
+        // Sanity-check another disallowed clause position. Awaiting inside a
+        // where clause expression is also illegal in query syntax.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var q = from u in db.Users
+                where db.Users.Where(x => x.Id == u.Id).ToList().Count > 0
+                select u;
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(15, 23, 15, 65)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_InsideInitialFromClause_FixIsApplied()
+    {
+        // 'await' IS legal inside the collection expression of the initial
+        // 'from' clause, so the fixer should still rewrite the call there.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var q = from u in db.Users.ToList()
+                select u;
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var q = from u in await db.Users.ToListAsync() select u;
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(14, 27, 14, 44)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_InsideNonAsyncLambda_DiagnosticReportedButNoFixApplied()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        Func<List<User>> getUsers = () => db.Users.ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(14, 43, 14, 60)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
 }
