@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.21] - 2026-04-27
+
+### Changed
+- Suppressed `LC008` code fixes when adding `await` would produce invalid C# in query clauses or non-async scopes
+- Kept `LC008` fixes enabled for legal initial `from` collection expressions while preserving diagnostics in unsupported contexts
+- Added fixer regression coverage for query `let`, query `where`, initial `from`, and non-async lambda contexts
+
 ## [5.2.20] - 2026-04-27
 
 ### Changed
