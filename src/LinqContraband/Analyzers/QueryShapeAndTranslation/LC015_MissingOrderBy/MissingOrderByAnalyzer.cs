@@ -102,7 +102,7 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         LocalValueCache localValueCache,
         CancellationToken cancellationToken)
     {
-        var visitedLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        var visitedLocalReferences = new HashSet<LocalReferenceKey>(LocalReferenceKeyComparer.Instance);
         var current = operation;
         while (current != null)
         {
@@ -130,7 +130,7 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
                     continue;
 
                 case ILocalReferenceOperation localReference:
-                    if (!visitedLocals.Add(localReference.Local))
+                    if (!visitedLocalReferences.Add(new LocalReferenceKey(localReference.Local, localReference.Syntax.SpanStart)))
                         return false;
 
                     if (localReference.Type.IsDbSet())
@@ -202,6 +202,9 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                if (write.ValueStart <= referenceStart && referenceStart < write.ValueEnd)
+                    continue;
+
                 if (write.SpanStart >= referenceStart || write.SpanStart <= bestWriteStart)
                     continue;
 
@@ -245,14 +248,22 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
                         if (declarator.Initializer == null)
                             continue;
 
-                        AddWrite(writes, declarator.Symbol, declarator.Syntax.SpanStart, declarator.Initializer.Value);
+                        AddWrite(
+                            writes,
+                            declarator.Symbol,
+                            declarator.Syntax.SpanStart,
+                            declarator.Initializer.Value);
                     }
                 }
 
                 if (descendant is ISimpleAssignmentOperation assignment &&
                     assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal)
                 {
-                    AddWrite(writes, targetLocal.Local, assignment.Syntax.SpanStart, assignment.Value);
+                    AddWrite(
+                        writes,
+                        targetLocal.Local,
+                        assignment.Syntax.SpanStart,
+                        assignment.Value);
                 }
             }
 
@@ -286,6 +297,39 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         public int SpanStart { get; }
 
         public IOperation Value { get; }
+
+        public int ValueStart => Value.Syntax.SpanStart;
+
+        public int ValueEnd => Value.Syntax.Span.End;
+    }
+
+    private readonly struct LocalReferenceKey
+    {
+        public LocalReferenceKey(ILocalSymbol local, int spanStart)
+        {
+            Local = local;
+            SpanStart = spanStart;
+        }
+
+        public ILocalSymbol Local { get; }
+
+        public int SpanStart { get; }
+    }
+
+    private sealed class LocalReferenceKeyComparer : IEqualityComparer<LocalReferenceKey>
+    {
+        public static readonly LocalReferenceKeyComparer Instance = new();
+
+        public bool Equals(LocalReferenceKey x, LocalReferenceKey y)
+        {
+            return x.SpanStart == y.SpanStart &&
+                   SymbolEqualityComparer.Default.Equals(x.Local, y.Local);
+        }
+
+        public int GetHashCode(LocalReferenceKey obj)
+        {
+            return SymbolEqualityComparer.Default.GetHashCode(obj.Local) ^ obj.SpanStart;
+        }
     }
 
     private static Location GetMethodLocation(IInvocationOperation invocation)
