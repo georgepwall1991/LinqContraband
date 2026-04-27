@@ -36,6 +36,18 @@ namespace Microsoft.EntityFrameworkCore
 }
 ";
 
+    private const string NonEfQueryableMock = @"
+using System.Linq;
+
+namespace TestApp
+{
+    public static class QueryableFilterExtensions
+    {
+        public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source) => source;
+    }
+}
+";
+
     [Fact]
     public async Task IgnoreQueryFilters_OnIQueryable_ShouldTriggerLC021()
     {
@@ -105,6 +117,46 @@ namespace LinqContraband.Test
         {
             var values = new[] { 1, 2, 3 };
             var result = values.IgnoreQueryFilters();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NonEfExtensionOnQueryable_ShouldNotTrigger()
+    {
+        var test = @"using System.Linq;" + NonEfQueryableMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = TestApp.QueryableFilterExtensions.IgnoreQueryFilters(query).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_WithLocalPragmaSuppression_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+#pragma warning disable LC021
+            var result = query.IgnoreQueryFilters().ToList();
+#pragma warning restore LC021
         }
     }
 }";
