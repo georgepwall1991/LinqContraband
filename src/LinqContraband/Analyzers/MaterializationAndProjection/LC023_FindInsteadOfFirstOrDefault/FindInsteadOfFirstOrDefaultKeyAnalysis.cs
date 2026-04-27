@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -10,9 +11,23 @@ namespace LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 
 internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
 {
+    private const int AnalyzerFullScanSyntaxTreeLimit = 64;
+
     public static PrimaryKeyCache CreateCache(Compilation compilation)
     {
-        return new PrimaryKeyCache(compilation);
+        return new PrimaryKeyCache(
+            compilation,
+            allowFullScan: true,
+            useConventionFallbackWhenConfigurationUnknown: true);
+    }
+
+    public static PrimaryKeyCache CreateAnalyzerCache(Compilation compilation)
+    {
+        var allowFullScan = compilation.SyntaxTrees.Take(AnalyzerFullScanSyntaxTreeLimit + 1).Count() <= AnalyzerFullScanSyntaxTreeLimit;
+        return new PrimaryKeyCache(
+            compilation,
+            allowFullScan,
+            useConventionFallbackWhenConfigurationUnknown: allowFullScan);
     }
 
     public static string? TryFindSafePrimaryKey(
@@ -27,50 +42,60 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
     {
         private readonly object syncRoot = new();
         private readonly Compilation compilation;
-        private Dictionary<ITypeSymbol, ConfiguredPrimaryKey>? configuredPrimaryKeys;
+        private readonly bool allowFullScan;
+        private readonly bool useConventionFallbackWhenConfigurationUnknown;
+        private readonly ConcurrentDictionary<ITypeSymbol, ConfiguredPrimaryKey> configuredPrimaryKeys =
+            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<SyntaxTree, byte> scannedTrees = new();
+        private bool fullyScanned;
 
-        internal PrimaryKeyCache(Compilation compilation)
+        internal PrimaryKeyCache(
+            Compilation compilation,
+            bool allowFullScan,
+            bool useConventionFallbackWhenConfigurationUnknown)
         {
             this.compilation = compilation;
+            this.allowFullScan = allowFullScan;
+            this.useConventionFallbackWhenConfigurationUnknown = useConventionFallbackWhenConfigurationUnknown;
         }
 
         public string? TryFindSafePrimaryKey(ITypeSymbol entityType, CancellationToken cancellationToken)
         {
-            var configuredKey = GetConfiguredPrimaryKeys(cancellationToken).TryGetValue(entityType, out var primaryKey)
+            var configuredKey = TryGetConfiguredPrimaryKey(entityType, cancellationToken, out var primaryKey)
                 ? primaryKey
                 : ConfiguredPrimaryKey.NotConfigured;
 
             if (configuredKey.IsConfigured)
                 return configuredKey.PropertyName;
 
+            if (!useConventionFallbackWhenConfigurationUnknown)
+                return null;
+
             return entityType.TryFindPrimaryKey();
         }
 
-        private Dictionary<ITypeSymbol, ConfiguredPrimaryKey> GetConfiguredPrimaryKeys(CancellationToken cancellationToken)
+        public void RegisterConfiguredPrimaryKey(IInvocationOperation invocation)
         {
-            if (configuredPrimaryKeys != null)
-                return configuredPrimaryKeys;
-
-            lock (syncRoot)
+            if (invocation.TargetMethod.Name != "HasKey" ||
+                !TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType))
             {
-                configuredPrimaryKeys ??= BuildConfiguredPrimaryKeys(compilation, cancellationToken);
-                return configuredPrimaryKeys;
+                return;
             }
+
+            configuredPrimaryKeys.TryAdd(
+                entityType,
+                AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
         }
-    }
 
-    private static Dictionary<ITypeSymbol, ConfiguredPrimaryKey> BuildConfiguredPrimaryKeys(
-        Compilation compilation,
-        CancellationToken cancellationToken)
-    {
-        var configuredPrimaryKeys = new Dictionary<ITypeSymbol, ConfiguredPrimaryKey>(SymbolEqualityComparer.Default);
-
-        foreach (var tree in compilation.SyntaxTrees)
+        public void EnsureSyntaxTreeScanned(
+            SyntaxTree syntaxTree,
+            SemanticModel semanticModel,
+            CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var root = tree.GetRoot(cancellationToken);
-            var semanticModel = compilation.GetSemanticModel(tree);
+            if (!scannedTrees.TryAdd(syntaxTree, 0))
+                return;
 
+            var root = syntaxTree.GetRoot(cancellationToken);
             foreach (var invocationSyntax in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -81,21 +106,53 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
                     continue;
                 }
 
-                if (semanticModel.GetOperation(invocationSyntax, cancellationToken) is not IInvocationOperation invocation ||
-                    invocation.TargetMethod.Name != "HasKey" ||
-                    !TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType) ||
-                    configuredPrimaryKeys.ContainsKey(entityType))
-                {
-                    continue;
-                }
-
-                configuredPrimaryKeys.Add(
-                    entityType,
-                    AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
+                if (semanticModel.GetOperation(invocationSyntax, cancellationToken) is IInvocationOperation invocation)
+                    RegisterConfiguredPrimaryKey(invocation);
             }
         }
 
-        return configuredPrimaryKeys;
+        private bool TryGetConfiguredPrimaryKey(
+            ITypeSymbol entityType,
+            CancellationToken cancellationToken,
+            out ConfiguredPrimaryKey primaryKey)
+        {
+            if (configuredPrimaryKeys.TryGetValue(entityType, out primaryKey))
+                return true;
+
+            if (!allowFullScan)
+                return false;
+
+            EnsureFullyScanned(cancellationToken);
+            return configuredPrimaryKeys.TryGetValue(entityType, out primaryKey);
+        }
+
+        private void EnsureFullyScanned(CancellationToken cancellationToken)
+        {
+            if (fullyScanned)
+                return;
+
+            lock (syncRoot)
+            {
+                if (fullyScanned)
+                    return;
+
+                BuildConfiguredPrimaryKeys(compilation, this, cancellationToken);
+                fullyScanned = true;
+            }
+        }
+    }
+
+    private static void BuildConfiguredPrimaryKeys(
+        Compilation compilation,
+        PrimaryKeyCache primaryKeyCache,
+        CancellationToken cancellationToken)
+    {
+        foreach (var tree in compilation.SyntaxTrees)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var semanticModel = compilation.GetSemanticModel(tree);
+            primaryKeyCache.EnsureSyntaxTreeScanned(tree, semanticModel, cancellationToken);
+        }
     }
 
     private static bool TryGetEntityTypeBuilderEntity(ITypeSymbol? receiverType, out ITypeSymbol entityType)

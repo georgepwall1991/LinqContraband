@@ -12,7 +12,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         private readonly object syncRoot = new();
         private readonly Compilation compilation;
         private readonly Dictionary<string, INamedTypeSymbol?> typeLookupCache = new(StringComparer.Ordinal);
-        private List<INamedTypeSymbol>? allTypes;
+        private TypeIndex? typeIndex;
         private ConfigurationScan? configurationScan;
 
         public CompilationModel(Compilation compilation)
@@ -24,14 +24,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
 
         public IReadOnlyList<INamedTypeSymbol> GetAllTypes(CancellationToken cancellationToken)
         {
-            if (allTypes != null)
-                return allTypes;
-
-            lock (syncRoot)
-            {
-                allTypes ??= BuildAllTypes(cancellationToken);
-                return allTypes;
-            }
+            return GetTypeIndex(cancellationToken).AllTypes;
         }
 
         public INamedTypeSymbol? FindTypeByName(string typeName, CancellationToken cancellationToken)
@@ -62,11 +55,42 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             }
         }
 
-        private List<INamedTypeSymbol> BuildAllTypes(CancellationToken cancellationToken)
+        private TypeIndex GetTypeIndex(CancellationToken cancellationToken)
+        {
+            if (typeIndex != null)
+                return typeIndex;
+
+            lock (syncRoot)
+            {
+                typeIndex ??= BuildTypeIndex(cancellationToken);
+                return typeIndex;
+            }
+        }
+
+        private TypeIndex BuildTypeIndex(CancellationToken cancellationToken)
         {
             var result = new List<INamedTypeSymbol>();
             AddNamespaceTypes(compilation.Assembly.GlobalNamespace, result, cancellationToken);
-            return result;
+            var lookup = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+
+            foreach (var type in result)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                AddLookupName(lookup, type.Name, type);
+
+                var fullName = type.ToDisplayString();
+                AddLookupName(lookup, fullName, type);
+
+                for (var index = fullName.IndexOf(".", StringComparison.Ordinal);
+                     index >= 0;
+                     index = fullName.IndexOf(".", index + 1, StringComparison.Ordinal))
+                {
+                    if (index + 1 < fullName.Length)
+                        AddLookupName(lookup, fullName.Substring(index + 1), type);
+                }
+            }
+
+            return new TypeIndex(result, lookup);
         }
 
         private INamedTypeSymbol? FindTypeByNameCore(string typeName, CancellationToken cancellationToken)
@@ -75,33 +99,27 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             if (type != null)
                 return type;
 
-            var simpleName = typeName.Contains(".", StringComparison.Ordinal)
-                ? typeName.Substring(typeName.LastIndexOf(".", StringComparison.Ordinal) + 1)
-                : typeName;
+            return GetTypeIndex(cancellationToken).TryFind(typeName, out var indexedType)
+                ? indexedType
+                : null;
+        }
+    }
 
-            foreach (var candidate in GetAllTypes(cancellationToken))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+    private sealed class TypeIndex
+    {
+        private readonly Dictionary<string, INamedTypeSymbol> lookup;
 
-                if (candidate.Name != simpleName)
-                    continue;
+        public TypeIndex(List<INamedTypeSymbol> allTypes, Dictionary<string, INamedTypeSymbol> lookup)
+        {
+            AllTypes = allTypes;
+            this.lookup = lookup;
+        }
 
-                if (!typeName.Contains(".", StringComparison.Ordinal))
-                    return candidate;
+        public List<INamedTypeSymbol> AllTypes { get; }
 
-                var fullName = candidate.ToDisplayString();
-                if (fullName.Equals(typeName, StringComparison.Ordinal))
-                    return candidate;
-
-                if (fullName.EndsWith(typeName, StringComparison.Ordinal))
-                {
-                    var prefixLength = fullName.Length - typeName.Length;
-                    if (prefixLength == 0 || fullName[prefixLength - 1] == '.')
-                        return candidate;
-                }
-            }
-
-            return null;
+        public bool TryFind(string typeName, out INamedTypeSymbol type)
+        {
+            return lookup.TryGetValue(typeName, out type!);
         }
     }
 
@@ -144,5 +162,14 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         {
             AddTypeAndNestedTypes(nested, result, cancellationToken);
         }
+    }
+
+    private static void AddLookupName(
+        Dictionary<string, INamedTypeSymbol> lookup,
+        string name,
+        INamedTypeSymbol type)
+    {
+        if (name.Length > 0 && !lookup.ContainsKey(name))
+            lookup.Add(name, type);
     }
 }

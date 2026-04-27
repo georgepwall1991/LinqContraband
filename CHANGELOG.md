@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.18] - 2026-04-27
+
+### Changed
+- Limited `LC023` Fluent `HasKey` discovery to analyzer-observed invocations and the current syntax tree instead of scanning every syntax tree in the compilation
+- Indexed `LC011` and `LC027` model type lookups so repeated Fluent API/configuration resolution no longer walks every source type for each lookup
+- Added multi-syntax-tree performance coverage for `LC023`
+
 ## [5.2.17] - 2026-04-27
 
 ### Changed

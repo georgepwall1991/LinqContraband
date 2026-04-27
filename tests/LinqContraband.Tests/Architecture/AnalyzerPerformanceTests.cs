@@ -27,6 +27,17 @@ public class AnalyzerPerformanceTests
     }
 
     [Fact]
+    public async Task LC023_PrimaryKeyLookup_CompletesOnManySyntaxTrees()
+    {
+        var compilation = CreateCompilation(GenerateLc023MultiTreeStressSources());
+
+        await GetDiagnosticsWithinAsync(
+            new FindInsteadOfFirstOrDefaultAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+    }
+
+    [Fact]
     public async Task SchemaAnalyzers_ConfigurationScans_CompleteOnLargeCompilation()
     {
         var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateSchemaStressSource());
@@ -142,6 +153,74 @@ public class AnalyzerPerformanceTests
                 }
             }
             """);
+
+        return source.ToString();
+    }
+
+    private static string[] GenerateLc023MultiTreeStressSources()
+    {
+        const int entityCount = 50;
+        const int queryFileCount = 160;
+        var sources = new List<string> { GenerateEfCoreMock(), GenerateLc023ModelSource(entityCount) };
+
+        for (var i = 0; i < queryFileCount; i++)
+        {
+            var entityIndex = i % entityCount;
+            sources.Add($$"""
+                using System.Linq;
+                using Microsoft.EntityFrameworkCore;
+
+                namespace PerfApp;
+
+                public static class Noise{{i}}
+                {
+                    public static void HasKey(int value) { }
+                    public static void Run()
+                    {
+                        HasKey({{i}});
+                    }
+                }
+
+                public class Query{{i}}
+                {
+                    public void Run(int id)
+                    {
+                        var set = new DbSet<Entity{{entityIndex}}>();
+                        var query = set.FirstOrDefault(e => e.ExternalId == id);
+                    }
+                }
+                """);
+        }
+
+        return sources.ToArray();
+    }
+
+    private static string GenerateLc023ModelSource(int entityCount)
+    {
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                {
+            """);
+
+        for (var i = 0; i < entityCount; i++)
+            source.AppendLine($"        modelBuilder.Entity<Entity{i}>().HasKey(e => e.ExternalId);");
+
+        source.AppendLine(
+            """
+                }
+            }
+            """);
+
+        for (var i = 0; i < entityCount; i++)
+            source.AppendLine($"public class Entity{i} {{ public int Id {{ get; set; }} public int ExternalId {{ get; set; }} }}");
 
         return source.ToString();
     }
