@@ -6,7 +6,7 @@ Catch query work that moves from the provider to LINQ-to-Objects only because an
 ## What LC002 Reports
 
 ### 1. Premature query continuation
-LC002 reports approved `Enumerable` operators that run after a materializer sourced from `IQueryable`.
+LC002 reports approved `Enumerable` operators that run in the same fluent chain after a materializer or client boundary sourced from `IQueryable`.
 Lambda-based continuations must also pass a conservative provider-safety check before the rule reports.
 
 ```csharp
@@ -15,27 +15,17 @@ var count = db.Users.ToArray().Count();
 var ordered = db.Users.AsEnumerable().OrderBy(u => u.Name);
 ```
 
-The rule also follows single-assignment local hops and collection-constructor materialization when the `IQueryable` origin is still provable.
-
-```csharp
-var materialized = db.Users.ToList();
-var adults = materialized.Where(u => u.Age > 18);
-
-var set = new HashSet<User>(db.Users);
-var count = set.Count();
-```
-
 ### 2. Redundant materialization
-LC002 reports a second materializer when the sequence was already materialized from `IQueryable`.
+LC002 reports a second direct collection materializer when the sequence was already materialized in the same chain from `IQueryable`.
 
 ```csharp
-var users = db.Users.AsEnumerable().ToList();
 var usersAgain = db.Users.ToArray().ToList();
 ```
 
 ## What LC002 Intentionally Ignores
 - Ambiguous provenance such as multiple local assignments or control-flow-dependent sources
-- Field/property provenance and other shapes where the analyzer cannot prove the query origin safely
+- Already materialized locals, aliases, constructors, arrays, DTO lists, fields, properties, and other post-processing shapes where in-memory work may be intentional
+- `AsEnumerable()` by itself when it is used only as an explicit client boundary
 - Overloads or lambdas that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors, comparer-based overloads, delegated predicates, local/source methods, `Regex`, or `StringComparison` string calls
 - Pure in-memory sequences that never came from `IQueryable`
 

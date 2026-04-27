@@ -183,7 +183,7 @@ class Program
     }
 
     [Fact]
-    public async Task TestCrime_LocalMethodInSelect_ShouldTriggerLC001()
+    public async Task TestInnocent_LocalMethodInTopLevelSelect_ShouldNotTrigger()
     {
         var test = Usings + @"
 class Program
@@ -198,11 +198,27 @@ class Program
 }
 " + MockNamespace;
 
-        var expected = VerifyCS.Diagnostic("LC001")
-            .WithSpan(13, 42, 13, 60)
-            .WithArguments("FormatName");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    [Fact]
+    public async Task TestInnocent_CapturedOnlyHelperInWhere_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(string status)
+    {
+        var db = new DbContext();
+        var normalized = Normalize(status);
+        var query = db.Users.Where(u => u.Name == Normalize(status));
+    }
+
+    string Normalize(string value) => value.Trim();
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

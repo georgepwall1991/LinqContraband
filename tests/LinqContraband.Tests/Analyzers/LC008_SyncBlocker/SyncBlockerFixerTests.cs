@@ -140,11 +140,10 @@ class Program
     }
 
     [Fact]
-    public async Task FixCrime_InsideLetClause_DiagnosticReportedButNoFixApplied()
+    public async Task FixCrime_InsideLetClause_QuerySubqueryDoesNotReport()
     {
-        // 'await' is illegal inside a 'let' clause of a query expression
-        // (CS1995). The analyzer should still flag the sync call, but the
-        // automated code fix must not transform it.
+        // The sync-looking call is part of the query expression and translates
+        // as a SQL subquery instead of blocking the async method directly.
         var test = Usings + @"
 class Program
 {
@@ -164,18 +163,13 @@ class Program
             FixedCode = test
         };
 
-        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
-            .WithSpan(15, 29, 15, 71)
-            .WithArguments("ToList", "ToListAsync"));
-
         await testObj.RunAsync();
     }
 
     [Fact]
-    public async Task FixCrime_InsideWhereClause_DiagnosticReportedButNoFixApplied()
+    public async Task FixCrime_InsideWhereClause_QuerySubqueryDoesNotReport()
     {
-        // Sanity-check another disallowed clause position. Awaiting inside a
-        // where clause expression is also illegal in query syntax.
+        // Sanity-check another translated query expression clause position.
         var test = Usings + @"
 class Program
 {
@@ -194,10 +188,6 @@ class Program
             TestCode = test,
             FixedCode = test
         };
-
-        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
-            .WithSpan(15, 23, 15, 65)
-            .WithArguments("ToList", "ToListAsync"));
 
         await testObj.RunAsync();
     }

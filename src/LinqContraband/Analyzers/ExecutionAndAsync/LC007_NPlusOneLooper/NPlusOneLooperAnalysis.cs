@@ -220,6 +220,9 @@ internal static class NPlusOneLooperAnalysis
             switch (current)
             {
                 case IInvocationOperation invocation:
+                    if (IsClientBoundaryInvocation(invocation))
+                        return QueryProvenance.None;
+
                     if (IsDbContextSetInvocation(invocation))
                         return QueryProvenance.Proven;
 
@@ -389,6 +392,13 @@ internal static class NPlusOneLooperAnalysis
     {
         return invocation.TargetMethod.Name == "Set" &&
                invocation.TargetMethod.ContainingType.IsDbContext();
+    }
+
+    private static bool IsClientBoundaryInvocation(IInvocationOperation invocation)
+    {
+        return invocation.TargetMethod.Name == "AsEnumerable" ||
+               ImmediateQueryExecutionMethods.Contains(invocation.TargetMethod.Name) ||
+               SetBasedExecutorMethods.Contains(invocation.TargetMethod.Name);
     }
 
     private static bool IsNavigationQueryInvocation(IInvocationOperation invocation)

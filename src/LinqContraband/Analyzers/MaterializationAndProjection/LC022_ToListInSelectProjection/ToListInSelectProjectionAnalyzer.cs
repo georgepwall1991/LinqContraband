@@ -9,27 +9,27 @@ namespace LinqContraband.Analyzers.LC022_ToListInSelectProjection;
 
 /// <summary>
 /// Detects ToList/ToArray/ToDictionary/ToHashSet calls inside Select projections on IQueryable,
-/// which forces client-side evaluation or throws in EF Core 3+. Diagnostic ID: LC022
+/// which can be expensive or provider-version sensitive. Diagnostic ID: LC022
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ToListInSelectProjectionAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC022";
     private const string Category = "Performance";
-    private static readonly LocalizableString Title = "ToList/ToArray Inside Select Projection";
+    private static readonly LocalizableString Title = "Nested collection materialization inside projection";
 
     private static readonly LocalizableString MessageFormat =
-        "'{0}' inside a Select projection forces client-side evaluation. Remove it — EF Core handles collection projection natively.";
+        "'{0}' inside a Select projection can be expensive. Consider projecting directly or using split queries.";
 
     private static readonly LocalizableString Description =
-        "Calling collection materializers (ToList, ToArray, etc.) inside a Select projection on IQueryable forces client-side evaluation or throws. EF Core handles collection projection natively.";
+        "Calling collection materializers (ToList, ToArray, etc.) inside a Select projection on IQueryable can be expensive or provider-version sensitive.";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         Title,
         MessageFormat,
         Category,
-        DiagnosticSeverity.Warning,
+        DiagnosticSeverity.Info,
         true,
         Description);
 

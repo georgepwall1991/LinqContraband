@@ -31,6 +31,28 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Description =
         "Methods invoked inside an IQueryable expression must be translatable to SQL.";
 
+    private static readonly ImmutableHashSet<string> TranslationCriticalQueryMethods = ImmutableHashSet.Create(
+        "Where",
+        "OrderBy",
+        "OrderByDescending",
+        "ThenBy",
+        "ThenByDescending",
+        "Join",
+        "GroupJoin",
+        "GroupBy",
+        "Any",
+        "All",
+        "Count",
+        "LongCount",
+        "First",
+        "FirstOrDefault",
+        "Single",
+        "SingleOrDefault",
+        "Last",
+        "LastOrDefault",
+        "SkipWhile",
+        "TakeWhile");
+
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         Title,
@@ -78,13 +100,13 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
         // Constraint 1: Inside a Lambda
         var parent = invocation.Parent;
-        IOperation? lambda = null;
+        IAnonymousFunctionOperation? lambda = null;
 
         while (parent != null)
         {
-            if (parent.Kind == OperationKind.AnonymousFunction)
+            if (parent is IAnonymousFunctionOperation anonymousFunction)
             {
-                lambda = parent;
+                lambda = anonymousFunction;
                 break;
             }
 
@@ -92,6 +114,7 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         }
 
         if (lambda == null) return;
+        if (!InvocationDependsOnLambdaParameter(invocation, lambda)) return;
 
         // Constraint 2: Lambda is argument to IQueryable extension method
         var current = lambda.Parent;
@@ -106,6 +129,9 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
                 if (type.IsIQueryable())
                 {
+                    if (!TranslationCriticalQueryMethods.Contains(queryInvocation.TargetMethod.Name))
+                        return;
+
                     context.ReportDiagnostic(
                         Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
                     return;
@@ -114,6 +140,19 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
             current = current.Parent;
         }
+    }
+
+    private static bool InvocationDependsOnLambdaParameter(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation lambda)
+    {
+        foreach (var parameter in lambda.Symbol.Parameters)
+        {
+            if (invocation.ReferencesParameter(parameter))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsTrustedTranslatableMethod(

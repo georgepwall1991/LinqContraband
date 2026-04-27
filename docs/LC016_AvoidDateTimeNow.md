@@ -22,6 +22,7 @@ var activeUsers = db.Users.Where(u => u.ExpiryDate > now).ToList();
 ```
 
 The fixer chooses a unique local name when `now` is already used by an enclosing method, local function, or lambda parameter.
+When the same clock property appears multiple times in one query lambda, LC016 reports it once and the fixer replaces each identical access in that lambda.
 
 ## Analyzer Logic
 

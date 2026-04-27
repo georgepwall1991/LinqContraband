@@ -49,7 +49,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 4 | 3 | 4 | 4 | Low | Good manual-only rule; would benefit from more filtered Include and non-EF Include edge cases. |
 | LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Hardened around Queryable expression-lambda proof, direct/nested query-parameter-dependent receivers, captured local/constant negatives, and semantically bound fixer argument removal. |
 | LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 3 | 2 | 2 | 2 | 3 | 4 | High | Intentional bypasses are common enough that the rule needs suppression/allow-list guidance and stronger negative tests. |
-| LC022 | ToList/ToArray inside Select projection | Materialization & Projection | Warning | 3 | 3 | 2 | 3 | 3 | 4 | High | Important performance smell; fixer behavior needs dedicated tests or a clearer supported-boundary statement. |
+| LC022 | Nested collection materialization inside projection | Materialization & Projection | Info | 4 | 4 | 3 | 4 | 4 | 3 | Low | Advisory projection-shape rule after production hardening; severity and wording now reflect modern EF Core correlated collection support. |
 | LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 3 | 3 | 3 | 2 | 4 | 3 | Medium | Helpful cleanup rule, but key-shape/model-awareness and async fixer cases remain thin. |
 | LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 4 | 4 | 4 | 3 | 4 | 5 | Medium | High-impact manual rule; add more provider/LINQ-to-Objects boundaries and nested projection negatives. |
 | LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Medium | Good core data-loss guardrail; fixer and alias/order coverage should be broadened. |
@@ -79,10 +79,10 @@ The next improvement batch should focus on rules where user impact and health ga
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| High | LC021, LC022 | Harden Warning rules with weak fixer/test confidence. Add dedicated fixer tests, intentional-use guidance, and tighter diagnostic placement. |
+| High | LC021 | Harden Warning rules with weak fixer/test confidence. Add dedicated fixer tests, intentional-use guidance, and tighter diagnostic placement. |
 | High | LC031, LC039, LC040 | Build out high-value heuristic rules. Add source/context aliasing, branch/transaction/workflow negatives, opt-out guidance, and richer docs before raising scores. |
 | Medium | LC010, LC012, LC014, LC015, LC018, LC023, LC024, LC025, LC034, LC035, LC036, LC038, LC043 | Improve targeted tests and docs, especially around safe/unsafe fixer boundaries and intentional-use cases. |
-| Low | LC002, LC003, LC005, LC006, LC007, LC008, LC009, LC011, LC013, LC016, LC017, LC019, LC020, LC026, LC027, LC028, LC029, LC030, LC032, LC033, LC037, LC041, LC042, LC044 | Treat as currently acceptable, reference examples, or low-impact tuning rules. |
+| Low | LC002, LC003, LC005, LC006, LC007, LC008, LC009, LC011, LC013, LC016, LC017, LC019, LC020, LC022, LC026, LC027, LC028, LC029, LC030, LC032, LC033, LC037, LC041, LC042, LC044 | Treat as currently acceptable, reference examples, or low-impact tuning rules. |
 
 ## Verification Baseline
 

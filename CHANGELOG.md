@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-04-27
+
+### Changed
+- Hardened `LC001`, `LC002`, `LC007`, `LC008`, `LC016`, and `LC022` against production false positives from in-memory LINQ, translated query subqueries, and captured-value helpers
+- Changed `LC022` to an advisory `Info` diagnostic with modern EF Core wording for nested collection projection materialization
+- Coalesced repeated `LC016` clock diagnostics within one query lambda and expanded the fixer to replace matching repeated clock accesses together
+- Updated docs, analyzer health, and regression coverage for production feedback patterns
+
 ## [5.2.21] - 2026-04-27
 
 ### Changed

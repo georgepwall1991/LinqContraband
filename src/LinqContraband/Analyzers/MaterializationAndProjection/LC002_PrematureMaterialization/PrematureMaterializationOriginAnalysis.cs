@@ -15,14 +15,14 @@ public sealed partial class PrematureMaterializationAnalyzer
         out Diagnostic diagnostic)
     {
         diagnostic = null!;
-        if (!IsMaterializingMethod(invocation.TargetMethod)) return false;
+        if (!IsMaterializingMethod(invocation.TargetMethod) ||
+            invocation.TargetMethod.Name == "AsEnumerable")
+        {
+            return false;
+        }
 
-        if (!TryResolveMaterializationOrigin(
-                receiver,
-                invocation.Syntax.SpanStart,
-                context.Operation.FindOwningExecutableRoot(),
-                new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default),
-                out var previousMaterialization))
+        if (!TryResolveInlineMaterializationOrigin(receiver, out var previousMaterialization) ||
+            previousMaterialization.MaterializerName == "AsEnumerable")
         {
             return false;
         }
@@ -105,6 +105,35 @@ public sealed partial class PrematureMaterializationAnalyzer
         }
 
         return false;
+    }
+
+    private static bool TryResolveInlineMaterializationOrigin(
+        IOperation operation,
+        out MaterializationOrigin origin)
+    {
+        origin = default;
+        var unwrapped = operation.UnwrapConversions();
+
+        if (unwrapped is IInvocationOperation materializerInvocation &&
+            IsMaterializingMethod(materializerInvocation.TargetMethod) &&
+            TryResolveInlineQueryableSource(materializerInvocation.GetInvocationReceiver()))
+        {
+            origin = new MaterializationOrigin(InlineInvocationOriginKind, materializerInvocation.TargetMethod.Name);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveInlineQueryableSource(IOperation? operation)
+    {
+        if (operation == null) return false;
+
+        var unwrapped = operation.UnwrapConversions();
+        if (unwrapped.Type?.IsIQueryable() == true) return true;
+
+        return unwrapped is IInvocationOperation invocation &&
+               TryResolveInlineQueryableSource(invocation.GetInvocationReceiver());
     }
 
     private static bool TryResolveQueryableOrMaterializedSource(

@@ -127,4 +127,24 @@ class Test
 }";
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task Diagnostic_RepeatedIdenticalClockUse_InOneQuery_ReportsOnce()
+    {
+        var test = @"
+using System;
+using System.Linq;
+using System.Collections.Generic;
+
+class User { public DateTime Dob { get; set; } }
+
+class Test
+{
+    void Method(IQueryable<User> users)
+    {
+        var q = users.Where(u => u.Dob < {|LC016:DateTime.UtcNow|} && u.Dob > DateTime.UtcNow.AddDays(-1));
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

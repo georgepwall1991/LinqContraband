@@ -200,6 +200,46 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_QueryableSubqueryInsideProjection_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var query = db.Users.Select(u => db.Users.FirstOrDefault(inner => inner.Id == u.Id));
+        await Task.Delay(1);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SyncQueryInsideInMemoryProjection_ShouldTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main(List<User> users)
+    {
+        var db = new MyDbContext();
+        var query = users.Select(u => db.Users.FirstOrDefault(inner => inner.Id == u.Id));
+        await Task.Delay(1);
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC008")
+            .WithSpan(14, 39, 14, 89)
+            .WithArguments("FirstOrDefault", "FirstOrDefaultAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TestInnocent_SyncLambdaInSyncMethod_NoDiagnostic()
     {
         var test = Usings + @"

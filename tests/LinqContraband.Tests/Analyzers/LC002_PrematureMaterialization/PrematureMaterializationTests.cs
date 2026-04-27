@@ -241,7 +241,7 @@ public class PrematureMaterializationTests
     }
 
     [Fact]
-    public async Task Reports_Redundant_AsEnumerableThenToList()
+    public async Task DoesNotReport_Redundant_AsEnumerableThenToList()
     {
         var test = CommonUsings + """
 
@@ -250,20 +250,16 @@ public class PrematureMaterializationTests
                 void Main()
                 {
                     var db = new DbContext();
-                    var users = {|#0:db.Users.AsEnumerable().ToList()|};
+                    var users = db.Users.AsEnumerable().ToList();
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithLocation(0)
-            .WithArguments("ToList", "AsEnumerable");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task Reports_Redundant_LocalMaterializedThenToList()
+    public async Task DoesNotReport_Redundant_LocalMaterializedThenToList()
     {
         var test = CommonUsings + """
 
@@ -273,16 +269,12 @@ public class PrematureMaterializationTests
                 {
                     var db = new DbContext();
                     var materialized = db.Users.ToList();
-                    var users = {|#0:materialized.ToList()|};
+                    var users = materialized.ToList();
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithLocation(0)
-            .WithArguments("ToList", "ToList");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

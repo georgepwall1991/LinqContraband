@@ -305,10 +305,10 @@ public static class RuleCatalog
         new RuleCatalogEntry(
             id: "LC022",
             slug: "LC022_ToListInSelectProjection",
-            title: "ToList/ToArray Inside Select Projection",
+            title: "Nested collection materialization inside projection",
             category: "Performance",
             domain: "Materialization & Projection",
-            severity: DiagnosticSeverity.Warning,
+            severity: DiagnosticSeverity.Info,
             analyzerTypeName: "ToListInSelectProjectionAnalyzer",
             fixerTypeName: "ToListInSelectProjectionFixer",
             documentationPath: "docs/LC022_ToListInSelectProjection.md",
