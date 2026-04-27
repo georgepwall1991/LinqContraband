@@ -25,6 +25,7 @@ public sealed partial class WholeEntityProjectionAnalyzer
 
         var foreachLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
         var manualIterationLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        var usageCandidates = new List<IOperation>();
 
         foreach (var descendant in root.Descendants())
         {
@@ -50,6 +51,18 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     IsIndexedAccessOf(assignment.Value, variable):
                     manualIterationLocals.Add(targetLocal.Local);
                     break;
+            }
+
+            if (descendant is IReturnOperation or IInvocationOperation or IAnonymousFunctionOperation or IPropertyReferenceOperation)
+                usageCandidates.Add(descendant);
+        }
+
+        foreach (var descendant in usageCandidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            switch (descendant)
+            {
                 case IReturnOperation returnOperation when
                     returnOperation.ReturnedValue != null &&
                     IsDirectVariableEscape(returnOperation.ReturnedValue, variable, foreachLocals, manualIterationLocals):

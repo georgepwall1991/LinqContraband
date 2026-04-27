@@ -302,4 +302,28 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TestInnocent_ManualIterationLocalCapturedAfterLambdaDeclaration_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public void ProcessWithCapturedManualLocal()
+    {
+        LargeEntity current = null;
+        Action useLater = () => DoSomething(current);
+        var db = new MyDbContext();
+        var entities = db.LargeEntities.ToList();
+        current = entities[0];
+        Console.WriteLine(current.Name);
+        useLater();
+    }
+
+    private void DoSomething(LargeEntity e) { }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
