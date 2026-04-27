@@ -39,11 +39,20 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer : DiagnosticAnalyz
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterSymbolAction(AnalyzeDbContext, SymbolKind.NamedType);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeDbContext(SymbolAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
     {
+        var compilationModel = new CompilationModel(context.Compilation);
+        context.RegisterSymbolAction(
+            symbolContext => AnalyzeDbContext(symbolContext, compilationModel),
+            SymbolKind.NamedType);
+    }
+
+    private static void AnalyzeDbContext(SymbolAnalysisContext context, CompilationModel compilationModel)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
         var namedType = (INamedTypeSymbol)context.Symbol;
 
         if (!namedType.IsDbContext()) return;
@@ -55,11 +64,12 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer : DiagnosticAnalyz
         var ownedEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var configuredForeignKeys = new HashSet<string>(StringComparer.Ordinal);
 
-        ScanOnModelCreating(namedType, context.Compilation, ownedEntities, configuredForeignKeys);
-        ScanEntityTypeConfigurations(context.Compilation, ownedEntities, configuredForeignKeys);
+        ScanOnModelCreating(namedType, compilationModel, ownedEntities, configuredForeignKeys, context.CancellationToken);
+        ScanEntityTypeConfigurations(compilationModel, ownedEntities, configuredForeignKeys, context.CancellationToken);
 
         foreach (var entityType in entityTypes)
         {
+            context.CancellationToken.ThrowIfCancellationRequested();
             CheckEntityForMissingForeignKeys(entityType, entityTypes, ownedEntities, configuredForeignKeys, context);
         }
     }

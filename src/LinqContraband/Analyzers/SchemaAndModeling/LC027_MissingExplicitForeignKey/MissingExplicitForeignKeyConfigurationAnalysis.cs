@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -10,9 +11,10 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
 {
     private static void ScanOnModelCreating(
         INamedTypeSymbol dbContextType,
-        Compilation compilation,
+        CompilationModel compilationModel,
         HashSet<INamedTypeSymbol> ownedEntities,
-        HashSet<string> configuredForeignKeys)
+        HashSet<string> configuredForeignKeys,
+        CancellationToken cancellationToken)
     {
         var methods = dbContextType.GetMembers("OnModelCreating");
         if (methods.IsEmpty || methods[0] is not IMethodSymbol onModelCreating)
@@ -20,24 +22,41 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
 
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
         {
-            var syntax = syntaxRef.GetSyntax();
-            ProcessConfigurationSyntax(syntax, compilation, null, ownedEntities, configuredForeignKeys);
+            cancellationToken.ThrowIfCancellationRequested();
+            var syntax = syntaxRef.GetSyntax(cancellationToken);
+            ProcessConfigurationSyntax(syntax, compilationModel, null, ownedEntities, configuredForeignKeys, cancellationToken);
         }
     }
 
     private static void ScanEntityTypeConfigurations(
-        Compilation compilation,
+        CompilationModel compilationModel,
         HashSet<INamedTypeSymbol> ownedEntities,
-        HashSet<string> configuredForeignKeys)
+        HashSet<string> configuredForeignKeys,
+        CancellationToken cancellationToken)
     {
+        var scan = compilationModel.GetConfigurationScan(cancellationToken);
+        ownedEntities.UnionWith(scan.OwnedEntities);
+        configuredForeignKeys.UnionWith(scan.ConfiguredForeignKeys);
+    }
+
+    private static ConfigurationScan BuildConfigurationScan(
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
+    {
+        var scan = new ConfigurationScan();
+        var compilation = compilationModel.Compilation;
         var configInterface = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
         if (configInterface == null)
-            return;
+            return scan;
 
-        foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
+        foreach (var type in compilationModel.GetAllTypes(cancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var iface in type.AllInterfaces)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (!SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, configInterface) ||
                     iface.TypeArguments.Length == 0 ||
                     iface.TypeArguments[0] is not INamedTypeSymbol entityType)
@@ -51,29 +70,45 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
 
                 foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
                 {
-                    var syntax = syntaxRef.GetSyntax();
-                    ProcessConfigurationSyntax(syntax, compilation, entityType, ownedEntities, configuredForeignKeys);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var syntax = syntaxRef.GetSyntax(cancellationToken);
+                    ProcessConfigurationSyntax(
+                        syntax,
+                        compilationModel,
+                        entityType,
+                        scan.OwnedEntities,
+                        scan.ConfiguredForeignKeys,
+                        cancellationToken);
                 }
             }
         }
+
+        return scan;
     }
 
     private static void ProcessConfigurationSyntax(
         SyntaxNode syntax,
-        Compilation compilation,
+        CompilationModel compilationModel,
         INamedTypeSymbol? configuredEntityType,
         HashSet<INamedTypeSymbol> ownedEntities,
-        HashSet<string> configuredForeignKeys)
+        HashSet<string> configuredForeignKeys,
+        CancellationToken cancellationToken)
     {
         foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
             var methodName = memberAccess.Name.Identifier.Text;
             if (methodName is "OwnsOne" or "OwnsMany")
             {
-                var resolvedOwnedType = ResolveOwnedTypeFromConfiguration(invocation, compilation, configuredEntityType);
+                var resolvedOwnedType = ResolveOwnedTypeFromConfiguration(
+                    invocation,
+                    compilationModel,
+                    configuredEntityType,
+                    cancellationToken);
                 if (resolvedOwnedType != null)
                     ownedEntities.Add(resolvedOwnedType);
                 continue;
@@ -93,7 +128,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
                 if (entityTypeName == null)
                     continue;
 
-                entityType = FindTypeByName(compilation, entityTypeName);
+                entityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
             }
 
             if (entityType != null)
@@ -204,12 +239,13 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
 
     private static INamedTypeSymbol? ResolveOwnedTypeFromConfiguration(
         InvocationExpressionSyntax invocation,
-        Compilation compilation,
-        INamedTypeSymbol? configuredEntityType)
+        CompilationModel compilationModel,
+        INamedTypeSymbol? configuredEntityType,
+        CancellationToken cancellationToken)
     {
         var explicitTypeName = ExtractOwnedTypeName(invocation);
         if (explicitTypeName != null)
-            return FindTypeByName(compilation, explicitTypeName);
+            return compilationModel.FindTypeByName(explicitTypeName, cancellationToken);
 
         var entityType = configuredEntityType;
         if (entityType == null &&
@@ -217,7 +253,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         {
             var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
             if (entityTypeName != null)
-                entityType = FindTypeByName(compilation, entityTypeName);
+                entityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
         }
 
         if (entityType == null)

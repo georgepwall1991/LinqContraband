@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -12,7 +13,8 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         HashSet<INamedTypeSymbol> configuredEntities,
         HashSet<INamedTypeSymbol> keylessEntities,
         HashSet<INamedTypeSymbol> ownedEntities,
-        Compilation compilation)
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
     {
         var methods = dbContextType.GetMembers("OnModelCreating");
         if (methods.IsEmpty || methods[0] is not IMethodSymbol onModelCreating)
@@ -20,95 +22,117 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
         {
-            var syntax = syntaxRef.GetSyntax();
+            cancellationToken.ThrowIfCancellationRequested();
+            var syntax = syntaxRef.GetSyntax(cancellationToken);
             var builderVariables = new Dictionary<string, INamedTypeSymbol>();
 
             foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                     continue;
 
                 var methodName = memberAccess.Name.Identifier.Text;
                 if (methodName == "HasKey" &&
-                    TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilation, out var configuredEntity))
+                    TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var configuredEntity))
                 {
                     configuredEntities.Add(configuredEntity);
                 }
                 else if (methodName == "HasNoKey" &&
-                         TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilation, out var keylessEntity))
+                         TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var keylessEntity))
                 {
                     keylessEntities.Add(keylessEntity);
                 }
                 else if (methodName is "OwnsOne" or "OwnsMany" &&
-                         TryGetOwnedEntityType(invocation, memberAccess, builderVariables, compilation, out var ownedEntity))
+                         TryGetOwnedEntityType(invocation, memberAccess, builderVariables, compilationModel, cancellationToken, out var ownedEntity))
                 {
                     ownedEntities.Add(ownedEntity);
                 }
                 else if (methodName == "ApplyConfiguration")
                 {
-                    ScanAppliedConfiguration(invocation, dbContextType, compilation, configuredEntities, keylessEntities);
+                    ScanAppliedConfiguration(invocation, dbContextType, compilationModel, configuredEntities, keylessEntities, cancellationToken);
                 }
                 else if (methodName == "ApplyConfigurationsFromAssembly" &&
-                         ShouldScanCurrentAssemblyConfigurations(invocation, compilation))
+                         ShouldScanCurrentAssemblyConfigurations(invocation, compilationModel, cancellationToken))
                 {
-                    ScanEntityTypeConfigurations(compilation, configuredEntities, keylessEntities);
+                    ScanEntityTypeConfigurations(compilationModel, configuredEntities, keylessEntities, cancellationToken);
                 }
             }
         }
     }
 
     private static void ScanEntityTypeConfigurations(
-        Compilation compilation,
+        CompilationModel compilationModel,
         HashSet<INamedTypeSymbol> configuredEntities,
-        HashSet<INamedTypeSymbol> keylessEntities)
+        HashSet<INamedTypeSymbol> keylessEntities,
+        CancellationToken cancellationToken)
     {
+        var scan = compilationModel.GetEntityTypeConfigurationScan(cancellationToken);
+        configuredEntities.UnionWith(scan.ConfiguredEntities);
+        keylessEntities.UnionWith(scan.KeylessEntities);
+    }
+
+    private static EntityTypeConfigurationScan BuildEntityTypeConfigurationScan(
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
+    {
+        var scan = new EntityTypeConfigurationScan();
+        var compilation = compilationModel.Compilation;
         var configInterface = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
         if (configInterface == null)
-            return;
+            return scan;
 
-        foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
+        foreach (var type in compilationModel.GetAllTypes(cancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (type.AllInterfaces.IsEmpty)
                 continue;
 
             foreach (var iface in type.AllInterfaces)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (!SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, configInterface))
                     continue;
 
                 if (iface.TypeArguments.Length > 0 &&
                     iface.TypeArguments[0] is INamedTypeSymbol entityType)
                 {
-                    var (hasKey, hasNoKey) = CheckConfigureMethod(type, entityType, compilation);
+                    var (hasKey, hasNoKey) = CheckConfigureMethod(type, entityType, compilationModel, cancellationToken);
 
                     if (hasKey)
-                        configuredEntities.Add(entityType);
+                        scan.ConfiguredEntities.Add(entityType);
 
                     if (hasNoKey)
-                        keylessEntities.Add(entityType);
+                        scan.KeylessEntities.Add(entityType);
                 }
             }
         }
+
+        return scan;
     }
 
     private static void ScanAppliedConfiguration(
         InvocationExpressionSyntax invocation,
         INamedTypeSymbol dbContextType,
-        Compilation compilation,
+        CompilationModel compilationModel,
         HashSet<INamedTypeSymbol> configuredEntities,
-        HashSet<INamedTypeSymbol> keylessEntities)
+        HashSet<INamedTypeSymbol> keylessEntities,
+        CancellationToken cancellationToken)
     {
         var configurationExpression = invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression;
         var configType = configurationExpression == null
             ? null
-            : ResolveConfigurationType(configurationExpression, dbContextType, compilation);
+            : ResolveConfigurationType(configurationExpression, dbContextType, compilationModel, cancellationToken);
         if (configType == null)
             return;
 
         if (!TryGetConfiguredEntityType(configType, out var entityType))
             return;
 
-        var (hasKey, hasNoKey) = CheckConfigureMethod(configType, entityType, compilation);
+        var (hasKey, hasNoKey) = CheckConfigureMethod(configType, entityType, compilationModel, cancellationToken);
 
         if (hasKey)
             configuredEntities.Add(entityType);
@@ -117,7 +141,10 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             keylessEntities.Add(entityType);
     }
 
-    private static bool ShouldScanCurrentAssemblyConfigurations(InvocationExpressionSyntax invocation, Compilation compilation)
+    private static bool ShouldScanCurrentAssemblyConfigurations(
+        InvocationExpressionSyntax invocation,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
     {
         if (invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression is not MemberAccessExpressionSyntax memberAccess ||
             memberAccess.Name.Identifier.ValueText != "Assembly" ||
@@ -126,28 +153,31 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             return false;
         }
 
-        var assemblyMarkerType = FindTypeByName(compilation, typeOfExpression.Type.ToString());
+        var assemblyMarkerType = compilationModel.FindTypeByName(typeOfExpression.Type.ToString(), cancellationToken);
         return assemblyMarkerType != null &&
-               SymbolEqualityComparer.Default.Equals(assemblyMarkerType.ContainingAssembly, compilation.Assembly);
+               SymbolEqualityComparer.Default.Equals(assemblyMarkerType.ContainingAssembly, compilationModel.Compilation.Assembly);
     }
 
     private static INamedTypeSymbol? ResolveConfigurationType(
         ExpressionSyntax expression,
         INamedTypeSymbol dbContextType,
-        Compilation compilation)
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (expression is ObjectCreationExpressionSyntax objectCreation)
-            return FindTypeByName(compilation, objectCreation.Type.ToString());
+            return compilationModel.FindTypeByName(objectCreation.Type.ToString(), cancellationToken);
 
         if (expression is ImplicitObjectCreationExpressionSyntax implicitObjectCreation)
-            return ResolveImplicitObjectCreationType(implicitObjectCreation, dbContextType, compilation);
+            return ResolveImplicitObjectCreationType(implicitObjectCreation, dbContextType, compilationModel, cancellationToken);
 
         if (expression is ParenthesizedExpressionSyntax parenthesized)
-            return ResolveConfigurationType(parenthesized.Expression, dbContextType, compilation);
+            return ResolveConfigurationType(parenthesized.Expression, dbContextType, compilationModel, cancellationToken);
 
         if (expression is IdentifierNameSyntax identifier)
         {
-            if (TryResolveLocalConfiguration(identifier, dbContextType, compilation, out var localConfigType))
+            if (TryResolveLocalConfiguration(identifier, dbContextType, compilationModel, cancellationToken, out var localConfigType))
                 return localConfigType;
 
             return TryGetConfigurationTypeFromMember(dbContextType, identifier.Identifier.ValueText, out var memberConfigType)
@@ -168,20 +198,21 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     private static INamedTypeSymbol? ResolveImplicitObjectCreationType(
         ImplicitObjectCreationExpressionSyntax implicitObjectCreation,
         INamedTypeSymbol dbContextType,
-        Compilation compilation)
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
     {
         var variable = implicitObjectCreation.Ancestors().OfType<VariableDeclaratorSyntax>().FirstOrDefault();
         var localDeclaration = variable?.Parent?.Parent as LocalDeclarationStatementSyntax;
         if (localDeclaration != null)
-            return FindTypeByName(compilation, localDeclaration.Declaration.Type.ToString());
+            return compilationModel.FindTypeByName(localDeclaration.Declaration.Type.ToString(), cancellationToken);
 
         var fieldDeclaration = variable?.Parent?.Parent as FieldDeclarationSyntax;
         if (fieldDeclaration != null)
-            return FindTypeByName(compilation, fieldDeclaration.Declaration.Type.ToString());
+            return compilationModel.FindTypeByName(fieldDeclaration.Declaration.Type.ToString(), cancellationToken);
 
         var propertyDeclaration = implicitObjectCreation.Ancestors().OfType<PropertyDeclarationSyntax>().FirstOrDefault();
         if (propertyDeclaration != null)
-            return FindTypeByName(compilation, propertyDeclaration.Type.ToString());
+            return compilationModel.FindTypeByName(propertyDeclaration.Type.ToString(), cancellationToken);
 
         return null;
     }
@@ -189,7 +220,8 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     private static bool TryResolveLocalConfiguration(
         IdentifierNameSyntax identifier,
         INamedTypeSymbol dbContextType,
-        Compilation compilation,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
         out INamedTypeSymbol configType)
     {
         configType = null!;
@@ -198,8 +230,12 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         foreach (var block in identifier.Ancestors().OfType<BlockSyntax>())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var statement in block.Statements)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (statement.SpanStart >= position)
                     break;
 
@@ -211,9 +247,9 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     if (variable.Identifier.ValueText != identifierName || variable.Initializer?.Value == null)
                         continue;
 
-                    var resolvedConfigType = ResolveConfigurationType(variable.Initializer.Value, dbContextType, compilation);
+                    var resolvedConfigType = ResolveConfigurationType(variable.Initializer.Value, dbContextType, compilationModel, cancellationToken);
                     if (resolvedConfigType == null && variable.Initializer.Value is ImplicitObjectCreationExpressionSyntax)
-                        resolvedConfigType = FindTypeByName(compilation, localDeclaration.Declaration.Type.ToString());
+                        resolvedConfigType = compilationModel.FindTypeByName(localDeclaration.Declaration.Type.ToString(), cancellationToken);
 
                     if (resolvedConfigType != null)
                     {
@@ -255,7 +291,8 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     private static (bool hasKey, bool hasNoKey) CheckConfigureMethod(
         INamedTypeSymbol configClass,
         INamedTypeSymbol entityType,
-        Compilation compilation)
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
     {
         var configureMethod = configClass.GetMembers("Configure").FirstOrDefault() as IMethodSymbol;
         if (configureMethod == null)
@@ -266,16 +303,19 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
         {
-            var syntax = syntaxRef.GetSyntax();
+            cancellationToken.ThrowIfCancellationRequested();
+            var syntax = syntaxRef.GetSyntax(cancellationToken);
             var builderVariables = CollectConfigureBuilderParameters(configureMethod);
             var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
             foreach (var invocation in invocations)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                     continue;
 
-                if (!TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilation, out var configuredEntity) ||
+                if (!TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var configuredEntity) ||
                     !SymbolEqualityComparer.Default.Equals(configuredEntity, entityType))
                 {
                     continue;
@@ -328,14 +368,16 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     private static bool TryResolveEntityTypeFromBuilderExpression(
         ExpressionSyntax expression,
         Dictionary<string, INamedTypeSymbol> builderVariables,
-        Compilation compilation,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
         out INamedTypeSymbol entityType)
     {
         entityType = null!;
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (ExtractEntityTypeNameFromChain(expression) is { } entityTypeName)
         {
-            var resolvedEntityType = FindTypeByName(compilation, entityTypeName);
+            var resolvedEntityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
             if (resolvedEntityType != null)
             {
                 entityType = resolvedEntityType;
@@ -345,14 +387,14 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         if (expression is InvocationExpressionSyntax invocation &&
             invocation.Expression is MemberAccessExpressionSyntax chainedMemberAccess &&
-            TryResolveEntityTypeFromBuilderExpression(chainedMemberAccess.Expression, builderVariables, compilation, out var chainedEntityType))
+            TryResolveEntityTypeFromBuilderExpression(chainedMemberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var chainedEntityType))
         {
             entityType = chainedEntityType;
             return true;
         }
 
         if (expression is ParenthesizedExpressionSyntax parenthesized &&
-            TryResolveEntityTypeFromBuilderExpression(parenthesized.Expression, builderVariables, compilation, out var parenthesizedEntityType))
+            TryResolveEntityTypeFromBuilderExpression(parenthesized.Expression, builderVariables, compilationModel, cancellationToken, out var parenthesizedEntityType))
         {
             entityType = parenthesizedEntityType;
             return true;
@@ -360,7 +402,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         if (expression is IdentifierNameSyntax identifier)
         {
-            if (TryResolveLocalBuilder(identifier, builderVariables, compilation, out var localEntityType))
+            if (TryResolveLocalBuilder(identifier, builderVariables, compilationModel, cancellationToken, out var localEntityType))
             {
                 entityType = localEntityType;
                 return true;
@@ -379,7 +421,8 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     private static bool TryResolveLocalBuilder(
         IdentifierNameSyntax identifier,
         Dictionary<string, INamedTypeSymbol> builderVariables,
-        Compilation compilation,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
         out INamedTypeSymbol entityType)
     {
         entityType = null!;
@@ -388,8 +431,12 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         foreach (var block in identifier.Ancestors().OfType<BlockSyntax>())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var statement in block.Statements)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (statement.SpanStart >= position)
                     break;
 
@@ -401,7 +448,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     if (variable.Identifier.ValueText != identifierName || variable.Initializer?.Value == null)
                         continue;
 
-                    if (TryResolveEntityTypeFromBuilderExpression(variable.Initializer.Value, builderVariables, compilation, out var localEntityType))
+                    if (TryResolveEntityTypeFromBuilderExpression(variable.Initializer.Value, builderVariables, compilationModel, cancellationToken, out var localEntityType))
                     {
                         entityType = localEntityType;
                         return true;
@@ -439,7 +486,8 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         InvocationExpressionSyntax invocation,
         MemberAccessExpressionSyntax memberAccess,
         Dictionary<string, INamedTypeSymbol> builderVariables,
-        Compilation compilation,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
         out INamedTypeSymbol ownedEntity)
     {
         ownedEntity = null!;
@@ -449,7 +497,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
             if (typeArg != null)
             {
-                var resolvedOwnedType = FindTypeByName(compilation, typeArg.ToString());
+                var resolvedOwnedType = compilationModel.FindTypeByName(typeArg.ToString(), cancellationToken);
                 if (resolvedOwnedType != null)
                 {
                     ownedEntity = resolvedOwnedType;
@@ -458,7 +506,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             }
         }
 
-        if (!TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilation, out var ownerEntity))
+        if (!TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var ownerEntity))
             return false;
 
         var lambda = invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression as LambdaExpressionSyntax;
