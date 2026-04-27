@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
@@ -9,30 +10,71 @@ namespace LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 
 internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
 {
+    public static PrimaryKeyCache CreateCache(Compilation compilation)
+    {
+        return new PrimaryKeyCache(compilation);
+    }
+
     public static string? TryFindSafePrimaryKey(
         ITypeSymbol entityType,
         Compilation compilation,
         CancellationToken cancellationToken)
     {
-        var configuredKey = TryFindConfiguredPrimaryKey(entityType, compilation, cancellationToken);
-        if (configuredKey.IsConfigured)
-            return configuredKey.PropertyName;
-
-        return entityType.TryFindPrimaryKey();
+        return CreateCache(compilation).TryFindSafePrimaryKey(entityType, cancellationToken);
     }
 
-    private static ConfiguredPrimaryKey TryFindConfiguredPrimaryKey(
-        ITypeSymbol entityType,
+    internal sealed class PrimaryKeyCache
+    {
+        private readonly object syncRoot = new();
+        private readonly Compilation compilation;
+        private Dictionary<ITypeSymbol, ConfiguredPrimaryKey>? configuredPrimaryKeys;
+
+        internal PrimaryKeyCache(Compilation compilation)
+        {
+            this.compilation = compilation;
+        }
+
+        public string? TryFindSafePrimaryKey(ITypeSymbol entityType, CancellationToken cancellationToken)
+        {
+            var configuredKey = GetConfiguredPrimaryKeys(cancellationToken).TryGetValue(entityType, out var primaryKey)
+                ? primaryKey
+                : ConfiguredPrimaryKey.NotConfigured;
+
+            if (configuredKey.IsConfigured)
+                return configuredKey.PropertyName;
+
+            return entityType.TryFindPrimaryKey();
+        }
+
+        private Dictionary<ITypeSymbol, ConfiguredPrimaryKey> GetConfiguredPrimaryKeys(CancellationToken cancellationToken)
+        {
+            if (configuredPrimaryKeys != null)
+                return configuredPrimaryKeys;
+
+            lock (syncRoot)
+            {
+                configuredPrimaryKeys ??= BuildConfiguredPrimaryKeys(compilation, cancellationToken);
+                return configuredPrimaryKeys;
+            }
+        }
+    }
+
+    private static Dictionary<ITypeSymbol, ConfiguredPrimaryKey> BuildConfiguredPrimaryKeys(
         Compilation compilation,
         CancellationToken cancellationToken)
     {
+        var configuredPrimaryKeys = new Dictionary<ITypeSymbol, ConfiguredPrimaryKey>(SymbolEqualityComparer.Default);
+
         foreach (var tree in compilation.SyntaxTrees)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var root = tree.GetRoot(cancellationToken);
             var semanticModel = compilation.GetSemanticModel(tree);
 
             foreach (var invocationSyntax in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (invocationSyntax.Expression is not MemberAccessExpressionSyntax memberAccess ||
                     memberAccess.Name.Identifier.ValueText != "HasKey")
                 {
@@ -41,25 +83,35 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
 
                 if (semanticModel.GetOperation(invocationSyntax, cancellationToken) is not IInvocationOperation invocation ||
                     invocation.TargetMethod.Name != "HasKey" ||
-                    !ReceiverTargetsEntity(invocation.GetInvocationReceiverType(), entityType))
+                    !TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType) ||
+                    configuredPrimaryKeys.ContainsKey(entityType))
                 {
                     continue;
                 }
 
-                return AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value);
+                configuredPrimaryKeys.Add(
+                    entityType,
+                    AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
             }
         }
 
-        return ConfiguredPrimaryKey.NotConfigured;
+        return configuredPrimaryKeys;
     }
 
-    private static bool ReceiverTargetsEntity(ITypeSymbol? receiverType, ITypeSymbol entityType)
+    private static bool TryGetEntityTypeBuilderEntity(ITypeSymbol? receiverType, out ITypeSymbol entityType)
     {
-        return receiverType is INamedTypeSymbol namedType &&
-               namedType.IsGenericType &&
-               namedType.TypeArguments.Length == 1 &&
-               IsEntityTypeBuilder(namedType) &&
-               SymbolEqualityComparer.Default.Equals(namedType.TypeArguments[0], entityType);
+        entityType = null!;
+
+        if (receiverType is not INamedTypeSymbol namedType ||
+            !namedType.IsGenericType ||
+            namedType.TypeArguments.Length != 1 ||
+            !IsEntityTypeBuilder(namedType))
+        {
+            return false;
+        }
+
+        entityType = namedType.TypeArguments[0];
+        return true;
     }
 
     private static bool IsEntityTypeBuilder(INamedTypeSymbol namedType)

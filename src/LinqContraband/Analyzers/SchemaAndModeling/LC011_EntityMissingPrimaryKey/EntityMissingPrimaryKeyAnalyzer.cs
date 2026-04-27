@@ -47,11 +47,20 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterSymbolAction(AnalyzeDbContext, SymbolKind.NamedType);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeDbContext(SymbolAnalysisContext context)
+    private void InitializeCompilation(CompilationStartAnalysisContext context)
     {
+        var compilationModel = new CompilationModel(context.Compilation);
+        context.RegisterSymbolAction(
+            symbolContext => AnalyzeDbContext(symbolContext, compilationModel),
+            SymbolKind.NamedType);
+    }
+
+    private void AnalyzeDbContext(SymbolAnalysisContext context, CompilationModel compilationModel)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
         var namedType = (INamedTypeSymbol)context.Symbol;
 
         if (!namedType.IsDbContext())
@@ -63,10 +72,17 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
         var keylessEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var ownedEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var configuredEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        ScanOnModelCreating(namedType, configuredEntities, keylessEntities, ownedEntities, context.Compilation);
+        ScanOnModelCreating(
+            namedType,
+            configuredEntities,
+            keylessEntities,
+            ownedEntities,
+            compilationModel,
+            context.CancellationToken);
 
         foreach (var member in namedType.GetMembers())
         {
+            context.CancellationToken.ThrowIfCancellationRequested();
             if (!TryGetDbSetMember(member, out var entityType, out var location))
                 continue;
 

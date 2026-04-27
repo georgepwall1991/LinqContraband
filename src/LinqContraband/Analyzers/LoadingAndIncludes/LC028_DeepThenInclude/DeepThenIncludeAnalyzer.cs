@@ -101,10 +101,14 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
     private static int GetMaxDepth(OperationAnalysisContext context, ConditionalWeakTable<SyntaxTree, StrongBox<int>> maxDepthCache)
     {
         var syntaxTree = context.Operation.Syntax.SyntaxTree;
-        if (maxDepthCache.TryGetValue(syntaxTree, out var cached))
-            return cached.Value;
+        return maxDepthCache.GetValue(
+            syntaxTree,
+            tree => new StrongBox<int>(ReadMaxDepth(context.Options.AnalyzerConfigOptionsProvider, tree))).Value;
+    }
 
-        var options = context.Options.AnalyzerConfigOptionsProvider.GetOptions(syntaxTree);
+    private static int ReadMaxDepth(AnalyzerConfigOptionsProvider optionsProvider, SyntaxTree syntaxTree)
+    {
+        var options = optionsProvider.GetOptions(syntaxTree);
         var maxDepth = DefaultMaxDepth;
 
         if (options.TryGetValue(MaxDepthOptionKey, out var value) &&
@@ -114,7 +118,6 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
             maxDepth = configuredMaxDepth;
         }
 
-        maxDepthCache.Add(syntaxTree, new StrongBox<int>(maxDepth));
         return maxDepth;
     }
 

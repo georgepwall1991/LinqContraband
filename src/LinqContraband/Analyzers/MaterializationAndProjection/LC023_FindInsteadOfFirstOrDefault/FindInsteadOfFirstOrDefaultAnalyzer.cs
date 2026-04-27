@@ -37,10 +37,20 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
+    {
+        var primaryKeyCache = FindInsteadOfFirstOrDefaultKeyAnalysis.CreateCache(context.Compilation);
+        context.RegisterOperationAction(
+            operationContext => AnalyzeInvocation(operationContext, primaryKeyCache),
+            OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        FindInsteadOfFirstOrDefaultKeyAnalysis.PrimaryKeyCache primaryKeyCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -59,15 +69,15 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         if (lambda == null) return;
 
         // Analyze predicate body for x.Id == id
-        if (IsPrimaryKeyEquality(lambda, context.Compilation, context.CancellationToken, out var pkName))
+        if (IsPrimaryKeyEquality(lambda, primaryKeyCache, context.CancellationToken, out var pkName))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
     }
 
-    private bool IsPrimaryKeyEquality(
+    private static bool IsPrimaryKeyEquality(
         IAnonymousFunctionOperation lambda,
-        Compilation compilation,
+        FindInsteadOfFirstOrDefaultKeyAnalysis.PrimaryKeyCache primaryKeyCache,
         System.Threading.CancellationToken cancellationToken,
         out string? pkName)
     {
@@ -81,17 +91,17 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         if (body is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Equals)
         {
             // Check left or right for primary key property
-            if (IsPrimaryKeyProperty(binary.LeftOperand, lambda, compilation, cancellationToken, out pkName)) return true;
-            if (IsPrimaryKeyProperty(binary.RightOperand, lambda, compilation, cancellationToken, out pkName)) return true;
+            if (IsPrimaryKeyProperty(binary.LeftOperand, lambda, primaryKeyCache, cancellationToken, out pkName)) return true;
+            if (IsPrimaryKeyProperty(binary.RightOperand, lambda, primaryKeyCache, cancellationToken, out pkName)) return true;
         }
 
         return false;
     }
 
-    private bool IsPrimaryKeyProperty(
+    private static bool IsPrimaryKeyProperty(
         IOperation operation,
         IAnonymousFunctionOperation lambda,
-        Compilation compilation,
+        FindInsteadOfFirstOrDefaultKeyAnalysis.PrimaryKeyCache primaryKeyCache,
         System.Threading.CancellationToken cancellationToken,
         out string? pkName)
     {
@@ -105,9 +115,8 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
             if (receiver is IParameterReferenceOperation paramRef &&
                 SymbolEqualityComparer.Default.Equals(paramRef.Parameter, lambda.Symbol.Parameters.FirstOrDefault()))
             {
-                var pk = FindInsteadOfFirstOrDefaultKeyAnalysis.TryFindSafePrimaryKey(
+                var pk = primaryKeyCache.TryFindSafePrimaryKey(
                     propRef.Property.ContainingType,
-                    compilation,
                     cancellationToken);
                 if (pk != null && propRef.Property.Name == pk)
                 {

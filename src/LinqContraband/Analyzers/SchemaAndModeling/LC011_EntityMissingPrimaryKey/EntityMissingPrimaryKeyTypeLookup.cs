@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -8,29 +9,111 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 
 public sealed partial class EntityMissingPrimaryKeyAnalyzer
 {
-    private static void TryAddResolvedType(string? typeName, Compilation compilation, HashSet<INamedTypeSymbol> targetSet)
+    private sealed class CompilationModel
     {
-        if (typeName == null)
-            return;
-        var resolved = FindTypeByName(compilation, typeName);
-        if (resolved != null)
-            targetSet.Add(resolved);
+        private readonly object syncRoot = new();
+        private readonly Compilation compilation;
+        private readonly Dictionary<string, INamedTypeSymbol?> typeLookupCache = new(StringComparer.Ordinal);
+        private List<INamedTypeSymbol>? allTypes;
+        private EntityTypeConfigurationScan? entityTypeConfigurationScan;
+
+        public CompilationModel(Compilation compilation)
+        {
+            this.compilation = compilation;
+        }
+
+        public Compilation Compilation => compilation;
+
+        public IReadOnlyList<INamedTypeSymbol> GetAllTypes(CancellationToken cancellationToken)
+        {
+            if (allTypes != null)
+                return allTypes;
+
+            lock (syncRoot)
+            {
+                allTypes ??= BuildAllTypes(cancellationToken);
+                return allTypes;
+            }
+        }
+
+        public INamedTypeSymbol? FindTypeByName(string typeName, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            lock (syncRoot)
+            {
+                if (!typeLookupCache.TryGetValue(typeName, out var cachedType))
+                {
+                    cachedType = FindTypeByNameCore(typeName, cancellationToken);
+                    typeLookupCache[typeName] = cachedType;
+                }
+
+                return cachedType;
+            }
+        }
+
+        public EntityTypeConfigurationScan GetEntityTypeConfigurationScan(CancellationToken cancellationToken)
+        {
+            if (entityTypeConfigurationScan != null)
+                return entityTypeConfigurationScan;
+
+            lock (syncRoot)
+            {
+                entityTypeConfigurationScan ??= BuildEntityTypeConfigurationScan(this, cancellationToken);
+                return entityTypeConfigurationScan;
+            }
+        }
+
+        private List<INamedTypeSymbol> BuildAllTypes(CancellationToken cancellationToken)
+        {
+            var result = new List<INamedTypeSymbol>();
+            AddNamespaceTypes(compilation.Assembly.GlobalNamespace, result, cancellationToken);
+            return result;
+        }
+
+        private INamedTypeSymbol? FindTypeByNameCore(string typeName, CancellationToken cancellationToken)
+        {
+            var type = compilation.GetTypeByMetadataName(typeName);
+            if (type != null)
+                return type;
+
+            var simpleName = typeName.Contains(".", StringComparison.Ordinal)
+                ? typeName.Substring(typeName.LastIndexOf(".", StringComparison.Ordinal) + 1)
+                : typeName;
+
+            foreach (var candidate in GetAllTypes(cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (candidate.Name != simpleName)
+                    continue;
+
+                if (!typeName.Contains(".", StringComparison.Ordinal))
+                    return candidate;
+
+                var fullName = candidate.ToDisplayString();
+                if (fullName.Equals(typeName, StringComparison.Ordinal))
+                    return candidate;
+
+                if (fullName.EndsWith(typeName, StringComparison.Ordinal))
+                {
+                    var prefixLength = fullName.Length - typeName.Length;
+                    if (prefixLength == 0 || fullName[prefixLength - 1] == '.')
+                        return candidate;
+                }
+            }
+
+            return null;
+        }
     }
 
-    private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
+    private sealed class EntityTypeConfigurationScan
     {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            yield return type;
-            foreach (var nested in type.GetTypeMembers())
-                yield return nested;
-        }
+        public HashSet<INamedTypeSymbol> ConfiguredEntities { get; } =
+            new(SymbolEqualityComparer.Default);
 
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            foreach (var type in GetAllTypes(childNs))
-                yield return type;
-        }
+        public HashSet<INamedTypeSymbol> KeylessEntities { get; } =
+            new(SymbolEqualityComparer.Default);
     }
 
     private static string? ExtractEntityTypeNameFromChain(ExpressionSyntax expression)
@@ -60,81 +143,35 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         return null;
     }
 
-    private static string? ExtractOwnedTypeName(InvocationExpressionSyntax invocation)
+    private static void AddNamespaceTypes(
+        INamespaceSymbol ns,
+        List<INamedTypeSymbol> result,
+        CancellationToken cancellationToken)
     {
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Name is GenericNameSyntax genericName)
-        {
-            var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
-            if (typeArg != null)
-                return typeArg.ToString();
-        }
+        cancellationToken.ThrowIfCancellationRequested();
 
-        return null;
-    }
-
-    private static INamedTypeSymbol? FindTypeByName(Compilation compilation, string typeName)
-    {
-        var type = compilation.GetTypeByMetadataName(typeName);
-        if (type != null)
-            return type;
-
-        var simpleName = typeName.Contains(".", StringComparison.Ordinal)
-            ? typeName.Substring(typeName.LastIndexOf(".", StringComparison.Ordinal) + 1)
-            : typeName;
-        return FindTypeInNamespace(compilation.GlobalNamespace, simpleName, typeName);
-    }
-
-    private static INamedTypeSymbol? FindTypeInNamespace(INamespaceSymbol ns, string simpleName, string fullName)
-    {
         foreach (var type in ns.GetTypeMembers())
         {
-            if (type.Name == simpleName)
-            {
-                if (fullName.Contains(".", StringComparison.Ordinal))
-                {
-                    var typeFullName = type.ToDisplayString();
-                    if (typeFullName.Equals(fullName, StringComparison.Ordinal))
-                        return type;
-
-                    if (typeFullName.EndsWith(fullName, StringComparison.Ordinal))
-                    {
-                        var prefixLength = typeFullName.Length - fullName.Length;
-                        if (prefixLength == 0 || typeFullName[prefixLength - 1] == '.')
-                            return type;
-                    }
-                }
-                else
-                {
-                    return type;
-                }
-            }
-
-            foreach (var nested in type.GetTypeMembers())
-            {
-                if (nested.Name != simpleName)
-                    continue;
-
-                if (fullName.Contains(".", StringComparison.Ordinal))
-                {
-                    var nestedFullName = nested.ToDisplayString();
-                    if (nestedFullName.EndsWith(fullName, StringComparison.Ordinal))
-                        return nested;
-                }
-                else
-                {
-                    return nested;
-                }
-            }
+            AddTypeAndNestedTypes(type, result, cancellationToken);
         }
 
         foreach (var childNs in ns.GetNamespaceMembers())
         {
-            var found = FindTypeInNamespace(childNs, simpleName, fullName);
-            if (found != null)
-                return found;
+            AddNamespaceTypes(childNs, result, cancellationToken);
         }
+    }
 
-        return null;
+    private static void AddTypeAndNestedTypes(
+        INamedTypeSymbol type,
+        List<INamedTypeSymbol> result,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        result.Add(type);
+
+        foreach (var nested in type.GetTypeMembers())
+        {
+            AddTypeAndNestedTypes(nested, result, cancellationToken);
+        }
     }
 }
