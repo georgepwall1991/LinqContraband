@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -52,10 +54,18 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterOperationBlockStartAction(InitializeOperationBlock);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private void InitializeOperationBlock(OperationBlockStartAnalysisContext context)
+    {
+        var localValueCache = new LocalValueCache();
+        context.RegisterOperationAction(
+            operationContext => AnalyzeInvocation(operationContext, localValueCache),
+            OperationKind.Invocation);
+    }
+
+    private void AnalyzeInvocation(OperationAnalysisContext context, LocalValueCache localValueCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -69,7 +79,7 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         if (receiver == null || !receiver.Type.IsIQueryable())
             return;
 
-        if (!HasEntityFrameworkQuerySource(receiver))
+        if (!HasEntityFrameworkQuerySource(receiver, localValueCache, context.CancellationToken))
             return;
 
         if (isSorting)
@@ -87,11 +97,16 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool HasEntityFrameworkQuerySource(IOperation operation)
+    private static bool HasEntityFrameworkQuerySource(
+        IOperation operation,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken)
     {
+        var visitedLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
         var current = operation;
         while (current != null)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             current = current.UnwrapConversions();
 
             if (current.Type.IsDbSet())
@@ -115,10 +130,19 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
                     continue;
 
                 case ILocalReferenceOperation localReference:
+                    if (!visitedLocals.Add(localReference.Local))
+                        return false;
+
                     if (localReference.Type.IsDbSet())
                         return true;
 
-                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue))
+                    if (TryResolveLocalValue(
+                            localReference.Local,
+                            localReference,
+                            localReference.FindOwningExecutableRoot(),
+                            localValueCache,
+                            cancellationToken,
+                            out var resolvedValue))
                     {
                         current = resolvedValue;
                         continue;
@@ -134,48 +158,134 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static bool TryResolveLocalValue(ILocalSymbol local, IOperation reference, IOperation? executableRoot, out IOperation value)
+    private static bool TryResolveLocalValue(
+        ILocalSymbol local,
+        IOperation reference,
+        IOperation? executableRoot,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken,
+        out IOperation value)
     {
         value = null!;
 
         if (executableRoot == null)
             return false;
 
-        var referenceStart = reference.Syntax.SpanStart;
-        var bestWriteStart = -1;
+        return localValueCache.TryGetLatestValue(
+            executableRoot,
+            local,
+            reference.Syntax.SpanStart,
+            cancellationToken,
+            out value);
+    }
 
-        foreach (var descendant in executableRoot.Descendants())
+    private sealed class LocalValueCache
+    {
+        private readonly object syncRoot = new();
+        private readonly Dictionary<IOperation, Dictionary<ILocalSymbol, List<LocalWrite>>> writesByRoot = new();
+
+        public bool TryGetLatestValue(
+            IOperation executableRoot,
+            ILocalSymbol local,
+            int referenceStart,
+            CancellationToken cancellationToken,
+            out IOperation value)
         {
-            if (descendant is IVariableDeclarationOperation declaration)
+            value = null!;
+            var writes = GetWrites(executableRoot, cancellationToken);
+            if (!writes.TryGetValue(local, out var localWrites))
+                return false;
+
+            var bestWriteStart = -1;
+
+            foreach (var write in localWrites)
             {
-                foreach (var declarator in declaration.Declarators)
-                {
-                    if (!SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) || declarator.Initializer == null)
-                        continue;
+                cancellationToken.ThrowIfCancellationRequested();
 
-                    var writeStart = declarator.Syntax.SpanStart;
-                    if (writeStart >= referenceStart || writeStart <= bestWriteStart)
-                        continue;
-
-                    bestWriteStart = writeStart;
-                    value = declarator.Initializer.Value;
-                }
-            }
-
-            if (descendant is ISimpleAssignmentOperation assignment &&
-                assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
-                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
-            {
-                var writeStart = assignment.Syntax.SpanStart;
-                if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                if (write.SpanStart >= referenceStart || write.SpanStart <= bestWriteStart)
                     continue;
 
-                bestWriteStart = writeStart;
-                value = assignment.Value;
+                bestWriteStart = write.SpanStart;
+                value = write.Value;
+            }
+
+            return bestWriteStart >= 0;
+        }
+
+        private Dictionary<ILocalSymbol, List<LocalWrite>> GetWrites(
+            IOperation executableRoot,
+            CancellationToken cancellationToken)
+        {
+            lock (syncRoot)
+            {
+                if (!writesByRoot.TryGetValue(executableRoot, out var writes))
+                {
+                    writes = BuildWrites(executableRoot, cancellationToken);
+                    writesByRoot.Add(executableRoot, writes);
+                }
+
+                return writes;
             }
         }
 
-        return bestWriteStart >= 0;
+        private static Dictionary<ILocalSymbol, List<LocalWrite>> BuildWrites(
+            IOperation executableRoot,
+            CancellationToken cancellationToken)
+        {
+            var writes = new Dictionary<ILocalSymbol, List<LocalWrite>>(SymbolEqualityComparer.Default);
+
+            foreach (var descendant in executableRoot.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (descendant is IVariableDeclarationOperation declaration)
+                {
+                    foreach (var declarator in declaration.Declarators)
+                    {
+                        if (declarator.Initializer == null)
+                            continue;
+
+                        AddWrite(writes, declarator.Symbol, declarator.Syntax.SpanStart, declarator.Initializer.Value);
+                    }
+                }
+
+                if (descendant is ISimpleAssignmentOperation assignment &&
+                    assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal)
+                {
+                    AddWrite(writes, targetLocal.Local, assignment.Syntax.SpanStart, assignment.Value);
+                }
+            }
+
+            return writes;
+        }
+
+        private static void AddWrite(
+            Dictionary<ILocalSymbol, List<LocalWrite>> writes,
+            ILocalSymbol local,
+            int spanStart,
+            IOperation value)
+        {
+            if (!writes.TryGetValue(local, out var localWrites))
+            {
+                localWrites = new List<LocalWrite>();
+                writes.Add(local, localWrites);
+            }
+
+            localWrites.Add(new LocalWrite(spanStart, value));
+        }
+    }
+
+    private readonly struct LocalWrite
+    {
+        public LocalWrite(int spanStart, IOperation value)
+        {
+            SpanStart = spanStart;
+            Value = value;
+        }
+
+        public int SpanStart { get; }
+
+        public IOperation Value { get; }
     }
 
     private static Location GetMethodLocation(IInvocationOperation invocation)

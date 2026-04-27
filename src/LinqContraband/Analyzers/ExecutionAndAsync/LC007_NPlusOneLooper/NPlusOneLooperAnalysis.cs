@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -90,8 +92,12 @@ internal static class NPlusOneLooperAnalysis
         "ExecuteUpdateAsync"
     };
 
-    public static NPlusOneLoopMatch? AnalyzeInvocation(IInvocationOperation invocation)
+    private static readonly ConditionalWeakTable<IOperation, LocalWriteCache> LocalWriteCaches = new();
+
+    public static NPlusOneLoopMatch? AnalyzeInvocation(IInvocationOperation invocation, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var loop = invocation.FindEnclosingLoop();
         if (loop == null || !invocation.SharesOwningExecutableRoot(loop))
             return null;
@@ -99,7 +105,7 @@ internal static class NPlusOneLooperAnalysis
         if (!IsPerIterationInvocation(invocation, loop))
             return null;
 
-        if (!TryMatchDatabaseExecution(invocation, out var match))
+        if (!TryMatchDatabaseExecution(invocation, cancellationToken, out var match))
             return null;
 
         return new NPlusOneLoopMatch(match.PatternKind, match.MethodName, loop.GetLoopKind(), match.FixerEligible);
@@ -126,9 +132,9 @@ internal static class NPlusOneLooperAnalysis
         };
     }
 
-    public static bool IsProvenEfQuerySource(IOperation? operation)
+    public static bool IsProvenEfQuerySource(IOperation? operation, CancellationToken cancellationToken = default)
     {
-        return AnalyzeQueryProvenance(operation, operation).Kind == QueryProvenanceKind.Proven;
+        return AnalyzeQueryProvenance(operation, operation, cancellationToken).Kind == QueryProvenanceKind.Proven;
     }
 
     public static bool HasStronglyTypedNavigationAccessor(IInvocationOperation loadInvocation)
@@ -143,7 +149,10 @@ internal static class NPlusOneLooperAnalysis
                accessInvocation.Arguments[0].Value is IAnonymousFunctionOperation;
     }
 
-    private static bool TryMatchDatabaseExecution(IInvocationOperation invocation, out NPlusOneLoopMatch match)
+    private static bool TryMatchDatabaseExecution(
+        IInvocationOperation invocation,
+        CancellationToken cancellationToken,
+        out NPlusOneLoopMatch match)
     {
         var method = invocation.TargetMethod;
 
@@ -173,7 +182,7 @@ internal static class NPlusOneLooperAnalysis
             return false;
         }
 
-        var provenance = AnalyzeQueryProvenance(invocation.GetInvocationReceiver(), invocation);
+        var provenance = AnalyzeQueryProvenance(invocation.GetInvocationReceiver(), invocation, cancellationToken);
         if (provenance.Kind != QueryProvenanceKind.Proven)
         {
             match = null!;
@@ -192,7 +201,10 @@ internal static class NPlusOneLooperAnalysis
         return true;
     }
 
-    private static QueryProvenance AnalyzeQueryProvenance(IOperation? operation, IOperation? analysisScope)
+    private static QueryProvenance AnalyzeQueryProvenance(
+        IOperation? operation,
+        IOperation? analysisScope,
+        CancellationToken cancellationToken)
     {
         if (operation == null || analysisScope == null)
             return QueryProvenance.None;
@@ -202,6 +214,7 @@ internal static class NPlusOneLooperAnalysis
 
         while (current != null)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             current = current.UnwrapConversions();
 
             switch (current)
@@ -241,7 +254,7 @@ internal static class NPlusOneLooperAnalysis
                     if (!visitedLocals.Add(localReference.Local))
                         return QueryProvenance.Ambiguous;
 
-                    if (!TryGetSingleAssignedLocalValue(localReference.Local, analysisScope, out var valueOperation))
+                    if (!TryGetSingleAssignedLocalValue(localReference.Local, analysisScope, cancellationToken, out var valueOperation))
                     {
                         if (localReference.Type.IsDbSet() || localReference.Type.IsIQueryable())
                             return QueryProvenance.Ambiguous;
@@ -276,14 +289,18 @@ internal static class NPlusOneLooperAnalysis
         return QueryProvenance.None;
     }
 
-    private static bool TryGetSingleAssignedLocalValue(ILocalSymbol local, IOperation analysisScope, out IOperation valueOperation)
+    private static bool TryGetSingleAssignedLocalValue(
+        ILocalSymbol local,
+        IOperation analysisScope,
+        CancellationToken cancellationToken,
+        out IOperation valueOperation)
     {
         valueOperation = null!;
 
         if (local.DeclaringSyntaxReferences.Length != 1)
             return false;
 
-        var declarator = local.DeclaringSyntaxReferences[0].GetSyntax() as VariableDeclaratorSyntax;
+        var declarator = local.DeclaringSyntaxReferences[0].GetSyntax(cancellationToken) as VariableDeclaratorSyntax;
         if (declarator?.Initializer?.Value == null)
             return false;
 
@@ -292,10 +309,14 @@ internal static class NPlusOneLooperAnalysis
         if (semanticModel == null || executableRoot == null)
             return false;
 
-        if (HasLocalWrites(local, executableRoot.Syntax, semanticModel))
+        var localWrites = LocalWriteCaches.GetValue(
+            executableRoot,
+            root => new LocalWriteCache(root.Syntax, semanticModel));
+
+        if (localWrites.HasWrite(local, cancellationToken))
             return false;
 
-        var operation = semanticModel.GetOperation(declarator.Initializer.Value);
+        var operation = semanticModel.GetOperation(declarator.Initializer.Value, cancellationToken);
         if (operation == null)
             return false;
 
@@ -303,39 +324,65 @@ internal static class NPlusOneLooperAnalysis
         return true;
     }
 
-    private static bool HasLocalWrites(ILocalSymbol local, SyntaxNode executableRootSyntax, SemanticModel semanticModel)
+    private sealed class LocalWriteCache
     {
-        foreach (var assignment in executableRootSyntax.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+        private readonly SyntaxNode executableRootSyntax;
+        private readonly SemanticModel semanticModel;
+        private readonly object syncRoot = new();
+        private HashSet<ILocalSymbol>? writtenLocals;
+
+        public LocalWriteCache(SyntaxNode executableRootSyntax, SemanticModel semanticModel)
         {
-            if (SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(assignment.Left).Symbol, local))
-                return true;
+            this.executableRootSyntax = executableRootSyntax;
+            this.semanticModel = semanticModel;
         }
 
-        foreach (var prefix in executableRootSyntax.DescendantNodes().OfType<PrefixUnaryExpressionSyntax>())
+        public bool HasWrite(ILocalSymbol local, CancellationToken cancellationToken)
         {
-            if (!prefix.IsKind(SyntaxKind.PreIncrementExpression) &&
-                !prefix.IsKind(SyntaxKind.PreDecrementExpression))
+            return GetWrittenLocals(cancellationToken).Contains(local);
+        }
+
+        private HashSet<ILocalSymbol> GetWrittenLocals(CancellationToken cancellationToken)
+        {
+            if (writtenLocals != null)
+                return writtenLocals;
+
+            lock (syncRoot)
             {
-                continue;
+                writtenLocals ??= BuildWrittenLocals(cancellationToken);
+                return writtenLocals;
+            }
+        }
+
+        private HashSet<ILocalSymbol> BuildWrittenLocals(CancellationToken cancellationToken)
+        {
+            var locals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+
+            foreach (var node in executableRootSyntax.DescendantNodes())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                ExpressionSyntax? target = node switch
+                {
+                    AssignmentExpressionSyntax assignment => assignment.Left,
+                    PrefixUnaryExpressionSyntax prefix when
+                        prefix.IsKind(SyntaxKind.PreIncrementExpression) ||
+                        prefix.IsKind(SyntaxKind.PreDecrementExpression) => prefix.Operand,
+                    PostfixUnaryExpressionSyntax postfix when
+                        postfix.IsKind(SyntaxKind.PostIncrementExpression) ||
+                        postfix.IsKind(SyntaxKind.PostDecrementExpression) => postfix.Operand,
+                    _ => null
+                };
+
+                if (target == null)
+                    continue;
+
+                if (semanticModel.GetSymbolInfo(target, cancellationToken).Symbol is ILocalSymbol local)
+                    locals.Add(local);
             }
 
-            if (SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(prefix.Operand).Symbol, local))
-                return true;
+            return locals;
         }
-
-        foreach (var postfix in executableRootSyntax.DescendantNodes().OfType<PostfixUnaryExpressionSyntax>())
-        {
-            if (!postfix.IsKind(SyntaxKind.PostIncrementExpression) &&
-                !postfix.IsKind(SyntaxKind.PostDecrementExpression))
-            {
-                continue;
-            }
-
-            if (SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(postfix.Operand).Symbol, local))
-                return true;
-        }
-
-        return false;
     }
 
     private static bool IsDbContextSetInvocation(IInvocationOperation invocation)

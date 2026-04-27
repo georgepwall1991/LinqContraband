@@ -1,6 +1,9 @@
 using System.Collections.Immutable;
 using System.Text;
 using LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
+using LinqContraband.Analyzers.LC007_NPlusOneLooper;
+using LinqContraband.Analyzers.LC015_MissingOrderBy;
+using LinqContraband.Analyzers.LC017_WholeEntityProjection;
 using LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 using LinqContraband.Analyzers.LC027_MissingExplicitForeignKey;
 using Microsoft.CodeAnalysis;
@@ -46,6 +49,56 @@ public class AnalyzerPerformanceTests
         await GetDiagnosticsWithinAsync(new MissingExplicitForeignKeyAnalyzer(), compilation, AnalyzerTimeout);
     }
 
+    [Fact]
+    public async Task LC015_LocalQueryResolution_CompletesOnLargeMethod()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc015StressSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new MissingOrderByAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == MissingOrderByAnalyzer.DiagnosticId);
+    }
+
+    [Fact]
+    public async Task LC015_LocalQueryResolution_CompletesOnSelfReferentialLocal()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc015SelfReferentialSource());
+
+        await GetDiagnosticsWithinAsync(
+            new MissingOrderByAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+    }
+
+    [Fact]
+    public async Task LC007_LocalQueryProvenance_CompletesOnLargeLoopMethod()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc007StressSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new NPlusOneLooperAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == NPlusOneLooperAnalyzer.DiagnosticId);
+    }
+
+    [Fact]
+    public async Task LC017_WholeEntityUsage_CompletesOnManyMaterializers()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc017StressSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new WholeEntityProjectionAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == WholeEntityProjectionAnalyzer.DiagnosticId);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> GetDiagnosticsWithinAsync(
         DiagnosticAnalyzer analyzer,
         Compilation compilation,
@@ -85,6 +138,189 @@ public class AnalyzerPerformanceTests
             syntaxTrees,
             trustedPlatformAssemblies,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static string GenerateLc015StressSource()
+    {
+        const int queryCount = 240;
+        const int noiseCount = 500;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                public DbSet<User> Users { get; set; }
+            }
+
+            public class User
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            public class Queries
+            {
+                public void Run()
+                {
+                    var db = new AppDbContext();
+                    var query = db.Users.Where(u => u.Id > 0);
+            """);
+
+        for (var i = 0; i < noiseCount; i++)
+            source.AppendLine($"        var noise{i} = {i};");
+
+        for (var i = 0; i < queryCount; i++)
+            source.AppendLine($"        var page{i} = query.Skip({i});");
+
+        source.AppendLine(
+            """
+                }
+            }
+            """);
+
+        return source.ToString();
+    }
+
+    private static string GenerateLc015SelfReferentialSource()
+    {
+        return
+            """
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class User
+            {
+                public int Id { get; set; }
+            }
+
+            public class Queries
+            {
+                public void Run()
+                {
+                    IQueryable<User> query = query;
+                    var page = query.Skip(1);
+                }
+            }
+            """;
+    }
+
+    private static string GenerateLc007StressSource()
+    {
+        const int queryCount = 160;
+        const int noiseCount = 400;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System.Collections.Generic;
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                public DbSet<User> Users { get; set; }
+            }
+
+            public class User
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            public class Queries
+            {
+                public void Run(List<int> ids)
+                {
+                    var db = new AppDbContext();
+                    var query = db.Users.Where(u => u.Id > 0);
+            """);
+
+        for (var i = 0; i < noiseCount; i++)
+            source.AppendLine($"        var noise{i} = {i};");
+
+        source.AppendLine(
+            """
+                    foreach (var id in ids)
+                    {
+            """);
+
+        for (var i = 0; i < queryCount; i++)
+            source.AppendLine($"            var users{i} = query.Where(u => u.Id == id).ToList();");
+
+        source.AppendLine(
+            """
+                    }
+                }
+            }
+            """);
+
+        return source.ToString();
+    }
+
+    private static string GenerateLc017StressSource()
+    {
+        const int materializerCount = 80;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System;
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                public DbSet<LargeEntity> LargeEntities { get; set; }
+            }
+
+            public class LargeEntity
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+                public string P01 { get; set; }
+                public string P02 { get; set; }
+                public string P03 { get; set; }
+                public string P04 { get; set; }
+                public string P05 { get; set; }
+                public string P06 { get; set; }
+                public string P07 { get; set; }
+                public string P08 { get; set; }
+                public string P09 { get; set; }
+                public string P10 { get; set; }
+            }
+
+            public class Queries
+            {
+                public void Run()
+                {
+                    var db = new AppDbContext();
+            """);
+
+        for (var i = 0; i < materializerCount; i++)
+        {
+            source.AppendLine($"        var entities{i} = db.LargeEntities.ToList();");
+            source.AppendLine($"        foreach (var entity{i} in entities{i})");
+            source.AppendLine("        {");
+            source.AppendLine($"            Console.WriteLine(entity{i}.Name);");
+            source.AppendLine("        }");
+        }
+
+        source.AppendLine(
+            """
+                }
+            }
+            """);
+
+        return source.ToString();
     }
 
     private static string GenerateLc023StressSource()

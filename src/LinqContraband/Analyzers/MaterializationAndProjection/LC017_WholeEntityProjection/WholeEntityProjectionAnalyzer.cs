@@ -70,7 +70,7 @@ public sealed partial class WholeEntityProjectionAnalyzer : DiagnosticAnalyzer
         var variableInfo = FindVariableAssignment(invocation);
         if (variableInfo == null) return;
 
-        var usage = AnalyzeVariableUsage(invocation, variableInfo.Value.Symbol, analysis.EntityType);
+        var usage = AnalyzeVariableUsage(invocation, variableInfo.Value.Symbol, analysis.EntityType, context.CancellationToken);
         if (usage.HasEscapingUsage) return;
         if (usage.AccessedProperties.Count > MaxAccessedProperties) return;
         if (usage.AccessedProperties.Count == 0) return;

@@ -52,7 +52,7 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
-        var match = NPlusOneLooperAnalysis.AnalyzeInvocation(invocation);
+        var match = NPlusOneLooperAnalysis.AnalyzeInvocation(invocation, context.CancellationToken);
         if (match == null)
             return;
 
