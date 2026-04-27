@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.16] - 2026-04-27
+
+### Changed
+- Hardened `LC011` primary-key detection so fake same-name attributes no longer suppress diagnostics, ignored `Id` properties are not treated as mapped keys, and unapplied `IEntityTypeConfiguration<T>` classes no longer leak across contexts
+- Expanded `LC011` Fluent API coverage for scoped builder variables, chained builder calls, local applied configuration instances, current-assembly configuration scanning, and inferred `OwnsOne`/`OwnsMany` owned types
+- Restricted the `LC011` fixer so it does not generate duplicate `Id` members when an invalid `Id` already exists
+
 ## [5.2.15] - 2026-04-27
 
 ### Changed

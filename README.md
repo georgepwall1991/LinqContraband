@@ -405,7 +405,8 @@ public class Product
 
 **✅ The Fix:**
 
-Define a primary key using the `Id` convention, `[Key]` attribute, or Fluent API.
+Define a primary key using the `Id` convention, `[Key]`/`[PrimaryKey]` attributes, or Fluent API. If the type is
+intentionally query-only or owned, mark it with `[Keyless]`, `HasNoKey()`, `[Owned]`, or `OwnsOne`/`OwnsMany`.
 
 ```csharp
 // 1. Convention: Id or {ClassName}Id
@@ -427,6 +428,8 @@ public class Product
 modelBuilder.Entity<Product>().HasKey(p => p.ProductCode);
 
 // 4. Separate Configuration (IEntityTypeConfiguration<T>)
+modelBuilder.ApplyConfiguration(new ProductConfiguration());
+
 public class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     public void Configure(EntityTypeBuilder<Product> builder)

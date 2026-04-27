@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -39,6 +40,9 @@ public class EntityMissingPrimaryKeyFixer : CodeFixProvider
         var propertyDecl = token.Parent.AncestorsAndSelf().OfType<PropertyDeclarationSyntax>().FirstOrDefault();
         if (propertyDecl == null) return;
 
+        if (!await CanAddIdPropertyAsync(context.Document, propertyDecl, context.CancellationToken).ConfigureAwait(false))
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Add 'Id' property to entity",
@@ -47,21 +51,33 @@ public class EntityMissingPrimaryKeyFixer : CodeFixProvider
             diagnostic);
     }
 
+    private static async Task<bool> CanAddIdPropertyAsync(
+        Document document,
+        PropertyDeclarationSyntax propertyDecl,
+        CancellationToken cancellationToken)
+    {
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var propertySymbol = semanticModel?.GetDeclaredSymbol(propertyDecl, cancellationToken) as IPropertySymbol;
+        if (!TryGetEntityType(propertySymbol, out var entityType))
+            return false;
+
+        if (HasIdMember(entityType))
+            return false;
+
+        return entityType.DeclaringSyntaxReferences.FirstOrDefault() != null;
+    }
+
     private async Task<Document> ApplyFixAsync(Document document, PropertyDeclarationSyntax propertyDecl, CancellationToken cancellationToken)
     {
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-        var propertySymbol = semanticModel.GetDeclaredSymbol(propertyDecl, cancellationToken) as IPropertySymbol;
-        if (propertySymbol == null) return document;
+        var propertySymbol = semanticModel?.GetDeclaredSymbol(propertyDecl, cancellationToken) as IPropertySymbol;
+        if (!TryGetEntityType(propertySymbol, out var entityType)) return document;
+        if (HasIdMember(entityType)) return document;
 
-        // Get the TEntity from DbSet<TEntity>
-        var dbSetType = propertySymbol.Type as INamedTypeSymbol;
-        if (dbSetType == null || dbSetType.TypeArguments.Length == 0) return document;
-
-        var entityType = dbSetType.TypeArguments[0];
         var entitySyntaxRef = entityType.DeclaringSyntaxReferences.FirstOrDefault();
         if (entitySyntaxRef == null) return document;
 
-        var entitySyntax = await entitySyntaxRef.GetSyntaxAsync(cancellationToken).ConfigureAwait(false) as ClassDeclarationSyntax;
+        var entitySyntax = await entitySyntaxRef.GetSyntaxAsync(cancellationToken).ConfigureAwait(false) as TypeDeclarationSyntax;
         if (entitySyntax == null) return document;
 
         // We need to get the document containing the entity
@@ -82,5 +98,30 @@ public class EntityMissingPrimaryKeyFixer : CodeFixProvider
         editor.InsertMembers(entitySyntax, 0, new[] { idProperty });
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool TryGetEntityType(IPropertySymbol? propertySymbol, out ITypeSymbol entityType)
+    {
+        entityType = null!;
+
+        if (propertySymbol?.Type is not INamedTypeSymbol dbSetType || dbSetType.TypeArguments.Length == 0)
+            return false;
+
+        entityType = dbSetType.TypeArguments[0];
+        return true;
+    }
+
+    private static bool HasIdMember(ITypeSymbol entityType)
+    {
+        var current = entityType;
+        while (current != null && current.SpecialType != SpecialType.System_Object)
+        {
+            if (current.GetMembers().Any(member => member.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)))
+                return true;
+
+            current = current.BaseType;
+        }
+
+        return false;
     }
 }
