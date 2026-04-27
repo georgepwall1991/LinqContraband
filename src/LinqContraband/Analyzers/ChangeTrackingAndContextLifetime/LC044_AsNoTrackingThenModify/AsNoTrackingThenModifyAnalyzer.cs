@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
@@ -38,12 +38,6 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         Description,
         helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC044_AsNoTrackingThenModifySilentWrite.md");
 
-    private static readonly ImmutableHashSet<string> ReattachMethodNames = ImmutableHashSet.Create(
-        "Update", "UpdateRange", "Attach", "AttachRange");
-
-    private static readonly ImmutableHashSet<string> TrackingStates = ImmutableHashSet.Create(
-        "Modified", "Added");
-
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
@@ -61,28 +55,26 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         if (method.Name != "SaveChanges" && method.Name != "SaveChangesAsync") return;
         if (!method.ContainingType.IsDbContext()) return;
 
-        if (!TryGetSymbol(save.Instance, out var saveContextSymbol) || saveContextSymbol == null) return;
+        if (!AsNoTrackingThenModifyRootScan.TryGetSymbol(save.Instance, out var saveContextSymbol) ||
+            saveContextSymbol == null) return;
 
         var root = save.FindOwningExecutableRoot();
         if (root == null) return;
 
+        var scan = AsNoTrackingThenModifyRootScan.GetOrBuild(root, context.CancellationToken);
         var saveSpan = save.Syntax.SpanStart;
         var reported = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
 
-        foreach (var op in Descendants(root))
+        foreach (var decl in scan.InitializedDeclarators)
         {
-            switch (op)
-            {
-                case IVariableDeclaratorOperation decl when decl.Initializer?.Value != null:
-                    TryReportForLocal(
-                        context, root, save, saveContextSymbol, saveSpan,
-                        decl.Symbol, decl.Syntax.SpanStart, decl.Initializer.Value, reported);
-                    break;
+            TryReportForLocal(
+                context, root, save, saveContextSymbol, saveSpan, scan,
+                decl.Symbol, decl.Syntax.SpanStart, decl.Initializer!.Value, reported);
+        }
 
-                case IForEachLoopOperation forEach:
-                    TryReportForForeach(context, root, save, saveContextSymbol, saveSpan, forEach, reported);
-                    break;
-            }
+        foreach (var forEach in scan.ForEachLoops)
+        {
+            TryReportForForeach(context, root, save, saveContextSymbol, saveSpan, scan, forEach, reported);
         }
     }
 
@@ -92,6 +84,7 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         IInvocationOperation save,
         ISymbol saveContext,
         int saveSpan,
+        AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         int declSpan,
         IOperation initializer,
@@ -106,16 +99,16 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
 
         if (HasMultipleAssignments(root, local)) return;
 
-        var mutationNullable = FindFirstPropertyMutation(root, local, declSpan, saveSpan);
+        var mutationNullable = FindFirstPropertyMutation(scan, local, declSpan, saveSpan);
         if (mutationNullable == null) return;
         var mutation = mutationNullable.Value;
 
         if (!BlockReaches(mutation.Operation, save)) return;
 
-        if (HasEarlierSaveChangesOnSameContext(root, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
+        if (HasEarlierSaveChangesOnSameContext(scan, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
             return;
 
-        if (HasReattach(root, local, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
+        if (HasReattach(scan, local, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
             return;
 
         reported.Add(local);
@@ -132,6 +125,7 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         IInvocationOperation save,
         ISymbol saveContext,
         int saveSpan,
+        AsNoTrackingThenModifyRootScan scan,
         IForEachLoopOperation forEach,
         HashSet<ILocalSymbol> reported)
     {
@@ -142,18 +136,20 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         if (!TryGetQueryContextSymbol(queryReceiver, out var queryContextSymbol)) return;
         if (!SymbolEqualityComparer.Default.Equals(saveContext, queryContextSymbol)) return;
 
+        var forEachSpan = forEach.Syntax.Span;
+
         foreach (var loopLocal in forEach.Locals)
         {
             if (reported.Contains(loopLocal)) continue;
 
-            var mutationNullable = FindFirstPropertyMutation(forEach, loopLocal, forEach.Syntax.SpanStart - 1, saveSpan);
+            var mutationNullable = FindFirstPropertyMutation(scan, loopLocal, forEach.Syntax.SpanStart - 1, saveSpan);
             if (mutationNullable == null) continue;
             var mutation = mutationNullable.Value;
 
-            if (HasReattachInRange(forEach, loopLocal, saveContext)) continue;
+            if (HasReattachInRange(scan, loopLocal, saveContext, forEachSpan)) continue;
             if (!BlockReaches(forEach, save)) continue;
 
-            if (HasEarlierSaveChangesOnSameContext(root, saveContext, forEach.Syntax.SpanStart, saveSpan))
+            if (HasEarlierSaveChangesOnSameContext(scan, saveContext, forEach.Syntax.SpanStart, saveSpan))
                 continue;
 
             reported.Add(loopLocal);
@@ -179,24 +175,22 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         public string PropertyName { get; }
     }
 
-    private static MutationHit? FindFirstPropertyMutation(IOperation root, ILocalSymbol local, int afterSpan, int beforeSpan)
+    private static MutationHit? FindFirstPropertyMutation(
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        int afterSpan,
+        int beforeSpan)
     {
+        if (!scan.MutationsByLocal.TryGetValue(local, out var mutations)) return null;
+
         MutationHit? best = null;
-        foreach (var op in Descendants(root))
+        for (var i = 0; i < mutations.Count; i++)
         {
-            if (op is not ISimpleAssignmentOperation assignment) continue;
-            if (assignment.Target is not IPropertyReferenceOperation propRef) continue;
-
-            var instance = propRef.Instance?.UnwrapConversions();
-            if (instance is not ILocalReferenceOperation localRef) continue;
-            if (!SymbolEqualityComparer.Default.Equals(localRef.Local, local)) continue;
-
-            var span = assignment.Syntax.SpanStart;
-            if (span <= afterSpan || span >= beforeSpan) continue;
-
-            if (best == null || span < best.Value.Operation.Syntax.SpanStart)
+            var entry = mutations[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
+            if (best == null || entry.SpanStart < best.Value.Operation.Syntax.SpanStart)
             {
-                best = new MutationHit(assignment, propRef.Syntax.GetLocation(), propRef.Property.Name);
+                best = new MutationHit(entry.Operation, entry.TargetLocation, entry.PropertyName);
             }
         }
 
@@ -205,126 +199,51 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
 
     private static bool HasMultipleAssignments(IOperation root, ILocalSymbol local)
     {
-        var count = 0;
-        foreach (var op in Descendants(root))
-        {
-            if (op is ISimpleAssignmentOperation assignment &&
-                assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
-                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
-            {
-                count++;
-            }
-            else if (op is IVariableDeclaratorOperation declarator &&
-                     SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
-                     declarator.Initializer != null)
-            {
-                count++;
-            }
-
-            if (count > 1) return true;
-        }
-
-        return false;
+        var assignments = LocalAssignmentCache.GetAssignments(root, local);
+        return assignments.Count > 1;
     }
 
     private static bool HasReattach(
-        IOperation root,
+        AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
         int afterSpan,
         int beforeSpan)
     {
-        foreach (var op in Descendants(root))
+        if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
+
+        for (var i = 0; i < reattaches.Count; i++)
         {
-            var span = op.Syntax.SpanStart;
-            if (span <= afterSpan || span >= beforeSpan) continue;
+            var entry = reattaches[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
 
-            if (op is IInvocationOperation inv && IsReattachInvocation(inv, local, saveContext))
-                return true;
-
-            if (op is ISimpleAssignmentOperation assign && IsEntryStateReattach(assign, local, saveContext))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool HasReattachInRange(IOperation range, ILocalSymbol local, ISymbol saveContext)
-    {
-        foreach (var op in Descendants(range))
-        {
-            if (op is IInvocationOperation inv && IsReattachInvocation(inv, local, saveContext))
-                return true;
-
-            if (op is ISimpleAssignmentOperation assign && IsEntryStateReattach(assign, local, saveContext))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsReattachInvocation(IInvocationOperation invocation, ILocalSymbol local, ISymbol saveContext)
-    {
-        if (!ReattachMethodNames.Contains(invocation.TargetMethod.Name)) return false;
-
-        var container = invocation.TargetMethod.ContainingType;
-        if (!container.IsDbContext() && !container.IsDbSet()) return false;
-
-        if (invocation.Arguments.Length == 0) return false;
-        var argValue = invocation.Arguments[0].Value.UnwrapConversions();
-        if (argValue is not ILocalReferenceOperation argLocal) return false;
-        if (!SymbolEqualityComparer.Default.Equals(argLocal.Local, local)) return false;
-
-        return TryResolveInvocationContext(invocation, out var invContext)
-               && SymbolEqualityComparer.Default.Equals(invContext, saveContext);
-    }
-
-    private static bool IsEntryStateReattach(ISimpleAssignmentOperation assignment, ILocalSymbol local, ISymbol saveContext)
-    {
-        if (assignment.Target is not IPropertyReferenceOperation targetProp) return false;
-        if (targetProp.Property.Name != "State") return false;
-        if (targetProp.Property.ContainingType?.Name != "EntityEntry") return false;
-
-        if (targetProp.Instance is not IInvocationOperation entryInv) return false;
-        if (entryInv.TargetMethod.Name != "Entry") return false;
-        if (!entryInv.TargetMethod.ContainingType.IsDbContext()) return false;
-
-        if (entryInv.Arguments.Length == 0) return false;
-        var argValue = entryInv.Arguments[0].Value.UnwrapConversions();
-        if (argValue is not ILocalReferenceOperation argLocal) return false;
-        if (!SymbolEqualityComparer.Default.Equals(argLocal.Local, local)) return false;
-
-        if (!TryGetSymbol(entryInv.Instance, out var entryContext)) return false;
-        if (!SymbolEqualityComparer.Default.Equals(entryContext, saveContext)) return false;
-
-        var value = assignment.Value.UnwrapConversions();
-        if (value is not IFieldReferenceOperation fieldRef) return false;
-        if (fieldRef.Field.ContainingType?.Name != "EntityState") return false;
-
-        return TrackingStates.Contains(fieldRef.Field.Name);
-    }
-
-    private static bool TryResolveInvocationContext(IInvocationOperation invocation, out ISymbol? contextSymbol)
-    {
-        contextSymbol = null;
-
-        if (invocation.TargetMethod.ContainingType.IsDbContext())
-        {
-            return TryGetSymbol(invocation.Instance, out contextSymbol);
-        }
-
-        if (invocation.TargetMethod.ContainingType.IsDbSet())
-        {
-            var dbSetInstance = invocation.Instance?.UnwrapConversions();
-            switch (dbSetInstance)
+            if (entry.ContextSymbol != null &&
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
             {
-                case IPropertyReferenceOperation propRef when propRef.Type.IsDbSet():
-                    return TryGetSymbol(propRef.Instance, out contextSymbol);
-                case IFieldReferenceOperation fieldRef when fieldRef.Type.IsDbSet():
-                    return TryGetSymbol(fieldRef.Instance, out contextSymbol);
-                case IInvocationOperation setCall when setCall.TargetMethod.Name == "Set" &&
-                                                      setCall.TargetMethod.ContainingType.IsDbContext():
-                    return TryGetSymbol(setCall.Instance, out contextSymbol);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasReattachInRange(
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        TextSpan range)
+    {
+        if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
+
+        for (var i = 0; i < reattaches.Count; i++)
+        {
+            var entry = reattaches[i];
+            if (!range.Contains(entry.Span)) continue;
+
+            if (entry.ContextSymbol != null &&
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
+            {
+                return true;
             }
         }
 
@@ -332,22 +251,18 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
     }
 
     private static bool HasEarlierSaveChangesOnSameContext(
-        IOperation root,
+        AsNoTrackingThenModifyRootScan scan,
         ISymbol saveContext,
         int afterSpan,
         int currentSaveSpan)
     {
-        foreach (var op in Descendants(root))
+        var saves = scan.SaveChangesCalls;
+        for (var i = 0; i < saves.Count; i++)
         {
-            if (op is not IInvocationOperation inv) continue;
-            if (inv.TargetMethod.Name != "SaveChanges" && inv.TargetMethod.Name != "SaveChangesAsync") continue;
-            if (!inv.TargetMethod.ContainingType.IsDbContext()) continue;
-
-            var span = inv.Syntax.SpanStart;
-            if (span <= afterSpan || span >= currentSaveSpan) continue;
-
-            if (TryGetSymbol(inv.Instance, out var sym) &&
-                SymbolEqualityComparer.Default.Equals(sym, saveContext))
+            var entry = saves[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= currentSaveSpan) continue;
+            if (entry.ContextSymbol != null &&
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
             {
                 return true;
             }
@@ -438,14 +353,14 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
             switch (current)
             {
                 case IPropertyReferenceOperation propRef when propRef.Type.IsDbSet():
-                    return TryGetSymbol(propRef.Instance, out contextSymbol);
+                    return AsNoTrackingThenModifyRootScan.TryGetSymbol(propRef.Instance, out contextSymbol);
 
                 case IFieldReferenceOperation fieldRef when fieldRef.Type.IsDbSet():
-                    return TryGetSymbol(fieldRef.Instance, out contextSymbol);
+                    return AsNoTrackingThenModifyRootScan.TryGetSymbol(fieldRef.Instance, out contextSymbol);
 
                 case IInvocationOperation inv when inv.TargetMethod.Name == "Set" &&
                                                    inv.TargetMethod.ContainingType.IsDbContext():
-                    return TryGetSymbol(inv.Instance, out contextSymbol);
+                    return AsNoTrackingThenModifyRootScan.TryGetSymbol(inv.Instance, out contextSymbol);
 
                 case IInvocationOperation inv:
                     var next = inv.GetInvocationReceiver();
@@ -459,40 +374,5 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
-    }
-
-    private static bool TryGetSymbol(IOperation? operation, out ISymbol? symbol)
-    {
-        symbol = null;
-        if (operation == null) return false;
-
-        switch (operation.UnwrapConversions())
-        {
-            case ILocalReferenceOperation localRef:
-                symbol = localRef.Local;
-                return true;
-            case IParameterReferenceOperation paramRef:
-                symbol = paramRef.Parameter;
-                return true;
-            case IFieldReferenceOperation fieldRef:
-                symbol = fieldRef.Field;
-                return true;
-            case IPropertyReferenceOperation propRef:
-                symbol = propRef.Property;
-                return true;
-            case IInstanceReferenceOperation:
-                symbol = null;
-                return false;
-            default:
-                return false;
-        }
-    }
-
-    private static IEnumerable<IOperation> Descendants(IOperation root)
-    {
-        yield return root;
-        foreach (var child in root.ChildOperations)
-            foreach (var d in Descendants(child))
-                yield return d;
     }
 }

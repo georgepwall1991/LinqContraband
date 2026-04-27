@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.20] - 2026-04-27
+
+### Changed
+- Cached shared local assignment scans for `LC002` and `LC031` query provenance resolution to reduce repeated full-method operation walks
+- Cached `LC044` SaveChanges analysis inputs per executable root so local declarations, foreach loops, mutations, reattach calls, and prior SaveChanges calls are scanned once
+- Updated package release notes for the analyzer scan-cache performance pass
+
 ## [5.2.19] - 2026-04-27
 
 ### Changed
