@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -22,7 +23,8 @@ public sealed partial class WholeEntityProjectionAnalyzer
         ITypeSymbol entityType,
         HashSet<ILocalSymbol> foreachLocals,
         HashSet<ILocalSymbol> manualIterationLocals,
-        HashSet<string> accessedProperties)
+        HashSet<string> accessedProperties,
+        CancellationToken cancellationToken)
     {
         var semanticModel = invocation.SemanticModel;
         if (semanticModel == null) return;
@@ -32,28 +34,43 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     invocation.Syntax.FirstAncestorOrSelf<AnonymousFunctionExpressionSyntax>() as SyntaxNode;
         if (scope == null) return;
 
-        foreach (var conditionalAccess in scope.DescendantNodes().OfType<ConditionalAccessExpressionSyntax>())
+        foreach (var node in scope.DescendantNodes())
         {
-            if (!IsTrackedEntitySyntax(conditionalAccess.Expression, variable, foreachLocals, manualIterationLocals, semanticModel))
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (node is ConditionalAccessExpressionSyntax conditionalAccess)
+            {
+                if (!IsTrackedEntitySyntax(
+                        conditionalAccess.Expression,
+                        variable,
+                        foreachLocals,
+                        manualIterationLocals,
+                        semanticModel,
+                        cancellationToken))
+                {
+                    continue;
+                }
+
+                if (conditionalAccess.WhenNotNull is MemberBindingExpressionSyntax memberBinding &&
+                    semanticModel.GetSymbolInfo(memberBinding, cancellationToken).Symbol is IPropertySymbol conditionalProperty &&
+                    IsPropertyOfType(conditionalProperty, entityType))
+                {
+                    accessedProperties.Add(conditionalProperty.Name);
+                }
+
+                continue;
+            }
+
+            if (node is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            if (conditionalAccess.WhenNotNull is MemberBindingExpressionSyntax memberBinding &&
-                semanticModel.GetSymbolInfo(memberBinding).Symbol is IPropertySymbol property &&
-                IsPropertyOfType(property, entityType))
-            {
-                accessedProperties.Add(property.Name);
-            }
-        }
-
-        foreach (var memberAccess in scope.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
-        {
             if (memberAccess.Expression is not ElementAccessExpressionSyntax elementAccess) continue;
-            if (!IsCollectionElementAccess(elementAccess, variable, semanticModel)) continue;
+            if (!IsCollectionElementAccess(elementAccess, variable, semanticModel, cancellationToken)) continue;
 
-            if (semanticModel.GetSymbolInfo(memberAccess).Symbol is IPropertySymbol property &&
-                IsPropertyOfType(property, entityType))
+            if (semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol is IPropertySymbol elementProperty &&
+                IsPropertyOfType(elementProperty, entityType))
             {
-                accessedProperties.Add(property.Name);
+                accessedProperties.Add(elementProperty.Name);
             }
         }
     }
@@ -63,12 +80,13 @@ public sealed partial class WholeEntityProjectionAnalyzer
         ILocalSymbol variable,
         HashSet<ILocalSymbol> foreachLocals,
         HashSet<ILocalSymbol> manualIterationLocals,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
         if (expression is ElementAccessExpressionSyntax elementAccess)
-            return IsCollectionElementAccess(elementAccess, variable, semanticModel);
+            return IsCollectionElementAccess(elementAccess, variable, semanticModel, cancellationToken);
 
-        var symbol = semanticModel.GetSymbolInfo(expression).Symbol as ILocalSymbol;
+        var symbol = semanticModel.GetSymbolInfo(expression, cancellationToken).Symbol as ILocalSymbol;
         if (symbol == null) return false;
 
         return SymbolEqualityComparer.Default.Equals(symbol, variable) ||
@@ -79,9 +97,10 @@ public sealed partial class WholeEntityProjectionAnalyzer
     private static bool IsCollectionElementAccess(
         ElementAccessExpressionSyntax elementAccess,
         ILocalSymbol variable,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
-        var symbol = semanticModel.GetSymbolInfo(elementAccess.Expression).Symbol as ILocalSymbol;
+        var symbol = semanticModel.GetSymbolInfo(elementAccess.Expression, cancellationToken).Symbol as ILocalSymbol;
         return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, variable);
     }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -11,7 +12,8 @@ public sealed partial class WholeEntityProjectionAnalyzer
     private static VariableUsageAnalysis AnalyzeVariableUsage(
         IInvocationOperation invocation,
         ILocalSymbol variable,
-        ITypeSymbol entityType)
+        ITypeSymbol entityType,
+        CancellationToken cancellationToken)
     {
         var result = new VariableUsageAnalysis();
         var root = FindMethodBody(invocation);
@@ -23,9 +25,12 @@ public sealed partial class WholeEntityProjectionAnalyzer
 
         var foreachLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
         var manualIterationLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        var usageCandidates = new List<IOperation>();
 
         foreach (var descendant in root.Descendants())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             switch (descendant)
             {
                 case IForEachLoopOperation forEach when
@@ -47,10 +52,15 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     manualIterationLocals.Add(targetLocal.Local);
                     break;
             }
+
+            if (descendant is IReturnOperation or IInvocationOperation or IAnonymousFunctionOperation or IPropertyReferenceOperation)
+                usageCandidates.Add(descendant);
         }
 
-        foreach (var descendant in root.Descendants())
+        foreach (var descendant in usageCandidates)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             switch (descendant)
             {
                 case IReturnOperation returnOperation when
@@ -65,7 +75,7 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     break;
 
                 case IAnonymousFunctionOperation lambda when
-                    LambdaDirectlyReferences(lambda, variable, foreachLocals, manualIterationLocals):
+                    LambdaDirectlyReferences(lambda, variable, foreachLocals, manualIterationLocals, cancellationToken):
                     result.HasEscapingUsage = true;
                     break;
 
@@ -79,7 +89,14 @@ public sealed partial class WholeEntityProjectionAnalyzer
             if (result.HasEscapingUsage) return result;
         }
 
-        CollectSyntaxBasedPropertyAccesses(invocation, variable, entityType, foreachLocals, manualIterationLocals, result.AccessedProperties);
+        CollectSyntaxBasedPropertyAccesses(
+            invocation,
+            variable,
+            entityType,
+            foreachLocals,
+            manualIterationLocals,
+            result.AccessedProperties,
+            cancellationToken);
         return result;
     }
 
@@ -120,10 +137,13 @@ public sealed partial class WholeEntityProjectionAnalyzer
         IAnonymousFunctionOperation lambda,
         ILocalSymbol variable,
         HashSet<ILocalSymbol> foreachLocals,
-        HashSet<ILocalSymbol> manualIterationLocals)
+        HashSet<ILocalSymbol> manualIterationLocals,
+        CancellationToken cancellationToken)
     {
         foreach (var descendant in lambda.Descendants())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (descendant is not ILocalReferenceOperation localReference) continue;
 
             if (SymbolEqualityComparer.Default.Equals(localReference.Local, variable) ||

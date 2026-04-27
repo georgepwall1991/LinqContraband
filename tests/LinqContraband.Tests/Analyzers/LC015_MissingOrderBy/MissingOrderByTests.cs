@@ -98,6 +98,34 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Skip_OnComposedIQueryableAliasFromDbSet_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> query = db.Users;
+            query = query.Where(u => u.Id > 0);
+
+            var result = query.{|#0:Skip|}(10);
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Skip");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Last_WithoutOrderBy_ShouldTrigger()
     {
         var test = Usings + @"

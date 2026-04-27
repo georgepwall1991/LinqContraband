@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.19] - 2026-04-27
+
+### Changed
+- Cached `LC015` local query-source resolution per operation block and added a self-referential local guard to prevent pathological query provenance loops
+- Cached `LC007` local write scans and threaded analyzer cancellation through query provenance analysis to reduce repeated full-method traversal
+- Collapsed `LC017` whole-entity usage scans and syntax fallback scans into bounded single passes with cancellation checks
+- Added analyzer performance coverage for `LC007`, `LC015`, and `LC017` hot paths
+
 ## [5.2.18] - 2026-04-27
 
 ### Changed
