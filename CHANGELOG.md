@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.17] - 2026-04-27
+
+### Changed
+- Cached `LC023` primary-key metadata per compilation so primary-key query detection no longer rescans every syntax tree for every matching query
+- Cached `LC011` and `LC027` schema/model configuration scans and added cancellation checks to prevent pathological build-time analyzer work in large projects
+- Fixed `LC028` and `LC038` option-cache access under concurrent analyzer execution
+
 ## [5.2.16] - 2026-04-27
 
 ### Changed
