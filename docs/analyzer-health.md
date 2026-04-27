@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-04-26
+Reviewed: 2026-04-27
 
 This is a deliberately harsh health audit for the 44 analyzers in `RuleCatalog`. The catalog currently declares 29 rules with code fixes and 15 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
@@ -38,7 +38,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC008 | Synchronous EF method in async context | Execution & Async | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Good coverage for common sync-over-async shapes; fixer confidence depends on keeping API mappings current. |
 | LC009 | Missing AsNoTracking in read-only path | Change Tracking & Context Lifetime | Info | 4 | 4 | 3 | 4 | 3 | 3 | Low | Good write-detection coverage for a tuning rule; fixer/docs need clearer identity-resolution and intentional tracking guidance. |
 | LC010 | SaveChanges inside loop | Change Tracking & Context Lifetime | Warning | 3 | 3 | 3 | 3 | 3 | 5 | Medium | Very important rule, but current health is more basic than the impact justifies; add branch, loop, async, and unit-of-work negatives. |
-| LC011 | Entity missing primary key | Schema & Modeling | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Solid convention/configuration handling; fixer safety and non-standard key modeling keep it below reference quality. |
+| LC011 | Entity missing primary key | Schema & Modeling | Warning | 4 | 5 | 4 | 5 | 5 | 4 | Low | Hardened around namespace-validated attributes, mapped key checks, context-specific applied configurations, current-assembly config scanning, inferred owned types, scoped/chained builder Fluent API, and duplicate-safe fixes; remaining risk is mostly exotic/dynamic EF model construction. |
 | LC012 | Use ExecuteDelete instead of RemoveRange | Bulk Operations & Set-Based Writes | Warning | 3 | 3 | 3 | 2 | 3 | 4 | Medium | Useful but risky rewrite space; needs more source-shape, provider/version, and fixer safety tests. |
 | LC013 | Disposed context query | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Strong manual-only reliability rule; keep expanding lifetime-alias and ownership boundary coverage. |
 | LC014 | Avoid string case conversion in queries | Query Shape & Translation | Warning | 3 | 3 | 3 | 3 | 3 | 4 | Medium | Correct basic smell, but provider/collation nuance is under-modeled and should be documented more clearly. |
@@ -92,9 +92,9 @@ This audit was recalibrated against the current `RuleCatalog`, analyzer/fixer so
 
 Current local verification:
 
-- `/opt/homebrew/bin/dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
-- `/opt/homebrew/bin/dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --no-restore --framework net10.0 --filter FullyQualifiedName~LC020` passed with 12 tests.
-- `PATH="/opt/homebrew/bin:$PATH" /opt/homebrew/bin/dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` passed for 43 diagnostic paths.
-- `/opt/homebrew/bin/dotnet test LinqContraband.sln --no-restore --framework net10.0` passed with 628 tests.
+- `dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
+- `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` passed for 43 diagnostic paths.
+- `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --filter FullyQualifiedName~LC011` passed with 45 tests.
+- `dotnet test LinqContraband.sln --framework net10.0` passed with 671 tests.
 - `git diff --check` passed.
-- `/opt/homebrew/bin/dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
+- `dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.

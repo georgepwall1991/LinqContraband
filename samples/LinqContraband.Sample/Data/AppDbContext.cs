@@ -24,7 +24,7 @@ public class AppDbContext : DbContext
         // Configure Fluent API Key for ValidFluentEntity
         modelBuilder.Entity<ValidFluentEntity>().HasKey(e => e.CodeKey);
 
-        // Apply separate configuration
+        // Apply separate configuration so LC011 can verify the configured key belongs to this context.
         modelBuilder.ApplyConfiguration(new ConfigurationEntityConfiguration());
     }
 
@@ -81,7 +81,7 @@ public class AppDbContext : DbContext
     public DbSet<ValidFluentEntity> ValidFluents { get; set; } = null!;
 
     /// <summary>
-    ///     VALID: Primary Key defined in IEntityTypeConfiguration.
+    ///     VALID: Primary Key defined in an applied IEntityTypeConfiguration.
     /// </summary>
     public DbSet<ConfigurationEntity> ConfigurationEntities { get; set; } = null!;
 

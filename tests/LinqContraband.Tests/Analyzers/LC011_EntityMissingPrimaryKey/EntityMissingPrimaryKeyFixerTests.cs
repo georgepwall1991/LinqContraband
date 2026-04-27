@@ -44,4 +44,28 @@ namespace Microsoft.EntityFrameworkCore { public class DbContext { } public clas
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
+
+    [Fact]
+    public async Task Fixer_ShouldNotAddDuplicateId_WhenPrivateIdAlreadyExists()
+    {
+        var test = @"
+using Microsoft.EntityFrameworkCore;
+namespace LinqContraband.Test
+{
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Product> {|LC011:Products|} { get; set; }
+    }
+
+    public class Product
+    {
+        private int Id { get; set; }
+        public string Name { get; set; }
+    }
+}
+namespace Microsoft.EntityFrameworkCore { public class DbContext { } public class DbSet<T> { } }
+";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
 }

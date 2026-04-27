@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.2.15</Version>
+        <Version>5.2.16</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Hardens LC010, LC012, LC014, LC015, LC016, LC018, LC020, LC021, LC022, LC023, LC024, LC031, LC034, LC037, LC039, and LC040 analyzer/fixer safety to reduce false positives, false negatives, and unsafe automated rewrites.</PackageReleaseNotes>
+        <PackageReleaseNotes>Hardens LC011 primary-key detection around applied configurations, owned/keyless modeling, namespace-validated attributes, mapped keys, and duplicate-safe fixes.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

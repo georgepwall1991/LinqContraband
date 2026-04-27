@@ -21,7 +21,7 @@ namespace System.ComponentModel.DataAnnotations
 namespace Microsoft.EntityFrameworkCore
 {
     public class KeylessAttribute : Attribute {}
-    public class PrimaryKeyAttribute : Attribute 
+    public class PrimaryKeyAttribute : Attribute
     {
         public PrimaryKeyAttribute(params string[] propertyNames) {}
     }
@@ -31,13 +31,13 @@ namespace Microsoft.EntityFrameworkCore
         protected virtual void OnModelCreating(ModelBuilder modelBuilder) {}
     }
     public class DbSet<T> where T : class {}
-    
+
     public interface IEntityTypeConfiguration<T> where T : class
     {
         void Configure(EntityTypeBuilder<T> builder);
     }
 
-    public class ModelBuilder 
+    public class ModelBuilder
     {
         public EntityTypeBuilder<T> Entity<T>() where T : class => new EntityTypeBuilder<T>();
     }
@@ -212,8 +212,53 @@ namespace TestNamespace
     [Fact]
     public async Task TestInnocent_EntityWithEntityTypeConfiguration_ShouldNotTrigger()
     {
-        var test = Usings + MockAttributes + @"
+        var test = Usings + @"
+namespace System.ComponentModel.DataAnnotations
+{
+    public class KeyAttribute : Attribute {}
+}
+namespace Microsoft.EntityFrameworkCore
+{
+    public class KeylessAttribute : Attribute {}
+    public class PrimaryKeyAttribute : Attribute
+    {
+        public PrimaryKeyAttribute(params string[] propertyNames) {}
+    }
+    public class DbContext : IDisposable
+    {
+        public void Dispose() {}
+        protected virtual void OnModelCreating(ModelBuilder modelBuilder) {}
+    }
+    public class DbSet<T> where T : class {}
+
+    public interface IEntityTypeConfiguration<T> where T : class
+    {
+        void Configure(EntityTypeBuilder<T> builder);
+    }
+
+    public class ModelBuilder
+    {
+        public EntityTypeBuilder<T> Entity<T>() where T : class => new EntityTypeBuilder<T>();
+        public void ApplyConfiguration<T>(IEntityTypeConfiguration<T> configuration) where T : class {}
+    }
+
+    public class EntityTypeBuilder<T> where T : class
+    {
+        public EntityTypeBuilder<T> HasKey(params string[] propertyNames) => this;
+        public EntityTypeBuilder<T> HasKey(System.Linq.Expressions.Expression<Func<T, object>> keyExpression) => this;
+    }
+}
+
+namespace TestNamespace
+{
+    public class MyDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
         public DbSet<ConfigEntity> ConfigEntities { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new ConfigEntityConfiguration());
+        }
     }
 
     public class ConfigEntity

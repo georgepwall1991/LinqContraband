@@ -8,27 +8,24 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 {
     private bool IsMissingPrimaryKey(
         INamedTypeSymbol entityType,
-        INamedTypeSymbol dbContextType,
         HashSet<INamedTypeSymbol> configuredEntities,
         HashSet<INamedTypeSymbol> keylessEntities,
-        HashSet<INamedTypeSymbol> ownedEntities,
-        Compilation compilation)
+        HashSet<INamedTypeSymbol> ownedEntities)
     {
-        if (HasAttribute(entityType, "KeylessAttribute") || HasAttribute(entityType, "Keyless"))
+        if (HasAttribute(entityType, "KeylessAttribute", "Microsoft.EntityFrameworkCore"))
             return false;
         if (keylessEntities.Contains(entityType))
             return false;
 
+        if (HasAttribute(entityType, "OwnedAttribute", "Microsoft.EntityFrameworkCore"))
+            return false;
         if (ownedEntities.Contains(entityType))
             return false;
 
-        if (HasAttribute(entityType, "PrimaryKeyAttribute") || HasAttribute(entityType, "PrimaryKey"))
+        if (HasValidPrimaryKeyAttribute(entityType))
             return false;
 
         if (HasValidKeyProperty(entityType))
-            return false;
-
-        if (HasFluentKeyConfiguration(dbContextType, entityType, compilation))
             return false;
 
         if (configuredEntities.Contains(entityType))
@@ -37,20 +34,78 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         return true;
     }
 
-    private bool HasAttribute(ISymbol symbol, string attributeName)
+    private static bool HasAttribute(ISymbol symbol, string attributeName, string namespaceName)
     {
+        var shortName = attributeName.EndsWith("Attribute", StringComparison.Ordinal)
+            ? attributeName.Substring(0, attributeName.Length - 9)
+            : attributeName;
+
         foreach (var attr in symbol.GetAttributes())
         {
             if (attr.AttributeClass == null)
                 continue;
-            if (attr.AttributeClass.Name == attributeName)
-                return true;
-            if (attributeName.EndsWith("Attribute", StringComparison.Ordinal) &&
-                attr.AttributeClass.Name == attributeName.Substring(0, attributeName.Length - 9))
+
+            if (attr.AttributeClass.ContainingNamespace?.ToString() != namespaceName)
+                continue;
+
+            if (attr.AttributeClass.Name == attributeName || attr.AttributeClass.Name == shortName)
                 return true;
         }
 
         return false;
+    }
+
+    private bool HasValidPrimaryKeyAttribute(INamedTypeSymbol entityType)
+    {
+        foreach (var attr in entityType.GetAttributes())
+        {
+            if (attr.AttributeClass == null ||
+                attr.AttributeClass.ContainingNamespace?.ToString() != "Microsoft.EntityFrameworkCore" ||
+                attr.AttributeClass.Name is not ("PrimaryKeyAttribute" or "PrimaryKey"))
+            {
+                continue;
+            }
+
+            var propertyNames = GetPrimaryKeyPropertyNames(attr);
+            if (propertyNames.Count == 0)
+                return false;
+
+            var allPropertiesValid = true;
+            foreach (var propertyName in propertyNames)
+            {
+                if (!TryFindProperty(entityType, propertyName, out var prop) ||
+                    !IsUsableKeyProperty(prop))
+                {
+                    allPropertiesValid = false;
+                    break;
+                }
+            }
+
+            if (allPropertiesValid)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static List<string> GetPrimaryKeyPropertyNames(AttributeData attr)
+    {
+        var propertyNames = new List<string>();
+        foreach (var argument in attr.ConstructorArguments)
+        {
+            if (argument.Kind == TypedConstantKind.Array)
+            {
+                foreach (var value in argument.Values)
+                    if (value.Value is string propertyName)
+                        propertyNames.Add(propertyName);
+            }
+            else if (argument.Value is string propertyName)
+            {
+                propertyNames.Add(propertyName);
+            }
+        }
+
+        return propertyNames;
     }
 
     private bool HasValidKeyProperty(INamedTypeSymbol entityType)
@@ -63,17 +118,15 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 if (member is not IPropertySymbol prop)
                     continue;
 
-                if ((HasAttribute(prop, "KeyAttribute") || HasAttribute(prop, "Key")) &&
-                    IsPublicProperty(prop) &&
-                    IsValidKeyType(prop.Type))
+                if (HasAttribute(prop, "KeyAttribute", "System.ComponentModel.DataAnnotations") &&
+                    IsUsableKeyProperty(prop))
                 {
                     return true;
                 }
 
                 if ((prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
-                     prop.Name.Equals($"{entityType.Name}Id", StringComparison.OrdinalIgnoreCase)) &&
-                    IsPublicProperty(prop) &&
-                    IsValidKeyType(prop.Type))
+                      prop.Name.Equals($"{entityType.Name}Id", StringComparison.OrdinalIgnoreCase)) &&
+                    IsUsableKeyProperty(prop))
                 {
                     return true;
                 }
@@ -85,6 +138,34 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         return false;
     }
 
+    private static bool TryFindProperty(INamedTypeSymbol entityType, string propertyName, out IPropertySymbol property)
+    {
+        var current = entityType;
+        while (current != null && current.SpecialType != SpecialType.System_Object)
+        {
+            foreach (var member in current.GetMembers(propertyName))
+            {
+                if (member is IPropertySymbol prop)
+                {
+                    property = prop;
+                    return true;
+                }
+            }
+
+            current = current.BaseType;
+        }
+
+        property = null!;
+        return false;
+    }
+
+    private static bool IsUsableKeyProperty(IPropertySymbol prop)
+    {
+        return IsPublicProperty(prop) &&
+               !HasAttribute(prop, "NotMappedAttribute", "System.ComponentModel.DataAnnotations.Schema") &&
+               IsValidKeyType(prop.Type);
+    }
+
     private static bool IsPublicProperty(IPropertySymbol prop)
     {
         return prop.DeclaredAccessibility == Accessibility.Public &&
@@ -93,6 +174,9 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
     private static bool IsValidKeyType(ITypeSymbol type)
     {
+        if (type.SpecialType == SpecialType.System_Object)
+            return false;
+
         if (type.SpecialType != SpecialType.None)
             return true;
 

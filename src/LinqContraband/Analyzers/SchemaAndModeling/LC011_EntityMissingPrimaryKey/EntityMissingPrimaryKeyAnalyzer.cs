@@ -62,17 +62,15 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer : DiagnosticAnalyzer
 
         var keylessEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var ownedEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        ScanOnModelCreating(namedType, keylessEntities, ownedEntities, context.Compilation);
-
         var configuredEntities = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        ScanEntityTypeConfigurations(context.Compilation, configuredEntities, keylessEntities);
+        ScanOnModelCreating(namedType, configuredEntities, keylessEntities, ownedEntities, context.Compilation);
 
         foreach (var member in namedType.GetMembers())
         {
             if (!TryGetDbSetMember(member, out var entityType, out var location))
                 continue;
 
-            if (IsMissingPrimaryKey(entityType!, namedType, configuredEntities, keylessEntities, ownedEntities, context.Compilation))
+            if (IsMissingPrimaryKey(entityType!, configuredEntities, keylessEntities, ownedEntities))
             {
                 context.ReportDiagnostic(
                     Diagnostic.Create(Rule, location!, entityType!.Name));
