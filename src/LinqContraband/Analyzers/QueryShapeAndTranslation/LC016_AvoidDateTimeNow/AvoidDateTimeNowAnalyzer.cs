@@ -78,13 +78,29 @@ public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
         if (!isDateTime && !isDateTimeOffset) return;
 
         // Check if inside IQueryable lambda
-        if (!IsInsideQueryableLambda(operation)) return;
+        var queryLambda = FindQueryableLambda(operation);
+        if (queryLambda == null) return;
+
+        if (HasEarlierIdenticalClockReference(queryLambda, operation)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, operation.Syntax.GetLocation(),
             $"{containingType.Name}.{property.Name}"));
     }
 
-    private bool IsInsideQueryableLambda(IOperation operation)
+    private static bool IsClockPropertyReference(IPropertyReferenceOperation operation)
+    {
+        var property = operation.Property;
+        if (property.Name is not ("Now" or "UtcNow")) return false;
+
+        var containingType = property.ContainingType;
+        var isDateTime = containingType.SpecialType == SpecialType.System_DateTime;
+        var isDateTimeOffset = !isDateTime && containingType.Name == "DateTimeOffset" &&
+                               containingType.ContainingNamespace.ToString() == "System";
+
+        return isDateTime || isDateTimeOffset;
+    }
+
+    private static IAnonymousFunctionOperation? FindQueryableLambda(IOperation operation)
     {
         var current = operation.Parent;
         while (current != null)
@@ -100,12 +116,59 @@ public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
                         // Must be on IQueryable
                         if (method.ContainingType.Name == "Queryable" &&
                             method.ContainingNamespace?.ToString() == "System.Linq")
-                            return true;
+                            return FindEnclosingLambda(operation);
                 }
 
             current = current.Parent;
         }
 
+        return null;
+    }
+
+    private static IAnonymousFunctionOperation? FindEnclosingLambda(IOperation operation)
+    {
+        var current = operation.Parent;
+        while (current != null)
+        {
+            if (current is IAnonymousFunctionOperation lambda)
+                return lambda;
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    private static bool HasEarlierIdenticalClockReference(
+        IAnonymousFunctionOperation lambda,
+        IPropertyReferenceOperation current)
+    {
+        var currentStart = current.Syntax.SpanStart;
+        foreach (var candidate in EnumerateOperations(lambda))
+        {
+            if (candidate is not IPropertyReferenceOperation propertyReference ||
+                ReferenceEquals(propertyReference, current) ||
+                propertyReference.Syntax.SpanStart >= currentStart ||
+                !IsClockPropertyReference(propertyReference))
+            {
+                continue;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(propertyReference.Property, current.Property))
+                return true;
+        }
+
         return false;
+    }
+
+    private static IEnumerable<IOperation> EnumerateOperations(IOperation operation)
+    {
+        yield return operation;
+
+        foreach (var child in operation.ChildOperations)
+        {
+            foreach (var descendant in EnumerateOperations(child))
+                yield return descendant;
+        }
     }
 }

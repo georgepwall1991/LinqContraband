@@ -110,4 +110,37 @@ namespace LinqContraband.Test
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
+
+    [Fact]
+    public async Task Fixer_ShouldReplaceRepeatedIdenticalClockUseInSameLambda()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var result = query.Where(x => x < {|LC016:DateTime.UtcNow|} && x > DateTime.UtcNow.AddDays(-1)).ToList();
+        }
+    }
+}";
+
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<DateTime>().AsQueryable();
+            var now = DateTime.UtcNow;
+            var result = query.Where(x => x < now && x > now.AddDays(-1)).ToList();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
 }

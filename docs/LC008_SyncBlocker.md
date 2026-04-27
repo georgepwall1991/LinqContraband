@@ -6,6 +6,8 @@ Detect usage of synchronous materialization methods (like `ToList`) within an `a
 ## The Problem
 Synchronous calls like `db.Users.ToList()` block the current thread while waiting for the database response. In a web server, this leads to "Thread Starvation," where all available threads are stuck waiting, preventing the server from handling other incoming requests.
 
+LC008 intentionally ignores sync-looking LINQ operators inside `IQueryable` expression trees, such as query-expression subqueries in `let`, `where`, or projection clauses. Those calls are translated as SQL subqueries instead of blocking the async method directly.
+
 ### Example Violation
 ```csharp
 public async Task<List<User>> GetUsersAsync()

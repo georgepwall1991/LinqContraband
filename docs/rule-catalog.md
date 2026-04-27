@@ -51,7 +51,7 @@ This page is generated from that catalog and grouped by domain.
 | `LC002` Premature query continuation after materialization | `Warning` | `Performance` | Code fix | [`LC002_PrematureMaterialization`](./LC002_PrematureMaterialization.md) | `Samples/LC002_PrematureMaterialization/` |
 | `LC003` Prefer Any() over Count() existence checks | `Warning` | `Performance` | Code fix | [`LC003_AnyOverCount`](./LC003_AnyOverCount.md) | `Samples/LC003_AnyOverCount/` |
 | `LC017` Performance: Consider using Select() projection | `Info` | `Performance` | Code fix | [`LC017_WholeEntityProjection`](./LC017_WholeEntityProjection.md) | `Samples/LC017_WholeEntityProjection/` |
-| `LC022` ToList/ToArray Inside Select Projection | `Warning` | `Performance` | Code fix | [`LC022_ToListInSelectProjection`](./LC022_ToListInSelectProjection.md) | `Samples/LC022_ToListInSelectProjection/` |
+| `LC022` Nested collection materialization inside projection | `Info` | `Performance` | Code fix | [`LC022_ToListInSelectProjection`](./LC022_ToListInSelectProjection.md) | `Samples/LC022_ToListInSelectProjection/` |
 | `LC023` Use Find/FindAsync for primary key lookups | `Info` | `Performance` | Code fix | [`LC023_FindInsteadOfFirstOrDefault`](./LC023_FindInsteadOfFirstOrDefault.md) | `Samples/LC023_FindInsteadOfFirstOrDefault/` |
 | `LC029` Redundant identity Select | `Info` | `Performance` | Code fix | [`LC029_RedundantIdentitySelect`](./LC029_RedundantIdentitySelect.md) | `Samples/LC029_RedundantIdentitySelect/` |
 | `LC031` Unbounded Query Materialization | `Info` | `Performance` | Manual only | [`LC031_UnboundedQueryMaterialization`](./LC031_UnboundedQueryMaterialization.md) | `Samples/LC031_UnboundedQueryMaterialization/` |

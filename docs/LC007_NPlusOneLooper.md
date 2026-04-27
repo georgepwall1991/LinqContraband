@@ -40,10 +40,11 @@ while (hasWork)
 }
 ```
 
-The analyzer follows direct EF roots such as `DbSet<T>`, `DbContext.Set<T>()`, navigation `Query()` calls, and single-assignment local hops when the origin stays provable.
+The analyzer follows direct EF roots such as `DbSet<T>`, `DbContext.Set<T>()`, navigation `Query()` calls, and single-assignment query local hops when the origin stays provable.
 
 ## What LC007 Intentionally Ignores
 - Plain LINQ-to-Objects or `AsQueryable()` sources
+- Aggregates, lookups, or filters over already materialized `List<T>`/array/local DTO collections inside loops
 - Ambiguous `IQueryable` provenance through parameters, fields, properties, or multi-assignment locals
 - Query construction inside loops when no execution method is invoked
 - `Reference(...)` and `Collection(...)` access without `Load`, `LoadAsync`, or `Query()` execution

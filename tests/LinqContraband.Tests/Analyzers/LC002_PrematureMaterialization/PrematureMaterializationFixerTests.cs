@@ -208,7 +208,7 @@ public class PrematureMaterializationFixerTests
     }
 
     [Fact]
-    public async Task Fixes_RedundantToListThenAsEnumerable()
+    public async Task DoesNotReport_RedundantToListThenAsEnumerable()
     {
         var test = CommonUsings + """
 
@@ -217,28 +217,12 @@ public class PrematureMaterializationFixerTests
                 void Main()
                 {
                     var db = new DbContext();
-                    var query = {|#0:db.Users.ToList().AsEnumerable()|};
+                    var query = db.Users.ToList().AsEnumerable();
                 }
             }
             """ + MockTypes;
 
-        var fixedCode = CommonUsings + """
-
-            class Program
-            {
-                void Main()
-                {
-                    var db = new DbContext();
-                    var query = db.Users.ToList();
-                }
-            }
-            """ + MockTypes;
-
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
-            .WithLocation(0)
-            .WithArguments("AsEnumerable", "ToList");
-
-        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -274,16 +258,12 @@ public class PrematureMaterializationFixerTests
                 {
                     var db = new DbContext();
                     var materialized = db.Users.ToList();
-                    var query = {|#0:materialized.Where(x => x.Age > 18)|};
+                    var query = materialized.Where(x => x.Age > 18);
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithLocation(0)
-            .WithArguments("Where");
-
-        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -330,16 +310,12 @@ public class PrematureMaterializationFixerTests
                 {
                     var db = new DbContext();
                     var materialized = new HashSet<User>(db.Users);
-                    var query = {|#0:materialized.Where(x => x.Age > 18)|};
+                    var query = materialized.Where(x => x.Age > 18);
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithLocation(0)
-            .WithArguments("Where");
-
-        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -424,7 +400,7 @@ public class PrematureMaterializationFixerTests
                     var db = new DbContext();
                     var adults = {|#0:db.Users.ToList().Where(x => x.Age >= 18)|};
                     var materialized = db.Users.ToList();
-                    var older = {|#1:materialized.Where(x => x.Age >= 21)|};
+                    var older = materialized.Where(x => x.Age >= 21);
                 }
             }
             """ + MockTypes;
@@ -455,18 +431,6 @@ public class PrematureMaterializationFixerTests
         testObj.ExpectedDiagnostics.Add(
             new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
                 .WithLocation(0)
-                .WithArguments("Where"));
-        testObj.ExpectedDiagnostics.Add(
-            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
-                .WithLocation(1)
-                .WithArguments("Where"));
-        testObj.FixedState.ExpectedDiagnostics.Add(
-            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
-                .WithSpan(12, 21, 12, 57)
-                .WithArguments("Where"));
-        testObj.BatchFixedState.ExpectedDiagnostics.Add(
-            new DiagnosticResult(PrematureMaterializationAnalyzer.Rule)
-                .WithSpan(12, 21, 12, 57)
                 .WithArguments("Where"));
 
         await testObj.RunAsync();

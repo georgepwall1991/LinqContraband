@@ -1,16 +1,16 @@
-# LC022: ToList/ToArray Inside Select Projection
+# LC022: Nested Collection Materialization Inside Projection
 
 ## What it flags
 
-Flags per-row buffering inside projections because nested materialization often causes translation failures, client evaluation, or repeated in-memory work.
+Flags nested collection materialization inside projections because it can be expensive, provider-version sensitive, or better expressed with direct projection/split-query shaping.
 
 ## Why it matters
 
-LinqContraband reports this rule when the query shape suggests a risky or non-translatable pattern that is better made explicit before it reaches production.
+LinqContraband reports this rule as an advisory performance signal. Modern EF Core can translate some correlated collection projections, so the diagnostic should prompt review rather than automatic removal.
 
 ## Typical fix
 
-Keep the projection provider-friendly, flatten the shape, or materialize once at the outer boundary when nested collections are intentional.
+Keep the projection provider-friendly, flatten the shape, use split queries where appropriate, or keep the nested materializer when a DTO contract requires a concrete collection.
 
 The code fix is intentionally conservative. It only removes `ToList()` when the receiver type already matches the materialized type, such as a `List<T>` navigation projected as `navigation.ToList()`. It does not rewrite `ToArray()`, dictionary/set materializers, anonymous/object initializer members, or type-changing shapes such as `stringValue.ToList()`.
 

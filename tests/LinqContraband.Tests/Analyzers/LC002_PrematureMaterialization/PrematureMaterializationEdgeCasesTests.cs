@@ -36,7 +36,7 @@ public class PrematureMaterializationEdgeCasesTests
         """;
 
     [Fact]
-    public async Task Reports_WhenLocalAliasesSingleAssignmentMaterialization()
+    public async Task DoesNotReport_WhenLocalAliasesSingleAssignmentMaterialization()
     {
         var test = CommonUsings + """
 
@@ -47,20 +47,16 @@ public class PrematureMaterializationEdgeCasesTests
                     var db = new DbContext();
                     var materialized = db.Users.ToList();
                     var alias = materialized;
-                    var filtered = {|#0:alias.Where(x => x.Age > 18)|};
+                    var filtered = alias.Where(x => x.Age > 18);
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithLocation(0)
-            .WithArguments("Where");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task Reports_WhenMaterializingConstructorFeedsCount()
+    public async Task DoesNotReport_WhenMaterializingConstructorFeedsCount()
     {
         var test = CommonUsings + """
 
@@ -70,16 +66,12 @@ public class PrematureMaterializationEdgeCasesTests
                 {
                     var db = new DbContext();
                     var materialized = new HashSet<User>(db.Users);
-                    var count = {|#0:materialized.Count()|};
+                    var count = materialized.Count();
                 }
             }
             """ + MockTypes;
 
-        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
-            .WithLocation(0)
-            .WithArguments("Count");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

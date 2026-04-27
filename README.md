@@ -771,10 +771,11 @@ Ensure that bypassing global filters is intentional and necessary for the specif
 
 ---
 
-### LC022: ToList Inside Select Projection
+### LC022: Nested Collection Materialization Inside Projection
 
 Calling `ToList()`, `ToArray()`, or similar collection materializers inside a `Select()` projection on an IQueryable
-forces client-side evaluation or throws in EF Core 3+. EF Core handles collection projections natively.
+can be expensive or provider-version sensitive. Modern EF Core can translate some correlated collection projections,
+so this rule is advisory and should prompt a query-shape review.
 
 **👶 Explain it like I'm a ten year old:** Imagine you ask a baker to put frosting on 100 cupcakes. But for each
 cupcake, you tell them "First, put all the frosting in a separate bowl, then frost the cupcake from the bowl." The baker
@@ -784,12 +785,12 @@ everything down.
 **❌ The Crime:**
 
 ```csharp
-// Forces client-side evaluation of the sub-collection
+// Nested collection materialization inside the projection
 var result = db.Users.Select(u => u.Orders.ToList()).ToList();
 ```
 
 **✅ The Fix:**
-Remove the materializer from the projection. EF Core handles it.
+Project directly, use split queries when appropriate, or keep the materializer when a DTO contract requires a concrete list.
 
 ```csharp
 // EF Core projects the collection natively
@@ -797,7 +798,7 @@ var result = db.Users.Select(u => u.Orders).ToList();
 ```
 
 **🛡️ Reliability Notes:**
-- LC022 applies to normal `IQueryable.Select(...)` projections where the collection materializer is redundant or forces client evaluation.
+- LC022 applies to normal `IQueryable.Select(...)` projections where the collection materializer may add avoidable work.
 - Grouped projections like `GroupBy(...).Select(g => g.ToList())` are owned by `LC024`, which gives the more specific non-translatable `GroupBy` guidance.
 
 ---

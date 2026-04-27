@@ -59,6 +59,8 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
         // 2. Is it an EF Core related method?
         if (!IsEfCoreMethod(method, invocation)) return;
 
+        if (IsInsideQueryableExpressionLambda(invocation)) return;
+
         // 3. Is the containing method Async?
         if (!IsInsideAsyncMethod(context.Operation)) return;
 
@@ -86,6 +88,55 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
         var receiverType = invocation.GetInvocationReceiverType();
 
         return receiverType?.IsIQueryable() == true;
+    }
+
+    private static bool IsInsideQueryableExpressionLambda(IOperation operation)
+    {
+        var current = operation.Parent;
+        while (current != null)
+        {
+            if (current is IAnonymousFunctionOperation lambda &&
+                IsLambdaArgumentToQueryableInvocation(lambda))
+            {
+                return true;
+            }
+
+            current = current.Parent;
+        }
+
+        return false;
+    }
+
+    private static bool IsLambdaArgumentToQueryableInvocation(IAnonymousFunctionOperation lambda)
+    {
+        var current = lambda.Parent;
+        while (current != null)
+        {
+            if (current is IArgumentOperation)
+            {
+                current = current.Parent;
+                continue;
+            }
+
+            if (current is IConversionOperation or IDelegateCreationOperation)
+            {
+                current = current.Parent;
+                continue;
+            }
+
+            if (current is not IInvocationOperation invocation)
+                return false;
+
+            if (invocation.TargetMethod.ContainingType.Name == "Queryable" &&
+                invocation.TargetMethod.ContainingType.ContainingNamespace?.ToString() == "System.Linq")
+            {
+                return true;
+            }
+
+            return invocation.GetInvocationReceiverType()?.IsIQueryable() == true;
+        }
+
+        return false;
     }
 
     /// <summary>

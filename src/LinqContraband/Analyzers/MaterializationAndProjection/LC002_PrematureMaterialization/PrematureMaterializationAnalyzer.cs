@@ -122,12 +122,7 @@ public sealed partial class PrematureMaterializationAnalyzer : DiagnosticAnalyze
         if (!IsApprovedContinuationMethod(invocation.TargetMethod, out _)) return;
         if (!HasProviderSafeContinuationArguments(invocation)) return;
 
-        if (!TryResolveMaterializationOrigin(
-                unwrappedReceiver,
-                invocation.Syntax.SpanStart,
-                context.Operation.FindOwningExecutableRoot(),
-                new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default),
-                out var materializationOrigin))
+        if (!TryResolveInlineMaterializationOrigin(unwrappedReceiver, out var materializationOrigin))
         {
             return;
         }

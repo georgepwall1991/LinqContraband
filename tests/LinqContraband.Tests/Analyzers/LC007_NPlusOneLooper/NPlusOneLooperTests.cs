@@ -408,6 +408,29 @@ class Program
     }
 
     [Fact]
+    public async Task MaterializedListAggregates_InLoop_AreIgnored()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = db.Users.ToList();
+
+        foreach (var id in new[] { 1, 2, 3 })
+        {
+            var single = users.Single(u => u.Id == id);
+            var sum = users.Sum(u => u.Id);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AccessorsWithoutExecution_AreIgnored()
     {
         var test = Usings + @"

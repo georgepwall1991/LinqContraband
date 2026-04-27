@@ -53,6 +53,8 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
         if (root == null) return document;
 
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel == null) return document;
 
         // Find the statement containing the expression
         var statement = memberAccess.AncestorsAndSelf().OfType<StatementSyntax>().FirstOrDefault();
@@ -75,13 +77,38 @@ public class AvoidDateTimeNowFixer : CodeFixProvider
             )
         ).WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
 
-        // Replace the member access with the variable reference
-        editor.ReplaceNode(memberAccess, SyntaxFactory.IdentifierName(variableName).WithTriviaFrom(memberAccess));
+        foreach (var access in FindMatchingClockAccesses(memberAccess, semanticModel, cancellationToken))
+        {
+            editor.ReplaceNode(access, SyntaxFactory.IdentifierName(variableName).WithTriviaFrom(access));
+        }
 
         // Insert the declaration before the statement
         editor.InsertBefore(statement, newVariable);
 
         return editor.GetChangedDocument();
+    }
+
+    private static IEnumerable<MemberAccessExpressionSyntax> FindMatchingClockAccesses(
+        MemberAccessExpressionSyntax memberAccess,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var symbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol;
+        if (symbol == null)
+        {
+            yield return memberAccess;
+            yield break;
+        }
+
+        var lambda = memberAccess.AncestorsAndSelf().OfType<LambdaExpressionSyntax>().FirstOrDefault();
+        var searchRoot = (SyntaxNode?)lambda ?? memberAccess;
+
+        foreach (var candidate in searchRoot.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>())
+        {
+            var candidateSymbol = semanticModel.GetSymbolInfo(candidate, cancellationToken).Symbol;
+            if (SymbolEqualityComparer.Default.Equals(candidateSymbol, symbol))
+                yield return candidate;
+        }
     }
 
     private static string GetUniqueVariableName(SyntaxNode node)
