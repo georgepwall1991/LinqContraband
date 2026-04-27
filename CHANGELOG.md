@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-04-27
+
+### Changed
+- Hardened `LC021` regression coverage for non-EF lookalikes, local suppression, and fixer query-chain preservation to prevent false-positive and unsafe-fix regressions
+- Clarified `LC021` intentional-bypass documentation and refreshed analyzer-health priority after the noise-boundary coverage
+
 ## [5.3.0] - 2026-04-27
 
 ### Changed

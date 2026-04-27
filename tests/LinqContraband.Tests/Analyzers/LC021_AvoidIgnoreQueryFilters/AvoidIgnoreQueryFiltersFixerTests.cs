@@ -83,6 +83,37 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task IgnoreQueryFilters_BeforeWhere_ShouldRemoveOnlyBypassCall()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = {|LC021:query.IgnoreQueryFilters()|}.Where(x => x > 0).ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.Where(x => x > 0).ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
     public async Task IgnoreQueryFilters_Standalone_ShouldBeRemoved()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"

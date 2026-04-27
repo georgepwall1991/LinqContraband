@@ -38,6 +38,17 @@ db.Users.IgnoreQueryFilters().Where(x => x.Active);
 db.Users.Where(x => x.Active);
 ```
 
+LC021 intentionally stays quiet for lookalikes that are not the EF Core extension method:
+
+```csharp
+// Custom IQueryable helper outside Microsoft.EntityFrameworkCore is not LC021.
+CustomQueryExtensions.IgnoreQueryFilters(query);
+
+// Instance or IEnumerable helpers with the same name are not LC021.
+auditQuery.IgnoreQueryFilters();
+values.IgnoreQueryFilters();
+```
+
 ## Shipped Behavior
 
 LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. The fixer removes the call when the bypass is accidental; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
@@ -54,4 +65,6 @@ var reviewedUser = db.Users
 #pragma warning restore LC021
 ```
 
-Avoid broad suppressions for this rule. If a query needs to bypass filters regularly, prefer a named repository/service method that documents the business reason and applies explicit replacement filters.
+Prefer a narrow pragma around the reviewed query over disabling LC021 for a whole file or project. If a query needs to bypass filters regularly, prefer a named repository/service method that documents the business reason and applies explicit replacement filters.
+
+The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call and preserves the rest of the query chain. Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.
