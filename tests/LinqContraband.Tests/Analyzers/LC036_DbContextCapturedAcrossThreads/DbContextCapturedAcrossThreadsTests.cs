@@ -215,6 +215,54 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskRun_LocalFunctionCapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run(DbContext db)
+        {
+            int SaveOnBackgroundThread()
+            {
+                return db.SaveChanges();
+            }
+
+            return {|LC036:Task.Run(SaveOnBackgroundThread)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThreadPool_LocalFunctionCapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            void SaveOnBackgroundThread(object state)
+            {
+                db.SaveChanges();
+            }
+
+            {|LC036:ThreadPool.QueueUserWorkItem(SaveOnBackgroundThread)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CreatingContextInsideTask_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
@@ -230,6 +278,54 @@ namespace TestApp
                 var db = new DbContext();
                 return db.SaveChanges();
             });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskRun_LocalFunctionCreatesContextInsideCallback_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task<int> Run()
+        {
+            int SaveOnBackgroundThread()
+            {
+                var db = new DbContext();
+                return db.SaveChanges();
+            }
+
+            return Task.Run(SaveOnBackgroundThread);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DirectLocalFunctionCallCapturingDbContext_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public int Run(DbContext db)
+        {
+            int SaveNow()
+            {
+                return db.SaveChanges();
+            }
+
+            return SaveNow();
         }
     }
 }";

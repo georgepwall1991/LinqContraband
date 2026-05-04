@@ -34,7 +34,7 @@ var page2 = db.Users.OrderBy(u => u.Id).Skip(10).Take(10).ToList();
 ### Severity: `Warning`
 
 ### Notes
-LC015 checks EF-backed `IQueryable<T>` chains where pagination or "last row" operators depend on a deterministic order, including simple local aliases assigned from `DbSet<T>` or `DbContext.Set<T>()` before pagination. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()` because database row ordering is not involved.
+LC015 checks EF-backed `IQueryable<T>` chains where pagination or "last row" operators depend on a deterministic order, including simple local aliases assigned from `DbSet<T>` or `DbContext.Set<T>()` before pagination. It also follows aliases that already contain `OrderBy(...)`, `Skip(...)`, or `Take(...)`, so ordered locals do not warn and misplaced sorting after a paged local is still diagnosed. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()` because database row ordering is not involved.
 
 The order must be established upstream of the reported operator; an `OrderBy` after `Skip` or `Take` still leaves the page selection nondeterministic. The code fix is only offered for unordered pagination/last operators where a primary key can be detected. For misplaced `OrderBy` diagnostics, move the existing sort before `Skip`/`Take`; adding another `OrderBy` after pagination would preserve the wrong query shape.
 

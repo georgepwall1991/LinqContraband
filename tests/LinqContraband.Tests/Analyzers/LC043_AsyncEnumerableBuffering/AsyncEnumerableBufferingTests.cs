@@ -205,4 +205,35 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task CustomToListAsync_OnNonAsyncEnumerable_ShouldNotTrigger()
+    {
+        var test = @"using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public sealed class Repository
+    {
+        public Task<List<User>> ToListAsync() => Task.FromResult(new List<User>());
+    }
+
+    public class TestClass
+    {
+        public async Task Run(Repository repository)
+        {
+            var items = await repository.ToListAsync();
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

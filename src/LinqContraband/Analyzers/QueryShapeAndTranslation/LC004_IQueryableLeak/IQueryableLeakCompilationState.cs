@@ -46,6 +46,14 @@ internal sealed partial class IQueryableLeakCompilationState
         "ToList",
         "ToLookup");
 
+    private static readonly ImmutableHashSet<string> MaterializingCollectionTypes = ImmutableHashSet.Create(
+        "HashSet",
+        "LinkedList",
+        "List",
+        "Queue",
+        "SortedSet",
+        "Stack");
+
     private readonly Compilation _compilation;
     private readonly INamedTypeSymbol _enumerableType;
     private readonly INamedTypeSymbol _enumerableGenericType;

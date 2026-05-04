@@ -65,6 +65,9 @@ public sealed class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyzer
         if (!TryGetImmediateBufferedLocal(loopSyntax, localReference.Local, out var bufferInfo))
             return;
 
+        if (!IsAsyncEnumerableBufferInvocation(bufferInfo.BufferInvocation, context.Operation.SemanticModel, context.CancellationToken))
+            return;
+
         if (!HasSingleLocalUseInRoot(executableRoot, localReference.Local))
             return;
 
@@ -150,6 +153,38 @@ public sealed class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyzer
         }
 
         return localUseCount == 1;
+    }
+
+    private static bool IsAsyncEnumerableBufferInvocation(
+        InvocationExpressionSyntax bufferInvocation,
+        SemanticModel? semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (semanticModel?.GetOperation(bufferInvocation, cancellationToken) is not IInvocationOperation invocation)
+            return false;
+
+        return IsAsyncEnumerable(invocation.GetInvocationReceiverType());
+    }
+
+    private static bool IsAsyncEnumerable(ITypeSymbol? type)
+    {
+        if (type == null)
+            return false;
+
+        if (IsAsyncEnumerableType(type))
+            return true;
+
+        foreach (var implementedInterface in type.AllInterfaces)
+            if (IsAsyncEnumerableType(implementedInterface))
+                return true;
+
+        return false;
+    }
+
+    private static bool IsAsyncEnumerableType(ITypeSymbol type)
+    {
+        return type.MetadataName == "IAsyncEnumerable`1" &&
+               type.ContainingNamespace?.ToString() == "System.Collections.Generic";
     }
 
     internal sealed class BufferInfo

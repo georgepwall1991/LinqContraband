@@ -27,8 +27,9 @@ public void ProcessUsers(IQueryable<User> users) { ... }
 - Treats a parameter as hazardous only when the method body proves one of these:
   - `foreach` or manual enumerator consumption.
   - terminal or materializing `Enumerable` calls such as `Any`, `Count`, `ToList`, or `ToArray`.
+  - known BCL collection constructors such as `new List<T>(users)` or `new HashSet<T>(users)`.
   - forwarding into another same-compilation parameter already proven hazardous.
-- Does not report for framework methods, delegate invocations, parameters already typed as `IQueryable`, or callees without source bodies.
+- Does not report for framework methods, delegate invocations, parameters already typed as `IQueryable`, custom constructors, or callees without source bodies.
 
 ## Fixer Behavior
 - Offers one safe fix when the source query is generic: materialize explicitly with `.ToList()`.

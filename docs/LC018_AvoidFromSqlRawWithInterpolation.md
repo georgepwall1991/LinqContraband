@@ -29,7 +29,7 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 ### Severity: `Warning`
 
 ### Notes
-LC018 reports direct interpolated strings and direct non-constant string concatenations passed to the `sql` argument of `FromSqlRaw(...)`, including named `sql:` arguments. The fixer is intentionally narrow: it is offered only for direct interpolated-string calls with no additional raw SQL parameters, where changing the method name to `FromSqlInterpolated` preserves the argument flow. It is not offered when an interpolation hole appears inside SQL single quotes, such as `'{name}'`; remove the SQL quotes manually before using `FromSqlInterpolated(...)` so EF can parameterize the value correctly.
+LC018 reports direct interpolated strings with non-constant interpolation holes and direct non-constant string concatenations passed to the `sql` argument of `FromSqlRaw(...)`, including named `sql:` arguments. No-hole interpolated strings and constant-only interpolations stay quiet because they do not embed runtime data into raw SQL. The fixer is intentionally narrow: it is offered only for direct interpolated-string calls with no additional raw SQL parameters, where changing the method name to `FromSqlInterpolated` preserves the argument flow. It is not offered when an interpolation hole appears inside SQL single quotes, such as `'{name}'`; remove the SQL quotes manually before using `FromSqlInterpolated(...)` so EF can parameterize the value correctly.
 
 ## Test Cases
 
@@ -50,5 +50,7 @@ db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Id = {id}");
 ```
 
 ## Rule Boundary
-- LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- LC018 owns direct interpolated-string holes containing runtime data and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- LC018 requires the matched method to come from the EF Core namespace boundary (`Microsoft.EntityFrameworkCore` or a child namespace), not a same-named lookalike namespace.
+- LC018 requires a queryable/DbSet receiver, so same-named helpers in the EF namespace on unrelated receiver types stay quiet.
 - LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.

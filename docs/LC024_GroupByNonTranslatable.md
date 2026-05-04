@@ -45,4 +45,6 @@ var query = db.Orders
     });
 ```
 
-LC024 stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`. Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()` or `g.Sum(...)`.
+LC024 applies to fluent `GroupBy(...).Select(...)` and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
+
+Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()`, `g.Sum(...)`, `Enumerable.Count(g)`, or `Enumerable.Sum(g, ...)`.

@@ -97,7 +97,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
             if (!TryGetContextSymbol(invocation, root, out var contextSymbol))
                 return;
 
-            _records.Add(new MaterializationRecord(root, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, trackingMode));
+            _records.Add(new MaterializationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, trackingMode));
         }
 
         public void ReportDiagnostics(CompilationAnalysisContext context)
@@ -119,18 +119,28 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
                     if (records.Length < 2)
                         continue;
 
-                    var firstMode = records[0].Mode;
                     var reported = false;
 
                     for (var i = 1; i < records.Length; i++)
                     {
                         var current = records[i];
-                        if (current.Mode == firstMode || reported)
+                        if (reported)
                             continue;
 
-                        context.ReportDiagnostic(
-                            Diagnostic.Create(Rule, current.Location, contextGroup.Key.Name));
-                        reported = true;
+                        for (var previousIndex = 0; previousIndex < i; previousIndex++)
+                        {
+                            var previous = records[previousIndex];
+                            if (previous.Mode == current.Mode ||
+                                AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
+                            {
+                                continue;
+                            }
+
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(Rule, current.Location, contextGroup.Key.Name));
+                            reported = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -139,9 +149,10 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
 
     private sealed class MaterializationRecord
     {
-        public MaterializationRecord(IOperation root, Location location, int position, ISymbol? contextSymbol, TrackingMode mode)
+        public MaterializationRecord(IOperation root, SyntaxNode syntax, Location location, int position, ISymbol? contextSymbol, TrackingMode mode)
         {
             Root = root;
+            Syntax = syntax;
             Location = location;
             Position = position;
             ContextSymbol = contextSymbol;
@@ -149,6 +160,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
         }
 
         public IOperation Root { get; }
+        public SyntaxNode Syntax { get; }
         public Location Location { get; }
         public int Position { get; }
         public ISymbol? ContextSymbol { get; }

@@ -92,13 +92,24 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
         {
             current = current.UnwrapConversions();
 
-            if (current is IInvocationOperation prevInvocation)
+            if (current is ITranslatedQueryOperation translatedQuery)
+            {
+                current = translatedQuery.Operation;
+            }
+            else if (current is IInvocationOperation prevInvocation)
             {
                 var prevMethod = prevInvocation.TargetMethod;
 
                 if (IsBoundingMethod(prevMethod.Name) || IsAggregateMethod(prevMethod.Name))
                 {
                     foundBounding = true;
+                    break;
+                }
+
+                if (IsDbContextSetInvocation(prevInvocation))
+                {
+                    foundDbSet = true;
+                    dbSetName = "DbSet";
                     break;
                 }
 
@@ -153,6 +164,15 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), dbSetName ?? "DbSet"));
         }
+    }
+
+    private static bool IsDbContextSetInvocation(IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod;
+        return method.Name == "Set" &&
+               method.Parameters.Length == 0 &&
+               method.ContainingType.IsDbContext() &&
+               invocation.Type.IsDbSet();
     }
 
     private static bool TryResolveSingleAssignedValue(

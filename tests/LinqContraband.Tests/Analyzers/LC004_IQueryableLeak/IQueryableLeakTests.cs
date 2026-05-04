@@ -134,6 +134,39 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Leak_WhenCollectionConstructorConsumesParameter_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            Snapshot({|LC004:query|});
+        }
+
+        private static void Snapshot(IEnumerable<User> users)
+        {
+            var list = new List<User>(users);
+            Console.WriteLine(list.Count);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Leak_WhenWrapperForwardsToHazardousMethod_ShouldTrigger()
     {
         var test = Usings + @"
@@ -198,6 +231,41 @@ namespace TestApp
         {
             Console.WriteLine(nameof(users));
             return users;
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoLeak_WhenCustomConstructorTakesParameter_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            var snapshot = new Snapshot(query);
+        }
+
+        private sealed class Snapshot
+        {
+            public Snapshot(IEnumerable<User> users)
+            {
+                Console.WriteLine(nameof(users));
+            }
         }
     }
 }

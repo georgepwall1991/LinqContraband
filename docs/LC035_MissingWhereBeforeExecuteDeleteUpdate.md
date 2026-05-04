@@ -26,4 +26,6 @@ db.Users.Where(u => u.Age < 18).ExecuteDelete();
 ### Severity: `Info`
 
 ### Notes
-This rule is advisory only. There is no automatic fixer because adding a predicate speculatively would be unsafe. LC035 recognizes filters in the direct fluent chain and in simple local query initializers such as `var filtered = db.Users.Where(...); filtered.ExecuteDelete();`.
+This rule is advisory only. There is no automatic fixer because adding a predicate speculatively would be unsafe. LC035 recognizes semantic LINQ filters in the direct fluent chain, query-syntax `where` clauses, simple local query initializers such as `var filtered = db.Users.Where(...); filtered.ExecuteDelete();`, and straight-line local reassignments such as `query = query.Where(...);`. Project-local methods merely named `Where` do not count as a proven filter, and conditional reassignments remain conservative.
+
+LC035 only binds EF Core bulk execute methods from the real `Microsoft.EntityFrameworkCore` namespace. Same-name helpers in project-local or lookalike namespaces stay quiet.

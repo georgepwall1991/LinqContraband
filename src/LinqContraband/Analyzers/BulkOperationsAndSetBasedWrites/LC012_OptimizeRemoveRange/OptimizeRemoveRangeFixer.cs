@@ -98,27 +98,37 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
         SemanticModel semanticModel,
         CancellationToken cancellationToken)
     {
-        var statement = invocation.FirstAncestorOrSelf<StatementSyntax>();
-        if (statement?.Parent is not BlockSyntax block)
+        var executableRoot = FindExecutableSyntaxRoot(invocation);
+        if (executableRoot == null)
             return false;
 
-        var statementIndex = block.Statements.IndexOf(statement);
-        if (statementIndex < 0)
-            return false;
-
-        foreach (var subsequentStatement in block.Statements.Skip(statementIndex + 1))
+        foreach (var subsequentInvocation in executableRoot
+                     .DescendantNodes()
+                     .OfType<InvocationExpressionSyntax>()
+                     .Where(node => node.SpanStart > invocation.SpanStart))
         {
-            foreach (var subsequentInvocation in subsequentStatement.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            if (semanticModel.GetSymbolInfo(subsequentInvocation, cancellationToken).Symbol is IMethodSymbol method &&
+                IsSaveChangesMethod(method))
             {
-                if (semanticModel.GetSymbolInfo(subsequentInvocation, cancellationToken).Symbol is IMethodSymbol method &&
-                    IsSaveChangesMethod(method))
-                {
-                    return true;
-                }
+                return true;
             }
         }
 
         return false;
+    }
+
+    private static SyntaxNode? FindExecutableSyntaxRoot(SyntaxNode node)
+    {
+        foreach (var ancestor in node.AncestorsAndSelf())
+        {
+            if (ancestor is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax or
+                AccessorDeclarationSyntax or BaseMethodDeclarationSyntax)
+            {
+                return ancestor;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsSaveChangesMethod(IMethodSymbol method)

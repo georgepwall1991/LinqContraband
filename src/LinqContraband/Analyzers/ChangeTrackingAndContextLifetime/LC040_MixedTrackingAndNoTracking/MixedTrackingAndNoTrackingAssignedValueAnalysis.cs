@@ -1,5 +1,7 @@
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC040_MixedTrackingAndNoTracking;
@@ -8,33 +10,34 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
 {
     private sealed partial class AnalysisState
     {
-        private static bool TryResolveAssignedValue(ILocalSymbol local, IOperation root, out IOperation? assignedValue)
+        private static bool TryResolveAssignedValue(ILocalReferenceOperation localReference, IOperation root, out IOperation? assignedValue)
         {
             assignedValue = null;
-            var matches = 0;
+            var assignments = LocalAssignmentCache.GetAssignments(root, localReference.Local);
+            LocalAssignment? latest = null;
 
-            foreach (var descendant in root.Descendants())
+            foreach (var assignment in assignments)
             {
-                if (descendant is ISimpleAssignmentOperation assignment &&
-                    assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
-                    SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
-                {
-                    matches++;
-                    assignedValue = assignment.Value;
-                }
-                else if (descendant is IVariableDeclaratorOperation declarator &&
-                         SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
-                         declarator.Initializer != null)
-                {
-                    matches++;
-                    assignedValue = declarator.Initializer.Value;
-                }
+                if (assignment.SpanStart >= localReference.Syntax.SpanStart)
+                    continue;
 
-                if (matches > 1)
-                    return false;
+                if (latest == null || assignment.SpanStart > latest.Value.SpanStart)
+                    latest = assignment;
             }
 
-            return matches == 1 && assignedValue != null;
+            if (latest == null || IsControlFlowConditionalAssignment(latest.Value.Value.Syntax))
+                return false;
+
+            assignedValue = latest.Value.Value.UnwrapConversions();
+            return true;
+        }
+
+        private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax)
+        {
+            return syntax.Ancestors().Any(ancestor =>
+                ancestor is IfStatementSyntax or SwitchStatementSyntax or SwitchExpressionSyntax or
+                    ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax or
+                    TryStatementSyntax or CatchClauseSyntax);
         }
     }
 }

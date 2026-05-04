@@ -144,6 +144,37 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    [Fact]
+    public async Task IgnoreQueryFilters_StaticExtensionCall_ShouldBeRemoved()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)|}.ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest

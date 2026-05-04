@@ -41,7 +41,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                         continue;
 
                     case ILocalReferenceOperation localReference:
-                        if (!TryResolveAssignedValue(localReference.Local, root, out var assignedValue))
+                        if (!TryResolveAssignedValue(localReference, root, out var assignedValue))
                             return false;
 
                         current = assignedValue;

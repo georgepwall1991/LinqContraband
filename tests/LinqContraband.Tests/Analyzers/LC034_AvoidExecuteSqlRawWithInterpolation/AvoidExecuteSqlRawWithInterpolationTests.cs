@@ -145,6 +145,44 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteSqlRaw_WithNoHoleInterpolatedString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var result = db.Database.ExecuteSqlRaw($""UPDATE Users SET Active = 1"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithConstantOnlyInterpolation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        private const int Active = 1;
+
+        public void Run(DbContext db)
+        {
+            var result = db.Database.ExecuteSqlRaw($""UPDATE Users SET Active = {Active}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteSqlRaw_WithInterpolatedAlias_ShouldNotTriggerLC034()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
@@ -268,6 +306,71 @@ namespace TestApp
         public async Task Run(DbContext db, int id)
         {
             var result = await db.Database.ExecuteSqlAsync($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_InLookalikeNamespace_ShouldNotTrigger()
+    {
+        var test = @"
+using System;
+using Microsoft.EntityFrameworkCoreFake;
+
+namespace Microsoft.EntityFrameworkCoreFake
+{
+    public sealed class DatabaseFacade { }
+
+    public sealed class DbContext
+    {
+        public DatabaseFacade Database { get; } = new DatabaseFacade();
+    }
+
+    public static class RelationalDatabaseFacadeExtensions
+    {
+        public static int ExecuteSqlRaw(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => 0;
+    }
+}
+
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw($""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_OnNonDatabaseFacadeEfNamespaceHelper_ShouldNotTrigger()
+    {
+        var test = @"
+using System;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class CustomRawExtensions
+    {
+        public static int ExecuteSqlRaw(this string target, string sql, params object[] parameters) => 0;
+    }
+}
+
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(int id)
+        {
+            var result = ""not a database"".ExecuteSqlRaw($""UPDATE Users SET Name = {id}"");
         }
     }
 }";

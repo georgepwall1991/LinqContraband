@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -62,7 +64,123 @@ public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         // A local function or lambda declared inside a loop is not necessarily executed per iteration.
         var loop = invocation.FindEnclosingLoop();
         if (loop != null && invocation.SharesOwningExecutableRoot(loop))
+        {
+            if (IsSaveInsideCatchGuardedRetryAttempt(invocation, loop))
+                return;
+
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+            return;
+        }
+
+        if (IsInsideLocalFunctionCalledFromLoop(invocation))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+        }
+    }
+
+    private static bool IsInsideLocalFunctionCalledFromLoop(IInvocationOperation invocation)
+    {
+        var localFunction = FindDirectOwningLocalFunction(invocation);
+        if (localFunction == null)
+            return false;
+
+        var containingRoot = FindContainingExecutableRoot(localFunction);
+        if (containingRoot == null)
+            return false;
+
+        foreach (var descendant in containingRoot.Descendants())
+        {
+            if (descendant is not IInvocationOperation call ||
+                !SymbolEqualityComparer.Default.Equals(call.TargetMethod, localFunction.Symbol))
+            {
+                continue;
+            }
+
+            var loop = call.FindEnclosingLoop();
+            if (loop != null && call.SharesOwningExecutableRoot(loop))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSaveInsideCatchGuardedRetryAttempt(IInvocationOperation invocation, ILoopOperation loop)
+    {
+        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax)
+            return false;
+
+        var tryStatement = FindTryStatementBetweenInvocationAndLoop(invocationSyntax, loop.Syntax);
+        return tryStatement != null &&
+               tryStatement.Catches.Count > 0 &&
+               tryStatement.Block.Span.Contains(invocationSyntax.SpanStart) &&
+               HasLoopExitAfterSave(tryStatement.Block, invocationSyntax);
+    }
+
+    private static TryStatementSyntax? FindTryStatementBetweenInvocationAndLoop(
+        InvocationExpressionSyntax invocationSyntax,
+        SyntaxNode loopSyntax)
+    {
+        foreach (var ancestor in invocationSyntax.Ancestors())
+        {
+            if (ancestor == loopSyntax)
+                return null;
+
+            if (ancestor is TryStatementSyntax tryStatement)
+                return tryStatement;
+        }
+
+        return null;
+    }
+
+    private static bool HasLoopExitAfterSave(BlockSyntax tryBlock, InvocationExpressionSyntax invocationSyntax)
+    {
+        var containingStatement = invocationSyntax
+            .AncestorsAndSelf()
+            .OfType<StatementSyntax>()
+            .FirstOrDefault(statement => statement.Parent == tryBlock);
+
+        if (containingStatement == null)
+            return false;
+
+        var statementIndex = tryBlock.Statements.IndexOf(containingStatement);
+        if (statementIndex < 0)
+            return false;
+
+        return tryBlock.Statements
+            .Skip(statementIndex + 1)
+            .Any(statement => statement is BreakStatementSyntax or ReturnStatementSyntax);
+    }
+
+    private static ILocalFunctionOperation? FindDirectOwningLocalFunction(IOperation operation)
+    {
+        var current = operation.Parent;
+        while (current != null)
+        {
+            if (current is ILocalFunctionOperation localFunction)
+                return localFunction;
+
+            if (current is IAnonymousFunctionOperation or IMethodBodyOperation)
+                return null;
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    private static IOperation? FindContainingExecutableRoot(ILocalFunctionOperation localFunction)
+    {
+        var current = localFunction.Parent;
+        while (current != null)
+        {
+            if (current is IMethodBodyOperation or IAnonymousFunctionOperation)
+                return current;
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 }

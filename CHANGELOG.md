@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-05-04
+
+### Changed
+- Hardened `LC039` repeated-save analysis so mutually exclusive `if`/`else` branches no longer produce false repeated-save diagnostics
+- Expanded `LC039` branch regression coverage and refreshed docs/analyzer-health guidance for the advisory rule boundary
+- Hardened `LC040` mixed tracking analysis so mutually exclusive branch choices do not warn while later shared materialization is still compared against every reachable earlier mode
+- Expanded `LC031` unbounded materialization analysis to follow query-syntax expressions and query-syntax aliases while preserving bounded and LINQ-to-Objects negatives
+- Hardened `LC010` SaveChanges-in-loop analysis to report local functions that are invoked from loops, with async-foreach/do-loop coverage and conservative no-fix regression coverage
+- Hardened `LC035` bulk execute filtering so query-syntax `where` clauses and filtered query-syntax locals suppress full-table warnings while unfiltered query syntax still reports
+- Hardened `LC012` `RemoveRange(...)` analysis so mixed or multiple arguments no longer produce misleading `ExecuteDelete()` diagnostics or fixes
+- Hardened `LC036` thread-work analysis to inspect directly passed local-function callbacks while preserving fresh-context and direct-call negatives
+- Expanded `LC024` GroupBy regression coverage for query-syntax grouping, LINQ-to-Objects query-syntax negatives, and static `Enumerable` aggregate exemptions
+- Hardened `LC038` excessive eager-loading analysis to count include chains after transparent query-shaping calls such as filters, ordering, split-query, tracking, and tags
+- Hardened `LC015` deterministic pagination analysis to follow ordered and paginated query aliases when suppressing redundant warnings or reporting misplaced sorting
+- Hardened `LC014` string case-conversion analysis so `Join`/`GroupJoin` key-selector diagnostics are tied to the actual EF-backed source and in-memory inner/projection selectors stay quiet
+- Hardened `LC018` and `LC034` raw-SQL namespace checks so EF Core lookalike namespaces do not produce false security diagnostics
+- Hardened `LC025` no-tracking write analysis so project-local `AsNoTracking` lookalikes do not produce false update/remove diagnostics
+- Hardened shared primary-key detection for `LC023` so fake same-name `[Key]` attributes no longer drive unsafe `Find(...)` suggestions
+- Hardened `LC043` async-buffering analysis so custom non-`IAsyncEnumerable<T>` `ToListAsync`/`ToArrayAsync` methods stay quiet
+- Expanded `LC021` intentional-bypass coverage for reviewed `SuppressMessage` suppressions alongside narrow pragma suppression guidance
+- Hardened `LC012` ExecuteDelete availability checks so EF Core lookalike namespaces do not enable misleading `RemoveRange(...)` diagnostics
+- Hardened `LC010` SaveChanges-in-loop analysis so catch-guarded retry loops that exit after a successful save do not produce N+1 write diagnostics
+- Hardened `LC035` bulk execute filtering so EF Core lookalike namespaces do not produce full-table operation diagnostics
+- Hardened `LC004` deferred-execution leak analysis to treat known BCL collection constructors as proven `IEnumerable<T>` consumption while preserving custom-constructor negatives
+- Hardened `LC031` unbounded materialization analysis to treat `DbContext.Set<TEntity>()` chains and aliases as DbSet-backed query sources
+- Hardened `LC025` no-tracking write analysis to report explicit `Entry(entity).State = Modified` or `Deleted` write paths while leaving non-write states quiet
+- Hardened `LC039` repeated-save analysis so mutually exclusive `switch` sections do not produce false repeated-save diagnostics
+- Hardened `LC040` mixed tracking analysis so mutually exclusive `switch` sections do not produce false mixed-mode diagnostics
+- Hardened `LC018` and `LC034` raw-SQL interpolation checks so no-hole and constant-only interpolated strings no longer produce security diagnostics
+- Hardened the `LC021` fixer so static `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)` calls are reduced back to the query expression instead of the extension type name
+- Hardened `LC035` bulk execute filtering so project-local `Where` lookalikes do not hide unfiltered `ExecuteDelete` or `ExecuteUpdate` calls
+- Hardened `LC039` repeated-save analysis so repeated saves inside the same explicit transaction `using` block stay quiet while unrelated `using` blocks still report
+- Hardened `LC040` mixed tracking analysis so reassigned local query aliases resolve by assignment-before-use, catching same-context mode changes without conflating different contexts
+- Hardened `LC018` and `LC034` raw-SQL checks so EF-namespace helpers on unrelated receiver types do not produce security diagnostics
+- Hardened the `LC012` fixer so a later `SaveChanges()` outside the immediate block still suppresses the automatic `ExecuteDelete()` rewrite
+- Hardened `LC010` retry-loop handling so catch-guarded save attempts that `return` immediately after success stay quiet while conditional returns still report
+- Hardened `LC035` bulk execute filtering so straight-line filtered local reassignments suppress full-table warnings while conditional reassignments still report
+- Hardened `LC012` so `RemoveRange(...)` calls followed by `SaveChanges()` in the same executable body no longer produce timing-sensitive `ExecuteDelete()` diagnostics
+
 ## [5.3.1] - 2026-04-27
 
 ### Changed

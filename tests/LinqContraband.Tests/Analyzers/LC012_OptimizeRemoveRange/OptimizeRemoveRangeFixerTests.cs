@@ -92,7 +92,38 @@ namespace LinqContraband.Test
         public void TestMethod(AppDbContext db)
         {
             var query = db.Users.Where(x => x.Id > 0);
-            {|LC012:db.Users.RemoveRange(query)|};
+            db.Users.RemoveRange(query);
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenOuterBlockSaveChangesFollowsRemoveRange()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, bool shouldDelete)
+        {
+            var query = db.Users.Where(x => x.Id > 0);
+            if (shouldDelete)
+            {
+                db.Users.RemoveRange(query);
+            }
+
             db.SaveChanges();
         }
     }
@@ -115,6 +146,33 @@ namespace LinqContraband.Test
         {
             var list = users.Where(x => x.Id > 0).ToList();
             users.RemoveRange(list);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_ForMixedRemoveRangeArguments()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+        public void RemoveRange(params object[] entities) { }
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, User user)
+        {
+            var query = db.Users.Where(x => x.Id > 0);
+            db.RemoveRange(query, user);
         }
     }
 }";

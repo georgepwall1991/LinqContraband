@@ -36,7 +36,7 @@ var user = await db.Users.FindAsync(new object[] { userId }, cancellationToken);
 
 The analyzer intentionally stays silent for chained queries such as `AsNoTracking()`, `Include(...)`, `Where(...)`, and other shapes where replacing the materializer with `Find` would change tracking, includes, filters, or return semantics.
 
-When visible EF Fluent API configuration declares `EntityTypeBuilder<TEntity>.HasKey(...)`, that configuration takes precedence over convention-based `Id`/`{EntityName}Id` inference. LC023 reports for a single configured key property, stays silent when the predicate targets a different convention property, and ignores unrelated generic helper methods named `HasKey` so non-EF metadata cannot override the entity key. The analyzer also stays silent for composite or otherwise unsupported key expressions because `Find(...)` would require the complete key value set in the configured order.
+When visible EF Fluent API configuration declares `EntityTypeBuilder<TEntity>.HasKey(...)`, that configuration takes precedence over convention-based `Id`/`{EntityName}Id` inference. LC023 reports for a single configured key property, stays silent when the predicate targets a different convention property, and ignores unrelated generic helper methods named `HasKey` so non-EF metadata cannot override the entity key. Attribute-based fallback requires the real `System.ComponentModel.DataAnnotations.KeyAttribute`; project-local same-name attributes are ignored. The analyzer also stays silent for composite or otherwise unsupported key expressions because `Find(...)` would require the complete key value set in the configured order.
 
 ## Fixer Behavior
 
@@ -46,4 +46,4 @@ When the awaited async lookup passes an explicit cancellation token, the fixer r
 
 ## Non-Goals
 
-`LC023` does not rewrite partial composite-key lookups, non-lambda Fluent API key expressions, or provider-specific behavior beyond visible `HasKey(...)`, `[Key]`, and convention metadata. Those shapes should be handled manually unless future analyzer metadata can prove the rewrite is safe.
+`LC023` does not rewrite partial composite-key lookups, non-lambda Fluent API key expressions, fake key attributes, or provider-specific behavior beyond visible `HasKey(...)`, real `[Key]`, and convention metadata. Those shapes should be handled manually unless future analyzer metadata can prove the rewrite is safe.

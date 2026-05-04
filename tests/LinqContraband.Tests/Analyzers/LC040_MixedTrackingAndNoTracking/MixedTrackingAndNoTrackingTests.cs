@@ -130,6 +130,131 @@ class Program
     }
 
     [Fact]
+    public async Task IfElseTrackedAndNoTrackingBranches_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool readOnly)
+    {
+        if (readOnly)
+        {
+            var first = db.Users.AsNoTracking().ToList();
+        }
+        else
+        {
+            var second = db.Users.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SwitchCaseTrackedAndNoTrackingBranches_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, int mode)
+    {
+        switch (mode)
+        {
+            case 1:
+                var first = db.Users.AsNoTracking().ToList();
+                break;
+            case 2:
+                var second = db.Users.ToList();
+                break;
+            default:
+                var third = db.Users.AsNoTrackingWithIdentityResolution().ToList();
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IndependentIfStatements_CanTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool first, bool second)
+    {
+        if (first)
+        {
+            var tracked = db.Users.ToList();
+        }
+
+        if (second)
+        {
+            var noTracking = {|LC040:db.Users.AsNoTracking().ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task LaterMaterializationComparesAgainstSwitchBranchRecords()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, int mode)
+    {
+        switch (mode)
+        {
+            case 1:
+                var first = db.Users.AsNoTracking().ToList();
+                break;
+            case 2:
+                var second = db.Users.ToList();
+                break;
+        }
+
+        var later = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task LaterMaterializationComparesAgainstNonExclusivePriorRecords()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool readOnly)
+    {
+        if (readOnly)
+        {
+            var first = db.Users.AsNoTracking().ToList();
+        }
+        else
+        {
+            var second = db.Users.ToList();
+        }
+
+        var later = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SameTrackingMode_DoesNotTrigger()
     {
         var test = EFCoreMock + Types + @"
@@ -177,6 +302,70 @@ class Program
         var users = db.Users;
         var first = users.ToList();
         var second = {|LC040:users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReassignedLocalQueryOnSameContext_ResolvesAssignmentBeforeUseAndTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        IQueryable<TestApp.User> users = db.Users;
+        var first = users.ToList();
+
+        users = db.Users.AsNoTracking();
+        var second = {|LC040:users.ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReassignedLocalQueryOnDifferentContexts_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db1, TestApp.AppDbContext db2)
+    {
+        IQueryable<TestApp.User> users = db1.Users;
+        var first = users.ToList();
+
+        users = db2.Users.AsNoTracking();
+        var second = users.ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConditionallyReassignedLocalQuery_StaysConservative()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool readOnly)
+    {
+        IQueryable<TestApp.User> users = db.Users;
+        var first = users.ToList();
+
+        if (readOnly)
+        {
+            users = db.Users.AsNoTracking();
+        }
+
+        var second = users.ToList();
     }
 }";
 

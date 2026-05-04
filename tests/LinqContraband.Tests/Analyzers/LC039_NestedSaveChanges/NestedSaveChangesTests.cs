@@ -149,6 +149,79 @@ class Program
     }
 
     [Fact]
+    public async Task RepeatedSaveChangesInsideTransactionUsingBlock_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        using (var tx = db.Database.BeginTransaction())
+        {
+            db.SaveChanges();
+            db.SaveChanges();
+            tx.Commit();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSaveChangesInsideUnrelatedUsingBlock_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        using (db)
+        {
+            db.SaveChanges();
+            {|LC039:db.SaveChanges()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSaveChangesInsideCustomBeginTransactionUsingBlock_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        using (BeginTransaction())
+        {
+            db.SaveChanges();
+            {|LC039:db.SaveChanges()|};
+        }
+    }
+
+    FakeTransaction BeginTransaction() => new FakeTransaction();
+
+    private sealed class FakeTransaction : System.IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task UnrelatedCommitBetweenSaves_DoesNotSuppressDiagnostic()
     {
         var test = EFCoreMock + Types + @"
@@ -165,6 +238,134 @@ class Program
 
     void Commit()
     {
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IfElseSaveChangesBranches_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool saveFirst)
+    {
+        var db = new TestApp.AppDbContext();
+        if (saveFirst)
+        {
+            db.SaveChanges();
+        }
+        else
+        {
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ElseIfSaveChangesBranches_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    async Task Run(bool first, bool second)
+    {
+        var db = new TestApp.AppDbContext();
+        if (first)
+        {
+            await db.SaveChangesAsync();
+        }
+        else if (second)
+        {
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            await db.SaveChangesAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SwitchCaseSaveChangesBranches_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int state)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (state)
+        {
+            case 1:
+                db.SaveChanges();
+                break;
+            case 2:
+                db.SaveChanges();
+                break;
+            default:
+                db.SaveChanges();
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SameSwitchCaseRepeatedSaveChanges_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int state)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (state)
+        {
+            case 1:
+                db.SaveChanges();
+                {|LC039:db.SaveChanges()|};
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IndependentIfStatements_CanTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool first, bool second)
+    {
+        var db = new TestApp.AppDbContext();
+        if (first)
+        {
+            db.SaveChanges();
+        }
+
+        if (second)
+        {
+            {|LC039:db.SaveChanges()|};
+        }
     }
 }";
 

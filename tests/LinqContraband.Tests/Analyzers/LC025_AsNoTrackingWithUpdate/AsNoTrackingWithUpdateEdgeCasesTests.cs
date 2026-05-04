@@ -79,4 +79,34 @@ namespace LinqContraband.Test
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task LocalFromCustomAsNoTrackingLookalike_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace CustomExtensions
+{
+    public static class QueryableExtensions
+    {
+        public static IQueryable<T> AsNoTracking<T>(IQueryable<T> source) => source;
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = CustomExtensions.QueryableExtensions.AsNoTracking(users).FirstOrDefault(x => x.Id == 1);
+            users.Update(user);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

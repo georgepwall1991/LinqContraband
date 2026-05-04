@@ -190,6 +190,11 @@ public void ProcessUsers(IQueryable<User> users)
 }
 ```
 
+**🛡️ Reliability Notes:**
+- LC004 reports only when the callee body is inspectable and proven to consume the sequence.
+- Proven sinks include `foreach`, terminal/materializing `Enumerable` calls, same-compilation forwarding into another proven sink, and known BCL collection constructors such as `new List<T>(users)`.
+- Framework methods, delegate invocations, custom constructors, non-source callees, already materialized arguments, and `IQueryable<T>` parameters stay quiet.
+
 ---
 
 ### LC005: Multiple OrderBy Calls
@@ -383,6 +388,12 @@ foreach (var user in users)
 db.SaveChanges();
 ```
 
+**🛡️ Reliability Notes:**
+- LC010 covers direct `for`, `foreach`, `await foreach`, `while`, and `do` loop saves.
+- Local functions invoked from a loop are treated as per-iteration saves, but local functions or lambdas that are only declared inside a loop stay quiet.
+- Catch-guarded retry loops that `break` or `return` immediately after a successful save stay quiet because they are one commit attempt, not an N+1 write.
+- The fixer is deliberately narrow and only moves a terminal save out of a simple `do` loop.
+
 ---
 
 ### LC011: Entity Missing Primary Key
@@ -471,6 +482,12 @@ db.Users.Where(u => u.LastLogin < DateTime.Now.AddYears(-1)).ExecuteDelete();
 fire. This analyzer does not offer an automatic code fix because switching to `ExecuteDelete` changes the semantic
 behavior of your application (by skipping interceptors and events). You must manually verify it is safe to use.
 
+**🛡️ Reliability Notes:**
+- LC012 reports only when one `RemoveRange(...)` argument is still query-shaped and EF-style `ExecuteDelete()` is available.
+- The `ExecuteDelete()` availability check is bound to the real `Microsoft.EntityFrameworkCore` namespace, so project-local or lookalike helpers do not enable the rule.
+- Mixed or multiple `RemoveRange(query, entity)` arguments stay quiet because no single `ExecuteDelete()` replacement preserves that call shape.
+- LC012 stays quiet when a later `SaveChanges()` appears in the same executable body, including outside the immediate block, because that rewrite would change unit-of-work timing.
+
 ---
 
 ### LC013: Disposed Context Query
@@ -547,6 +564,11 @@ queries to `string.Equals(..., StringComparison.OrdinalIgnoreCase)`; provider tr
 var user = db.Users.Where(u => u.Name == "john").FirstOrDefault();
 ```
 
+**🛡️ Reliability Notes:**
+- LC014 reports only when the case conversion is tied to a proven EF-backed query source.
+- `Join` and `GroupJoin` key selectors are checked against their own source: EF outer/inner keys can report, but in-memory inner keys and result-selector projections stay quiet.
+- There is no automatic fixer because the right remediation depends on database collation, provider translation, and index design.
+
 ---
 
 ### LC015: Deterministic Pagination Requires OrderBy
@@ -555,7 +577,9 @@ Pagination (`Skip`/`Take`) and fetching the `Last` item rely on a specific sort 
 database can return results in any random order, making pagination unpredictable and `Last()` results non-deterministic.
 When a single query chain contains both `Skip(...)` and `Take(...)`, LinqContraband reports one primary warning for the
 unordered chain instead of duplicating the same root-cause message on both calls.
-LC015 is scoped to EF-backed query chains and stays quiet for explicit LINQ-to-Objects `AsQueryable()` sources.
+LC015 also follows simple query aliases, so an ordered `IQueryable<T>` local does not produce a false warning and a
+later `OrderBy(...)` on a paged local still reports the misplaced sort. It is scoped to EF-backed query chains and stays
+quiet for explicit LINQ-to-Objects `AsQueryable()` sources.
 
 **👶 Explain it like I'm a ten year old:** Imagine a teacher asks you to "Skip the first 5 students and pick the next
 one." If the students are standing in a line, you know who to pick. But if they are running around the playground
@@ -687,6 +711,8 @@ var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {nam
 
 **🛡️ Reliability Notes:**
 - LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- Interpolated strings only report when an interpolation hole contains runtime data; no-hole and constant-only interpolations stay quiet.
+- LC018 binds to EF Core namespaces and queryable/DbSet receivers exactly, so same-named extension methods in lookalike namespaces or on unrelated receiver types stay quiet.
 - The fixer is not offered when an interpolation hole is inside SQL quotes, such as `'{name}'`; that rewrite needs manual quote removal.
 - Broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder` are covered by `LC037`.
 
@@ -769,6 +795,11 @@ var allUsers = db.Users.IgnoreQueryFilters().ToList();
 **✅ The Fix:**
 Ensure that bypassing global filters is intentional and necessary for the specific task (e.g., admin tools).
 
+**🛡️ Reliability Notes:**
+- LC021 reports only EF Core's real `IgnoreQueryFilters()` extension on `IQueryable<T>`; instance methods, `IEnumerable<T>` helpers, and non-EF queryable helpers stay quiet.
+- Intentional bypasses should be local and reviewed. Use a narrow `#pragma warning disable LC021` block or a targeted `SuppressMessage` with a concrete justification.
+- The fixer removes only `.IgnoreQueryFilters()`, including static extension-method wrappers, from the query chain; do not apply it to approved tenant-admin, soft-delete restore, or audit workflows.
+
 ---
 
 ### LC022: Nested Collection Materialization Inside Projection
@@ -828,7 +859,8 @@ var user = db.Users.Find(userId);
 ```
 
 LC023 honors visible Fluent API `HasKey(...)` configuration before falling back to `Id`/`{EntityName}Id` conventions or
-`[Key]`. It stays silent for partial composite-key lookups because `Find(...)` needs the complete configured key value set.
+the real `System.ComponentModel.DataAnnotations.KeyAttribute`. It ignores same-name fake attributes and stays silent for
+partial composite-key lookups because `Find(...)` needs the complete configured key value set.
 
 ---
 
@@ -860,7 +892,8 @@ var result = db.Orders.GroupBy(o => o.CustomerId)
 
 **🛡️ Reliability Notes:**
 - LC024 owns grouped element access such as `g.ToList()`, `g.Where(...)`, and `g.First()` inside `GroupBy(...).Select(...)`.
-- Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()`.
+- Query-syntax grouping with `group ... by ... into g select ...` follows the same rule boundaries as fluent `GroupBy(...).Select(...)`.
+- Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()` or `Enumerable.Count(g)`.
 - That grouped-projection case is intentionally excluded from `LC022` so one rule owns the diagnostic.
 
 ---
@@ -883,6 +916,7 @@ var user = db.Users.AsNoTracking().First(u => u.Id == id);
 user.Name = "New Name";
 // EF Core has to update ALL columns because it wasn't tracking changes
 db.Users.Update(user);
+db.Entry(user).State = EntityState.Modified;
 ```
 
 **✅ The Fix:**
@@ -898,6 +932,8 @@ db.SaveChanges();
 
 **🛡️ Reliability Notes:**
 - LC025 follows the nearest previous local origin, so a later `AsNoTracking()` assignment does not taint an earlier write.
+- LC025 requires EF Core's actual `AsNoTracking` extension namespace; project-local same-name helpers stay quiet.
+- `Entry(entity).State = EntityState.Modified` and `EntityState.Deleted` are treated as write paths; non-write states such as `Unchanged` stay quiet.
 - The fixer removes `AsNoTracking()` from direct declarations, simple assignments, and foreach collection expressions when that is the safe local origin.
 
 ---
@@ -1108,6 +1144,11 @@ should have said "Give me the first 10 books" instead.
 ```csharp
 // Could load millions of rows into memory
 var users = db.Users.Where(u => u.IsActive).ToList();
+
+var querySyntaxUsers =
+    (from user in db.Users
+     where user.IsActive
+     select user).ToList();
 ```
 
 **✅ The Fix:**
@@ -1117,6 +1158,10 @@ Add a bound to the query.
 // Loads at most 1000 rows
 var users = db.Users.Where(u => u.IsActive).Take(1000).ToList();
 ```
+
+**🛡️ Reliability Notes:**
+- LC031 follows method-syntax chains, `DbContext.Set<TEntity>()`, query-syntax expressions, and simple single-assignment aliases when the DbSet origin is provable.
+- Bounded query-syntax results such as `.Take(100).ToList()` stay quiet, and LINQ-to-Objects query syntax is ignored.
 
 ---
 
@@ -1218,6 +1263,8 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 - LC034 only offers a fixer for direct interpolated-string calls with no additional raw SQL parameters.
 - The fixer is not offered when an interpolation hole is inside SQL quotes, such as `'{name}'`; that rewrite needs manual quote removal.
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
+- Interpolated strings only report when an interpolation hole contains runtime data; no-hole and constant-only interpolations stay quiet.
+- LC034 binds to EF Core namespaces and `DatabaseFacade` receivers exactly, so same-named extension methods in lookalike namespaces or on unrelated receiver types stay quiet.
 - More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
 
 ---
@@ -1243,10 +1290,22 @@ Add a real filter before the bulk operation.
 await db.Users
     .Where(u => !u.IsActive)
     .ExecuteDeleteAsync();
+
+await (from user in db.Users
+       where !user.IsActive
+       select user)
+    .ExecuteDeleteAsync();
 ```
 
 **⚠️ Warning:** This rule is advisory only. There is no safe automatic fixer because LinqContraband cannot guess the
 missing predicate for you.
+
+**🛡️ Reliability Notes:**
+- LC035 treats fluent `.Where(...)`, query-syntax `where`, simple filtered local query variables, and straight-line filtered local reassignments as explicit filters.
+- The `.Where(...)` proof is semantic: project-local methods that merely use the same name do not hide a full-table operation.
+- Conditional local reassignments stay conservative because one execution path can still target the full entity set.
+- Query syntax without a `where` clause still reports because it can target the full entity set.
+- LC035 binds to EF Core namespaces exactly, so same-named bulk helpers in lookalike namespaces stay quiet.
 
 ---
 
@@ -1262,6 +1321,9 @@ time. They bump elbows, write over each other, and ruin the page.
 
 ```csharp
 await Task.Run(() => db.Users.Count());
+
+int CountUsers() => db.Users.Count();
+await Task.Run(CountUsers);
 ```
 
 **✅ The Fix:**
@@ -1276,7 +1338,8 @@ await Task.Run(async () =>
 ```
 
 **🛡️ Reliability Notes:**
-- LC036 stays quiet when the delegate creates and uses its own fresh context.
+- LC036 covers lambda, anonymous-method, and directly passed local-function callbacks for thread-work APIs.
+- LC036 stays quiet when the callback creates and uses its own fresh context.
 - This rule defaults to `Warning` because cross-thread `DbContext` use is both common and high-risk.
 
 ---
@@ -1345,6 +1408,11 @@ var users = db.Users
 **⚙️ Configuration:** Tune the threshold with `dotnet_code_quality.LC038.include_threshold` in your
 `.editorconfig`. The default is `4`.
 
+**🛡️ Reliability Notes:**
+- LC038 counts include chains only when the EF root is provable.
+- Query-shaping calls before the include chain, such as `Where`, `OrderBy`, `Take`, `AsNoTracking`, `AsSplitQuery`, and `TagWith`, still preserve the EF root for counting.
+- The rule stays advisory; reviewed aggregate loads can raise the threshold in `.editorconfig`.
+
 ---
 
 ### LC039: Nested SaveChanges
@@ -1375,7 +1443,7 @@ await db.SaveChangesAsync();
 ```
 
 **🛡️ Reliability Notes:**
-- LC039 is advisory and suppresses obvious transaction-boundary patterns.
+- LC039 is advisory and suppresses obvious transaction-boundary patterns, repeated saves inside one explicit transaction `using` block, and mutually exclusive `if`/`else` or `switch`-section saves.
 - If the split save is intentional, keep it explicit with a transaction or a clear comment boundary.
 
 ---
@@ -1403,6 +1471,11 @@ Pick one tracking mode for the method, or split the work so each scope has a sin
 var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == id);
 var related = await db.Users.AsNoTracking().Where(u => u.ManagerId == id).ToListAsync();
 ```
+
+**🛡️ Reliability Notes:**
+- LC040 only reports when the same proven context can materialize both tracked and no-tracking entities on one execution path.
+- Straight-line local query aliases are resolved at the materialization point, so reassigned locals can still report for the same context while different-context or conditional reassignments stay quiet.
+- Mutually exclusive `if`/`else` and `switch` tracking choices are ignored, but later materialization is still compared against every reachable earlier mode.
 
 ---
 
@@ -1504,6 +1577,7 @@ await foreach (var user in stream)
 
 **🛡️ Reliability Notes:**
 - LC043 intentionally targets a narrow, analyzer-proven v1 pattern: immediate buffering followed by one linear loop in the same method.
+- The buffered call must come from a proven `IAsyncEnumerable<T>` source; custom non-stream `ToListAsync`/`ToArrayAsync` helpers stay quiet.
 - The fixer rewrites only those safe cases and does not try to transform broader async-stream usage.
 
 ---

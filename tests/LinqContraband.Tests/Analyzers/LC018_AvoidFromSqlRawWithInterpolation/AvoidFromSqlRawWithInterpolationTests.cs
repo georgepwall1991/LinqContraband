@@ -104,6 +104,46 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FromSqlRaw_WithNoHoleInterpolatedString_ShouldNotTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw($""SELECT * FROM Table"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_WithConstantOnlyInterpolation_ShouldNotTriggerLC018()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        private const int Active = 1;
+
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw($""SELECT * FROM Table WHERE Active = {Active}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FromSqlRaw_WithConstantString_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
@@ -197,6 +237,67 @@ namespace LinqContraband.Test
             var query = new int[0].AsQueryable();
             var sql = ""SELECT * FROM Table WHERE Id = "" + id;
             var result = query.FromSqlRaw(sql);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_InLookalikeNamespace_ShouldNotTriggerLC018()
+    {
+        var test = @"
+using System;
+using System.Linq;
+using Microsoft.EntityFrameworkCoreFake;
+
+namespace Microsoft.EntityFrameworkCoreFake
+{
+    public static class RelationalQueryableExtensions
+    {
+        public static IQueryable<TEntity> FromSqlRaw<TEntity>(this IQueryable<TEntity> source, string sql, params object[] parameters) => source;
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw($""SELECT * FROM Table WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_OnNonQueryableEfNamespaceHelper_ShouldNotTriggerLC018()
+    {
+        var test = @"
+using System;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class CustomRawExtensions
+    {
+        public static string FromSqlRaw(this string source, string sql, params object[] parameters) => source;
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(int id)
+        {
+            var result = ""not a query"".FromSqlRaw($""SELECT * FROM Table WHERE Id = {id}"");
         }
     }
 }";

@@ -27,6 +27,6 @@ db.Logs.Where(l => l.Date < oneYearAgo).ExecuteDelete();
 ### Severity: `Warning`
 
 ### Notes
-LC012 is conservative. It reports only when the project exposes an EF-style `ExecuteDelete()` extension and the `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>`/`DbSet<T>`). It stays quiet for materialized lists, arrays, tracked entity collections, `params` entity arguments, and EF Core versions where `ExecuteDelete()` is unavailable.
+LC012 is conservative. It reports only when the project exposes an EF Core `ExecuteDelete()` extension from the real `Microsoft.EntityFrameworkCore` namespace and the single `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>`/`DbSet<T>`). It stays quiet for materialized lists, arrays, tracked entity collections, mixed/multiple `params` entity arguments, custom or lookalike `ExecuteDelete()` helpers, EF Core versions where `ExecuteDelete()` is unavailable, and calls followed by `SaveChanges()`/`SaveChangesAsync()` later in the same executable body.
 
-The fixer is intentionally narrower than the diagnostic. It does not offer an automatic rewrite when a later `SaveChanges()`/`SaveChangesAsync()` appears in the same block, because replacing deferred tracked deletion with immediate `ExecuteDelete()` can change unit-of-work timing. Apply the optimization manually only after confirming change tracking, client-side cascades, interceptors, and deferred save semantics are not required.
+The diagnostic and fixer both avoid later-save unit-of-work shapes, because replacing deferred tracked deletion with immediate `ExecuteDelete()` can change timing. Apply the optimization manually only after confirming change tracking, client-side cascades, interceptors, and deferred save semantics are not required.

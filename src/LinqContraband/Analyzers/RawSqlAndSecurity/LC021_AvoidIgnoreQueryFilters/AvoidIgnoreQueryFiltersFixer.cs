@@ -52,7 +52,9 @@ public class AvoidIgnoreQueryFiltersFixer : CodeFixProvider
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
 
-        var receiver = memberAccess.Expression;
+        var receiver = invocation.ArgumentList.Arguments.Count > 0
+            ? invocation.ArgumentList.Arguments[0].Expression
+            : memberAccess.Expression;
 
         editor.ReplaceNode(invocation, receiver
             .WithLeadingTrivia(invocation.GetLeadingTrivia())

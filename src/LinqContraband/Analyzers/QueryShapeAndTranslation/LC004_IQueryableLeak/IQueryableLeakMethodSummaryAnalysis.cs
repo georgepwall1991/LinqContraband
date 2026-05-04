@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -72,10 +73,54 @@ internal sealed partial class IQueryableLeakCompilationState
 
                     MarkForwardedHazards(invocation, executableRoot, candidateOrdinals, hazardousOrdinals, visiting);
                     break;
+
+                case IObjectCreationOperation objectCreation:
+                    MarkMaterializingConstructorHazards(
+                        objectCreation,
+                        executableRoot,
+                        candidateOrdinals,
+                        hazardousOrdinals);
+                    break;
             }
         }
 
         return new HazardousParameterSummary(true, hazardousOrdinals.ToImmutable());
+    }
+
+    private void MarkMaterializingConstructorHazards(
+        IObjectCreationOperation objectCreation,
+        IOperation executableRoot,
+        ImmutableHashSet<int>.Builder candidateOrdinals,
+        ImmutableHashSet<int>.Builder hazardousOrdinals)
+    {
+        if (!IsMaterializingCollectionConstructor(objectCreation.Constructor))
+            return;
+
+        foreach (var argument in objectCreation.Arguments)
+        {
+            if (argument.Parameter == null || !IsIEnumerableLike(argument.Parameter.Type))
+                continue;
+
+            MarkHazardIfParameterSource(
+                argument.Value,
+                objectCreation.Syntax.SpanStart,
+                executableRoot,
+                candidateOrdinals,
+                hazardousOrdinals);
+        }
+    }
+
+    private bool IsMaterializingCollectionConstructor(IMethodSymbol? constructor)
+    {
+        if (constructor == null || constructor.MethodKind != MethodKind.Constructor)
+            return false;
+
+        var containingType = constructor.ContainingType;
+        if (containingType?.ContainingNamespace?.ToString() != "System.Collections.Generic")
+            return false;
+
+        return MaterializingCollectionTypes.Contains(containingType.Name) &&
+               constructor.Parameters.Any(parameter => IsIEnumerableLike(parameter.Type));
     }
 
     private void MarkForwardedHazards(

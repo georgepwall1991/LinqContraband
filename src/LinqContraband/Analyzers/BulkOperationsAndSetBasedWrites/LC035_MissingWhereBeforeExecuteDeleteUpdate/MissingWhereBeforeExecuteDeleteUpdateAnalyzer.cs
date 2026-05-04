@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -54,20 +56,31 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         if (!TargetMethods.Contains(method.Name))
             return;
 
-        if (method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) != true)
+        if (!IsEntityFrameworkCoreNamespace(method.ContainingNamespace))
             return;
 
         var receiverType = invocation.GetInvocationReceiver()?.Type;
         if (receiverType?.IsIQueryable() != true && receiverType?.IsDbSet() != true)
             return;
 
-        if (HasWhereInChain(invocation.GetInvocationReceiver()))
+        if (HasWhereInChain(invocation.GetInvocationReceiver(), context.CancellationToken))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
     }
 
-    private static bool HasWhereInChain(IOperation? operation)
+    private static bool HasWhereInChain(IOperation? operation, CancellationToken cancellationToken)
+    {
+        return HasWhereInChain(
+            operation,
+            cancellationToken,
+            new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private static bool HasWhereInChain(
+        IOperation? operation,
+        CancellationToken cancellationToken,
+        ISet<ILocalSymbol> visitedLocals)
     {
         var current = operation;
 
@@ -77,15 +90,24 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
 
             if (current is IInvocationOperation invocation)
             {
-                if (invocation.TargetMethod.Name == "Where")
+                if (IsKnownLinqWhere(invocation.TargetMethod))
                     return true;
 
                 current = invocation.GetInvocationReceiver();
                 continue;
             }
 
+            if (current is ITranslatedQueryOperation translatedQuery)
+            {
+                if (HasQuerySyntaxWhere(translatedQuery.Syntax))
+                    return true;
+
+                current = translatedQuery.Operation;
+                continue;
+            }
+
             if (current is ILocalReferenceOperation localReference)
-                return HasWhereInLocalInitializer(localReference.Local);
+                return HasWhereInLocalInitializer(localReference, cancellationToken, visitedLocals);
 
             if (current is IParameterReferenceOperation or IFieldReferenceOperation or IPropertyReferenceOperation)
                 return false;
@@ -99,45 +121,82 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         return false;
     }
 
-    private static bool HasWhereInLocalInitializer(ILocalSymbol local)
+    private static bool HasWhereInLocalInitializer(
+        ILocalReferenceOperation localReference,
+        CancellationToken cancellationToken,
+        ISet<ILocalSymbol> visitedLocals)
     {
-        var syntaxReference = local.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxReference?.GetSyntax() is not VariableDeclaratorSyntax declarator)
+        if (!visitedLocals.Add(localReference.Local))
             return false;
 
-        return declarator.Initializer?.Value != null && HasWhereInSyntaxChain(declarator.Initializer.Value);
-    }
+        var executableRoot = localReference.FindOwningExecutableRoot();
+        if (executableRoot == null)
+            return false;
 
-    private static bool HasWhereInSyntaxChain(ExpressionSyntax expression)
-    {
-        var current = expression;
-        while (current != null)
+        if (!TryGetLatestStraightLineAssignedValueBefore(
+                executableRoot,
+                localReference,
+                cancellationToken,
+                out var assignedValue))
         {
-            if (current is InvocationExpressionSyntax invocation &&
-                invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-            {
-                if (memberAccess.Name.Identifier.ValueText == "Where")
-                    return true;
-
-                current = memberAccess.Expression;
-                continue;
-            }
-
-            if (current is MemberAccessExpressionSyntax bareMemberAccess)
-            {
-                current = bareMemberAccess.Expression;
-                continue;
-            }
-
-            if (current is ParenthesizedExpressionSyntax parenthesized)
-            {
-                current = parenthesized.Expression;
-                continue;
-            }
-
-            break;
+            return false;
         }
 
-        return false;
+        return HasWhereInChain(assignedValue, cancellationToken, visitedLocals);
+    }
+
+    private static bool TryGetLatestStraightLineAssignedValueBefore(
+        IOperation executableRoot,
+        ILocalReferenceOperation localReference,
+        CancellationToken cancellationToken,
+        out IOperation assignedValue)
+    {
+        assignedValue = null!;
+        LocalAssignment? latest = null;
+
+        foreach (var assignment in LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken))
+        {
+            if (assignment.SpanStart >= localReference.Syntax.SpanStart)
+                continue;
+
+            if (latest == null || assignment.SpanStart > latest.Value.SpanStart)
+                latest = assignment;
+        }
+
+        if (latest == null || IsControlFlowConditionalAssignment(latest.Value.Value.Syntax))
+            return false;
+
+        assignedValue = latest.Value.Value.UnwrapConversions();
+        return true;
+    }
+
+    private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax)
+    {
+        return syntax.Ancestors().Any(ancestor =>
+            ancestor is IfStatementSyntax or SwitchStatementSyntax or SwitchExpressionSyntax or
+                ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax or
+                TryStatementSyntax or CatchClauseSyntax);
+    }
+
+    private static bool IsKnownLinqWhere(IMethodSymbol method)
+    {
+        return method.Name == "Where" &&
+               method.ContainingNamespace?.ToString() == "System.Linq" &&
+               method.ContainingType?.Name is "Queryable" or "Enumerable";
+    }
+
+    private static bool HasQuerySyntaxWhere(SyntaxNode syntax)
+    {
+        return syntax
+            .DescendantNodesAndSelf()
+            .OfType<QueryExpressionSyntax>()
+            .Any(query => query.Body.Clauses.OfType<WhereClauseSyntax>().Any());
+    }
+
+    private static bool IsEntityFrameworkCoreNamespace(INamespaceSymbol? namespaceSymbol)
+    {
+        var namespaceName = namespaceSymbol?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
     }
 }

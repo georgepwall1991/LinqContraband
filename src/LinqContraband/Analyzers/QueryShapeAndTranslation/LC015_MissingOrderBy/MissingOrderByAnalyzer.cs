@@ -84,14 +84,14 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
 
         if (isSorting)
         {
-            if (HasPaginationUpstream(receiver))
+            if (HasPaginationUpstream(receiver, localValueCache, context.CancellationToken))
                 context.ReportDiagnostic(Diagnostic.Create(MisplacedRule, GetMethodLocation(invocation), method.Name));
             return;
         }
 
-        if (!HasOrderByUpstream(receiver) &&
-            !HasPaginationUpstream(receiver) &&
-            !HasSortingDownstream(invocation))
+        if (!HasOrderByUpstream(receiver, localValueCache, context.CancellationToken) &&
+            !HasPaginationUpstream(receiver, localValueCache, context.CancellationToken) &&
+            !HasSortingDownstream(invocation, localValueCache, context.CancellationToken))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, GetMethodLocation(invocation), method.Name));
         }

@@ -65,11 +65,17 @@ public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
         if (!HasQueryableDeleteSource(invocation))
             return;
 
+        if (HasSubsequentSaveChangesInvocation(invocation))
+            return;
+
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
     }
 
     private static bool HasQueryableDeleteSource(IInvocationOperation invocation)
     {
+        if (invocation.Arguments.Length != 1)
+            return false;
+
         var deleteSource = invocation.Arguments.FirstOrDefault()?.Value.UnwrapConversions();
         return deleteSource?.Type.IsIQueryable() == true || deleteSource?.Type.IsDbSet() == true;
     }
@@ -97,9 +103,34 @@ public sealed class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
         if (!method.IsExtensionMethod || method.Parameters.Length == 0)
             return false;
 
-        if (method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) != true)
+        if (!IsEntityFrameworkCoreNamespace(method.ContainingNamespace))
             return false;
 
         return method.Parameters[0].Type.IsIQueryable();
+    }
+
+    private static bool HasSubsequentSaveChangesInvocation(IInvocationOperation invocation)
+    {
+        var root = invocation.FindOwningExecutableRoot();
+        if (root == null)
+            return false;
+
+        return root.Descendants()
+            .OfType<IInvocationOperation>()
+            .Any(candidate => candidate.Syntax.SpanStart > invocation.Syntax.SpanStart &&
+                              IsSaveChangesMethod(candidate.TargetMethod));
+    }
+
+    private static bool IsSaveChangesMethod(IMethodSymbol method)
+    {
+        return method.Name is "SaveChanges" or "SaveChangesAsync" &&
+               method.ContainingType.IsDbContext();
+    }
+
+    private static bool IsEntityFrameworkCoreNamespace(INamespaceSymbol? namespaceSymbol)
+    {
+        var namespaceName = namespaceSymbol?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", StringComparison.Ordinal) == true;
     }
 }

@@ -105,7 +105,7 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
                 {
                     var method = linqInvocation.TargetMethod;
                     if (IsTargetQueryableMethod(method) &&
-                        HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver()))
+                        IsLambdaScopedToEntityFrameworkSource(argument, linqInvocation))
                     {
                         return lambda.Symbol.Parameters;
                     }
@@ -123,6 +123,43 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         return TargetLinqMethods.Contains(method.Name) &&
                method.ContainingType.Name == "Queryable" &&
                method.ContainingNamespace?.ToString() == "System.Linq";
+    }
+
+    private static bool IsLambdaScopedToEntityFrameworkSource(
+        IArgumentOperation argument,
+        IInvocationOperation linqInvocation)
+    {
+        var methodName = linqInvocation.TargetMethod.Name;
+        if (methodName is "Join" or "GroupJoin")
+        {
+            return argument.Parameter?.Name switch
+            {
+                "outerKeySelector" => HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver()),
+                "innerKeySelector" => TryGetArgumentValue(linqInvocation, "inner", out var inner) &&
+                                      HasEntityFrameworkQuerySource(inner),
+                _ => false
+            };
+        }
+
+        return HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver());
+    }
+
+    private static bool TryGetArgumentValue(
+        IInvocationOperation invocation,
+        string parameterName,
+        out IOperation value)
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Name == parameterName)
+            {
+                value = argument.Value;
+                return true;
+            }
+        }
+
+        value = null!;
+        return false;
     }
 
     private static bool HasEntityFrameworkQuerySource(IOperation? operation)

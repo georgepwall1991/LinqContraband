@@ -176,10 +176,33 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Skip_OnOrderedIQueryableAlias_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> query = db.Users.OrderBy(u => u.Id);
+
+            var result = query.Skip(10);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Skip_OnList_ShouldNotTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
     public class Program
     {
@@ -219,7 +242,7 @@ namespace TestApp
     public async Task OrderBy_AfterSkip_ShouldTrigger()
     {
         var test = Usings + @"
-namespace TestApp 
+namespace TestApp
 {
     public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
 
@@ -264,6 +287,33 @@ namespace TestApp
 
         var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
             .WithLocation(18, 43)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task OrderBy_AfterSkipThroughIQueryableAlias_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> page = db.Users.Skip(10);
+
+            var result = page.{|#0:OrderBy|}(u => u.Name);
+        }
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(0)
             .WithArguments("OrderBy");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);

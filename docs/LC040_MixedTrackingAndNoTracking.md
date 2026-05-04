@@ -22,3 +22,7 @@ var noTrackingUsers = db.Users.AsNoTracking().ToList();
 This advisory reports only when the query provenance and materialization mode are both provable.
 
 Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWithIdentityResolution`, and `AsTracking` calls are treated as tracking-mode markers. Custom extension methods with the same names are followed as ordinary query-chain calls and do not create mixed-mode evidence by themselves.
+
+Straight-line local query aliases are resolved at the materialization point. A local reassigned from tracked to no-tracking queries on the same context can report, while a reassignment from a different context or inside conditional control flow stays quiet.
+
+Mutually exclusive `if`/`else` branches and `switch` sections are not treated as mixed tracking evidence by themselves. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.

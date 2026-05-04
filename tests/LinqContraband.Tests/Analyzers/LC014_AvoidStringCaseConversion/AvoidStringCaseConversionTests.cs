@@ -47,6 +47,7 @@ namespace LinqContraband.Test
     public class AppDbContext : DbContext
     {
         public DbSet<User> Users { get; set; }
+        public DbSet<User> UserAliases { get; set; }
     }
 }
 ";
@@ -271,6 +272,100 @@ namespace LinqContraband.Test
             var query = db.Users;
             // The ToLower is an argument to MyHelper, which is the argument to Where
             var result = query.Where(u => MyHelper({|LC014:u.Name.ToLower()|}));
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Join_OuterEfKeySelector_ShouldTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            var aliases = new List<User>();
+
+            var result = db.Users.Join(
+                aliases,
+                u => {|LC014:u.Name.ToLower()|},
+                alias => alias.Name,
+                (u, alias) => u);
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Join_InMemoryInnerKeySelector_ShouldNotTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            var aliases = new List<User>();
+
+            var result = db.Users.Join(
+                aliases,
+                u => u.Name,
+                alias => alias.Name.ToLower(),
+                (u, alias) => u);
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Join_InnerEfKeySelector_ShouldTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+
+            var result = db.Users.Join(
+                db.UserAliases,
+                u => u.Name,
+                alias => {|LC014:alias.Name.ToLower()|},
+                (u, alias) => u);
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Join_ResultSelectorProjection_ShouldNotTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+
+            var result = db.Users.Join(
+                db.UserAliases,
+                u => u.Name,
+                alias => alias.Name,
+                (u, alias) => u.Name.ToLower());
         }
     }
 }";

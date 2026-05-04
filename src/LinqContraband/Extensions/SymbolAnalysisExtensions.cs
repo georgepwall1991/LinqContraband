@@ -102,9 +102,7 @@ public static partial class AnalysisExtensions
                 foreach (var attr in prop.GetAttributes())
                 {
                     if (attr.AttributeClass == null) continue;
-                    if (attr.AttributeClass.Name == "KeyAttribute" ||
-                        (attr.AttributeClass.Name == "Key" &&
-                         attr.AttributeClass.ContainingNamespace?.ToString()?.StartsWith("System.ComponentModel.DataAnnotations", StringComparison.Ordinal) == true))
+                    if (IsDataAnnotationsKeyAttribute(attr.AttributeClass))
                     {
                         return prop.Name;
                     }
@@ -118,5 +116,11 @@ public static partial class AnalysisExtensions
         }
 
         return null;
+    }
+
+    private static bool IsDataAnnotationsKeyAttribute(INamedTypeSymbol attributeClass)
+    {
+        return attributeClass.Name == "KeyAttribute" &&
+               attributeClass.ContainingNamespace?.ToString() == "System.ComponentModel.DataAnnotations";
     }
 }

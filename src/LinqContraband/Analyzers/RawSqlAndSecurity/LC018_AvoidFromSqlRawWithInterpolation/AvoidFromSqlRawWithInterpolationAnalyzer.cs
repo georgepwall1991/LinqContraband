@@ -45,6 +45,10 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
         // Verify it's an EF Core method
         if (!IsEfCoreMethod(method)) return;
 
+        var receiverType = invocation.GetInvocationReceiverType();
+        if (receiverType?.IsIQueryable() != true && receiverType?.IsDbSet() != true)
+            return;
+
         var sqlArgument = invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == "sql")?.Value;
 
         if (sqlArgument != null && IsPotentiallyUnsafe(sqlArgument))
@@ -55,7 +59,9 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
 
     private bool IsEfCoreMethod(IMethodSymbol method)
     {
-        return method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) == true;
+        var namespaceName = method.ContainingNamespace?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
     }
 
     private bool IsPotentiallyUnsafe(IOperation operation)
@@ -70,10 +76,9 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
 
         current = current.UnwrapConversions();
 
-        if (current is IInterpolatedStringOperation)
+        if (current is IInterpolatedStringOperation interpolatedString)
         {
-            // Even if it's all constants, FromSqlInterpolated is preferred if it's $""
-            return true;
+            return HasNonConstantInterpolation(interpolatedString);
         }
 
         if (current is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Add)
@@ -107,5 +112,12 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
 
         // If it's a variable, parameter, or method call that is NOT a constant, it's unsafe for FromSqlRaw
         return true;
+    }
+
+    private static bool HasNonConstantInterpolation(IInterpolatedStringOperation interpolatedString)
+    {
+        return interpolatedString.Parts
+            .OfType<IInterpolationOperation>()
+            .Any(interpolation => !interpolation.Expression.UnwrapConversions().ConstantValue.HasValue);
     }
 }

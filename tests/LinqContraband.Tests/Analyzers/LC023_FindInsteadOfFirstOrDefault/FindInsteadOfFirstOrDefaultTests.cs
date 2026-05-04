@@ -405,6 +405,37 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FirstOrDefault_WithFakeKeyAttribute_ShouldNotTriggerForFakeKey()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace CustomAnnotations
+{
+    public sealed class KeyAttribute : System.Attribute { }
+}
+
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        [CustomAnnotations.Key]
+        public int ExternalId { get; set; }
+        public int Id { get; set; }
+    }
+
+    public class TestClass
+    {
+        public User TestMethod(DbSet<User> users, int externalId)
+        {
+            return users.FirstOrDefault(x => x.ExternalId == externalId);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FirstOrDefault_WithPartialCompositeFluentApiKey_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

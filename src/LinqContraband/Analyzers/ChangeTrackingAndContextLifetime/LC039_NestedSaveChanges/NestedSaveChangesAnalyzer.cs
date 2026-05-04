@@ -90,7 +90,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
 
             if (!isSaveMethod)
             {
-                _records.Add(new InvocationRecord(root, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, null, true, invocation.TargetMethod.Name));
+                _records.Add(new InvocationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, null, true, invocation.TargetMethod.Name));
                 return;
             }
 
@@ -100,7 +100,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
             if (!TryGetContextSymbol(invocation.Instance?.UnwrapConversions(), out var contextSymbol))
                 return;
 
-            _records.Add(new InvocationRecord(root, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, false, invocation.TargetMethod.Name));
+            _records.Add(new InvocationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, false, invocation.TargetMethod.Name));
         }
 
         private static bool IsTransactionBoundaryInvocation(IInvocationOperation invocation)
@@ -170,6 +170,12 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
                         if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
                             continue;
 
+                        if (AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
+                            continue;
+
+                        if (AreInsideSameTransactionUsing(previous.Syntax, current.Syntax, boundaries))
+                            continue;
+
                         Report(context, current, contextGroup.Key, current.MethodName);
                     }
                 }
@@ -180,9 +186,10 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
 
     private sealed class InvocationRecord
     {
-        public InvocationRecord(IOperation root, Location location, int position, ISymbol? contextSymbol, bool isBoundary, string methodName)
+        public InvocationRecord(IOperation root, SyntaxNode syntax, Location location, int position, ISymbol? contextSymbol, bool isBoundary, string methodName)
         {
             Root = root;
+            Syntax = syntax;
             Location = location;
             Position = position;
             ContextSymbol = contextSymbol;
@@ -191,6 +198,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         }
 
         public IOperation Root { get; }
+        public SyntaxNode Syntax { get; }
         public Location Location { get; }
         public int Position { get; }
         public ISymbol? ContextSymbol { get; }

@@ -27,6 +27,8 @@ namespace Microsoft.EntityFrameworkCore
         public void Dispose() {}
         public DbSet<User> Users { get; set; }
         public void RemoveRange(IEnumerable<object> entities) {}
+        public void RemoveRange(params object[] entities) {}
+        public int SaveChanges() => 0;
     }
 
     public class DbSet<T> : IQueryable<T>
@@ -96,6 +98,58 @@ namespace TestApp
             
             // Trigger: DbContext.RemoveRange
             {|LC012:db.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_FollowedBySaveChanges_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+
+            db.Users.RemoveRange(usersToDelete);
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_InNestedBlockFollowedByOuterSaveChanges_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main(bool shouldDelete)
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+
+            if (shouldDelete)
+            {
+                db.Users.RemoveRange(usersToDelete);
+            }
+
+            db.SaveChanges();
         }
     }
 }" + MockNamespace;
@@ -177,6 +231,35 @@ namespace CustomExtensions
     }
 
     [Fact]
+    public async Task RemoveRange_WithExecuteDeleteInLookalikeNamespace_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + MockNamespaceWithoutExecuteDelete + @"
+namespace Microsoft.EntityFrameworkCoreFake
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task RemoveRange_WithParamsArray_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -190,6 +273,51 @@ namespace TestApp
         {
             using var db = new AppDbContext();
             db.Users.RemoveRange(user);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextRemoveRange_WithQueryAndTrackedEntity_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main(User user)
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.RemoveRange(usersToDelete, user);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextRemoveRange_WithTwoQueryArguments_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext {}
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var oldUsers = db.Users.Where(u => u.Id > 10);
+            var newerUsers = db.Users.Where(u => u.Id <= 10);
+            db.RemoveRange(oldUsers, newerUsers);
         }
     }
 }" + MockNamespace;

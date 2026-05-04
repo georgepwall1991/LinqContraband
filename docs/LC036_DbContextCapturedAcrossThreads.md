@@ -13,6 +13,9 @@ Task.Factory.StartNew(() => db.SaveChanges());
 Parallel.ForEach(ids, _ => db.Users.Count());
 new Thread(() => db.SaveChanges()).Start();
 new Timer(_ => db.SaveChanges(), null, 0, 1000);
+
+int Work() => db.SaveChanges();
+Task.Run(Work);
 ```
 
 ### Safer Shape
@@ -34,3 +37,5 @@ Task.Run(() =>
 
 ### Notes
 This rule is advisory only and stays silent when the delegate creates its own context, obtains one from a scope created inside the callback, or captures only scalar/materialized values. Capturing a `DbContext` field, property, local, or parameter from outside the callback is unsafe because the work can run after or concurrently with the original scope.
+
+LC036 also inspects local functions passed directly as thread-work callbacks. It does not broadly inspect arbitrary method groups because method ownership, dependency lifetime, and call dispatch are harder to prove without creating noisy diagnostics.

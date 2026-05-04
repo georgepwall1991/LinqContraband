@@ -28,6 +28,7 @@ namespace Microsoft.EntityFrameworkCore
 
     public class DbContext
     {
+        public DbSet<TEntity> Set<TEntity>() where TEntity : class => null;
     }
 }
 ";
@@ -100,6 +101,87 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ToList_FromQuerySyntax_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result =
+                {|LC031:(from user in db.Users
+                         where user.IsActive
+                         select user).ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromQuerySyntaxAlias_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query =
+                from user in db.Users
+                where user.IsActive
+                select user;
+
+            var result = {|LC031:query.ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromDbContextSet_WithoutBounding_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Set<User>().ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromDbContextSetLocalAlias_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Set<User>().Where(u => u.IsActive);
+            var result = {|LC031:query.ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToList_WithTake_ShouldNotTrigger()
     {
         var test = Usings + EFCoreMock + Entities + @"
@@ -110,6 +192,47 @@ namespace TestApp
         public void TestMethod(AppDbContext db)
         {
             var result = db.Users.Take(100).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromBoundedDbContextSet_ShouldNotTrigger()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = db.Set<User>().Take(100).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromBoundedQuerySyntax_ShouldNotTrigger()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result =
+                (from user in db.Users
+                 where user.IsActive
+                 select user)
+                .Take(100)
+                .ToList();
         }
     }
 }";
@@ -194,6 +317,33 @@ namespace TestApp
         public void TestMethod(List<User> users)
         {
             var result = users.Where(u => u.IsActive).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_FromQuerySyntaxOverNonDbSet_ShouldNotTrigger()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+namespace TestApp
+{
+    public class User { public bool IsActive { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(List<User> users)
+        {
+            var result =
+                (from user in users
+                 where user.IsActive
+                 select user)
+                .ToList();
         }
     }
 }";

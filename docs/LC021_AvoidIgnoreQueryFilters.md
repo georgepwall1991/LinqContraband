@@ -31,6 +31,8 @@ Ensure that bypassing global filters is intentional and documented. If possible,
 ### Violations
 ```csharp
 db.Users.IgnoreQueryFilters().Where(x => x.Active);
+
+EntityFrameworkQueryableExtensions.IgnoreQueryFilters(db.Users).ToList();
 ```
 
 ### Valid
@@ -51,7 +53,7 @@ values.IgnoreQueryFilters();
 
 ## Shipped Behavior
 
-LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. The fixer removes the call when the bypass is accidental; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
+LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. The fixer removes the call when the bypass is accidental, including static extension-method syntax such as `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)`; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
 
 Intentional bypasses should be local and auditable:
 
@@ -67,4 +69,17 @@ var reviewedUser = db.Users
 
 Prefer a narrow pragma around the reviewed query over disabling LC021 for a whole file or project. If a query needs to bypass filters regularly, prefer a named repository/service method that documents the business reason and applies explicit replacement filters.
 
-The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call and preserves the rest of the query chain. Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.
+For approved service-level bypasses, a targeted `SuppressMessage` attribute with a concrete justification is also supported:
+
+```csharp
+[SuppressMessage("Security", "LC021", Justification = "Reviewed tenant-admin bypass.")]
+public List<User> GetAllTenantsForAdminReview()
+{
+    return db.Users
+        .IgnoreQueryFilters()
+        .Where(user => user.IsActive)
+        .ToList();
+}
+```
+
+The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call, or the equivalent static extension wrapper, and preserves the rest of the query chain. Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.

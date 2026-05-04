@@ -15,11 +15,14 @@ using System.Collections.Generic;
 
 namespace Microsoft.EntityFrameworkCore
 {
+    public enum EntityState { Detached, Unchanged, Deleted, Modified, Added }
+    public class EntityEntry { public EntityState State { get; set; } }
     public class DbContext { 
         public void Update(object entity) { }
         public void UpdateRange(IEnumerable<object> entities) { }
         public void Remove(object entity) { }
         public void RemoveRange(IEnumerable<object> entities) { }
+        public EntityEntry Entry(object entity) => new EntityEntry();
     }
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
     {
@@ -203,6 +206,105 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ThenEntryStateModified_ShouldTriggerLC025()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbContext db, DbSet<User> users)
+        {
+            var user = users.AsNoTracking().First();
+            db.Entry({|LC025:user|}).State = EntityState.Modified;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ThenEntryStateDeleted_ShouldTriggerLC025()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbContext db, DbSet<User> users)
+        {
+            var user = users.AsNoTracking().First();
+            db.Entry({|LC025:user|}).State = EntityState.Deleted;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EntryStateUnchanged_ShouldNotTriggerLC025()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbContext db, DbSet<User> users)
+        {
+            var user = users.AsNoTracking().First();
+            db.Entry(user).State = EntityState.Unchanged;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRemoveAsNoTrackingForEntryStateModified()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbContext db, DbSet<User> users)
+        {
+            var user = users.AsNoTracking().First();
+            db.Entry({|LC025:user|}).State = EntityState.Modified;
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbContext db, DbSet<User> users)
+        {
+            var user = users.First();
+            db.Entry(user).State = EntityState.Modified;
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]

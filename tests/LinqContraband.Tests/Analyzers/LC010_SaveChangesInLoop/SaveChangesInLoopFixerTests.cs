@@ -97,6 +97,32 @@ class Program
     }
 
     [Fact]
+    public async Task SaveChangesInLocalFunctionCalledFromLoop_HasNoFix()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        void SaveCurrent()
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+
+        foreach (var item in items)
+        {
+            SaveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
     public async Task SaveChangesInDoWhile_ShouldMoveAfterLoop()
     {
         var test = Usings + @"

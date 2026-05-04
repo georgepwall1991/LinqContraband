@@ -1,25 +1,13 @@
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace LinqContraband.Analyzers.LC039_NestedSaveChanges;
+namespace LinqContraband.Analyzers.LC040_MixedTrackingAndNoTracking;
 
-public sealed partial class NestedSaveChangesAnalyzer
+public sealed partial class MixedTrackingAndNoTrackingAnalyzer
 {
     private sealed partial class AnalysisState
     {
-        private static bool HasTransactionBoundaryBetween(int[] boundaries, int left, int right)
-        {
-            foreach (var boundary in boundaries)
-            {
-                if (boundary > left && boundary < right)
-                    return true;
-            }
-
-            return false;
-        }
-
         private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right)
         {
             foreach (var ifStatement in left.AncestorsAndSelf().OfType<IfStatementSyntax>())
@@ -57,25 +45,6 @@ public sealed partial class NestedSaveChangesAnalyzer
             return false;
         }
 
-        private static bool AreInsideSameTransactionUsing(SyntaxNode left, SyntaxNode right, int[] transactionBoundaries)
-        {
-            foreach (var usingStatement in left.AncestorsAndSelf().OfType<UsingStatementSyntax>())
-            {
-                if (!usingStatement.Statement.Span.Contains(right.SpanStart))
-                    continue;
-
-                if (ContainsTransactionBoundary(usingStatement, transactionBoundaries))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static bool ContainsTransactionBoundary(UsingStatementSyntax usingStatement, int[] transactionBoundaries)
-        {
-            return transactionBoundaries.Any(position => usingStatement.Span.Contains(position));
-        }
-
         private static StatementSyntax? GetContainingBranch(IfStatementSyntax ifStatement, SyntaxNode node)
         {
             if (ifStatement.Statement.Span.Contains(node.SpanStart))
@@ -90,12 +59,6 @@ public sealed partial class NestedSaveChangesAnalyzer
         private static SwitchSectionSyntax? GetContainingSwitchSection(SwitchStatementSyntax switchStatement, SyntaxNode node)
         {
             return switchStatement.Sections.FirstOrDefault(section => section.Span.Contains(node.SpanStart));
-        }
-
-        private static void Report(CompilationAnalysisContext context, InvocationRecord record, ISymbol contextSymbol, string methodName)
-        {
-            context.ReportDiagnostic(
-                Diagnostic.Create(Rule, record.Location, contextSymbol.Name, methodName));
         }
     }
 }

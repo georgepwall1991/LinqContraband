@@ -32,7 +32,10 @@ public sealed partial class ExcessiveEagerLoadingAnalyzer
         {
             IPropertyReferenceOperation propertyReference => propertyReference.Type.IsDbSet(),
             IFieldReferenceOperation fieldReference => fieldReference.Type.IsDbSet(),
-            IInvocationOperation invocation => IsDbContextSetInvocation(invocation),
+            IInvocationOperation invocation => IsDbContextSetInvocation(invocation) ||
+                                               IsTransparentQueryShaper(invocation) &&
+                                               invocation.GetInvocationReceiver() is { } receiver &&
+                                               IsProvableEfRoot(receiver),
             _ => false
         };
     }
@@ -41,6 +44,35 @@ public sealed partial class ExcessiveEagerLoadingAnalyzer
     {
         return invocation.TargetMethod.Name == "Set" &&
                invocation.TargetMethod.ContainingType.IsDbContext();
+    }
+
+    private static bool IsTransparentQueryShaper(IInvocationOperation invocation)
+    {
+        if (invocation.GetInvocationReceiverType()?.IsIQueryable() != true)
+            return false;
+
+        if (invocation.TargetMethod.ContainingNamespace?.ToString() == "System.Linq" &&
+            invocation.TargetMethod.ContainingType.Name == "Queryable")
+        {
+            return invocation.TargetMethod.Name is
+                "Where" or
+                "OrderBy" or "OrderByDescending" or
+                "ThenBy" or "ThenByDescending" or
+                "Skip" or "Take";
+        }
+
+        if (invocation.TargetMethod.ContainingNamespace?.ToString()?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true)
+        {
+            return invocation.TargetMethod.Name is
+                "AsNoTracking" or
+                "AsNoTrackingWithIdentityResolution" or
+                "AsTracking" or
+                "AsSplitQuery" or
+                "AsSingleQuery" or
+                "TagWith";
+        }
+
+        return false;
     }
 
     private static bool IsIncludeLike(IMethodSymbol method)

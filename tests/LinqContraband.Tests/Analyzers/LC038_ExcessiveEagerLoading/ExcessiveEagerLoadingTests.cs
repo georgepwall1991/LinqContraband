@@ -43,6 +43,9 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static IncludableQueryable<TEntity, TProperty> Include<TEntity, TProperty>(this IQueryable<TEntity> source, Expression<Func<TEntity, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
         public static IncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(this IncludableQueryable<TEntity, TPreviousProperty> source, Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
+        public static IQueryable<TEntity> AsNoTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsSplitQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> TagWith<TEntity>(this IQueryable<TEntity> source, string tag) where TEntity : class => source;
         public static List<TEntity> ToList<TEntity>(this IQueryable<TEntity> source) => new List<TEntity>();
     }
 }
@@ -161,6 +164,54 @@ class Program
             .Include(p => p.Child2)
             .ThenInclude(c => c.Id)
             .Include(p => p.Child3)|}
+            .ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FilteredQueryBeforeIncludeChain_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var parents = {|LC038:db.Parents
+            .Where(p => p.Id > 0)
+            .OrderBy(p => p.Id)
+            .Take(100)
+            .Include(p => p.Child1)
+            .Include(p => p.Child2)
+            .Include(p => p.Child3)
+            .Include(p => p.Child4)|}
+            .ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EfQueryOptionsBeforeIncludeChain_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var parents = {|LC038:db.Parents
+            .AsNoTracking()
+            .AsSplitQuery()
+            .TagWith(""reviewed-load"")
+            .Include(p => p.Child1)
+            .Include(p => p.Child2)
+            .Include(p => p.Child3)
+            .Include(p => p.Child4)|}
             .ToList();
     }
 }";

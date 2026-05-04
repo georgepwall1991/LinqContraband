@@ -68,6 +68,25 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task IgnoreQueryFilters_StaticExtensionCall_ShouldTriggerLC021()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)|}.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NoIgnoreQueryFilters_OnIQueryable_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
@@ -157,6 +176,27 @@ namespace LinqContraband.Test
 #pragma warning disable LC021
             var result = query.IgnoreQueryFilters().ToList();
 #pragma warning restore LC021
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_WithReviewedSuppressMessage_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Diagnostics.CodeAnalysis;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        [SuppressMessage(""Security"", ""LC021"", Justification = ""Reviewed tenant-admin bypass."")]
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.IgnoreQueryFilters().ToList();
         }
     }
 }";

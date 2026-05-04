@@ -47,6 +47,9 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
         if (!IsTargetMethod(method))
             return;
 
+        if (!IsDatabaseFacadeReceiver(invocation.GetInvocationReceiverType()))
+            return;
+
         var sqlArgument = GetSqlArgument(invocation, method);
         if (sqlArgument == null)
             return;
@@ -64,7 +67,20 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
     private static bool IsTargetMethod(IMethodSymbol method)
     {
         return (method.Name == "ExecuteSqlRaw" || method.Name == "ExecuteSqlRawAsync") &&
-               method.ContainingNamespace?.ToString().StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) == true;
+               IsEfCoreNamespace(method.ContainingNamespace);
+    }
+
+    private static bool IsEfCoreNamespace(INamespaceSymbol? namespaceSymbol)
+    {
+        var namespaceName = namespaceSymbol?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
+    }
+
+    private static bool IsDatabaseFacadeReceiver(ITypeSymbol? type)
+    {
+        return type?.Name == "DatabaseFacade" &&
+               IsEfCoreNamespace(type.ContainingNamespace);
     }
 
     private static string GetReplacementMethodName(string methodName)
@@ -90,8 +106,8 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
     {
         var current = operation.UnwrapConversions();
 
-        if (current is IInterpolatedStringOperation)
-            return true;
+        if (current is IInterpolatedStringOperation interpolatedString)
+            return HasNonConstantInterpolation(interpolatedString);
 
         if (current is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Add)
             return IsUnsafeConcatenation(binary);
@@ -115,5 +131,12 @@ public sealed class AvoidExecuteSqlRawWithInterpolationAnalyzer : DiagnosticAnal
             return IsUnsafeConcatenation(nestedBinary);
 
         return true;
+    }
+
+    private static bool HasNonConstantInterpolation(IInterpolatedStringOperation interpolatedString)
+    {
+        return interpolatedString.Parts
+            .OfType<IInterpolationOperation>()
+            .Any(interpolation => !interpolation.Expression.UnwrapConversions().ConstantValue.HasValue);
     }
 }
