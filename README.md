@@ -1443,7 +1443,7 @@ await db.SaveChangesAsync();
 ```
 
 **🛡️ Reliability Notes:**
-- LC039 is advisory and suppresses obvious transaction-boundary patterns, repeated saves inside one explicit transaction `using` block, and mutually exclusive `if`/`else` or `switch`-section saves.
+- LC039 is advisory and suppresses obvious transaction-boundary patterns, repeated saves inside one explicit transaction `using` block (statement or `using`/`await using` local declaration), and mutually exclusive `if`/`else` or `switch`-section saves.
 - If the split save is intentional, keep it explicit with a transaction or a clear comment boundary.
 
 ---

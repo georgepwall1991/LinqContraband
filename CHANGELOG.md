@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Hardened `LC039` transaction-scope analysis so repeated saves inside C# 8+ `using` and `await using` local declarations of an EF Core transaction stay quiet, while non-transaction `using` declarations and saves preceding the declaration continue to report
+
 ## [5.4.0] - 2026-05-04
 
 ### Changed

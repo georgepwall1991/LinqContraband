@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-05-04
+Reviewed: 2026-05-14
 
 This is a deliberately harsh health audit for the 44 analyzers in `RuleCatalog`. The catalog currently declares 29 rules with code fixes and 15 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
@@ -66,7 +66,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC036 | DbContext captured by thread work item | Execution & Async | Warning | 4 | 4 | 4 | 4 | 5 | 5 | Low | High-value thread-safety rule now covers lambda, anonymous-method, object callback, async-lambda, member capture, factory/scope-safe, materialized-value, and direct local-function callback shapes; remaining risk is mostly broader method-group ownership. |
 | LC037 | Constructed raw SQL strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 4 | 3 | 5 | Low | Strong manual security rule; docs should better explain parameterized construction patterns and LC018/LC034 overlap. |
 | LC038 | Excessive eager loading | Loading & Includes | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | Configurable heuristic now follows transparent EF/query-shaping calls before include chains while preserving a provable-root boundary; remaining work is mostly intentional deep-load guidance. |
-| LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 3 | 4 | 4 | 4 | 4 | 4 | Medium | Useful reliability smell now guarded for transaction boundaries, repeated saves inside explicit transaction `using` blocks, mutually exclusive if/else and switch branches, local-function roots, and independent-branch positives; remaining gaps are richer unit-of-work control-flow cases. |
+| LC039 | Repeated SaveChanges on same context | Change Tracking & Context Lifetime | Info | 4 | 4 | 4 | 4 | 4 | 4 | Medium | Useful reliability smell now guarded for transaction boundaries, repeated saves inside explicit transaction `using` blocks and C# 8+ `using`/`await using` local declarations of an EF Core transaction, mutually exclusive if/else and switch branches, local-function roots, and independent-branch positives; remaining gaps are richer unit-of-work control-flow cases. |
 | LC040 | Mixed tracking and no-tracking modes | Change Tracking & Context Lifetime | Info | 4 | 4 | 4 | 4 | 4 | 4 | Medium | Important data-behavior smell now guarded for straight-line local alias resolution, mutually exclusive if/else and switch choices, same-context reassigned locals, different-context/conditional reassignment negatives, and shared continuation paths; remaining gaps are richer legitimate split-workflow coverage. |
 | LC041 | Single entity over-fetches one consumed property | Materialization & Projection | Info | 4 | 4 | 3 | 3 | 3 | 3 | Low | Solid heuristic projection rule; more fixer and entity-escape coverage would help but is not urgent. |
 | LC042 | Complex query should be tagged | Loading & Includes | Info | 2 | 2 | 4 | 2 | 3 | 2 | Low | Team-policy rule with low general importance; weak coverage is acceptable unless observability becomes a product goal. |
@@ -99,7 +99,7 @@ Current local verification:
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC012_OptimizeRemoveRange` passed with 17 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC021_AvoidIgnoreQueryFilters` passed with 13 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC035_MissingWhereBeforeExecuteDeleteUpdate` passed with 16 tests.
-- `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC039_NestedSaveChanges` passed with 14 tests.
+- `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC039_NestedSaveChanges` passed with 19 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC040_MixedTrackingAndNoTracking` passed with 15 tests.
 - `dotnet test LinqContraband.sln --framework net10.0 --no-restore` passed with 780 tests.
 - `dotnet pack src/LinqContraband/LinqContraband.csproj --configuration Release --output /private/tmp/linqcontraband-pack-5.4.0-postcommit` produced `LinqContraband.5.4.0.nupkg`.
