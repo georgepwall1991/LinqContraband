@@ -203,6 +203,164 @@ class Program
         await VerifyFix(test, test);
     }
 
+    [Fact]
+    public async Task SaveChangesAsyncInDoWhile_ShouldMoveAfterLoop()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+            await {|LC010:db.SaveChangesAsync()|};
+        }
+        while (i < 10);
+    }
+}" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+        }
+        while (i < 10);
+        await db.SaveChangesAsync();
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task SaveChangesInDoWhile_WithMultipleSaves_HasNoFix()
+    {
+        // Guardrail: when the loop body contains more than one save,
+        // moving only the terminal one would silently change semantics
+        // (the non-terminal save would still run per iteration). The
+        // fixer must refuse rather than offer a misleading rewrite.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            {|LC010:db.SaveChanges()|};
+            i++;
+            {|LC010:db.SaveChanges()|};
+        }
+        while (i < 10);
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
+    public async Task SaveChangesInDoWhile_NotFinalStatement_HasNoFix()
+    {
+        // Guardrail: if work follows the save inside the loop body,
+        // moving the save after the loop would skip the trailing work
+        // on the final iteration. The fixer must refuse.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            {|LC010:db.SaveChanges()|};
+            i++;
+        }
+        while (i < 10);
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
+    public async Task SaveChangesInDoWhileNestedInForLoop_HasNoFix()
+    {
+        // The fixer used to offer "Move SaveChanges after loop" for the
+        // innermost do-while even when that do-while was itself nested in
+        // another loop, leaving the save inside the outer loop and still
+        // triggering LC010 after the rewrite. The fix must refuse when any
+        // enclosing ancestor is also a loop.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        for (int j = 0; j < 5; j++)
+        {
+            int i = 0;
+            do
+            {
+                i++;
+                {|LC010:db.SaveChanges()|};
+            }
+            while (i < 10);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
+    public async Task SaveChangesAsOnlyStatementInDoWhile_ShouldMoveAfterLoop()
+    {
+        // Edge case: when the save is the only statement in the do-while
+        // body, removing it leaves an empty block. The fixer must still
+        // produce compiler-valid code (empty body is legal, do-while
+        // semantics are preserved because the loop condition is unchanged).
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        do
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+        while (false);
+    }
+}" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        do
+        {
+        }
+        while (false);
+        db.SaveChanges();
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest
