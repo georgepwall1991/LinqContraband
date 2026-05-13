@@ -14,7 +14,10 @@ namespace LinqContraband.Tests.Architecture;
 
 public class AnalyzerPerformanceTests
 {
-    private static readonly TimeSpan AnalyzerTimeout = TimeSpan.FromSeconds(10);
+    // 30s headroom keeps the CI Linux runners reliable on cold-JIT compilation
+    // while still failing fast on real analyzer-loop regressions. Local M-class
+    // hardware completes each stress source in well under a second.
+    private static readonly TimeSpan AnalyzerTimeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public async Task LC023_PrimaryKeyLookup_CompletesOnLargeCompilation()

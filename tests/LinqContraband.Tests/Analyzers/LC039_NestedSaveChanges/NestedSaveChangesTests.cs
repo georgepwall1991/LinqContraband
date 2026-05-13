@@ -30,7 +30,7 @@ namespace Microsoft.EntityFrameworkCore
         public Task<IDbContextTransaction> BeginTransactionAsync() => Task.FromResult<IDbContextTransaction>(new DbContextTransaction());
     }
 
-    public interface IDbContextTransaction : IDisposable
+    public interface IDbContextTransaction : IDisposable, IAsyncDisposable
     {
         void Commit();
         Task CommitAsync();
@@ -47,6 +47,7 @@ namespace Microsoft.EntityFrameworkCore
     public class DbContextTransaction : IDbContextTransaction
     {
         public void Dispose() { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() => default;
         public void Commit() { }
         public Task CommitAsync() => Task.CompletedTask;
         public void Rollback() { }
@@ -409,6 +410,112 @@ class Program
         }
 
         Inner();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSavesInsideUsingDeclarationTransaction_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.SaveChanges();
+        db.SaveChanges();
+        tx.Commit();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSavesInsideAwaitUsingDeclarationTransaction_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    async Task Run()
+    {
+        var db = new TestApp.AppDbContext();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSavesAfterUsingDeclarationOfNonTransaction_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        using var stream = new System.IO.MemoryStream();
+        db.SaveChanges();
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedSavesInsideUsingDeclarationTransactionWithinNestedBlock_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        using var tx = db.Database.BeginTransaction();
+        if (flag)
+        {
+            db.SaveChanges();
+            db.SaveChanges();
+        }
+        tx.Commit();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task UsingDeclarationOfTransactionAfterFirstSave_DoesNotSuppress()
+    {
+        // Sanity guardrail: a using-declaration that comes AFTER the first save
+        // must not retroactively cover saves that preceded it. The existing
+        // boundary-between-positions check already handles this (BeginTransaction
+        // is between the two saves), so this should pass and stay quiet.
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        using var tx = db.Database.BeginTransaction();
+        db.SaveChanges();
+        tx.Commit();
     }
 }";
 
