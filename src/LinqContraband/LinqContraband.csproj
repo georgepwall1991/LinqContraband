@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.0</Version>
+        <Version>5.4.1</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Broad analyzer-hardening release for LC004, LC010, LC012, LC014, LC015, LC018, LC021, LC023, LC024, LC025, LC031, LC034, LC035, LC036, LC038, LC039, LC040, and LC043, covering false-positive reductions, safer fixer boundaries, EF Core namespace/source checks, and expanded regression coverage.</PackageReleaseNotes>
+        <PackageReleaseNotes>Hardens LC039 transaction-scope suppression for C# 8+ `using` and `await using` local declarations of an EF Core transaction so repeated saves inside the modern declaration form stay quiet, while non-transaction `using` declarations and saves preceding the declaration continue to report.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
