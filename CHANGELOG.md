@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Hardened `LC039` transaction-scope analysis so repeated saves inside C# 8+ `using` and `await using` local declarations of an EF Core transaction stay quiet, while non-transaction `using` declarations and saves preceding the declaration continue to report
+- Raised the `AnalyzerPerformanceTests` per-test budget from 10s to 30s so cold-JIT CI Linux runners no longer cancel stress-source analyzer runs mid-compilation; local M-class hardware still completes each stress source in well under a second
 
 ## [5.4.0] - 2026-05-04
 
