@@ -105,6 +105,14 @@ public class SaveChangesInLoopFixer : CodeFixProvider
             return false;
         }
 
+        if (containingLoop.Ancestors().Any(static n =>
+                n is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax))
+        {
+            expressionStatement = null!;
+            loop = null!;
+            return false;
+        }
+
         expressionStatement = statement;
         loop = containingLoop;
 
