@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.2] - 2026-05-14
+
 ### Changed
 - Hardened the `LC010` `do`-loop fixer so it no longer offers to move `SaveChanges`/`SaveChangesAsync` out of a `do` loop that is itself nested inside another loop, because the rewrite would leave the save inside the outer loop and still trigger `LC010`; locked in async-`SaveChangesAsync`, multiple-save, non-final-statement, and only-statement edge cases as fixer regression tests
 

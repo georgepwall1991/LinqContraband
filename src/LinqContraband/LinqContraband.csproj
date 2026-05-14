@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.1</Version>
+        <Version>5.4.2</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Hardens LC039 transaction-scope suppression for C# 8+ `using` and `await using` local declarations of an EF Core transaction so repeated saves inside the modern declaration form stay quiet, while non-transaction `using` declarations and saves preceding the declaration continue to report.</PackageReleaseNotes>
+        <PackageReleaseNotes>Hardens the LC010 `do`-loop fixer so it no longer offers to move `SaveChanges`/`SaveChangesAsync` out of a `do` loop that is itself nested inside another loop, removing a misleading code action whose rewrite still triggered LC010. Adds locked-in regression coverage for the async, multiple-save, non-final-statement, and only-statement fixer edge cases.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
