@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.6</Version>
+        <Version>5.4.7</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Widens the LC006 doc (~95 lines) to spell out the AsSplitQuery() tradeoff (extra roundtrips, per-statement plan cost, snapshot consistency, transaction scope), when Cartesian is legitimately the right call, and the rule boundary against LC028 (depth) and LC038 (count). Adds a lock-in test that two sibling reference navigations stay quiet because reference navigations cannot Cartesian-inflate. Tests-only release; no analyzer or fixer behaviour change.</PackageReleaseNotes>
+        <PackageReleaseNotes>Hardens the LC015 fixer so it no longer registers on composite-keyed entities. Previously the fixer would silently offer a partial-key OrderBy on entities with multiple [Key] property attributes or an EF Core 7+ class-level [PrimaryKey(...)] declaring two or more named parts — a partial-key sort does not guarantee deterministic pagination, which is the exact failure LC015 exists to surface. Single-key cases ([Key] on one property, Id convention, EntityTypeId convention) continue to register unchanged. Widens the LC015 doc to enumerate exactly when the fixer registers, when it does not, and how to choose a stable key in the no-fix case (composite keys, time-series tiebreakers, floating-point and case-insensitive collation anti-patterns). The 2026-05-14 fine-comb re-audit High shortlist is now empty.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

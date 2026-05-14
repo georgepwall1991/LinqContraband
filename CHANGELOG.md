@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.7] - 2026-05-14
+
 ### Changed
-- Hardened the `LC015` code fix so it no longer registers on composite-keyed entities. `TryFindPrimaryKey` returns the first `[Key]`-annotated property and never sees siblings, so without the new composite-key gate the fixer would offer a partial-key `OrderBy(x => x.<firstKey>)` that does not guarantee deterministic pagination — the very behaviour LC015 exists to surface. Added a regression test for the two-`[Key]`-property shape and widened the LC015 doc to enumerate when the fixer registers, when it does not, and how to pick a stable key in the no-fix case (composite keys, time-series tiebreakers, floating-point/text-collation anti-patterns)
+- Hardened the `LC015` code fix so it no longer registers on composite-keyed entities, including the EF Core 7+ class-level `[PrimaryKey(...)]` attribute form. `TryFindPrimaryKey` returns the first `[Key]`-annotated property and never sees siblings, so without the new composite-key gate the fixer would offer a partial-key `OrderBy(x => x.<firstKey>)` that does not guarantee deterministic pagination — the very behaviour LC015 exists to surface. Added regression tests for the two-`[Key]`-property shape and the `[PrimaryKey]` class-level shape, and widened the LC015 doc to enumerate when the fixer registers, when it does not, and how to pick a stable key in the no-fix case (composite keys, time-series tiebreakers, floating-point/text-collation anti-patterns)
 
 ## [5.4.6] - 2026-05-14
 
