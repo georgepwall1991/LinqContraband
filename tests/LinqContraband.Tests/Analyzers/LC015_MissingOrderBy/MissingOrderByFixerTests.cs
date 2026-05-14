@@ -162,6 +162,68 @@ class Program {
     }
 
     /// <summary>
+    /// Tests that the fixer does NOT register on a composite-keyed entity
+    /// (two `[Key]`-annotated properties). The shared `TryFindPrimaryKey`
+    /// helper returns the first key it encounters, so without an explicit
+    /// composite-key check the fixer would offer a partial-key `OrderBy`
+    /// that does not guarantee deterministic pagination — the very
+    /// behaviour LC015 is meant to surface.
+    /// </summary>
+    [Fact]
+    public async Task Skip_NoFix_WhenCompositeKeyDetected()
+    {
+        var test = CommonUsings + MockEfCore + @"
+class OrderLine { [Key] public int OrderId { get; set; } [Key] public int LineNumber { get; set; } public string Description { get; set; } }
+class AppDbContext : DbContext { public DbSet<OrderLine> OrderLines { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.OrderLines.Skip(10);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 31).WithArguments("Skip");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    /// <summary>
+    /// Tests that the fixer does NOT register when the entity declares an
+    /// EF Core 7+ class-level composite key via `[PrimaryKey(...)]` with two
+    /// or more named parts, even when one part is named `Id`. Without this
+    /// gate the existing convention-driven `TryFindPrimaryKey` returns "Id"
+    /// and the fixer would insert a partial-key `OrderBy(x => x.Id)`.
+    /// </summary>
+    [Fact]
+    public async Task Skip_NoFix_WhenClassLevelPrimaryKeyAttributeDeclaresCompositeKey()
+    {
+        // Inlines the EF Core 7+ class-level [PrimaryKey(...)] attribute
+        // shape; declared inside this test's source rather than in the
+        // shared MockEfCore so line-number assertions on the existing
+        // fixer tests remain stable.
+        var test = CommonUsings + MockEfCore + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public class PrimaryKeyAttribute : Attribute { public PrimaryKeyAttribute(string propertyName, params string[] additionalPropertyNames) { } }
+}
+
+[Microsoft.EntityFrameworkCore.PrimaryKey(nameof(Document.TenantId), nameof(Document.Id))]
+class Document { public int TenantId { get; set; } public int Id { get; set; } public string Title { get; set; } }
+class AppDbContext : DbContext { public DbSet<Document> Documents { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Documents.Skip(10);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(42, 30).WithArguments("Skip");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    /// <summary>
     /// Tests that the fixer correctly uses EntityNameId convention.
     /// </summary>
     [Fact]
