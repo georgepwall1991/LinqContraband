@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Locks in LC018 provider/API variant coverage so the security-critical `FromSqlRaw` analyzer's receiver-resolution contract is regression-protected against the `DbSet<T>` instance call, the `DbContext.Set<T>()` chain, and the static-extension `RelationalQueryableExtensions.FromSqlRaw(query, ...)` form, with matching `FromSqlInterpolated` negatives on all three receiver shapes. Tests-only release; no analyzer or fixer behaviour change.</PackageReleaseNotes>
+        <PackageReleaseNotes>Locks in LC018 provider/API variant coverage so the security-critical FromSqlRaw analyzer's receiver-resolution contract is regression-protected against the DbSet&lt;T&gt; instance call, the DbContext.Set&lt;T&gt;() chain, and the static-extension RelationalQueryableExtensions.FromSqlRaw(query, ...) form, with matching FromSqlInterpolated negatives on all three receiver shapes. Tests-only release; no analyzer or fixer behaviour change.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
