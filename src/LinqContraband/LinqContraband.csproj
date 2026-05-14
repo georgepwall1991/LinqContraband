@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.2</Version>
+        <Version>5.4.3</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Hardens the LC010 `do`-loop fixer so it no longer offers to move `SaveChanges`/`SaveChangesAsync` out of a `do` loop that is itself nested inside another loop, removing a misleading code action whose rewrite still triggered LC010. Adds locked-in regression coverage for the async, multiple-save, non-final-statement, and only-statement fixer edge cases.</PackageReleaseNotes>
+        <PackageReleaseNotes>Locks in LC018 provider/API variant coverage so the security-critical FromSqlRaw analyzer's receiver-resolution contract is regression-protected against the DbSet&lt;T&gt; instance call, the DbContext.Set&lt;T&gt;() chain, and the static-extension RelationalQueryableExtensions.FromSqlRaw(query, ...) form, with matching FromSqlInterpolated negatives on all three receiver shapes. Tests-only release; no analyzer or fixer behaviour change.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.3] - 2026-05-14
+
 ### Changed
 - Locked in `LC018` provider/API variant coverage with regression tests for the `DbSet<T>` instance call, the `DbContext.Set<T>()` chain, and the static-extension `RelationalQueryableExtensions.FromSqlRaw(...)` form firing on unsafe interpolation while the safe `FromSqlInterpolated` sibling stays quiet on the same receiver shapes
 
