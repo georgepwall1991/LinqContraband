@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Locked in `LC018` constant-only interpolation FP coverage with regression tests for `const` locals, numeric literals, multi-hole constant interpolations, and `nameof(...)` staying quiet, plus boundary positives for mixed-constant-and-runtime interpolation holes and `static readonly` field references still triggering; tightened the LC018 doc to spell out the `IOperation.ConstantValue` safe-shape gate and the upstream-construction LC037 boundary
+
 ## [5.4.4] - 2026-05-14
 
 ### Changed
