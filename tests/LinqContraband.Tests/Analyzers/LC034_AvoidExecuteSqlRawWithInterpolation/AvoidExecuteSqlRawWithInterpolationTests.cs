@@ -548,4 +548,77 @@ namespace TestApp
 
         await VerifyFix.VerifyCodeFixAsync(test, test);
     }
+
+    [Fact]
+    public async Task ExecuteSqlRaw_AsStaticExtensionCall_WithUnsafeInterpolation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(db.Database, {|LC034:$""UPDATE Users SET Name = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlRawAsync_AsStaticExtensionCall_WithUnsafeInterpolation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, int id)
+        {
+            var result = await RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(db.Database, {|LC034:$""UPDATE Users SET Name = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSql_AsStaticExtensionCall_WithSafeInterpolation_ShouldNotTrigger()
+    {
+        // Safe sibling API used in static-extension form must stay quiet.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = RelationalDatabaseFacadeExtensions.ExecuteSql(db.Database, $""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteSqlAsync_AsStaticExtensionCall_WithSafeInterpolation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, int id)
+        {
+            var result = await RelationalDatabaseFacadeExtensions.ExecuteSqlAsync(db.Database, $""UPDATE Users SET Name = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

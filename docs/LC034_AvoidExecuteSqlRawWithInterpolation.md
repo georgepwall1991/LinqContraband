@@ -37,4 +37,5 @@ No-hole interpolated strings and constant-only interpolations stay quiet because
 - LC034 owns direct interpolated-string holes containing runtime data and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` or `ExecuteSqlRawAsync(...)`.
 - LC034 requires the matched method to come from the EF Core namespace boundary (`Microsoft.EntityFrameworkCore` or a child namespace), not a same-named lookalike namespace.
 - LC034 requires a `DatabaseFacade` receiver from the EF Core namespace, so same-named helpers on unrelated receiver types stay quiet.
+- LC034 fires regardless of how the receiver is reached: the instance call `db.Database.ExecuteSqlRaw(...)` and the static-extension form `RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(db.Database, ...)` both participate for sync and async; the safe siblings `ExecuteSql`/`ExecuteSqlAsync` stay quiet on every variant.
 - LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.
