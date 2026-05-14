@@ -60,6 +60,7 @@ namespace TestNamespace
         public List<Role> Roles { get; set; }
         public HashSet<Tag> Tags { get; set; }
         public Address Address { get; set; }
+        public Profile Profile { get; set; }
     }
 
     public class Order
@@ -72,6 +73,7 @@ namespace TestNamespace
 
     public class Role { }
     public class Address { }
+    public class Profile { }
     public class Item { }
     public class Comment { }
     public class Tag { }
@@ -319,6 +321,28 @@ class Program
     {
         var db = new DbContext();
         var query = db.Users.Include(u => u.Orders).Include(u => u.Orders).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_TwoSiblingReferenceIncludes_NoDiagnostic()
+    {
+        // Boundary lock-in: a Cartesian explosion requires sibling
+        // *collection* navigations. Two sibling reference navigations
+        // (single-row foreign-key targets) inflate the row count by 1*1,
+        // not by collection cardinality, so LC006 must stay quiet on
+        // them even though the chain has two siblings.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Include(u => u.Address).Include(u => u.Profile).ToList();
     }
 }
 " + MockNamespace;
