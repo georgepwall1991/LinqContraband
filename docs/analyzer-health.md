@@ -88,9 +88,9 @@ The next improvement batch should focus on rules where user impact and health ga
 
 ## Verification Baseline
 
-Package version: 5.4.5
+Package version: 5.4.6
 
-Base audited commit: 142ea70
+Base audited commit: bdac6b2
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -121,6 +121,6 @@ Current local verification:
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC039_NestedSaveChanges` passed with 19 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC040_MixedTrackingAndNoTracking` passed with 15 tests.
 - `dotnet test LinqContraband.sln --framework net10.0 --no-restore` passed with 807 tests.
-- `dotnet pack src/LinqContraband/LinqContraband.csproj --configuration Release --output /tmp/linqcontraband-5.4.5` produced `LinqContraband.5.4.5.nupkg`.
+- `dotnet pack src/LinqContraband/LinqContraband.csproj --configuration Release --output /tmp/linqcontraband-5.4.6` produced `LinqContraband.5.4.6.nupkg`.
 - `git diff --check` passed.
 - `dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.

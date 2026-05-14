@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.6] - 2026-05-14
+
 ### Changed
-- Widened the `LC006` doc (~95 lines) to spell out the `AsSplitQuery()` tradeoff (extra roundtrips, per-statement plan cost, snapshot consistency, pagination interaction), when Cartesian is legitimately the right call, and the rule boundary against LC028 (depth) and LC038 (count); added a lock-in test that two sibling reference navigations stay quiet because reference navigations cannot Cartesian-explode
+- Widened the `LC006` doc (~95 lines) to spell out the `AsSplitQuery()` tradeoff (extra roundtrips, per-statement plan cost, snapshot consistency, transaction scope), when Cartesian is legitimately the right call, and the rule boundary against LC028 (depth) and LC038 (count); added a lock-in test that two sibling reference navigations stay quiet because reference navigations cannot Cartesian-explode
 
 ## [5.4.5] - 2026-05-14
 
