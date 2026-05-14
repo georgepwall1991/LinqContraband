@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Locked in `LC034` provider/API variant coverage with regression tests for the static-extension `RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)` forms firing on unsafe interpolation while the safe siblings `ExecuteSql`/`ExecuteSqlAsync` stay quiet on the same static-extension shapes
+
 ## [5.4.3] - 2026-05-14
 
 ### Changed
