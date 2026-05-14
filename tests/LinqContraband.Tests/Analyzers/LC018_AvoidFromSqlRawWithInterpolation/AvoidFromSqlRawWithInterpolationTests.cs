@@ -22,6 +22,45 @@ namespace Microsoft.EntityFrameworkCore
 }
 ";
 
+    // Extra mock + sample types used only by the provider-variant tests below.
+    // Kept separate from EFCoreMock to avoid shifting line numbers in the
+    // existing fixer span assertions, and fully qualified because this string
+    // is concatenated AFTER a top-level `using` directive (no mid-file
+    // `using` clauses are allowed).
+    private const string EFCoreDbContextMock = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext : System.IDisposable
+    {
+        public void Dispose() { }
+        public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+    }
+
+    public class DbSet<TEntity> : System.Linq.IQueryable<TEntity> where TEntity : class
+    {
+        public System.Type ElementType => typeof(TEntity);
+        public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
+        public System.Linq.IQueryProvider Provider => null;
+        public System.Collections.Generic.IEnumerator<TEntity> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+}
+
+namespace LinqContraband.Test.Data
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; }
+    }
+}
+";
+
     [Fact]
     public async Task FromSqlRaw_WithInterpolatedString_ShouldTriggerLC018()
     {
@@ -432,5 +471,122 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_OnDbSet_WithUnsafeInterpolation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = db.Users.FromSqlRaw({|LC018:$""SELECT * FROM Users WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_OnDbContextSetT_WithUnsafeInterpolation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = db.Set<User>().FromSqlRaw({|LC018:$""SELECT * FROM Users WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlRaw_AsStaticExtensionCall_WithUnsafeInterpolation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = RelationalQueryableExtensions.FromSqlRaw(db.Users, {|LC018:$""SELECT * FROM Users WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlInterpolated_OnDbSet_ShouldNotTrigger()
+    {
+        // Negative guardrail: the safe sibling API must stay quiet on DbSet
+        // receivers too, not just IQueryable wrappers, so the rule's
+        // "provider variant" coverage isn't lopsided.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = db.Users.FromSqlInterpolated($""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlInterpolated_OnDbContextSetT_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = db.Set<User>().FromSqlInterpolated($""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FromSqlInterpolated_AsStaticExtensionCall_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using LinqContraband.Test.Data;" + EFCoreMock + EFCoreDbContextMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db, int id)
+        {
+            var result = RelationalQueryableExtensions.FromSqlInterpolated(db.Users, $""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

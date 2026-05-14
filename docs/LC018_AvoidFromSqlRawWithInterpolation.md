@@ -53,4 +53,5 @@ db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Id = {id}");
 - LC018 owns direct interpolated-string holes containing runtime data and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
 - LC018 requires the matched method to come from the EF Core namespace boundary (`Microsoft.EntityFrameworkCore` or a child namespace), not a same-named lookalike namespace.
 - LC018 requires a queryable/DbSet receiver, so same-named helpers in the EF namespace on unrelated receiver types stay quiet.
+- LC018 fires regardless of how the receiver is reached: the instance call `dbSet.FromSqlRaw(...)`, the `DbContext.Set<T>().FromSqlRaw(...)` shape, and the static-extension form `RelationalQueryableExtensions.FromSqlRaw(query, ...)` all participate; the safe sibling `FromSqlInterpolated` stays quiet on every variant.
 - LC037 covers broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder`.
