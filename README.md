@@ -353,6 +353,11 @@ public List<User> GetUsers()
 }
 ```
 
+**🛡️ Reliability Notes:**
+- The EF source is recognised both as a `DbSet<T>` property (`db.Users`) and as a `DbSet<T>` returned from a method — notably the generic-repository `context.Set<T>()` read path — and the code fix places `AsNoTracking()` on whichever source it finds.
+- LC009 stays quiet when the query already opts a tracking mode, projects with `Select`, returns `IQueryable<T>`, sources from an `IQueryable`/`DbSet` parameter or local, or performs a write in the same method.
+- `AsNoTracking()` changes behaviour: it skips identity resolution (use `AsNoTrackingWithIdentityResolution()` when shared instances matter) and must not be applied when the entity is mutated and saved later — including by a caller.
+
 ---
 
 ### LC010: SaveChanges Loop Tax
