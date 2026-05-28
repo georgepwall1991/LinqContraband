@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -54,22 +55,35 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        // RemoveRange(query) -> query.ExecuteDelete()
-        if (invocation.ArgumentList.Arguments.Count > 0)
-        {
-            var queryExpression = invocation.ArgumentList.Arguments[0].Expression;
+        // RemoveRange(query) -> query.ExecuteDelete() / await query.ExecuteDeleteAsync()
+        if (invocation.ArgumentList.Arguments.Count == 0)
+            return editor.GetChangedDocument();
 
-            // Handle ExecuteDeleteAsync if needed, but for now we focus on the basic transformation
-            var executeDeleteName = SyntaxFactory.IdentifierName("ExecuteDelete");
-            var memberAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, queryExpression, executeDeleteName);
-            var newInvocation = SyntaxFactory.InvocationExpression(memberAccess);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var mode = semanticModel == null ? RewriteMode.Sync : DetermineRewriteMode(invocation, semanticModel);
 
-            // Add warning comment
-            var warningComment = SyntaxFactory.Comment("// Warning: ExecuteDelete bypasses change tracking and cascades.");
-            var newInvocationWithComment = newInvocation.WithLeadingTrivia(invocation.GetLeadingTrivia().Add(warningComment).Add(SyntaxFactory.ElasticLineFeed));
+        // CanSafelyRewriteAsync already declined registration for RewriteMode.None, so a
+        // safe sync/async target always exists by the time the fix is applied.
+        if (mode == RewriteMode.None)
+            return document;
 
-            editor.ReplaceNode(invocation, newInvocationWithComment);
-        }
+        var queryExpression = invocation.ArgumentList.Arguments[0].Expression;
+
+        var executeDeleteName = SyntaxFactory.IdentifierName(mode == RewriteMode.Async ? "ExecuteDeleteAsync" : "ExecuteDelete");
+        var memberAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, queryExpression, executeDeleteName);
+        ExpressionSyntax replacement = SyntaxFactory.InvocationExpression(memberAccess);
+
+        // Inside an async context the synchronous ExecuteDelete() rewrite would inject a
+        // blocking, sync-over-async database call (the smell LC008 flags), so await the
+        // async overload instead.
+        if (mode == RewriteMode.Async)
+            replacement = SyntaxFactory.AwaitExpression(replacement);
+
+        // Add warning comment
+        var warningComment = SyntaxFactory.Comment("// Warning: ExecuteDelete bypasses change tracking and cascades.");
+        var replacementWithComment = replacement.WithLeadingTrivia(invocation.GetLeadingTrivia().Add(warningComment).Add(SyntaxFactory.ElasticLineFeed));
+
+        editor.ReplaceNode(invocation, replacementWithComment);
 
         return editor.GetChangedDocument();
     }
@@ -90,7 +104,86 @@ public class OptimizeRemoveRangeFixer : CodeFixProvider
         if (!sourceType.IsIQueryable() && !sourceType.IsDbSet())
             return false;
 
-        return !HasSubsequentSaveChangesInvocation(invocation, semanticModel, cancellationToken);
+        if (HasSubsequentSaveChangesInvocation(invocation, semanticModel, cancellationToken))
+            return false;
+
+        // Decline rather than emit an unsafe sync-over-async ExecuteDelete() when the call
+        // sits in an async context but no awaitable ExecuteDeleteAsync overload is available.
+        return DetermineRewriteMode(invocation, semanticModel) != RewriteMode.None;
+    }
+
+    private enum RewriteMode
+    {
+        None,
+        Sync,
+        Async
+    }
+
+    private static RewriteMode DetermineRewriteMode(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        if (!IsAsyncContext(invocation))
+            return RewriteMode.Sync;
+
+        return HasExecuteDeleteAsyncSupport(semanticModel.Compilation)
+            ? RewriteMode.Async
+            : RewriteMode.None;
+    }
+
+    private static bool IsAsyncContext(SyntaxNode node)
+    {
+        foreach (var ancestor in node.AncestorsAndSelf())
+        {
+            switch (ancestor)
+            {
+                case AnonymousFunctionExpressionSyntax anonymousFunction:
+                    return anonymousFunction.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword);
+                case LocalFunctionStatementSyntax localFunction:
+                    return localFunction.Modifiers.Any(SyntaxKind.AsyncKeyword);
+                case AccessorDeclarationSyntax:
+                    // Property/event accessors cannot be async.
+                    return false;
+                case BaseMethodDeclarationSyntax method:
+                    return method.Modifiers.Any(SyntaxKind.AsyncKeyword);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasExecuteDeleteAsyncSupport(Compilation compilation)
+    {
+        if (HasExecuteDeleteAsyncMethod(compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions")) ||
+            HasExecuteDeleteAsyncMethod(compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.RelationalQueryableExtensions")))
+        {
+            return true;
+        }
+
+        return compilation.GetSymbolsWithName("ExecuteDeleteAsync", SymbolFilter.Member)
+            .OfType<IMethodSymbol>()
+            .Any(IsExecuteDeleteAsyncLikeMethod);
+    }
+
+    private static bool HasExecuteDeleteAsyncMethod(INamedTypeSymbol? type)
+    {
+        return type?.GetMembers("ExecuteDeleteAsync").OfType<IMethodSymbol>().Any(IsExecuteDeleteAsyncLikeMethod) == true;
+    }
+
+    private static bool IsExecuteDeleteAsyncLikeMethod(IMethodSymbol method)
+    {
+        if (!method.IsExtensionMethod || method.Parameters.Length == 0)
+            return false;
+
+        if (!IsEntityFrameworkCoreNamespace(method.ContainingNamespace))
+            return false;
+
+        return method.Parameters[0].Type.IsIQueryable();
+    }
+
+    private static bool IsEntityFrameworkCoreNamespace(INamespaceSymbol? namespaceSymbol)
+    {
+        var namespaceName = namespaceSymbol?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", StringComparison.Ordinal) == true;
     }
 
     private static bool HasSubsequentSaveChangesInvocation(
