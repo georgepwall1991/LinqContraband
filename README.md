@@ -575,6 +575,7 @@ var user = db.Users.Where(u => u.Name == "john").FirstOrDefault();
 
 **🛡️ Reliability Notes:**
 - LC014 reports only when the case conversion is tied to a proven EF-backed query source.
+- The converted value counts as column-derived whether it depends on the parameter through the receiver (`u.Name.ToLower()`) or through a method's arguments (`string.Concat(u.First, u.Last).ToLower()`); constant-only values (`string.Concat("a", "b").ToLower()`) stay quiet.
 - `Join` and `GroupJoin` key selectors are checked against their own source: EF outer/inner keys can report, but in-memory inner keys and result-selector projections stay quiet.
 - There is no automatic fixer because the right remediation depends on database collation, provider translation, and index design.
 
