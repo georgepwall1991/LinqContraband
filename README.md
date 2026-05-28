@@ -478,9 +478,13 @@ Use `ExecuteDelete()` for direct SQL execution.
 db.Users.Where(u => u.LastLogin < DateTime.Now.AddYears(-1)).ExecuteDelete();
 ```
 
-**⚠️ Warning:** `ExecuteDelete` bypasses EF Core Change Tracking, so `Deleted` events and client-side cascades won't
-fire. This analyzer does not offer an automatic code fix because switching to `ExecuteDelete` changes the semantic
-behavior of your application (by skipping interceptors and events). You must manually verify it is safe to use.
+**⚠️ Warning:** `ExecuteDelete` bypasses EF Core Change Tracking, so `Deleted` events, save interceptors, and
+client-side cascades won't fire, and it executes immediately instead of deferring to the next `SaveChanges()`. Always
+verify those semantics are not required before deleting in bulk.
+
+**🔧 Code fix:** A code fix rewrites `RemoveRange(query)` to `query.ExecuteDelete()` (with the warning comment above). In
+an `async` context it instead emits `await query.ExecuteDeleteAsync()` so it never introduces a sync-over-async blocking
+call; if only the synchronous overload is available in an async context, no fix is offered.
 
 **🛡️ Reliability Notes:**
 - LC012 reports only when one `RemoveRange(...)` argument is still query-shaped and EF-style `ExecuteDelete()` is available.

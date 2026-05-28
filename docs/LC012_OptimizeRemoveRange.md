@@ -26,7 +26,29 @@ db.Logs.Where(l => l.Date < oneYearAgo).ExecuteDelete();
 ### Category: `Performance`
 ### Severity: `Warning`
 
-### Notes
-LC012 is conservative. It reports only when the project exposes an EF Core `ExecuteDelete()` extension from the real `Microsoft.EntityFrameworkCore` namespace and the single `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>`/`DbSet<T>`). It stays quiet for materialized lists, arrays, tracked entity collections, mixed/multiple `params` entity arguments, custom or lookalike `ExecuteDelete()` helpers, EF Core versions where `ExecuteDelete()` is unavailable, and calls followed by `SaveChanges()`/`SaveChangesAsync()` later in the same executable body.
+### When it fires
+LC012 is conservative. It reports only when:
+- the project exposes an EF Core `ExecuteDelete()` extension from the real `Microsoft.EntityFrameworkCore` namespace (so project-local or lookalike helpers do not enable the rule),
+- the single `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>` / `DbSet<T>`), and
+- no `SaveChanges()` / `SaveChangesAsync()` follows later in the same executable body.
 
-The diagnostic and fixer both avoid later-save unit-of-work shapes, because replacing deferred tracked deletion with immediate `ExecuteDelete()` can change timing. Apply the optimization manually only after confirming change tracking, client-side cascades, interceptors, and deferred save semantics are not required.
+### When it stays quiet (non-goals)
+- Materialized lists or arrays (e.g. `...ToList()`) and tracked entity collections — the fetch already happened, so there is nothing to optimize away.
+- Mixed or multiple `RemoveRange(query, entity)` `params` arguments — no single `ExecuteDelete()` replacement preserves that call shape.
+- Custom or lookalike `ExecuteDelete()` helpers outside the EF Core namespace, and EF Core versions where `ExecuteDelete()` is unavailable.
+- Calls followed by `SaveChanges()` / `SaveChangesAsync()` later in the same executable body — replacing deferred tracked deletion with immediate `ExecuteDelete()` would change unit-of-work timing.
+
+## Code Fix
+
+The fixer rewrites `context.RemoveRange(query)` to a direct bulk delete and prepends a warning comment (`// Warning: ExecuteDelete bypasses change tracking and cascades.`):
+
+| Context | Rewrite |
+| --- | --- |
+| Synchronous method / lambda / local function | `query.ExecuteDelete();` |
+| Async method / async lambda / async local function (with `ExecuteDeleteAsync` available) | `await query.ExecuteDeleteAsync();` |
+| Async context where no `ExecuteDeleteAsync` overload exists | No fix offered |
+
+The async branch matters: emitting a synchronous `ExecuteDelete()` inside an async method would inject a blocking, sync-over-async database call — the exact smell `LC008` flags. The fixer therefore prefers the awaited `ExecuteDeleteAsync()` overload when the **nearest enclosing function** is `async`, and declines entirely rather than introduce a blocking call when only the synchronous overload is available. "Nearest enclosing function" is deliberate: a synchronous local function nested inside an async method still receives the synchronous rewrite, because `await` would be illegal there.
+
+### Safety contract
+`ExecuteDelete()` / `ExecuteDeleteAsync()` issue a single SQL `DELETE` and **bypass EF Core change tracking, client-side cascades, save interceptors, and `SavingChanges` events**. They also execute immediately rather than deferring to the next `SaveChanges()`, which changes unit-of-work timing. The analyzer and fixer both decline the later-`SaveChanges` shape for this reason, but they cannot see a `SaveChanges()` that lives in a different method. Apply the optimization only after confirming change tracking, cascades, interceptors, and deferred-save semantics are not required for the deleted rows.

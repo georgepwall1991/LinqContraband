@@ -37,6 +37,42 @@ namespace Microsoft.EntityFrameworkCore
 }
 ";
 
+    // Same as EFCoreMock but also exposes the async ExecuteDeleteAsync extension that
+    // ships alongside ExecuteDelete in EF Core 7+. Used to assert the fixer prefers the
+    // async API (and an await) inside async contexts.
+    private const string EFCoreMockWithAsync = @"
+using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext
+    {
+        public int SaveChanges() => 0;
+        public Task<int> SaveChangesAsync() => Task.FromResult(0);
+    }
+
+    public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
+    {
+        public void RemoveRange(IEnumerable<TEntity> entities) { }
+        public Type ElementType => typeof(TEntity);
+        public System.Linq.Expressions.Expression Expression => null;
+        public IQueryProvider Provider => null;
+        public System.Collections.IEnumerator GetEnumerator() => null;
+        System.Collections.Generic.IEnumerator<TEntity> System.Collections.Generic.IEnumerable<TEntity>.GetEnumerator() => null;
+    }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
+        public static Task<int> ExecuteDeleteAsync<TSource>(this IQueryable<TSource> source, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+}
+";
+
     [Fact]
     public async Task Fixer_ShouldReplaceRemoveRangeWithExecuteDelete()
     {
@@ -178,5 +214,129 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldUseExecuteDeleteAsyncAndAwait_InAsyncMethod()
+    {
+        // Inside an async method the synchronous ExecuteDelete() rewrite would inject a
+        // blocking, sync-over-async database call (the exact smell LC008 flags). The fixer
+        // must prefer the awaited ExecuteDeleteAsync() form instead.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EFCoreMockWithAsync + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            var query = users.Where(x => x.Id > 0);
+            {|LC012:users.RemoveRange(query)|};
+            await Task.CompletedTask;
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EFCoreMockWithAsync + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            var query = users.Where(x => x.Id > 0);
+            // Warning: ExecuteDelete bypasses change tracking and cascades.
+            await query.ExecuteDeleteAsync();
+            await Task.CompletedTask;
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_InAsyncContext_WhenExecuteDeleteAsyncUnavailable()
+    {
+        // The diagnostic still fires (synchronous ExecuteDelete exists), but the only
+        // available rewrite in an async context would be the unsafe sync-over-async form,
+        // so the fixer must decline rather than introduce a blocking call.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            var query = users.Where(x => x.Id > 0);
+            {|LC012:users.RemoveRange(query)|};
+            await Task.CompletedTask;
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldUseSyncExecuteDelete_InSyncLocalFunctionWithinAsyncMethod()
+    {
+        // The nearest enclosing function is a synchronous local function, so await is
+        // illegal here even though an async method is an ancestor. The fixer must emit the
+        // synchronous ExecuteDelete() form rather than an await it cannot place.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EFCoreMockWithAsync + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            void DeleteThem()
+            {
+                var query = users.Where(x => x.Id > 0);
+                {|LC012:users.RemoveRange(query)|};
+            }
+
+            DeleteThem();
+            await Task.CompletedTask;
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EFCoreMockWithAsync + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> users)
+        {
+            void DeleteThem()
+            {
+                var query = users.Where(x => x.Id > 0);
+                // Warning: ExecuteDelete bypasses change tracking and cascades.
+                query.ExecuteDelete();
+            }
+
+            DeleteThem();
+            await Task.CompletedTask;
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 }
