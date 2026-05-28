@@ -50,15 +50,17 @@ public class MissingAsNoTrackingFixer : CodeFixProvider
         CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var semanticModel = editor.SemanticModel;
+        if (semanticModel == null) return document;
 
-        var sourceExpression = GetSourceExpression(invocation);
+        var sourceExpression = FindEfSourceExpression(invocation, semanticModel, cancellationToken);
 
         if (sourceExpression == null) return document;
 
         if (IsInvocationOf(sourceExpression, "AsNoTracking")) return document;
 
-        // sourceExpression is "db.Users"
-        // We want to replace "db.Users" with "db.Users.AsNoTracking()"
+        // sourceExpression is the DbSet source ("db.Users" or "db.Set<User>()").
+        // We want to replace it with "<source>.AsNoTracking()".
 
         var asNoTracking = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
@@ -76,22 +78,35 @@ public class MissingAsNoTrackingFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private ExpressionSyntax? GetSourceExpression(ExpressionSyntax node)
+    // Walk the syntactic receiver chain of the materializer and return the innermost
+    // expression whose type is a DbSet — that is the EF source to wrap with AsNoTracking().
+    // A purely syntactic walk cannot distinguish the DbSet source "db.Set<T>()" (an invocation)
+    // from an intermediate operator like ".Where(...)", so the semantic type is required.
+    private static ExpressionSyntax? FindEfSourceExpression(
+        ExpressionSyntax node,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
-        if (node is InvocationExpressionSyntax invocation) return GetSourceExpression(invocation.Expression);
+        ExpressionSyntax? source = null;
 
-        if (node is MemberAccessExpressionSyntax memberAccess)
+        for (ExpressionSyntax? current = node; current != null; current = GetReceiverExpression(current))
         {
-            // If this MemberAccess is the method name of an Invocation, keep digging.
-            // e.g. .Where(...) -> Parent is Invocation.
-            if (memberAccess.Parent is InvocationExpressionSyntax) return GetSourceExpression(memberAccess.Expression);
-
-            // If parent is NOT an invocation (e.g. it's another MemberAccess or Return), 
-            // then THIS is the property/field we want (e.g. db.Users).
-            return memberAccess;
+            var type = semanticModel.GetTypeInfo(current, cancellationToken).Type;
+            if (type.IsDbSet())
+                source = current;
         }
 
-        return node; // Fallback for Identifiers or other expressions
+        return source;
+    }
+
+    private static ExpressionSyntax? GetReceiverExpression(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            InvocationExpressionSyntax invocation => invocation.Expression,
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            _ => null
+        };
     }
 
     private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)

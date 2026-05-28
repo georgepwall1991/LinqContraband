@@ -27,6 +27,15 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (method.Name == "Select")
                         result.HasSelect = true;
 
+                    // An invocation whose return type is a DbSet (e.g. DbContext.Set<T>(), the
+                    // generic-repository read path) is itself the EF source. Without this the
+                    // walker steps past it to the DbContext receiver and misses the query.
+                    if (prevInvocation.Type.IsDbSet())
+                    {
+                        result.IsEfQuery = true;
+                        return result;
+                    }
+
                     current = prevInvocation.Instance ??
                               (prevInvocation.Arguments.Length > 0 ? prevInvocation.Arguments[0].Value : null);
                     continue;

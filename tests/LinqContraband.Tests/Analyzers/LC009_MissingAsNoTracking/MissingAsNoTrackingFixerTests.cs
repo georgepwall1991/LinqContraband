@@ -142,4 +142,73 @@ class Test
 }";
         await VerifyCS.VerifyCodeFixAsync(test, fix);
     }
+
+    [Fact]
+    public async Task FixCrime_InjectsAsNoTracking_OnSetGenericSource()
+    {
+        // For a context.Set<User>() source, AsNoTracking() must wrap the Set<User>() call —
+        // NOT the DbContext (db.AsNoTracking() does not exist and would not compile).
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore {
+    public static class EntityFrameworkQueryableExtensions {
+        public static System.Linq.IQueryable<T> AsNoTracking<T>(this System.Linq.IQueryable<T> source) => source;
+    }
+    public class DbSet<T> : System.Linq.IQueryable<T> // Mock DbSet for test
+    {
+        public System.Type ElementType => throw new System.NotImplementedException();
+        public System.Linq.Expressions.Expression Expression => throw new System.NotImplementedException();
+        public System.Linq.IQueryProvider Provider => throw new System.NotImplementedException();
+        public System.Collections.Generic.IEnumerator<T> GetEnumerator() => throw new System.NotImplementedException();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotImplementedException();
+    }
+} // Fake namespace to avoid CS0234
+
+class DbContext { public Microsoft.EntityFrameworkCore.DbSet<T> Set<T>() where T : class => null; }
+class User { }
+
+class Test
+{
+    void Run()
+    {
+        var db = new DbContext();
+        var q = {|LC009:db.Set<User>().Where(u => u != null).ToList()|};
+    }
+}";
+
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore {
+    public static class EntityFrameworkQueryableExtensions {
+        public static System.Linq.IQueryable<T> AsNoTracking<T>(this System.Linq.IQueryable<T> source) => source;
+    }
+    public class DbSet<T> : System.Linq.IQueryable<T> // Mock DbSet for test
+    {
+        public System.Type ElementType => throw new System.NotImplementedException();
+        public System.Linq.Expressions.Expression Expression => throw new System.NotImplementedException();
+        public System.Linq.IQueryProvider Provider => throw new System.NotImplementedException();
+        public System.Collections.Generic.IEnumerator<T> GetEnumerator() => throw new System.NotImplementedException();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotImplementedException();
+    }
+} // Fake namespace to avoid CS0234
+
+class DbContext { public Microsoft.EntityFrameworkCore.DbSet<T> Set<T>() where T : class => null; }
+class User { }
+
+class Test
+{
+    void Run()
+    {
+        var db = new DbContext();
+        var q = db.Set<User>().AsNoTracking().Where(u => u != null).ToList();
+    }
+}";
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
 }
