@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.9</Version>
+        <Version>5.4.10</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Teaches LC009 to recognise the generic-repository context.Set&lt;T&gt;() read path as an EF source. Previously the chain walker stepped past the DbSet-returning invocation to the DbContext receiver, so db.Set&lt;User&gt;().ToList() (and Set&lt;T&gt;().Where(...).ToList()) never got the AsNoTracking suggestion — a false negative on one of the most common EF read patterns. The code fix now resolves the EF source by semantic type, so AsNoTracking() is placed on the Set&lt;User&gt;() call rather than mis-placed onto the DbContext (which would not compile). Expands the LC009 doc and README to enumerate the recognised sources, the quiet shapes, and when AsNoTracking is unsafe (identity resolution, deferred/cross-method mutation, re-attach).</PackageReleaseNotes>
+        <PackageReleaseNotes>Fixes an LC025 false positive: the rule no longer flags a subsequent Update/Remove when the entity came from a Select projecting to a newly-constructed object (e.g. AsNoTracking().Select(u =&gt; new User { ... }).First()). EF Core never change-tracks instances constructed in a projection, so they are untracked regardless of AsNoTracking — the anti-pattern does not apply and the suggested "remove AsNoTracking()" fix would not have helped. Only the outermost projection is considered, so identity and navigation projections (Select(u =&gt; u), Select(u =&gt; u.Manager)) and a constructed wrapper later unwrapped back to the entity all continue to report.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
