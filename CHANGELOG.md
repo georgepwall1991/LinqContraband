@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.10] - 2026-05-28
+
 ### Fixed
 - Stopped `LC025` from firing on entities that come from a `Select` projecting to a newly-constructed object (e.g. `AsNoTracking().Select(u => new User { ... }).First()` followed by `Update`/`Remove`). EF Core never change-tracks instances constructed in a projection, so they are untracked regardless of `AsNoTracking()` — the anti-pattern does not apply and the suggested "remove `AsNoTracking()`" fix would not have helped. Only the outermost projection (the one that determines the materialized result) is considered, so identity and navigation projections (`Select(u => u)`, `Select(u => u.Manager)`) and a constructed wrapper that is later unwrapped back to the entity (`Select(u => new { E = u }).Select(x => x.E)`) all continue to report. Added regression tests for the constructed-projection false positive, the identity-Select guardrail, and the wrap-then-unwrap shape
 
