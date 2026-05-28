@@ -247,15 +247,69 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
     private bool HasAsNoTrackingInChain(IOperation operation)
     {
         var current = operation.UnwrapConversions();
+        var foundAsNoTracking = false;
+        var outermostSelectChecked = false;
         while (current is IInvocationOperation inv)
         {
-            if (IsEfCoreAsNoTracking(inv.TargetMethod)) return true;
+            // Only the outermost Select (the one nearest the materializer) determines the
+            // shape of the materialized result. If it projects to a newly-constructed object
+            // the result is detached from EF change tracking entirely — constructed instances
+            // are never tracked regardless of AsNoTracking — so LC025 must not fire. A later
+            // (inner) Select that re-exposes the entity, e.g. Select(u => new { E = u }) then
+            // Select(x => x.E), is handled because only the first Select encountered governs:
+            // there the outermost Select is the member access, which falls through and keeps
+            // the rule firing. Identity/navigation projections also fall through.
+            if (inv.TargetMethod.Name == "Select" && !outermostSelectChecked)
+            {
+                outermostSelectChecked = true;
+                if (IsProjectionToConstructedObject(inv))
+                    return false;
+            }
+
+            if (IsEfCoreAsNoTracking(inv.TargetMethod))
+                foundAsNoTracking = true;
 
             var next = inv.GetInvocationReceiver();
             if (next == null) break;
             current = next.UnwrapConversions();
         }
-        return false;
+        return foundAsNoTracking;
+    }
+
+    private static bool IsProjectionToConstructedObject(IInvocationOperation invocation)
+    {
+        if (invocation.TargetMethod.Name != "Select")
+            return false;
+
+        var selector = invocation.Arguments.LastOrDefault()?.Value?.UnwrapConversions();
+        var lambda = selector switch
+        {
+            IDelegateCreationOperation delegateCreation => delegateCreation.Target as IAnonymousFunctionOperation,
+            IAnonymousFunctionOperation direct => direct,
+            _ => null
+        };
+
+        if (lambda == null)
+            return false;
+
+        var projected = GetSingleProjectedExpression(lambda);
+        return projected is IObjectCreationOperation or IAnonymousObjectCreationOperation;
+    }
+
+    private static IOperation? GetSingleProjectedExpression(IAnonymousFunctionOperation lambda)
+    {
+        foreach (var op in lambda.Body.Operations)
+        {
+            switch (op)
+            {
+                case IReturnOperation { ReturnedValue: { } returned }:
+                    return returned.UnwrapConversions();
+                case IExpressionStatementOperation expressionStatement:
+                    return expressionStatement.Operation.UnwrapConversions();
+            }
+        }
+
+        return null;
     }
 
     private static bool IsEfCoreAsNoTracking(IMethodSymbol method)

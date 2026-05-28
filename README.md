@@ -943,6 +943,7 @@ db.SaveChanges();
 - LC025 follows the nearest previous local origin, so a later `AsNoTracking()` assignment does not taint an earlier write.
 - LC025 requires EF Core's actual `AsNoTracking` extension namespace; project-local same-name helpers stay quiet.
 - `Entry(entity).State = EntityState.Modified` and `EntityState.Deleted` are treated as write paths; non-write states such as `Unchanged` stay quiet.
+- When the outermost `Select` projects to a newly-constructed object (`Select(u => new User { ... })` or an anonymous type) the rule stays quiet, because constructed instances are never change-tracked regardless of `AsNoTracking()`; identity/navigation projections (`u => u`, `u => u.Manager`) — and a wrapper that is later unwrapped back to the entity — still report.
 - The fixer removes `AsNoTracking()` from direct declarations, simple assignments, and foreach collection expressions when that is the safe local origin.
 
 ---
