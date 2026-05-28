@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.9] - 2026-05-28
+
 ### Changed
 - Taught `LC009` to recognise the generic-repository `context.Set<T>()` read path as an EF source. The chain walker previously stepped past a `DbSet`-returning invocation to the `DbContext` receiver, so `db.Set<User>().ToList()` (and `Set<T>().Where(...).ToList()`) never got the AsNoTracking suggestion — a false negative on one of the most common EF read patterns. The code fix now finds the EF source by its semantic type instead of by syntax, so `AsNoTracking()` is placed on the `Set<User>()` call rather than mis-placed onto the `DbContext` (which would not compile). Added analyzer regression tests for the `Set<T>()` source (with and without `Where`) plus guardrails that `Set<T>()` with `AsNoTracking()`/`Select(...)` stays quiet, a fixer test for the `Set<T>()` placement, and expanded the LC009 doc and README to cover the recognised sources and when `AsNoTracking()` is unsafe (identity resolution, deferred/cross-method mutation, re-attach)
 
