@@ -276,9 +276,37 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         if (operation is IPropertyReferenceOperation propRef)
             return ReceiverDependsOnParameter(propRef.Instance, targetParameters);
 
-        // If it's a method call (chained), check the instance
+        // If it's a method call (chained), check the instance AND the arguments. The value
+        // depends on the parameter when the call is on a parameter-derived receiver
+        // (e.g. u.Name.Substring(..)) OR when a column-derived value is passed as an argument
+        // (e.g. string.Concat(u.A, u.B), a static method with no instance) — both produce a
+        // value over which a case conversion still defeats sargability.
         if (operation is IInvocationOperation invocation)
-            return ReceiverDependsOnParameter(invocation.Instance, targetParameters);
+        {
+            if (ReceiverDependsOnParameter(invocation.Instance, targetParameters))
+                return true;
+
+            foreach (var argument in invocation.Arguments)
+            {
+                if (ReceiverDependsOnParameter(argument.Value, targetParameters))
+                    return true;
+            }
+
+            return false;
+        }
+
+        // A params argument (e.g. the value[] of string.Join / string.Format) is wrapped in an
+        // array creation, so look at the column-derived elements inside it.
+        if (operation is IArrayCreationOperation arrayCreation && arrayCreation.Initializer != null)
+        {
+            foreach (var element in arrayCreation.Initializer.ElementValues)
+            {
+                if (ReceiverDependsOnParameter(element, targetParameters))
+                    return true;
+            }
+
+            return false;
+        }
 
         // If it's an array/indexer access
         if (operation is IPropertyReferenceOperation indexer && indexer.Arguments.Length > 0)

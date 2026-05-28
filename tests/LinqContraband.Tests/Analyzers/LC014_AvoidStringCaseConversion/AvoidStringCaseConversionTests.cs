@@ -371,4 +371,65 @@ namespace LinqContraband.Test
 }";
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task ToLower_OnMethodResultWithParameterArgument_ShouldTrigger()
+    {
+        // The case conversion is applied to the result of string.Concat(u.Name, u.Address.City).
+        // That value depends on the query parameter through the method ARGUMENTS (not the
+        // receiver), so it is a column-derived value and ToLower defeats sargability.
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            var result = db.Users.Where(u => {|LC014:string.Concat(u.Name, u.Address.City).ToLower()|} == ""x"");
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToUpper_OnParamsArrayMethodResultWithParameterArgument_ShouldTrigger()
+    {
+        // params overloads (string.Join here) wrap the column references in an array creation
+        // for the params parameter, so the dependence walk must descend into the array elements.
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            var result = db.Users.Where(u => {|LC014:string.Join(""-"", u.Name, u.Address.City).ToUpper()|} == ""X"");
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToLower_OnMethodResultWithConstantArguments_ShouldNotTrigger()
+    {
+        // string.Concat of constant arguments does not depend on the query parameter, so the
+        // value is computed client-side and the rule must stay quiet.
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            using var db = new AppDbContext();
+            var result = db.Users.Where(u => u.Name == string.Concat(""a"", ""b"").ToLower());
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
