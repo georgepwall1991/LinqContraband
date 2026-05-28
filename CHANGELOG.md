@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.8] - 2026-05-28
+
 ### Changed
 - Made the `LC012` code fix async-aware: inside an `async` method, lambda, or local function it now rewrites `RemoveRange(query)` to `await query.ExecuteDeleteAsync()` instead of the synchronous `query.ExecuteDelete()`, which would have injected a blocking sync-over-async database call — the exact smell `LC008` flags. The synchronous rewrite is unchanged when the nearest enclosing function is synchronous (including a sync local function nested inside an async method), and in an async context where no `ExecuteDeleteAsync` overload is available the fix is withheld rather than emit a blocking call. Added regression tests for the async-await rewrite, the sync-local-function-inside-async boundary, and the no-async-overload refusal, and documented the code-fix behaviour and `ExecuteDelete` safety contract in the LC012 doc and README
 
