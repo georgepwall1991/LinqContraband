@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.8</Version>
+        <Version>5.4.9</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Hardens the LC012 code fix so it no longer injects a sync-over-async call. Previously the fixer rewrote RemoveRange(query) to a synchronous query.ExecuteDelete() even inside async methods — a blocking sync-over-async database call, the exact smell LC008 flags. The fixer now chooses the rewrite by the nearest enclosing function: async contexts get await query.ExecuteDeleteAsync(), synchronous contexts keep query.ExecuteDelete(), and an async context with no ExecuteDeleteAsync overload available declines the fix rather than emit a blocking call. A synchronous local function nested inside an async method correctly stays sync because await would be illegal there. Documents the code-fix behaviour and the ExecuteDelete safety contract (change-tracking bypass, cascade/interceptor loss, unit-of-work timing) in the LC012 doc and README.</PackageReleaseNotes>
+        <PackageReleaseNotes>Teaches LC009 to recognise the generic-repository context.Set&lt;T&gt;() read path as an EF source. Previously the chain walker stepped past the DbSet-returning invocation to the DbContext receiver, so db.Set&lt;User&gt;().ToList() (and Set&lt;T&gt;().Where(...).ToList()) never got the AsNoTracking suggestion — a false negative on one of the most common EF read patterns. The code fix now resolves the EF source by semantic type, so AsNoTracking() is placed on the Set&lt;User&gt;() call rather than mis-placed onto the DbContext (which would not compile). Expands the LC009 doc and README to enumerate the recognised sources, the quiet shapes, and when AsNoTracking is unsafe (identity resolution, deferred/cross-method mutation, re-attach).</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
