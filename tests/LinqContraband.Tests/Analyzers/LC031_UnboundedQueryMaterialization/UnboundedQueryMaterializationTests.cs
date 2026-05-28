@@ -350,4 +350,54 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task Chunk_WithoutOtherBounding_ShouldTriggerLC031()
+    {
+        // Chunk bounds the chunk SIZE, not the number of rows fetched. There is no
+        // Queryable.Chunk, so db.Users.Chunk(n) binds to Enumerable.Chunk and materializes
+        // the entire table before partitioning — exactly the unbounded load LC031 targets.
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public static class ChunkExtensions
+    {
+        public static IEnumerable<T[]> Chunk<T>(this IEnumerable<T> source, int size) => null;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Users.Chunk(1000).ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Take_ThenChunk_ShouldNotTrigger()
+    {
+        // A real bounding operator before the Chunk still bounds the query.
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public static class ChunkExtensions
+    {
+        public static IEnumerable<T[]> Chunk<T>(this IEnumerable<T> source, int size) => null;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = db.Users.Take(100).Chunk(10).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

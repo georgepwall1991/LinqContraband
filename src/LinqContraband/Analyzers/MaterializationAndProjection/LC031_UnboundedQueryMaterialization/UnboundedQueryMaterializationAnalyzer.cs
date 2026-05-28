@@ -55,7 +55,6 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
     {
         return methodName is
             "Take" or "TakeWhile" or
-            "Chunk" or
             "First" or "FirstOrDefault" or "FirstAsync" or "FirstOrDefaultAsync" or
             "Single" or "SingleOrDefault" or "SingleAsync" or "SingleOrDefaultAsync" or
             "Last" or "LastOrDefault" or "LastAsync" or "LastOrDefaultAsync" or
