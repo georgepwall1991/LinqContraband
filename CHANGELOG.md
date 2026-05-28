@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.12] - 2026-05-28
+
 ### Fixed
 - Taught `LC014` to detect case conversion on a value that depends on the query parameter through a method's **arguments**, not only its receiver. Previously `ReceiverDependsOnParameter` only followed an invocation's instance, so `db.Users.Where(u => string.Concat(u.First, u.Last).ToLower() == "x")` was missed — the `string.Concat(...)` is a static call with no instance, and its column-derived arguments were never inspected (a false negative; the `ToLower` still defeats sargability). The walk now also checks invocation arguments. Constant-only values such as `string.Concat("a", "b").ToLower()` stay quiet because no argument depends on the parameter. Added a positive regression test and a constant-argument guardrail
 

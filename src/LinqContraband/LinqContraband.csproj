@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.11</Version>
+        <Version>5.4.12</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Fixes an LC031 false negative: Chunk is no longer treated as a bounding operator. There is no Queryable.Chunk, so db.Users.Chunk(1000).ToList() binds to Enumerable.Chunk and materializes the entire table before partitioning — the size argument bounds the chunk size, not the rows fetched. Chunk was whitelisted alongside Take/First, suppressing the diagnostic on exactly the unbounded load LC031 exists to catch. A real bounding operator before the chunk (e.g. Take(100).Chunk(10)) still suppresses correctly.</PackageReleaseNotes>
+        <PackageReleaseNotes>Fixes an LC014 false negative: a string case conversion (ToLower/ToUpper) on a value that depends on the query parameter through a method's ARGUMENTS — not only its receiver — is now detected. Previously only an invocation's instance was followed, so db.Users.Where(u =&gt; string.Concat(u.First, u.Last).ToLower() == "x") was missed because string.Concat is static and its column-derived arguments were never inspected. The dependence walk now also checks invocation arguments and descends into the array that wraps params arguments (string.Join, string.Format). Constant-only values such as string.Concat("a", "b").ToLower() stay quiet.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
