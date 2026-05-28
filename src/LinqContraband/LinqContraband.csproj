@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.10</Version>
+        <Version>5.4.11</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Fixes an LC025 false positive: the rule no longer flags a subsequent Update/Remove when the entity came from a Select projecting to a newly-constructed object (e.g. AsNoTracking().Select(u =&gt; new User { ... }).First()). EF Core never change-tracks instances constructed in a projection, so they are untracked regardless of AsNoTracking — the anti-pattern does not apply and the suggested "remove AsNoTracking()" fix would not have helped. Only the outermost projection is considered, so identity and navigation projections (Select(u =&gt; u), Select(u =&gt; u.Manager)) and a constructed wrapper later unwrapped back to the entity all continue to report.</PackageReleaseNotes>
+        <PackageReleaseNotes>Fixes an LC031 false negative: Chunk is no longer treated as a bounding operator. There is no Queryable.Chunk, so db.Users.Chunk(1000).ToList() binds to Enumerable.Chunk and materializes the entire table before partitioning — the size argument bounds the chunk size, not the rows fetched. Chunk was whitelisted alongside Take/First, suppressing the diagnostic on exactly the unbounded load LC031 exists to catch. A real bounding operator before the chunk (e.g. Take(100).Chunk(10)) still suppresses correctly.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

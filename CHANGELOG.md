@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.11] - 2026-05-28
+
 ### Fixed
-- Stopped `LC031` from treating `Chunk` as a bounding operator. There is no `Queryable.Chunk`, so `db.Users.Chunk(1000).ToList()` binds to `Enumerable.Chunk` and materializes the entire table before partitioning — the `size` argument bounds the chunk size, not the rows fetched. `Chunk` was whitelisted alongside `Take`/`First`, suppressing the diagnostic on exactly the unbounded load LC031 exists to catch (a false negative). Real bounding operators before the chunk (e.g. `Take(100).Chunk(10)`) still suppress correctly. Added a false-negative regression test plus a `Take`-then-`Chunk` guardrail, and updated the LC015 sample expectations (its `users.Chunk(5).ToList()` now also reports LC031, as it should)
+- Stopped `LC031` from treating `Chunk` as a bounding operator. There is no `Queryable.Chunk`, so `db.Users.Chunk(1000).ToList()` binds to `Enumerable.Chunk` and materializes the entire table before partitioning — the `size` argument bounds the chunk size, not the rows fetched. `Chunk` was whitelisted alongside `Take`/`First`, suppressing the diagnostic on exactly the unbounded load LC031 exists to catch (a false negative). Real bounding operators before the chunk (e.g. `Take(100).Chunk(10)`) still suppress correctly. Added a false-negative regression test plus a `Take`-then-`Chunk` guardrail, and refreshed the affected sample's expected diagnostics (a `users.Chunk(5).ToList()` sample now also reports `LC031`, as it should)
 
 ## [5.4.10] - 2026-05-28
 
