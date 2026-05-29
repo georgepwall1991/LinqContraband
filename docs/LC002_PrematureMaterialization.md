@@ -16,10 +16,18 @@ var ordered = db.Users.AsEnumerable().OrderBy(u => u.Name);
 ```
 
 ### 2. Redundant materialization
-LC002 reports a second direct collection materializer when the sequence was already materialized in the same chain from `IQueryable`.
+LC002 reports a second direct collection materializer when the sequence was already materialized in the same chain from `IQueryable` **and collapsing the pair does not change the result**.
 
 ```csharp
-var usersAgain = db.Users.ToArray().ToList();
+var usersAgain = db.Users.ToArray().ToList();   // ToArray is redundant; collapses to ToList()
+var distinct = db.Users.ToList().ToHashSet();    // ToList is redundant; collapses to ToHashSet()
+```
+
+A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) as the **source** of a second materializer is **not** redundant and is left quiet. The fix removes the source call, which would silently drop de-duplication (`ToHashSet().ToList()`) or drop a custom equality comparer (`ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet()`):
+
+```csharp
+var distinctList = db.Users.ToHashSet().ToList();                                  // NOT reported — ToHashSet de-duplicates
+var ci = db.Users.Select(u => u.Name).ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet(); // NOT reported — comparer would be lost
 ```
 
 ## What LC002 Intentionally Ignores
@@ -27,13 +35,14 @@ var usersAgain = db.Users.ToArray().ToList();
 - Already materialized locals, aliases, constructors, arrays, DTO lists, fields, properties, and other post-processing shapes where in-memory work may be intentional
 - `AsEnumerable()` by itself when it is used only as an explicit client boundary
 - Overloads or lambdas that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors, comparer-based overloads, delegated predicates, local/source methods, `Regex`, or `StringComparison` string calls
+- A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) used as the source of a second materializer (`ToHashSet().ToList()`, `ToImmutableHashSet().ToArray()`, `ToHashSet(comparer).ToHashSet()`), where removing the source would drop de-duplication or a custom comparer
 - Pure in-memory sequences that never came from `IQueryable`
 
 ## Fixer Behavior
 The fixer is intentionally conservative.
 
 - It offers `Move query operator before materialization` only for analyzer-proven inline chains where the rewrite is explicit.
-- It offers `Remove redundant materialization` only for direct redundant materializer pairs.
+- It offers `Remove redundant materialization` only for direct redundant materializer pairs whose collapse preserves the result; it never collapses a de-duplicating set away (`ToHashSet().ToList()` is left untouched).
 - It does not offer a fix for local-hop, constructor, ambiguous, or shape-changing cases such as `ToDictionary(...).Where(...)`.
 - It does not offer a fix for client-only lambda bodies because LC002 suppresses those diagnostics entirely.
 

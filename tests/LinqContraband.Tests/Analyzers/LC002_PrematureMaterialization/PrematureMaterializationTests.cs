@@ -278,6 +278,84 @@ public class PrematureMaterializationTests
     }
 
     [Fact]
+    public async Task DoesNotReport_Redundant_ToHashSetThenToList()
+    {
+        // ToHashSet() de-duplicates; the following ToList() is NOT redundant — removing the set
+        // (as the redundant fix would) silently drops de-duplication. So the analyzer must stay
+        // quiet rather than report a "redundant" materialization and offer an unsafe collapse.
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var users = db.Users.ToHashSet().ToList();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_Redundant_ToHashSetThenToArray()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var users = db.Users.ToHashSet().ToArray();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_Redundant_ToImmutableHashSetThenToList()
+    {
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var users = db.Users.ToImmutableHashSet().ToList();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_Redundant_ComparerSetThenSet()
+    {
+        // A set source with a custom comparer is not redundant even when followed by another set:
+        // collapsing would drop the comparer and change which duplicates are removed
+        // (ToHashSet(OrdinalIgnoreCase) de-dups case-insensitively; a default ToHashSet would not).
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var names = db.Users.Select(u => u.Name).ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task DoesNotReport_WhenWhereRunsBeforeToList()
     {
         var test = CommonUsings + """

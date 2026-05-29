@@ -105,6 +105,18 @@ public sealed partial class PrematureMaterializationAnalyzer
             "ToImmutableHashSet";
     }
 
+    // A materializer that removes duplicates. Collapsing one of these followed by a non-set
+    // materializer (e.g. ToHashSet().ToList()) is NOT redundant: removing the set silently drops
+    // de-duplication, which the trailing ToList/ToArray would not restore.
+    private static bool IsDeduplicatingSetMaterializer(string methodName)
+    {
+        return methodName is
+            "ToHashSet" or
+            "ToHashSetAsync" or
+            "ToImmutableHashSet" or
+            "ToImmutableSortedSet";
+    }
+
     private static bool IsMaterializingConstructor(IMethodSymbol constructor)
     {
         var type = constructor.ContainingType;

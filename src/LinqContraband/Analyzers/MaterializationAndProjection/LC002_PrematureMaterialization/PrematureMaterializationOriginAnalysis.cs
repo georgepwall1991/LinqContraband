@@ -27,6 +27,19 @@ public sealed partial class PrematureMaterializationAnalyzer
             return false;
         }
 
+        // The redundant fix removes the PREVIOUS materializer. Dropping a de-duplicating set
+        // (ToHashSet/ToImmutableHashSet/…) is never safe: a trailing non-set materializer would
+        // lose the de-duplication entirely (ToHashSet().ToList()), and even a trailing set would
+        // lose any custom equality comparer carried by the dropped call
+        // (ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet() must not collapse to the default
+        // ToHashSet()). So a set-materializer source is not treated as a redundant materialization.
+        // Non-set sources (ToList().ToHashSet(), ToArray().ToList()) remain genuinely redundant and
+        // still report and fix, with the trailing call's own arguments preserved.
+        if (IsDeduplicatingSetMaterializer(previousMaterialization.MaterializerName))
+        {
+            return false;
+        }
+
         var properties = CreateProperties(
             RedundantDiagnosticKind,
             previousMaterialization.OriginKind,

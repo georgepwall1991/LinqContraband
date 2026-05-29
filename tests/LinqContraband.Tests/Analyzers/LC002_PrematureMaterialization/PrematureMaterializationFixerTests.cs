@@ -208,6 +208,43 @@ public class PrematureMaterializationFixerTests
     }
 
     [Fact]
+    public async Task Fixes_RedundantToListThenToHashSet()
+    {
+        // Guardrail for the de-dup-drop fix: collapsing into a set is SAFE (the set is the final
+        // shape and still de-duplicates), so this direction must still report and collapse to
+        // ToHashSet() — only set-then-non-set (which would drop distinct) is suppressed.
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var query = {|#0:db.Users.ToList().ToHashSet()|};
+                }
+            }
+            """ + MockTypes;
+
+        var fixedCode = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var query = db.Users.ToHashSet();
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.RedundantRule)
+            .WithLocation(0)
+            .WithArguments("ToHashSet", "ToList");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task DoesNotReport_RedundantToListThenAsEnumerable()
     {
         var test = CommonUsings + """
