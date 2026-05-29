@@ -262,6 +262,25 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         return bestWriteStart >= 0;
     }
 
+    // Whether a method argument of the given type can carry a column's text into the result, so
+    // that a case conversion over that result would still touch column text. Reference types
+    // (string, string[]/object[], collections, object) can; a `char`/`char?` argument contributes
+    // a character (string.Concat(u.Name[0]), "x".Replace('x', u.MiddleInitial)); other value-type
+    // arguments (int count/index, bool, an enum such as StringComparison) only control
+    // position/format and cannot. A null/unknown type is followed conservatively.
+    private static bool ArgumentCanCarryStringContent(ITypeSymbol? type)
+    {
+        if (type == null) return true;
+        if (!type.IsValueType) return true;
+
+        var underlying = type is INamedTypeSymbol named &&
+                         named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+            ? named.TypeArguments[0]
+            : type;
+
+        return underlying.SpecialType == SpecialType.System_Char;
+    }
+
     private bool ReceiverDependsOnParameter(IOperation? operation, ImmutableArray<IParameterSymbol> targetParameters)
     {
         if (operation == null) return false;
@@ -288,7 +307,21 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
 
             foreach (var argument in invocation.Arguments)
             {
-                if (ReceiverDependsOnParameter(argument.Value, targetParameters))
+                // Only an argument that can carry the column's text into the result makes the
+                // cased value column-derived. A value-type argument that just controls
+                // length/position/format (an `int` count/index, a `bool`, an enum such as
+                // `StringComparison`) does not — e.g. "CONST".PadRight(u.Name.Length) or
+                // "HELLO".Substring(0, u.Age) lowercases a constant, so it must stay quiet.
+                // A `char` argument is the exception: it contributes a character to the result
+                // (string.Concat(u.Name[0]), "x".Replace('x', u.Name[0])), so it is still
+                // followed. String, string[]/object[] params arrays, and string collections are
+                // reference types and are likewise followed (string.Concat(u.A, u.B),
+                // "p".Replace("x", u.Name)).
+                var argumentValue = argument.Value.UnwrapConversions();
+                if (!ArgumentCanCarryStringContent(argumentValue.Type))
+                    continue;
+
+                if (ReceiverDependsOnParameter(argumentValue, targetParameters))
                     return true;
             }
 
