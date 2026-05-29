@@ -60,6 +60,12 @@ public class MissingOrderByFixer : CodeFixProvider
         // deterministic pagination — the very behaviour LC015 exists to flag.
         if (HasCompositeKeyAttribute(entityType)) return;
 
+        // A [Keyless] entity (a SQL view or query type) has no primary key, so an `Id`-named
+        // property is just an ordinary column — ordering by it is no more deterministic than
+        // not ordering at all. The convention-driven TryFindPrimaryKey would still return "Id",
+        // so without this gate the fixer would insert a misleading OrderBy(x => x.Id).
+        if (HasKeylessAttribute(entityType)) return;
+
         var keyName = entityType.TryFindPrimaryKey();
         if (keyName == null) return; // Don't offer fix if we can't determine the primary key
 
@@ -106,6 +112,20 @@ public class MissingOrderByFixer : CodeFixProvider
                         break;
                     }
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasKeylessAttribute(ITypeSymbol entityType)
+    {
+        foreach (var attr in entityType.GetAttributes())
+        {
+            if (attr.AttributeClass is { Name: "KeylessAttribute" } attrClass &&
+                attrClass.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+            {
+                return true;
             }
         }
 
