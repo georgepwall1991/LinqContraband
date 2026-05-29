@@ -44,8 +44,11 @@ LC015 ships an EF Core-aware code fix that inserts `.OrderBy(x => x.<key>)` imme
 The fix **does not** register when:
 
 - The entity has two or more `[Key]`-annotated properties (composite key). A partial-key `OrderBy` would not produce deterministic pagination, which is exactly the failure LC015 exists to surface.
+- The entity is `[Keyless]` (a SQL view or query type, `Microsoft.EntityFrameworkCore.KeylessAttribute`). It has no primary key, so even an `Id`-named property is just an ordinary column — ordering by it is no more deterministic than not ordering, so the fix would be misleading.
 - No `[Key]` attribute is present and the entity has no `Id` or `<EntityType>Id` property (e.g. configured purely via Fluent API, owned types, projections, anonymous types, value tuples).
 - The reported operator is the **misplaced** variant (`OrderBy` after `Skip`/`Take`). Inserting another `OrderBy` would preserve the wrong query shape; the user has to move the existing call instead.
+
+> **Composite keys configured only in Fluent `OnModelCreating`** (`modelBuilder.Entity<T>().HasKey(e => new { e.Id, e.TenantId })`) cannot be detected from source — the analyzer never sees the model. For such an entity with a conventional `Id` property the fix may still register and offer a partial-key `OrderBy(x => x.Id)`; treat the suggestion with care and order by **every** key part by hand (see below).
 
 When the fix does not register, the analyzer still reports the diagnostic. Treat the warning as a prompt to pick the right stable key by hand, using the guidance below.
 

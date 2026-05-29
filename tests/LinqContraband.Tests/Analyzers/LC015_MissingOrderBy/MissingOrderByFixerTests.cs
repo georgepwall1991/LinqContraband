@@ -254,4 +254,56 @@ class Program {
         var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 29).WithArguments("Last");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    /// <summary>
+    /// Tests that the fixer does NOT register on a [Keyless] entity that happens to expose an
+    /// `Id` property. A keyless entity (a SQL view or query type) has no primary key, so `Id` is
+    /// an ordinary column and ordering by it is no more deterministic than any other column. The
+    /// convention-driven TryFindPrimaryKey returns "Id", so without a [Keyless] gate the fixer
+    /// would offer a misleading OrderBy(x => x.Id). The analyzer still reports the missing order.
+    /// </summary>
+    [Fact]
+    public async Task Skip_NoFix_WhenEntityIsKeyless()
+    {
+        // [Keyless] lives in Microsoft.EntityFrameworkCore; inline it here (like the [PrimaryKey]
+        // test) so the shared MockEfCore stays untouched and other line-number assertions hold.
+        var test = CommonUsings + MockEfCore + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class KeylessAttribute : Attribute { }
+}
+
+[Microsoft.EntityFrameworkCore.Keyless]
+class UserStat { public int Id { get; set; } public int Count { get; set; } }
+class AppDbContext : DbContext { public DbSet<UserStat> Stats { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Stats.Skip(10);
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class KeylessAttribute : Attribute { }
+}
+
+[Microsoft.EntityFrameworkCore.Keyless]
+class UserStat { public int Id { get; set; } public int Count { get; set; } }
+class AppDbContext : DbContext { public DbSet<UserStat> Stats { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Stats.Skip(10);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(42, 26).WithArguments("Skip");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }
