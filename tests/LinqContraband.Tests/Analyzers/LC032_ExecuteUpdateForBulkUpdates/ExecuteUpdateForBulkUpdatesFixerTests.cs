@@ -1,0 +1,840 @@
+using Microsoft.CodeAnalysis;
+using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
+    LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesAnalyzer,
+    LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesFixer>;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesAnalyzer,
+    LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+
+namespace LinqContraband.Tests.Analyzers.LC032_ExecuteUpdateForBulkUpdates;
+
+public class ExecuteUpdateForBulkUpdatesFixerTests
+{
+    private const string Usings = @"
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Collections;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using TestApp;
+";
+
+    // The analyzer-only mock can type ExecuteUpdate's argument as `object`, but the FIXER
+    // tests must compile the generated `ExecuteUpdate(setters => setters.SetProperty(...))`
+    // call, so this mock models a real SetPropertyCalls<T> builder.
+    private const string EFCoreMockWithExecuteUpdate = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext : IDisposable
+    {
+        public void Dispose() { }
+        public int SaveChanges() => 0;
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+    }
+
+    public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
+    {
+        public Type ElementType => typeof(TEntity);
+        public Expression Expression => Expression.Constant(this);
+        public IQueryProvider Provider => null;
+        public IEnumerator<TEntity> GetEnumerator() => null;
+        IEnumerator IEnumerable.GetEnumerator() => null;
+    }
+
+    public class SetPropertyCalls<TSource>
+    {
+        public SetPropertyCalls<TSource> SetProperty<TProperty>(Func<TSource, TProperty> propertyExpression, Func<TSource, TProperty> valueExpression) => this;
+        public SetPropertyCalls<TSource> SetProperty<TProperty>(Func<TSource, TProperty> propertyExpression, TProperty valueExpression) => this;
+    }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<List<TSource>> ToListAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(new List<TSource>());
+        public static int ExecuteUpdate<TSource>(this IQueryable<TSource> source, Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>> setPropertyCalls) => 0;
+        public static Task<int> ExecuteUpdateAsync<TSource>(this IQueryable<TSource> source, Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>> setPropertyCalls, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+}
+";
+
+    // Same as above but WITHOUT ExecuteUpdateAsync: lets us assert the fixer declines (rather
+    // than inject a blocking sync-over-async call) inside an async context.
+    private const string EFCoreMockWithExecuteUpdateSyncOnly = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public class DbContext : IDisposable
+    {
+        public void Dispose() { }
+        public int SaveChanges() => 0;
+        public Task<int> SaveChangesAsync() => Task.FromResult(0);
+        public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+    }
+
+    public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
+    {
+        public Type ElementType => typeof(TEntity);
+        public Expression Expression => Expression.Constant(this);
+        public IQueryProvider Provider => null;
+        public IEnumerator<TEntity> GetEnumerator() => null;
+        IEnumerator IEnumerable.GetEnumerator() => null;
+    }
+
+    public class SetPropertyCalls<TSource>
+    {
+        public SetPropertyCalls<TSource> SetProperty<TProperty>(Func<TSource, TProperty> propertyExpression, Func<TSource, TProperty> valueExpression) => this;
+        public SetPropertyCalls<TSource> SetProperty<TProperty>(Func<TSource, TProperty> propertyExpression, TProperty valueExpression) => this;
+    }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<List<TSource>> ToListAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(new List<TSource>());
+        public static int ExecuteUpdate<TSource>(this IQueryable<TSource> source, Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>> setPropertyCalls) => 0;
+    }
+}
+";
+
+    private const string TestTypes = @"
+namespace TestApp
+{
+    public enum UserStatus
+    {
+        Active,
+        Archived
+    }
+
+    public class Profile
+    {
+        public string Name { get; set; }
+    }
+
+    public class Order
+    {
+        public int Id { get; set; }
+    }
+
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+        public int LoginCount { get; set; }
+        public UserStatus Status { get; set; }
+        public Profile Profile { get; set; }
+        public List<Order> Orders { get; set; }
+    }
+
+    public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; }
+    }
+}
+";
+
+    private const string WarningComment =
+        "// Warning: ExecuteUpdate runs immediately and bypasses change tracking and entity callbacks.";
+
+    private static string WithExecuteUpdate(string program) =>
+        Usings + EFCoreMockWithExecuteUpdate + TestTypes + program;
+
+    private static string WithSyncOnly(string program) =>
+        Usings + EFCoreMockWithExecuteUpdateSyncOnly + TestTypes + program;
+
+    [Fact]
+    public async Task Fixer_ConstantRhs_InlineQuery_RewritesToExecuteUpdate()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_SelfMemberArithmeticRhs_TransplantsVerbatim()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.LoginCount = user.LoginCount + 1;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.LoginCount, user => user.LoginCount + 1));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_MultipleProperties_ChainsSetProperty()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+            user.LoginCount = user.LoginCount + 1;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived"").SetProperty(user => user.LoginCount, user => user.LoginCount + 1));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_AsyncContext_UsesExecuteUpdateAsyncAndAwait()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        await db.Users.Where(u => u.IsActive).ExecuteUpdateAsync(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        await db.SaveChangesAsync();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_DbContextSetSource_Rewrites()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Set<User>().Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Set<User>().Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_QueryChainSource_PreservesChain()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive).OrderBy(u => u.Id))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).OrderBy(u => u.Id).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_InlineToList_StripsMaterializer()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive).ToList())
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_AwaitedInlineToListAsync_StripsMaterializer()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in await db.Users.Where(u => u.IsActive).ToListAsync())
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        await db.Users.Where(u => u.IsActive).ExecuteUpdateAsync(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        await db.SaveChangesAsync();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_AsyncWithCancellationToken_PropagatesToken()
+    {
+        // The token on the awaited SaveChangesAsync must move onto ExecuteUpdateAsync (now the
+        // actual database call), not be silently dropped.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run(CancellationToken token)
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync(token);
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run(CancellationToken token)
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        await db.Users.Where(u => u.IsActive).ExecuteUpdateAsync(setters => setters.SetProperty(user => user.Name, user => ""Archived""), token);
+        await db.SaveChangesAsync(token);
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_EnumAssignment_Rewrites()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Status = UserStatus.Archived;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Status, user => UserStatus.Archived));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_CapturedVariableRhs_TransplantsVerbatim()
+    {
+        // The analyzer permits an RHS that references an outer parameter/local (EF parameterizes
+        // the captured value); the fixer transplants it verbatim into the value lambda.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run(string archivedName)
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = archivedName;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run(string archivedName)
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => archivedName));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_DuplicatePropertyAssignment_KeepsLastWrite()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""First"";
+            user.Name = ""Second"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Second""));
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_DuplicateProperty_LaterReadsEarlierWrite_DoesNotRegister()
+    {
+        // The second write reads the first write's in-memory result ("AB"), but ExecuteUpdate
+        // would evaluate `user.Name + "B"` against the original column value. Decline.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""A"";
+            user.Name = user.Name + ""B"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_RhsReadsEarlierWrittenProperty_DoesNotRegister()
+    {
+        // user.LoginCount reads a value written earlier in the same iteration; the set-based
+        // rewrite would read the original column instead. Decline.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Id = 0;
+            user.LoginCount = user.Id;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_AddsEntityFrameworkUsing_WhenAbsent()
+    {
+        // The loop compiles without importing Microsoft.EntityFrameworkCore (DbContext/DbSet
+        // members + System.Linq), but the generated ExecuteUpdate extension needs the import.
+        const string usingsNoEf = @"
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Collections;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using TestApp;
+";
+
+        var test = usingsNoEf + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}";
+
+        const string usingsWithEf = @"
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Collections;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using TestApp;
+using Microsoft.EntityFrameworkCore;
+";
+
+        var fixedCode = usingsWithEf + EFCoreMockWithExecuteUpdate + TestTypes + @"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_SaveChangesResultReturned_DoesNotRegister()
+    {
+        // The trailing SaveChanges row count is returned; the rewrite would leave a SaveChanges
+        // that now returns 0, silently changing the observed value. Decline.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    int Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        return db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_SaveChangesResultAssigned_DoesNotRegister()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    int Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        var changed = db.SaveChanges();
+        return changed;
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_TopLevelAsyncProgram_UsesExecuteUpdateAsync()
+    {
+        // Top-level programs have no async function ancestor, so async-ness is inferred from the
+        // awaited trailing SaveChangesAsync rather than from an enclosing method modifier.
+        const string topLevelUsings = @"
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Collections;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using TestApp;
+";
+
+        var test = topLevelUsings + @"
+using var db = new AppDbContext();
+{|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+{
+    user.Name = ""Archived"";
+}|}
+await db.SaveChangesAsync();
+" + EFCoreMockWithExecuteUpdate + TestTypes;
+
+        var fixedCode = topLevelUsings + @"
+using var db = new AppDbContext();
+
+" + WarningComment + @"
+await db.Users.Where(u => u.IsActive).ExecuteUpdateAsync(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+await db.SaveChangesAsync();
+" + EFCoreMockWithExecuteUpdate + TestTypes;
+
+        var verifier = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+        };
+        verifier.TestState.OutputKind = OutputKind.ConsoleApplication;
+        verifier.FixedState.OutputKind = OutputKind.ConsoleApplication;
+
+        await verifier.RunAsync();
+    }
+
+    [Fact]
+    public async Task Fixer_PreMaterializedLocal_DoesNotRegister()
+    {
+        // The collection is a local List<User> (await ...ToListAsync()); rewriting it to
+        // users.ExecuteUpdate(...) is type-invalid and would orphan the local. Decline.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        var users = await db.Users.Where(u => u.IsActive).ToListAsync();
+        {|LC032:foreach (var user in users)
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_QueryLocal_DoesNotRegister()
+    {
+        // The collection is a local IQueryable; inlining its initializer would orphan the
+        // local. v1 declines the local-source shape.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        var users = db.Users.Where(u => u.IsActive);
+        {|LC032:foreach (var user in users)
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_AsyncContext_NoExecuteUpdateAsync_DoesNotRegister()
+    {
+        // Diagnostic still fires (synchronous ExecuteUpdate exists), but the only async-context
+        // rewrite would be a blocking sync-over-async call, so the fixer declines.
+        var test = WithSyncOnly(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        await db.SaveChangesAsync();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_SyncLocalFunctionInsideAsyncMethod_UsesSyncExecuteUpdate()
+    {
+        // The nearest enclosing function is a synchronous local function, so await is illegal
+        // here even though an async method is an ancestor: emit the synchronous form.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        void Archive()
+        {
+            {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+            {
+                user.Name = ""Archived"";
+            }|}
+            db.SaveChanges();
+        }
+
+        Archive();
+        await Task.CompletedTask;
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    async Task Run()
+    {
+        using var db = new AppDbContext();
+        void Archive()
+        {
+            " + WarningComment + @"
+            db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+            db.SaveChanges();
+        }
+
+        Archive();
+        await Task.CompletedTask;
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+}

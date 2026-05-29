@@ -8,7 +8,7 @@ This page is generated from that catalog and grouped by domain.
 | Rule | Severity | Legacy Category | Fix | Docs | Sample |
 | --- | --- | --- | --- | --- | --- |
 | `LC012` Optimize: Use ExecuteDelete() instead of RemoveRange() | `Warning` | `Performance` | Code fix | [`LC012_OptimizeRemoveRange`](./LC012_OptimizeRemoveRange.md) | `Samples/LC012_OptimizeRemoveRange/` |
-| `LC032` Use ExecuteUpdate for provable bulk scalar updates | `Info` | `Performance` | Manual only | [`LC032_ExecuteUpdateForBulkUpdates`](./LC032_ExecuteUpdateForBulkUpdates.md) | `Samples/LC032_ExecuteUpdateForBulkUpdates/` |
+| `LC032` Use ExecuteUpdate for provable bulk scalar updates | `Info` | `Performance` | Code fix | [`LC032_ExecuteUpdateForBulkUpdates`](./LC032_ExecuteUpdateForBulkUpdates.md) | `Samples/LC032_ExecuteUpdateForBulkUpdates/` |
 | `LC035` Missing Where before bulk execute | `Info` | `Safety` | Manual only | [`LC035_MissingWhereBeforeExecuteDeleteUpdate`](./LC035_MissingWhereBeforeExecuteDeleteUpdate.md) | `Samples/LC035_MissingWhereBeforeExecuteDeleteUpdate/` |
 
 ## Change Tracking & Context Lifetime
