@@ -61,6 +61,24 @@ namespace LinqContraband.Test.Data
 }
 ";
 
+    // DatabaseFacade + the EF7+ raw-SQL facade extensions: SqlQueryRaw (raw string, unsafe with
+    // interpolation) and its safe sibling SqlQuery (FormattableString). Kept separate so existing
+    // span assertions are unaffected.
+    private const string EFCoreFacadeMock = @"
+namespace Microsoft.EntityFrameworkCore.Infrastructure
+{
+    public class DatabaseFacade { }
+}
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class RelationalDatabaseFacadeExtensions
+    {
+        public static System.Linq.IQueryable<TResult> SqlQueryRaw<TResult>(this Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade databaseFacade, string sql, params object[] parameters) => null;
+        public static System.Linq.IQueryable<TResult> SqlQuery<TResult>(this Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade databaseFacade, System.FormattableString sql) => null;
+    }
+}
+";
+
     [Fact]
     public async Task FromSqlRaw_WithInterpolatedString_ShouldTriggerLC018()
     {
@@ -513,7 +531,7 @@ namespace LinqContraband.Test
     }
 }";
 
-        var expected = VerifyFix.Diagnostic("LC018").WithSpan(22, 43, 22, 81);
+        var expected = VerifyFix.Diagnostic("LC018").WithSpan(22, 43, 22, 81).WithArguments("FromSqlInterpolated", "FromSqlRaw");
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
@@ -721,6 +739,92 @@ namespace LinqContraband.Test
         public void TestMethod(AppDbContext db, int id)
         {
             var result = RelationalQueryableExtensions.FromSqlInterpolated(db.Users, $""SELECT * FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithInterpolatedString_ShouldTriggerLC018()
+    {
+        // SqlQueryRaw<T> on the DatabaseFacade takes a raw string; an interpolated string with a
+        // runtime hole is an injection sink, exactly like FromSqlRaw.
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, int id)
+        {
+            var rows = db.SqlQueryRaw<int>({|LC018:$""SELECT Id FROM Users WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithConcatenation_ShouldTriggerLC018()
+    {
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, string name)
+        {
+            var rows = db.SqlQueryRaw<int>({|LC018:""SELECT Id FROM Users WHERE Name = '"" + name + ""'""|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQuery_WithFormattableString_ShouldNotTrigger()
+    {
+        // SqlQuery<T> takes a FormattableString and parameterizes the holes, so it is the safe
+        // sibling and must stay quiet.
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, int id)
+        {
+            var rows = db.SqlQuery<int>($""SELECT Id FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithConstantInterpolation_ShouldNotTrigger()
+    {
+        // Constant-only interpolation has no runtime hole, so it is not an injection vector.
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        private const int Max = 10;
+        public void Run(DatabaseFacade db)
+        {
+            var rows = db.SqlQueryRaw<int>($""SELECT TOP {Max} Id FROM Users"");
         }
     }
 }";
