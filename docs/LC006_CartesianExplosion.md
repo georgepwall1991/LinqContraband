@@ -54,6 +54,8 @@ In these cases either suppress the diagnostic with `#pragma warning disable LC00
 
 LC006 resolves lambda, filtered, and literal string include paths when the navigation symbols are provable. It deduplicates repeated include paths and reports once for each risky query chain. A final or chain-prefix explicit `AsSplitQuery()` suppresses the diagnostic; a final explicit `AsSingleQuery()` keeps it active.
 
+The receiver-chain walk follows a **single-assignment local** back to its assigned value, so a chain split across a variable is analysed as one query. A prior-statement `AsSplitQuery()` is honoured (`var q = db.Users.AsSplitQuery(); q.Include(a).Include(b)` stays quiet) and sibling collection Includes split across the local are still detected (`var q = db.Users.Include(a); q.Include(b)` reports). Locals that are reassigned, or whose source is ambiguous, are left conservative (the walk stops at the local).
+
 ### ID: `LC006`
 ### Category: `Performance`
 ### Severity: `Warning`

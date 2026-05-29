@@ -107,6 +107,68 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_AsSplitQueryOnLocal_NoDiagnostic()
+    {
+        // The corrected code: AsSplitQuery() is applied, then the query is hoisted to a local
+        // before the sibling Includes. The receiver-chain walk must follow the single-assignment
+        // local back to the AsSplitQuery() so the split is recognised and the rule stays quiet.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = db.Users.AsSplitQuery();
+        var query = q.Include(u => u.Orders).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_FirstIncludeAndSplitOnLocal_NoDiagnostic()
+    {
+        // AsSplitQuery() and the first Include live on the local; the second Include is applied
+        // after. Still an effective split, so no diagnostic.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = db.Users.AsSplitQuery().Include(u => u.Orders);
+        var query = q.Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SiblingCollectionsSplitAcrossLocal_TriggersDiagnostic()
+    {
+        // One sibling collection Include is on the local, the other is applied after; together
+        // they are one query with two sibling collections (a real Cartesian product). Walking the
+        // local back to its assignment lets the rule see both Includes and report.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = db.Users.Include(u => u.Orders);
+        var query = {|LC006:q.Include(u => u.Roles)|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_OneCollectionOneReference_NoDiagnostic()
     {
         var test = Usings + @"
