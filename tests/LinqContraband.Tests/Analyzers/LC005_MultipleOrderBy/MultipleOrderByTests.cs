@@ -125,6 +125,69 @@ class Test
     }
 
     [Fact]
+    public async Task NoDiagnostic_QuerySyntax_SingleOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = from x in list
+                orderby x
+                select x;
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_QuerySyntax_MultiKeyOrderBy()
+    {
+        // A single orderby clause with multiple keys lowers to OrderBy(...).ThenBy(...),
+        // which is correct multi-level sorting and must stay quiet (and must not crash).
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = from x in list
+                orderby x, x descending
+                select x;
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Diagnostic_QuerySyntax_TwoOrderByClauses()
+    {
+        // Two separate orderby clauses lower to OrderBy(...).OrderBy(...) — the second
+        // resets the first. This is the same reset smell as the fluent form and must be
+        // flagged, not crash the analyzer with an InvalidCastException (AD0001).
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = from x in list
+                orderby x
+                orderby {|LC005:x|}
+                select x;
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Diagnostic_OrderByOrderBy_WithAsyncMaterializer()
     {
         var test = @"
