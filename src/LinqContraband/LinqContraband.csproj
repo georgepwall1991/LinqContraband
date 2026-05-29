@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.12</Version>
+        <Version>5.4.13</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Fixes an LC014 false negative: a string case conversion (ToLower/ToUpper) on a value that depends on the query parameter through a method's ARGUMENTS — not only its receiver — is now detected. Previously only an invocation's instance was followed, so db.Users.Where(u =&gt; string.Concat(u.First, u.Last).ToLower() == "x") was missed because string.Concat is static and its column-derived arguments were never inspected. The dependence walk now also checks invocation arguments and descends into the array that wraps params arguments (string.Join, string.Format). Constant-only values such as string.Concat("a", "b").ToLower() stay quiet.</PackageReleaseNotes>
+        <PackageReleaseNotes>Precision and security hardening from a deep adversarial rescan. LC005: fixed an analyzer crash (AD0001) on query-comprehension 'orderby a orderby b' clauses; the reset is now reported there. LC014: fixed a 5.4.12 false positive where a column reaching a numeric/positional argument (e.g. PadRight/Substring length) wrongly flagged a case conversion on a constant receiver. LC002: stopped an unsafe code fix that silently dropped de-duplication when a set materializer (ToHashSet) was the source of a second materializer. LC006: fixed a false positive that flagged an effective AsSplitQuery() hoisted into a local variable. LC024: stopped three false positives on EF Core 9 translatable group aggregates (g.Any(), filtered Count, projected Sum). LC015: stopped the code fix from offering a partial-key OrderBy on a [Keyless] entity. LC018 (security): now detects SqlQueryRaw raw SQL on the DbContext.Database facade, an injection sink previously invisible to the rule.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
