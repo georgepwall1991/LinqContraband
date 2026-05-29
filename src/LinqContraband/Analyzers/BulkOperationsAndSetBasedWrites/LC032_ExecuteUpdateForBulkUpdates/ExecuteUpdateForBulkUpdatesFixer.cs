@@ -147,11 +147,15 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
         if (mode == RewriteMode.None)
             return false;
 
-        // Only ExecuteUpdateAsync takes a token; if SaveChangesAsync passed one but no awaitable
-        // ExecuteUpdateAsync overload accepts a CancellationToken, decline rather than drop it.
-        var tokenToCarry = mode == RewriteMode.Async ? cancellationTokenText : null;
-        if (tokenToCarry is not null && !HasExecuteUpdateAsyncTokenOverload(semanticModel.Compilation))
+        // A token can only be preserved on an awaited ExecuteUpdateAsync overload that accepts
+        // one. If the trailing SaveChanges carried a token but the rewrite would be synchronous
+        // (e.g. an unawaited SaveChangesAsync(token)) or no token-accepting overload exists,
+        // decline rather than silently drop the developer's cancellation intent.
+        if (cancellationTokenText is not null &&
+            (mode != RewriteMode.Async || !HasExecuteUpdateAsyncTokenOverload(semanticModel.Compilation)))
+        {
             return false;
+        }
 
         plan = new RewritePlan(
             receiver.WithoutTrivia().ToString(),
@@ -159,7 +163,7 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
             forEach.Identifier.Text,
             mode == RewriteMode.Async,
             ResolveExecuteUpdateNamespace(semanticModel.Compilation, mode == RewriteMode.Async),
-            tokenToCarry);
+            mode == RewriteMode.Async ? cancellationTokenText : null);
         return true;
     }
 
@@ -244,6 +248,9 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
 
     private static bool ReadsAnyProperty(ExpressionSyntax expression, string iterationName, HashSet<string> propertyNames)
     {
+        // Matching `iterationVar.Prop` is sufficient here: the analyzer has already restricted every
+        // RHS to direct scalar members of the iteration variable (see the assignment analysis), so
+        // deeper shapes like `iterationVar.Nav.Prop` never reach the fixer.
         if (propertyNames.Count == 0)
             return false;
 
@@ -330,11 +337,18 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
             expression = await.Expression;
         }
 
+        // Require a direct SaveChanges/SaveChangesAsync invocation. This declines wrapper shapes
+        // such as `_ = db.SaveChangesAsync(token);` or `db.SaveChangesAsync(token).Wait();`, where
+        // a token would otherwise be lost in a synchronous rewrite.
+        if (expression is not InvocationExpressionSyntax saveInvocation ||
+            saveInvocation.Expression is not MemberAccessExpressionSyntax { Name.Identifier.Text: "SaveChanges" or "SaveChangesAsync" })
+        {
+            return false;
+        }
+
         // Capture a cancellation token argument (e.g. SaveChangesAsync(ct)) so it can be carried
         // onto the ExecuteUpdateAsync call that replaces it.
-        if (expression is InvocationExpressionSyntax saveInvocation)
-            cancellationTokenText = FindCancellationTokenArgument(saveInvocation, semanticModel);
-
+        cancellationTokenText = FindCancellationTokenArgument(saveInvocation, semanticModel);
         return true;
     }
 

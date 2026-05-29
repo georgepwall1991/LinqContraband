@@ -680,6 +680,28 @@ class Program
     }
 
     [Fact]
+    public async Task Fixer_TrailingSaveChangesViaDiscardAssignment_DoesNotRegister()
+    {
+        // `_ = db.SaveChangesAsync(token);` is not a direct SaveChanges invocation statement; a
+        // synchronous rewrite would drop the token, so the fixer declines this wrapper shape.
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run(CancellationToken token)
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        _ = db.SaveChangesAsync(token);
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_TopLevelAsyncProgram_UsesExecuteUpdateAsync()
     {
         // Top-level programs have no async function ancestor, so async-ness is inferred from the
