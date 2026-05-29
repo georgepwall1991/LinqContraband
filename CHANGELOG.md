@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Stopped `LC005` from crashing the analyzer (`AD0001` / `InvalidCastException`) on query-comprehension syntax. Two separate `orderby` clauses (`from x in xs orderby a orderby b select x`) lower to `OrderBy(...).OrderBy(...)` — the same reset smell as the fluent form — but their operation syntax is an `OrderingSyntax`, not an `InvocationExpressionSyntax`. The analyzer hard-cast that node, so every compilation containing the shape threw and the rule produced no result. The cast is now guarded, and the reset is reported at the offending `orderby` clause instead of being swallowed by the crash (closing a false negative the crash had masked). The code fix is still offered only for the fluent form — query syntax has no method call to rewrite to `ThenBy`, so the query-syntax diagnostic is report-only. Added a crash/regression test for the two-clause shape plus guardrails that a single `orderby` and a multi-key `orderby a, b descending` clause (which lowers to `OrderBy(...).ThenBy(...)`) stay quiet
+
 ## [5.4.12] - 2026-05-28
 
 ### Fixed

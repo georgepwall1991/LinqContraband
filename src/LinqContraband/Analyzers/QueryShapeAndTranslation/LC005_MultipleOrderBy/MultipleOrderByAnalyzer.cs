@@ -61,9 +61,15 @@ public sealed class MultipleOrderByAnalyzer : DiagnosticAnalyzer
             var previousMethod = previousInvocation.TargetMethod;
             if (IsSortMethod(previousMethod))
             {
-                var syntax = (InvocationExpressionSyntax)invocation.Syntax;
-                var memberAccess = (MemberAccessExpressionSyntax)syntax.Expression;
-                context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation(), method.Name));
+                // Fluent syntax (`a.OrderBy(...).OrderBy(...)`) carries an InvocationExpressionSyntax;
+                // point the diagnostic at the offending method name. Query-comprehension syntax
+                // (`orderby x orderby y`) lowers to the same OrderBy(...).OrderBy(...) operations but
+                // their syntax node is an OrderingSyntax, not an invocation — casting it crashes the
+                // analyzer (AD0001), so fall back to the operation's own location and still report the reset.
+                var location = invocation.Syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess }
+                    ? memberAccess.Name.GetLocation()
+                    : invocation.Syntax.GetLocation();
+                context.ReportDiagnostic(Diagnostic.Create(Rule, location, method.Name));
             }
         }
     }

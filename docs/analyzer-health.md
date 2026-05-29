@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-05-14
+Reviewed: 2026-05-29
 
 This is a deliberately harsh health audit for the 44 analyzers in `RuleCatalog`. The catalog currently declares 28 rules with code fixes and 16 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
@@ -35,7 +35,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC002 | Premature query continuation after materialization | Materialization & Projection | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Medium | Strong analyzer/fixer pair with provider safety checks; docs are sparse on `ToList()`/`ToArray()`/`AsEnumerable()` variance and when client boundaries are intentional. |
 | LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 3 | 4 | 4 | 3 | 2 | 3 | Low | Single-shape binary-comparison detection with a safe fixer; doc is boilerplate (no provider/perf nuance, no scalar-context guidance) and the test file is thin on fixer edge cases. |
 | LC004 | IQueryable passed as IEnumerable | Query Shape & Translation | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Solid API-boundary analyzer proving foreach/forwarding/materializing sinks; docs are short on method-body scoping nuance, forwarding chains, and custom-constructor negatives. |
-| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 3 | 4 | 4 | 2 | 2 | 3 | Low | Linear chain heuristic with a safe `ThenBy` fixer; only 8 test methods and a 29-line doc — neither covers intentional reset cases, async, or generic-arg variants. |
+| LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 4 | 3 | 3 | 3 | Low | Linear chain heuristic with a safe `ThenBy` fixer. The 2026-05-29 rescan found and fixed an analyzer crash: query-comprehension syntax (`orderby a orderby b`) lowers to `OrderBy(...).OrderBy(...)` whose operation syntax is an `OrderingSyntax`, which the analyzer hard-cast to `InvocationExpressionSyntax` and threw `AD0001` on. The cast is now guarded and the reset is reported at the `orderby` clause (report-only — no method node to rewrite), closing the FN the crash had masked. Added query-syntax crash/positive/multi-key-negative tests; doc now covers query syntax. Residual: chains broken across intervening order-preserving operators or locals are still not walked. |
 | LC006 | Multiple collection Includes | Loading & Includes | Warning | 3 | 4 | 3 | 4 | 4 | 4 | Medium | High-impact rule with a sibling-collection precision contract now backed by an explicit two-reference-sibling negative; doc widened (~95 lines) to spell out the `AsSplitQuery()` tradeoff (extra roundtrips, plan cost, snapshot consistency, pagination interaction), legitimate-Cartesian cases, and the rule boundary against LC028 (depth) and LC038 (count). Complex include-chain flow handling stays the residual gap. |
 | LC007 | Database execution inside loop | Execution & Async | Warning | 4 | 4 | 4 | 4 | 5 | 5 | Low | Exceptional analyzer and excellent 82-line doc; not a `5` on Analyzer because rarer do-while shapes, complex local-function chains, and conditional execution contexts remain uncovered. |
 | LC008 | Synchronous EF method in async context | Execution & Async | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Solid sync/async pair detection; fixer is limited to simple `ToList`→`ToListAsync` rewrites and the 35-line doc has no EF API inventory or "no async equivalent" guidance. |
@@ -76,21 +76,38 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC043 | Prefer await foreach over buffering async streams | Execution & Async | Info | 4 | 4 | 4 | 3 | 3 | 2 | Low | Narrow async-stream rule with proven `IAsyncEnumerable<T>` source detection; 7 test methods have no CancellationToken or buffer-argument variants and the doc skips concrete examples. Streaming optimization, not a correctness issue. |
 | LC044 | AsNoTracking entity mutated then SaveChanges | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 3 | 5 | 5 | Low | Reference-quality manual rule with 76-line doc detailing re-attach gates, earlier-save gates, block reachability, and single-assignment gates; 18-test suite is healthy but lacks foreach-mutation and nested-scope reachability coverage, which is why Tests drops to `3`. |
 
+## 2026-05-29 Deep Rescan
+
+A fresh adversarial FP/FN sweep ran eight parallel `analyzer-fp-fn-hunter` probes against the highest-payoff Warning-severity rules (LC002, LC005, LC006, LC014, LC015, LC018, LC020, LC024). Every probe constructed compiling EF Core variations and reasoned from analyzer source; every finding below was **test-confirmed** against the built analyzer on net10.0. This surfaced one analyzer crash and a cluster of genuinely-new false positives, false negatives, and unsafe fixes that the 2026-05-14 audit had not captured.
+
+| Rule | Class | Evidence (test-confirmed) | Deciding code | Status |
+| --- | --- | --- | --- | --- |
+| LC005 | **Crash (AD0001)** + masked FN | `from x in xs orderby a orderby b select x` threw `InvalidCastException` (`OrderingSyntax` hard-cast to `InvocationExpressionSyntax`); the reset was never reported | `MultipleOrderByAnalyzer.cs:64` | **Fixed — this iteration** |
+| LC014 | FP (5.4.12 regression) | Constant receiver + column in a **numeric/positional** arg fires: `"X".PadLeft(u.Age)`, `"H".Substring(0, u.Age)`, `"H".Remove(u.Age)`, `"X".PadRight(u.Name.Length)` — casing never touches a column | new arg-walk at `AvoidStringCaseConversionAnalyzer.cs:289-293` | Open — High |
+| LC002 | **Unsafe fix** + FP message | `ToHashSet().ToList()` "redundant" fix rewrites to `ToList()`, silently dropping de-duplication; `ToDictionary().ToList()` / `ToLookup().ToList()` mislabeled "redundant" | `PrematureMaterializationMethodRules.cs:97-106`; `PrematureMaterializationContinuationSafety.cs:18-28` | Open — High |
+| LC006 | FP (+ FN) | `var q = db.Users.AsSplitQuery(); q.Include(a).Include(b)` fires despite an effective split (walker stops at `ILocalReferenceOperation`), punishing the corrected code; siblings split across a local are also missed | `CartesianExplosionChainAnalysis.cs:57-65` (fix via `LocalAssignmentCache`) | Open — High |
+| LC024 | FP ×3 | `g.Any()`, `g.Where(p).Count()`, `g.Select(s).Sum()` all flag though EF Core 9 translates them; allowed-aggregate check only accepts aggregates applied directly to `g` | `GroupByNonTranslatableAnalyzer.cs:191, 203-204, 137` | Open — High |
+| LC015 | **Unsafe fix** + FN | Fixer offers partial-key `OrderBy(x => x.Id)` for a Fluent-API composite key and for a `[Keyless]` entity exposing an `Id`; `TakeLast`/`SkipLast`/`ElementAt`/`LastAsync` never flagged | `MissingOrderByFixer.cs:61-113`; `MissingOrderByAnalyzer.cs:43-45` | Open — High |
+| LC020 | FP + FN | `StringComparison.Ordinal`/`OrdinalIgnoreCase` over-flagged (EF translates these); argument-derived crime missed (`"admin".Contains(u.Name, …)` — same class as the LC014 #132 fix); materialized-subquery predicate over-flagged | `StringContainsWithComparisonAnalyzer.cs:50, 55, 164-166` | Open — Medium |
+| LC018 | **FN (security)** | `db.Database.SqlQueryRaw<T>($"… {id}")` and concat/format equivalents are invisible to the entire Raw SQL neighborhood (LC018, LC034, LC037) — an injection sink | `AvoidFromSqlRawWithInterpolationAnalyzer.cs:43,49`; `RawSqlStringConstructionAnalyzer.cs:32-35`; `AvoidExecuteSqlRawWithInterpolationAnalyzer.cs:69` | Open — High |
+
+Each open finding has proposed `[Fact]` names recorded by its probe; the hardening loop takes them in priority order (crash → unsafe fixes / shipped-code regressions → high-frequency FPs → security FN → remaining FP/FN). Per-rule scorecard rows above are updated as each fix ships, not when the gap is found.
+
 ## Planning Shortlist
 
-The next improvement batch should focus on rules where user impact and health gaps overlap. The fine-comb re-audit promoted three rules to **High** because each combines high importance with a concrete, named gap:
+The next improvement batch should focus on rules where user impact and health gaps overlap. The 2026-05-29 deep rescan replaced the empty High tier with seven concrete, test-confirmed defects (see the Deep Rescan table); LC005's crash already shipped a fix this iteration.
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| High | None | The three High targets surfaced by the 2026-05-14 fine-comb re-audit (LC006, LC015, LC018) all shipped precision improvements in 5.4.5–5.4.7. Promote a rule back to High only when concrete false-positive, false-negative, or unsafe-fix evidence surfaces. |
-| Medium | LC002, LC006, LC009, LC015, LC018, LC024, LC035 | LC002 needs provider-variance and intentional-client-boundary docs. LC006's AsSplitQuery tradeoff and rule-boundary docs closed in 5.4.6; complex include-chain flow handling remains. LC009 now recognises the `context.Set<T>()` source and places AsNoTracking by semantic type (5.4.9), and its doc covers the unsafe-AsNoTracking cases; residual gap is that the fixer cannot prove cross-method mutation or offer the identity-resolution variant. LC015's composite-key partial-fix gap closed in 5.4.7; no-fix Fluent-API and projection guidance is now explicit but Fluent-only key inference remains a non-goal. LC018's constant-only FP gap closed in 5.4.5; cross-provider raw-SQL API variants outside `FromSqlRaw` remain. LC024 needs an enumerated safe-aggregate guide. LC035 needs richer filtered-local/reassignment cases. LC012's async-aware fixer and unit-of-work docs shipped in 5.4.8 (now Low). |
-| Low | LC001, LC003, LC004, LC005, LC007, LC008, LC010, LC011, LC012, LC013, LC014, LC016, LC017, LC019, LC020, LC021, LC022, LC023, LC025, LC026, LC027, LC028, LC029, LC030, LC031, LC032, LC033, LC034, LC036, LC037, LC038, LC039, LC040, LC041, LC042, LC043, LC044 | Treat as currently acceptable, low-impact tuning, or appropriately harsh-scored where weak. Several of these (LC005, LC016, LC020, LC022, LC031, LC038, LC042) absorbed scoring downgrades on this pass — they remain Low because user impact is also low. LC012 moved here once its async-aware fixer (5.4.8) closed the sync-over-async unsafe-fix and tripled fixer coverage. |
+| High | LC002, LC006, LC014, LC015, LC018, LC024 | Concrete, test-confirmed defects from the 2026-05-29 rescan, ordered by severity: **LC014** FP regression in just-shipped 5.4.12 arg-walk (descend only into string-typed args); **LC002** unsafe `ToHashSet().ToList()` fix dropping de-duplication (exclude set-type materializers from the redundant-fix pairing); **LC006** FP on `AsSplitQuery()` hoisted to a local (resolve the local via `LocalAssignmentCache` in the chain walker); **LC024** three FPs on EF-9-translatable group projections (`Any`/filtered aggregate/`Select(...).Sum()` — walk the group-access chain instead of requiring a direct-on-`g` receiver); **LC015** unsafe partial-key fix for Fluent/`[Keyless]` composite keys plus `TakeLast`/`ElementAt` FN; **LC018** security FN on `SqlQueryRaw<T>` (extend the name **and** receiver gates to the `DatabaseFacade` source). |
+| Medium | LC009, LC020, LC035 | LC020 carries a test-confirmed FP/FN pair from the 2026-05-29 rescan (Ordinal over-flagging + argument-derived FN, the LC014 #132 class) — Medium rather than High only because its Importance is already low. LC009 now recognises the `context.Set<T>()` source and places AsNoTracking by semantic type (5.4.9), and its doc covers the unsafe-AsNoTracking cases; residual gap is that the fixer cannot prove cross-method mutation or offer the identity-resolution variant. LC035 needs richer filtered-local/reassignment cases. |
+| Low | LC001, LC003, LC004, LC005, LC007, LC008, LC010, LC011, LC012, LC013, LC016, LC017, LC019, LC021, LC022, LC023, LC025, LC026, LC027, LC028, LC029, LC030, LC031, LC032, LC033, LC034, LC036, LC037, LC038, LC039, LC040, LC041, LC042, LC043, LC044 | Treat as currently acceptable, low-impact tuning, or appropriately harsh-scored where weak. LC005's query-syntax crash was fixed in this rescan iteration; it stays Low because user impact (two-clause `orderby` is uncommon) is also low. LC012 moved here once its async-aware fixer (5.4.8) closed the sync-over-async unsafe-fix and tripled fixer coverage. |
 
 ## Verification Baseline
 
 Package version: 5.4.12
 
-Base audited commit: b783962
+Base audited commit: 840d00b (5.4.12 release); LC005 crash fix pending on `fix/lc005-query-syntax-orderby-crash`.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -108,6 +125,8 @@ Fourteen rules survived the harsh pass without changes (LC008, LC010, LC011, LC0
 
 No code, tests, or samples changed between the original 2026-05-14 sweep and the fine-comb re-audit, so the verification baseline below still applies as written. Git verified: `git log 43b7c1a..HEAD -- src/ tests/ samples/` returns empty.
 
+On **2026-05-29** an eight-probe `analyzer-fp-fn-hunter` deep rescan (see the Deep Rescan section above) re-examined the highest-payoff Warning-severity rules against the shipped 5.4.12 code. Unlike the 2026-05-14 scoring pass, this rescan compiled and test-confirmed every finding. It surfaced eight evidence-backed defects — one analyzer crash (LC005, fixed this iteration) and seven open FP/FN/unsafe-fix items now tracked in the High/Medium shortlist. The hardening loop addresses them one rule per iteration in severity order.
+
 Current local verification:
 
 - `dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
@@ -124,7 +143,8 @@ Current local verification:
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC039_NestedSaveChanges` passed with 19 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC040_MixedTrackingAndNoTracking` passed with 15 tests.
 - `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --no-restore --filter FullyQualifiedName~LC031_UnboundedQueryMaterialization` passed with 17 tests.
-- `dotnet test LinqContraband.sln --framework net10.0 --no-restore` passed with 825 tests.
+- `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --filter FullyQualifiedName~LC005_MultipleOrderBy` passed with 11 tests (3 new query-syntax tests: crash/positive, single-orderby negative, multi-key-orderby negative) after the 2026-05-29 crash fix.
+- `dotnet test LinqContraband.sln --framework net10.0 --no-restore` passed with 828 tests (was 825; +3 LC005 query-syntax tests).
 - `dotnet pack src/LinqContraband/LinqContraband.csproj --configuration Release --output /tmp/linqcontraband-5.4.12` produced `LinqContraband.5.4.12.nupkg`.
 - `git diff --check` passed.
 - `dotnet --list-runtimes` shows only .NET 10 runtimes in this local environment, so full multi-target verification remains blocked by missing .NET 8 and .NET 9 runtimes.
