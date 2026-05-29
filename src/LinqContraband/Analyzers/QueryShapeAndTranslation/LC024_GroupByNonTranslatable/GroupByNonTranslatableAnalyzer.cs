@@ -131,7 +131,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
     {
         foreach (var invocation in GetAllOperations(operation).OfType<IInvocationOperation>())
         {
-            if (IsAllowedAggregateInvocation(invocation, groupParam))
+            if (IsTranslatableGroupAccess(invocation, groupParam))
                 continue;
 
             if (!invocation.ReferencesParameter(groupParam))
@@ -160,7 +160,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
                 // Allow aggregate methods: g.Count(), g.Sum(), g.Average(), g.Min(), g.Max(), g.LongCount()
                 if (usage is IArgumentOperation argOp && argOp.Parent is IInvocationOperation aggInvocation)
                 {
-                    if (IsAllowedAggregateInvocation(aggInvocation, groupParam))
+                    if (IsTranslatableGroupAccess(aggInvocation, groupParam))
                         continue;
 
                     context.ReportDiagnostic(
@@ -170,7 +170,7 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
 
                 if (usage is IInvocationOperation directInvocation)
                 {
-                    if (IsAllowedAggregateInvocation(directInvocation, groupParam))
+                    if (IsTranslatableGroupAccess(directInvocation, groupParam))
                         continue;
 
                     context.ReportDiagnostic(
@@ -186,22 +186,114 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    // Group operators that EF Core can translate as part of a server-side aggregate chain
+    // (e.g. g.Where(p).Count(), g.Select(s).Sum(), g.Distinct().Count()).
+    private static readonly ImmutableHashSet<string> TranslatableGroupOperators = ImmutableHashSet.Create(
+        "Where", "Select", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Distinct");
+
     private static bool IsAllowedAggregateMethod(string methodName)
     {
-        return methodName is "Count" or "LongCount" or "Sum" or "Average" or "Min" or "Max"
-            or "CountAsync" or "LongCountAsync" or "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync";
+        return methodName is "Count" or "LongCount" or "Sum" or "Average" or "Min" or "Max" or "Any" or "All"
+            or "CountAsync" or "LongCountAsync" or "SumAsync" or "AverageAsync" or "MinAsync" or "MaxAsync"
+            or "AnyAsync" or "AllAsync";
     }
 
-    private static bool IsAllowedAggregateInvocation(IInvocationOperation invocation, IParameterSymbol groupParam)
+    // A group-access invocation is translatable when its receiver chain roots at the grouping
+    // parameter through translatable operators AND the OUTERMOST invocation of that chain is an
+    // allowed aggregate. EF Core 9 translates filtered/projected group aggregates such as
+    // g.Where(p).Count() and g.Select(s).Sum(), but a chain that terminates in a non-aggregate
+    // (a bare g.Where(p), a materializer g.Select(s).ToList(), or an element accessor
+    // g.OrderBy(s).First()) still returns a sub-sequence or materializes and must be reported.
+    private static bool IsTranslatableGroupAccess(IInvocationOperation invocation, IParameterSymbol groupParam)
     {
-        if (!IsAllowedAggregateMethod(invocation.TargetMethod.Name))
+        if (!RootsAtGroupParam(invocation.GetInvocationReceiver(), groupParam))
             return false;
 
-        if (!IsKnownAggregateContainingType(invocation.TargetMethod.ContainingType))
+        var terminal = FindOutermostGroupChainInvocation(invocation);
+        if (!IsAllowedAggregateMethod(terminal.TargetMethod.Name) ||
+            !IsKnownAggregateContainingType(terminal.TargetMethod.ContainingType))
+        {
             return false;
+        }
 
-        return invocation.GetInvocationReceiver() is IParameterReferenceOperation parameterReference &&
-               SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, groupParam);
+        // The chain operators are translatable, but their predicate/selector lambda bodies must be
+        // too. Rather than guess which BCL/user method calls EF can translate, this stays
+        // deliberately conservative: the chain is exempt only when its lambda bodies are
+        // invocation-free (member access, comparisons, arithmetic). ANY method call inside a
+        // predicate/selector — a local function, a user method, or a non-translatable BCL overload
+        // such as o.Name.Equals(s, StringComparison.OrdinalIgnoreCase) or Regex.IsMatch(...) —
+        // keeps the chain reported. The terminal subtree contains every lambda in the chain.
+        return !ChainHasLambdaInvocation(terminal, groupParam);
+    }
+
+    // True when the group-chain subtree contains an invocation that is NOT one of the chain's own
+    // translatable group operators rooted at the grouping parameter — i.e. a method call inside a
+    // predicate/selector lambda (or a nested non-group invocation). EF Core cannot be assumed to
+    // translate such calls, so the chain is reported.
+    private static bool ChainHasLambdaInvocation(IInvocationOperation terminal, IParameterSymbol groupParam)
+    {
+        foreach (var descendant in GetAllOperations(terminal).OfType<IInvocationOperation>())
+        {
+            if (!IsGroupChainMethod(descendant.TargetMethod) ||
+                !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Walks the receiver chain and returns true only if it bottoms out at the grouping parameter,
+    // passing exclusively through translatable group operators / aggregates.
+    private static bool RootsAtGroupParam(IOperation? receiver, IParameterSymbol groupParam)
+    {
+        var current = receiver;
+        while (current != null)
+        {
+            current = current.UnwrapConversions();
+            if (current is IParameterReferenceOperation parameterReference)
+                return SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, groupParam);
+
+            if (current is IInvocationOperation chained && IsGroupChainMethod(chained.TargetMethod))
+            {
+                current = chained.GetInvocationReceiver();
+                continue;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    // Walks upward through enclosing group-chain invocations (where the current node is the
+    // receiver) to find the chain's terminal invocation.
+    private static IInvocationOperation FindOutermostGroupChainInvocation(IInvocationOperation invocation)
+    {
+        var outermost = invocation;
+        while (true)
+        {
+            IOperation? parent = outermost.Parent;
+            while (parent is IConversionOperation or IArgumentOperation)
+                parent = parent.Parent;
+
+            if (parent is IInvocationOperation parentInvocation &&
+                IsGroupChainMethod(parentInvocation.TargetMethod) &&
+                ReferenceEquals(parentInvocation.GetInvocationReceiver()?.UnwrapConversions(), outermost))
+            {
+                outermost = parentInvocation;
+                continue;
+            }
+
+            return outermost;
+        }
+    }
+
+    private static bool IsGroupChainMethod(IMethodSymbol method)
+    {
+        return (IsAllowedAggregateMethod(method.Name) || TranslatableGroupOperators.Contains(method.Name)) &&
+               IsKnownAggregateContainingType(method.ContainingType);
     }
 
     private static bool IsKnownAggregateContainingType(INamedTypeSymbol? containingType)
