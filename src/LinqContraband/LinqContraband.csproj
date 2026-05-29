@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.4.13</Version>
+        <Version>5.5.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Precision and security hardening from a deep adversarial rescan. LC005: fixed an analyzer crash (AD0001) on query-comprehension 'orderby a orderby b' clauses; the reset is now reported there. LC014: fixed a 5.4.12 false positive where a column reaching a numeric/positional argument (e.g. PadRight/Substring length) wrongly flagged a case conversion on a constant receiver. LC002: stopped an unsafe code fix that silently dropped de-duplication when a set materializer (ToHashSet) was the source of a second materializer. LC006: fixed a false positive that flagged an effective AsSplitQuery() hoisted into a local variable. LC024: stopped three false positives on EF Core 9 translatable group aggregates (g.Any(), filtered Count, projected Sum). LC015: stopped the code fix from offering a partial-key OrderBy on a [Keyless] entity. LC018 (security): now detects SqlQueryRaw raw SQL on the DbContext.Database facade, an injection sink previously invisible to the rule.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC032 now ships an automatic code fixer. It rewrites a tracked bulk-update loop (a foreach over an EF query that assigns scalar properties, immediately followed by SaveChanges) into a single set-based ExecuteUpdate/ExecuteUpdateAsync call, collapsing N tracked updates and N UPDATE statements into one server-side UPDATE. The fix is conservative: it leaves the trailing SaveChanges in place with a warning comment, prefers the awaited ExecuteUpdateAsync overload and carries the cancellation token onto it, strips inline materializers (including awaited ToListAsync), and collapses duplicate writes last-write-wins. It declines local-variable sources, an observed SaveChanges result, a value that reads a property written earlier in the same loop, and async contexts without a suitable ExecuteUpdateAsync overload, so it never emits a blocking, uncompilable, or behaviour-changing rewrite.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-05-29
+
+### Added
+- Added an automatic code fixer for `LC032` (previously report-only). It rewrites a *proven* tracked bulk-update loop — a `foreach` over an EF query that assigns only scalar properties on the iteration variable, immediately followed by `SaveChanges`/`SaveChangesAsync` on the same context — into a single set-based `ExecuteUpdate`/`ExecuteUpdateAsync` call, collapsing N materialized-and-tracked rows and N `UPDATE` statements into one server-side `UPDATE`. The fixer builds one `SetProperty` per assigned property by reusing the loop variable name as the lambda parameter (so each assignment's target and value transplant verbatim) and prepends a `// Warning: ExecuteUpdate runs immediately and bypasses change tracking and entity callbacks.` comment. It mirrors the bulk-delete (`ExecuteDelete`) fixer's safety model: the trailing `SaveChanges` is left in place (it commits nothing for the converted rows but still flushes unrelated pending changes), inside an `async` context it prefers the awaited `ExecuteUpdateAsync` overload and carries the cancellation token from the awaited `SaveChangesAsync(token)` onto it, inline materializers (`ToList`/`ToArray`/`ToListAsync`/`ToArrayAsync`, including the awaited form) are stripped, and duplicate property writes collapse last-write-wins. The fixer declines — leaving the advisory diagnostic to a manual rewrite — for local-variable sources (which would orphan the local or produce a type-invalid receiver), an observed `SaveChanges` result (`return`/assignment, which the rewrite would change), a value that reads a property written earlier in the same iteration (`ExecuteUpdate` evaluates every value against the original row), and an async context with no suitable `ExecuteUpdateAsync` overload, so it never emits a blocking, uncompilable, or behaviour-changing rewrite. Added 23 fixer tests across the rewrite and decline shapes (incl. token propagation, top-level programs, and write-then-read dependencies)
+
 ## [5.4.13] - 2026-05-29
 
 ### Fixed
