@@ -18,7 +18,7 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
     private static readonly LocalizableString Title = "Avoid FromSqlRaw with interpolated strings";
 
     private static readonly LocalizableString MessageFormat =
-        "Use 'FromSqlInterpolated' instead of 'FromSqlRaw' when using interpolated strings or non-constant concatenations to prevent SQL injection";
+        "Use '{0}' instead of '{1}' when using interpolated strings or non-constant concatenations to prevent SQL injection";
 
     private static readonly LocalizableString Description =
         "Using interpolated strings with FromSqlRaw can lead to SQL injection. Use FromSqlInterpolated for safe parameterization.";
@@ -40,21 +40,34 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        if (method.Name != "FromSqlRaw") return;
+        // FromSqlRaw is the IQueryable/DbSet raw-SQL entry point; SqlQueryRaw is its scalar/keyless
+        // twin on the DatabaseFacade (db.Database.SqlQueryRaw<T>(...)). Both take a raw `string sql`
+        // and are equal injection sinks; their safe siblings are FromSqlInterpolated and SqlQuery
+        // (FormattableString), which are not flagged.
+        if (method.Name != "FromSqlRaw" && method.Name != "SqlQueryRaw") return;
 
         // Verify it's an EF Core method
         if (!IsEfCoreMethod(method)) return;
 
         var receiverType = invocation.GetInvocationReceiverType();
-        if (receiverType?.IsIQueryable() != true && receiverType?.IsDbSet() != true)
+        if (receiverType?.IsIQueryable() != true &&
+            receiverType?.IsDbSet() != true &&
+            !IsDatabaseFacade(receiverType))
             return;
 
         var sqlArgument = invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == "sql")?.Value;
 
         if (sqlArgument != null && IsPotentiallyUnsafe(sqlArgument))
         {
-            context.ReportDiagnostic(Diagnostic.Create(Rule, sqlArgument.Syntax.GetLocation()));
+            var safeAlternative = method.Name == "SqlQueryRaw" ? "SqlQuery" : "FromSqlInterpolated";
+            context.ReportDiagnostic(Diagnostic.Create(Rule, sqlArgument.Syntax.GetLocation(), safeAlternative, method.Name));
         }
+    }
+
+    private static bool IsDatabaseFacade(ITypeSymbol? type)
+    {
+        return type?.Name == "DatabaseFacade" &&
+               type.ContainingNamespace?.ToString()?.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) == true;
     }
 
     private bool IsEfCoreMethod(IMethodSymbol method)
