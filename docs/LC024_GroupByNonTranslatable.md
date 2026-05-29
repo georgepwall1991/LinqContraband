@@ -45,6 +45,21 @@ var query = db.Orders
     });
 ```
 
-LC024 applies to fluent `GroupBy(...).Select(...)` and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
+LC024 applies to fluent `GroupBy(...).Select(...)` and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`, `Any`, `All`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
 
-Aggregate exemptions apply only to known LINQ/EF aggregate methods invoked directly on the grouping, such as `g.Count()`, `g.Sum(...)`, `Enumerable.Count(g)`, or `Enumerable.Sum(g, ...)`.
+### Translatable aggregate chains
+
+EF Core 9 translates aggregates that filter or project the group before collapsing it to a scalar, so these stay quiet:
+
+```csharp
+g.Any()                                 // EXISTS / COUNT(*) > 0
+g.Where(o => o.Amount > 0).Count()      // COUNT over a filtered set
+g.Select(o => o.Amount).Sum()           // SUM(Amount) — same as g.Sum(o => o.Amount)
+g.Distinct().Count()                    // COUNT(DISTINCT ...)
+```
+
+The exemption follows an aggregate whose receiver chain roots at the grouping parameter through translatable operators (`Where`, `Select`, `OrderBy`/`OrderByDescending`/`ThenBy`/`ThenByDescending`, `Distinct`), as well as the direct forms `g.Count()`, `g.Sum(...)`, `Enumerable.Count(g)`, `Enumerable.Sum(g, ...)`.
+
+A chain that **terminates in a non-aggregate** is still reported, because it returns a sub-sequence or materializes per group rather than collapsing to a scalar: a bare `g.Where(p)`, a materializer `g.Select(s).ToList()`, and an element accessor `g.OrderBy(s).First()` all remain crimes.
+
+The exemption is deliberately conservative about the chain's `Where`/`Select` lambda bodies: it covers only **invocation-free** predicates and selectors (member access, comparisons, arithmetic). Any method call inside a predicate or selector keeps the chain reported — a local function, a user-defined method (`g.Select(o => Scale(o.Amount)).Sum()`), or a non-translatable BCL overload (`o.Name.Equals(s, StringComparison.OrdinalIgnoreCase)`, `Regex.IsMatch(...)`) — because the rule does not assume translatability it cannot prove from the expression shape alone.

@@ -242,6 +242,196 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task GroupBy_Select_Any_ShouldNotTrigger()
+    {
+        // EF Core translates g.Any() in a grouping projection (EXISTS / COUNT(*) > 0).
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Has = g.Any() });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_WhereThenCount_ShouldNotTrigger()
+    {
+        // EF Core 9 translates a filtered group aggregate (COUNT over a CASE/filter). The Where is
+        // an intermediate operator enclosed by the Count aggregate, so the chain is translatable.
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Positive = g.Where(o => o.Amount > 0).Count() });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_SelectThenSum_ShouldNotTrigger()
+    {
+        // g.Select(o => o.Amount).Sum() is equivalent to g.Sum(o => o.Amount); EF emits SUM(Amount).
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Total = g.Select(o => o.Amount).Sum() });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task QuerySyntaxGroupBy_Select_SelectThenSum_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result =
+                from order in orders
+                group order by order.CustomerId into g
+                select new { Key = g.Key, Total = g.Select(o => o.Amount).Sum() };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_OrderByThenFirst_ShouldTriggerLC024()
+    {
+        // Guardrail: an intermediate operator that terminates in an element accessor (First), not an
+        // aggregate, is still non-translatable and must report.
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Top = {|LC024:g.OrderBy(o => o.Amount).First()|} });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_SelectThenToList_ShouldTriggerLC024()
+    {
+        // Guardrail: a chain that terminates in a materializer (ToList), not an aggregate, must report.
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Amounts = {|LC024:g.Select(o => o.Amount).ToList()|} });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_UserMethodSelectorThenSum_ShouldTriggerLC024()
+    {
+        // Guardrail: the chain ends in an aggregate, but the Select selector calls a user-defined
+        // method EF cannot translate, so the chain is not actually translatable and must report.
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, Total = {|LC024:g.Select(o => Scale(o.Amount)).Sum()|} });
+        }
+
+        private static decimal Scale(decimal value) => value * 2;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GroupBy_Select_BclMethodInPredicateThenCount_ShouldTriggerLC024()
+    {
+        // Guardrail: a method call in the predicate — even a BCL one — is not assumed translatable.
+        // The chain exemption only covers invocation-free predicates/selectors, so this reports.
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { Key = g.Key, C = {|LC024:g.Where(o => o.Amount.ToString().StartsWith(""1"")).Count()|} });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GroupBy_Select_KeyAndAggregates_ShouldNotTrigger()
     {
         var test = Usings + @"
