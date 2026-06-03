@@ -17,7 +17,10 @@ var generated = GenerateMarkdown();
 
 if (checkOnly)
 {
-    var current = File.Exists(outputPath) ? File.ReadAllText(outputPath) : string.Empty;
+    // Compare with line endings normalized to LF: the generated text is canonical LF, but a
+    // Windows (autocrlf) checkout stores docs/rule-catalog.md with CRLF, so a raw byte comparison
+    // would report a spurious "out of date" on Windows even when the content is identical.
+    var current = File.Exists(outputPath) ? NormalizeNewlines(File.ReadAllText(outputPath)) : string.Empty;
     if (!string.Equals(current, generated, StringComparison.Ordinal))
     {
         Console.Error.WriteLine($"{outputPath} is out of date. Run: dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write");
@@ -81,7 +84,15 @@ static string GenerateMarkdown()
         builder.AppendLine();
     }
 
-    return builder.ToString();
+    // StringBuilder.AppendLine emits Environment.NewLine (CRLF on Windows) while line 67 embeds a
+    // literal "\n"; normalize the whole document to LF so generation is byte-identical on every
+    // platform and matches the LF form stored in git.
+    return NormalizeNewlines(builder.ToString());
+}
+
+static string NormalizeNewlines(string value)
+{
+    return value.Replace("\r\n", "\n").Replace("\r", "\n");
 }
 
 static string EscapePipes(string value)
