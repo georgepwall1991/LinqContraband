@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.8] - 2026-06-04
+
+### Fixed
+- Closed an `LC007` false negative on the deconstruction `foreach` shape. `foreach (var (a, b) in pairs) { db.Users.Find(a); }` is a `ForEachVariableStatementSyntax` — a distinct syntax node from a regular `foreach` (`ForEachStatementSyntax`) — so the per-iteration check (and the loop-kind label) skipped it, and an N+1 inside a tuple/deconstruction loop was silently missed even though the fluent equivalent fired. The per-iteration check and the loop-kind helper now match the shared `CommonForEachStatementSyntax` base, covering both the regular and deconstruction `foreach` shapes (and their `await` forms). Added a deconstruction-foreach regression test. (Found by an adversarial false-negative rescan.)
+
 ## [5.5.7] - 2026-06-04
 
 ### Fixed
