@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.3] - 2026-06-04
+
+### Fixed
+- Closed three `LC015` false negatives by extending the ordering-dependent operator set. `ElementAt`/`ElementAtOrDefault` (EF Core 6+ translates these to `OFFSET … FETCH`, which is non-deterministic without an ordering), their async forms `ElementAtAsync`/`ElementAtOrDefaultAsync`, and the async `LastAsync`/`LastOrDefaultAsync` (the async twins of the already-flagged `Last`/`LastOrDefault`, which EF reverses the ordering for and throws without one) are now reported on an unordered EF `IQueryable`. The code fix also offers `OrderBy(x => x.<key>)` for these operators, subject to the same single-detectable-primary-key safety gate as `Skip`/`Take`/`Last` (it still declines composite-, `[Keyless]`-, and unconventional-key entities). `TakeLast`/`SkipLast` are deliberately **not** flagged: EF Core cannot translate them to SQL at all — they throw "could not be translated" even after an `OrderBy` (dotnet/efcore#25242, #17065) — so "add an ordering" would be wrong advice; the operator itself, not a missing ordering, is the problem. Added analyzer tests for each new operator, an `OrderBy`-upstream guardrail, a `TakeLast`-not-flagged guardrail, and `ElementAt`/`LastAsync` fixer tests, and documented the expanded operator set and the `TakeLast`/`SkipLast` exclusion in the rule doc
+
 ## [5.5.2] - 2026-06-04
 
 ### Fixed
