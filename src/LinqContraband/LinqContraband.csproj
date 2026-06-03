@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.0</Version>
+        <Version>5.5.1</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC032 now ships an automatic code fixer. It rewrites a tracked bulk-update loop (a foreach over an EF query that assigns scalar properties, immediately followed by SaveChanges) into a single set-based ExecuteUpdate/ExecuteUpdateAsync call, collapsing N tracked updates and N UPDATE statements into one server-side UPDATE. The fix is conservative: it leaves the trailing SaveChanges in place with a warning comment, prefers the awaited ExecuteUpdateAsync overload and carries the cancellation token onto it, strips inline materializers (including awaited ToListAsync), and collapses duplicate writes last-write-wins. It declines local-variable sources, an observed SaveChanges result, a value that reads a property written earlier in the same loop, and async contexts without a suitable ExecuteUpdateAsync overload, so it never emits a blocking, uncompilable, or behaviour-changing rewrite.</PackageReleaseNotes>
+        <PackageReleaseNotes>Four code fixers (LC010, LC011, LC016, LC027) no longer inject a lone LF line into a CRLF file. Each terminated the statement or member it inserts or moves with a hard-coded line feed, leaving mixed line endings in a CRLF document (a spurious source-control diff that can trip formatters) and failing those fixer tests on CRLF (Windows) checkouts while passing on LF CI. They now harvest the document's own end-of-line trivia, so the applied fix preserves the file's existing line endings — CRLF or LF — on every platform.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
