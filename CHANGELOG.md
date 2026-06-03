@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.5] - 2026-06-04
+
+### Fixed
+- Closed a raw-SQL injection false negative: `LC037` now treats `SqlQueryRaw<T>` (the EF7+ scalar/keyless raw-SQL query on `DbContext.Database`, `db.Database.SqlQueryRaw<T>(sql)`) as a construction sink. A SQL string built with `string.Format(...)`, `string.Concat(...)`, a `StringBuilder`, or an aliased local and passed to `SqlQueryRaw` was invisible to the entire Raw SQL neighborhood — `LC018` covers only its interpolation and `+` concatenation (added in 5.4.13), and `LC037` did not list `SqlQueryRaw` among its sinks (it had only `FromSqlRaw`/`ExecuteSqlRaw`/`ExecuteSqlRawAsync`). `SqlQueryRaw` is now in `LC037`'s target set, and LC037's existing deferral keeps interpolation and `+` concatenation owned by `LC018` (no double-report). Added `string.Format` and `string.Concat` positive tests for the facade `SqlQueryRaw` sink plus interpolation-deferral and constant-SQL guardrails, and documented the new sink and the LC018/LC037 boundary
+
 ## [5.5.4] - 2026-06-04
 
 ### Fixed

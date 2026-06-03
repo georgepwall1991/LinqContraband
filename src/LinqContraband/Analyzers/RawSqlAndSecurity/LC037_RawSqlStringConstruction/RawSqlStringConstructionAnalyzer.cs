@@ -32,7 +32,12 @@ public sealed partial class RawSqlStringConstructionAnalyzer : DiagnosticAnalyze
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "FromSqlRaw",
         "ExecuteSqlRaw",
-        "ExecuteSqlRawAsync");
+        "ExecuteSqlRawAsync",
+        // SqlQueryRaw<T> is the scalar/keyless raw-SQL query on the DatabaseFacade
+        // (db.Database.SqlQueryRaw<T>(sql)); it takes a raw `string sql` and is an equal injection
+        // sink. LC018 owns its interpolation and `+` concatenation; LC037 covers the remaining
+        // construction shapes (String.Format/Concat, StringBuilder, aliased locals).
+        "SqlQueryRaw");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
