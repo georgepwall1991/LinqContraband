@@ -1,7 +1,7 @@
 # Spec: LC037 - Raw SQL String Construction
 
 ## Goal
-Detect string-built SQL before it reaches `FromSqlRaw(...)` or `ExecuteSqlRaw(...)`.
+Detect string-built SQL before it reaches `FromSqlRaw(...)`, `ExecuteSqlRaw(...)`, or `SqlQueryRaw<T>(...)` (the EF7+ scalar/keyless raw-SQL query on `DbContext.Database`).
 
 ## The Problem
 Concatenation, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder` SQL assembly make it easy to smuggle unchecked values into raw SQL text.
@@ -29,7 +29,7 @@ var users = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = {0}", name).To
 This v1 surface is analyzer-only. It intentionally avoids speculative rewrites for complex SQL-building code.
 
 ## Rule Boundary
-- LC037 intentionally yields when the raw SQL argument is passed directly as an interpolated string or direct non-constant `+` concatenation. Those direct call-site patterns are owned by LC018 (`FromSqlRaw`) and LC034 (`ExecuteSqlRaw` / `ExecuteSqlRawAsync`).
-- LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and local alias / variable flow into raw SQL APIs.
+- LC037 intentionally yields when the raw SQL argument is passed directly as an interpolated string or direct non-constant `+` concatenation. Those direct call-site patterns are owned by LC018 (`FromSqlRaw` and `SqlQueryRaw`) and LC034 (`ExecuteSqlRaw` / `ExecuteSqlRawAsync`).
+- LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and local alias / variable flow into all three raw SQL sinks — including `SqlQueryRaw<T>` (`db.Database.SqlQueryRaw<T>(string.Format(...))`), whose interpolation/concatenation LC018 owns while its other construction shapes are LC037's.
 - For simple local variables, LC037 resolves the latest guaranteed declaration or assignment before the raw SQL call, so an earlier constructed value overwritten unconditionally by a constant is ignored while later constructed overwrites are still reported.
 - Conditional overwrites are treated conservatively: a branch-only constant assignment does not suppress an earlier constructed SQL value, and a branch-only constructed assignment remains suspicious unless a later guaranteed assignment overwrites it.

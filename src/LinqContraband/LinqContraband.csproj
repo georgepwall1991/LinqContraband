@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.4</Version>
+        <Version>5.5.5</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC002 no longer reports a misleading "redundant" materialization when the source is a keyed (ToDictionary) or grouped (ToLookup) materializer. A trailing ToList after ToDictionary/ToLookup is a genuine shape change (it yields a List of KeyValuePair / List of IGrouping), not a redundant re-materialization, so it is now left quiet — matching the existing de-duplicating-set exclusion. Genuinely redundant non-keyed collapses such as ToArray().ToList() still report and fix.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC037 now treats SqlQueryRaw&lt;T&gt; (the EF7+ scalar/keyless raw-SQL query on DbContext.Database) as a construction sink, closing an injection false negative: a SQL string built with string.Format, string.Concat, a StringBuilder, or an aliased local and passed to SqlQueryRaw was previously caught by neither LC037 (which omitted the sink) nor LC018 (which covers only its interpolation and concatenation). LC037's existing deferral keeps interpolation/concatenation owned by LC018, so there is no double-report.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
