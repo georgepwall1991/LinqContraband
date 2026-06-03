@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.6] - 2026-06-04
+
+### Fixed
+- Stopped `LC025` and `LC044` from firing on a query whose tracking is restored by a trailing `AsTracking()`. Both rules scanned the query chain for `AsNoTracking()` but ignored a later `AsTracking()`, so `db.Users.AsNoTracking().AsTracking().First()` followed by `Update()` (LC025) or a property mutation + `SaveChanges()` (LC044) was wrongly flagged — even though EF Core applies the **last** tracking directive (`AsTracking()` overwrites the earlier `AsNoTracking()`), leaving the entity tracked so the write is correct. Both chain scans now honour the last directive: the first directive encountered walking up the receiver chain (the one applied last) decides the effective mode. `AsNoTracking().AsTracking()` no longer reports; the reverse `AsTracking().AsNoTracking()` (untracked) and a plain `AsNoTracking()` still report. Added override and reverse-order regression tests to both rules and documented the last-directive-wins behavior. (Found by an adversarial false-positive rescan.)
+
 ## [5.5.5] - 2026-06-04
 
 ### Fixed

@@ -38,7 +38,7 @@ db.SaveChanges();
 ### Algorithm
 1. **Anchor**: register on every `DbContext.SaveChanges` / `SaveChangesAsync` invocation.
 2. **Context symbol**: resolve the instance symbol of the SaveChanges call.
-3. **Origin scan**: in the same executable root, collect local declarations whose initializer is a materializer invocation (`First`, `FirstOrDefault`, `Single`, `ToList`, async variants, …) and whose chain contains `AsNoTracking`. Collect `foreach` loops whose collection chain contains `AsNoTracking`.
+3. **Origin scan**: in the same executable root, collect local declarations whose initializer is a materializer invocation (`First`, `FirstOrDefault`, `Single`, `ToList`, async variants, …) and whose chain contains `AsNoTracking`. Collect `foreach` loops whose collection chain contains `AsNoTracking`. The chain scan honours the **last** tracking directive (each `AsTracking()`/`AsNoTracking()` overwrites `QueryTrackingBehavior`): `AsNoTracking().AsTracking()` is tracked and does **not** report, while `AsTracking().AsNoTracking()` is untracked and does.
 4. **Same-context gate**: extract the DbSet-owner context symbol from the query chain and require `SymbolEqualityComparer` match against the SaveChanges context symbol.
 5. **Single-assignment gate**: skip locals that are assigned more than once (ambiguous dataflow).
 6. **Mutation scan**: find the first `ISimpleAssignmentOperation` whose target is an `IPropertyReferenceOperation` instance-referencing the local, positioned between the local's declaration and the SaveChanges.
