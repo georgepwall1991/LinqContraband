@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using LinqContraband.Extensions;
 
 namespace LinqContraband.Analyzers.LC010_SaveChangesInLoop;
 
@@ -55,10 +56,11 @@ public class SaveChangesInLoopFixer : CodeFixProvider
         // Find the expression statement containing SaveChanges
         if (!TryGetMovableSaveStatement(invocation, out var expressionStatement, out var loop)) return document;
 
-        // Create the new statement to insert after the loop (preserve the full statement including await if present)
+        // Create the new statement to insert after the loop (preserve the full statement including await if present).
+        // Terminate it with the document's own line ending so a CRLF file does not gain a lone LF line.
         var newStatement = expressionStatement
             .WithLeadingTrivia(loop.GetLeadingTrivia())
-            .WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
+            .WithTrailingTrivia(loop.GetDocumentEndOfLine());
 
         // Remove the statement from inside the loop
         editor.RemoveNode(expressionStatement);

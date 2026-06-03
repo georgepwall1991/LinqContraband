@@ -94,7 +94,7 @@ public class MissingExplicitForeignKeyFixer : CodeFixProvider
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))
             .NormalizeWhitespace()
             .WithLeadingTrivia(GetIndentationTrivia(navProperty))
-            .WithTrailingTrivia(SyntaxFactory.EndOfLine("\n"));
+            .WithTrailingTrivia(navProperty.GetDocumentEndOfLine());
 
         if (navProperty.Parent is not TypeDeclarationSyntax typeDeclaration)
             return document;

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.1] - 2026-06-03
+
+### Fixed
+- Stopped four code fixers from injecting a lone `LF` line into a `CRLF` file. `LC010` (move `SaveChanges` after a do-while loop), `LC011` (insert a missing `Id` primary-key property), `LC016` (extract `DateTime.Now`/`UtcNow` to a local), and `LC027` (insert an explicit foreign-key property) each terminated the statement or member they add with a hard-coded line feed — `SyntaxFactory.ElasticLineFeed` or `SyntaxFactory.EndOfLine("\n")`. On a CRLF document that produced a single LF line amid CRLF lines (a mixed-line-ending file that surfaces as a spurious source-control diff and can trip formatters/linters), and it made every one of those fixer tests fail on a CRLF (Windows) checkout while passing on LF CI. The fixers now terminate the inserted/moved node with an end-of-line trivia harvested from the document itself (the new `SyntaxTriviaExtensions.GetDocumentEndOfLine`), so the applied fix preserves the file's existing line endings — CRLF or LF — on every platform. The two fixers that emit their newline as *leading* trivia after a warning comment already produce the platform newline through the formatter and are unaffected. Added a cross-platform `LC010` regression test that pins CRLF on both the source and the expected fix regardless of how the repository is checked out
+
 ## [5.5.0] - 2026-05-29
 
 ### Added
