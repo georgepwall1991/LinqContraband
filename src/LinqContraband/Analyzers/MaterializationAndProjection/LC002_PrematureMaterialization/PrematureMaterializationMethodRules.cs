@@ -117,6 +117,20 @@ public sealed partial class PrematureMaterializationAnalyzer
             "ToImmutableSortedSet";
     }
 
+    // A keyed (Dictionary) or grouped (Lookup) materializer produces a structure whose element type
+    // differs from the source sequence, so a trailing materializer transforms its shape rather than
+    // re-materialising the same sequence: ToDictionary().ToList() yields List<KeyValuePair<,>> and
+    // ToLookup().ToList() yields List<IGrouping<,>>. The trailing call is therefore never redundant,
+    // and removing the keyed/grouped source would change the result type — so such a source is not
+    // treated as a redundant materialization (the "redundant" message would be misleading).
+    private static bool IsKeyedOrGroupedMaterializer(string methodName)
+    {
+        return methodName is
+            "ToDictionary" or
+            "ToDictionaryAsync" or
+            "ToLookup";
+    }
+
     private static bool IsMaterializingConstructor(IMethodSymbol constructor)
     {
         var type = constructor.ContainingType;

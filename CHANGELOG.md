@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.4] - 2026-06-04
+
+### Fixed
+- Stopped `LC002` from reporting a misleading "redundant" materialization when the **source** is a keyed (`ToDictionary`/`ToDictionaryAsync`) or grouped (`ToLookup`) materializer. `db.Users.ToDictionary(u => u.Id).ToList()` and `db.Users.ToLookup(u => u.Age).ToList()` were flagged as "`ToList` is redundant because `ToDictionary`/`ToLookup`", but the trailing call is a genuine shape change — it yields `List<KeyValuePair<,>>` and `List<IGrouping<,>>` respectively, not a redundant re-materialization of the same sequence, and removing the keyed/grouped source would change the result type. These sources are now treated like the existing de-duplicating set sources (`ToHashSet().ToList()`) and left quiet: no diagnostic and no fix are offered. Genuinely redundant non-keyed collapses (`ToArray().ToList()`, `ToList().ToHashSet()`) still report and fix, and the separate premature-materialization diagnostic for a keyed source feeding a query operator or terminal aggregate (`ToDictionary(...).Where(...)`, `ToDictionary(...).Count()`) is unaffected. Added `ToDictionary().ToList()` and `ToLookup().ToList()` no-diagnostic regression tests and documented the keyed/grouped-source exclusion
+
 ## [5.5.3] - 2026-06-04
 
 ### Fixed

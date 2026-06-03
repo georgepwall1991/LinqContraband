@@ -40,6 +40,15 @@ public sealed partial class PrematureMaterializationAnalyzer
             return false;
         }
 
+        // A Dictionary/Lookup source is a keyed/grouped structure; a trailing materializer transforms
+        // its shape (ToDictionary().ToList() -> List<KeyValuePair<,>>, ToLookup().ToList() ->
+        // List<IGrouping<,>>) rather than redundantly re-materialising the sequence. Reporting the
+        // trailing call as "redundant because ToDictionary/ToLookup" is misleading, so skip it.
+        if (IsKeyedOrGroupedMaterializer(previousMaterialization.MaterializerName))
+        {
+            return false;
+        }
+
         var properties = CreateProperties(
             RedundantDiagnosticKind,
             previousMaterialization.OriginKind,

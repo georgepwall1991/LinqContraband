@@ -30,12 +30,20 @@ var distinctList = db.Users.ToHashSet().ToList();                               
 var ci = db.Users.Select(u => u.Name).ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet(); // NOT reported — comparer would be lost
 ```
 
+A keyed (`ToDictionary`) or grouped (`ToLookup`) materializer as the **source** of a second materializer is likewise **not** redundant: the source produces a structure whose element type differs from the sequence, so the trailing call transforms its shape rather than re-materializing the same data. Removing the source would change the result type, so these are left quiet:
+
+```csharp
+var pairs = db.Users.ToDictionary(u => u.Id).ToList();   // NOT reported — yields List<KeyValuePair<int, User>>
+var groups = db.Users.ToLookup(u => u.Age).ToList();     // NOT reported — yields List<IGrouping<int, User>>
+```
+
 ## What LC002 Intentionally Ignores
 - Ambiguous provenance such as multiple local assignments or control-flow-dependent sources
 - Already materialized locals, aliases, constructors, arrays, DTO lists, fields, properties, and other post-processing shapes where in-memory work may be intentional
 - `AsEnumerable()` by itself when it is used only as an explicit client boundary
 - Overloads or lambdas that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors, comparer-based overloads, delegated predicates, local/source methods, `Regex`, or `StringComparison` string calls
 - A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) used as the source of a second materializer (`ToHashSet().ToList()`, `ToImmutableHashSet().ToArray()`, `ToHashSet(comparer).ToHashSet()`), where removing the source would drop de-duplication or a custom comparer
+- A keyed (`ToDictionary`) or grouped (`ToLookup`) materializer used as the source of a second materializer (`ToDictionary().ToList()`, `ToLookup().ToList()`), where the trailing call transforms the keyed/grouped shape and is not a redundant re-materialization
 - Pure in-memory sequences that never came from `IQueryable`
 
 ## Fixer Behavior

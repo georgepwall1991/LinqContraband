@@ -356,6 +356,47 @@ public class PrematureMaterializationTests
     }
 
     [Fact]
+    public async Task DoesNotReport_Redundant_ToDictionaryThenToList()
+    {
+        // ToDictionary() produces a Dictionary<,>; the trailing ToList() yields List<KeyValuePair<,>>,
+        // a genuine shape change, not a redundant re-materialization. Reporting "ToList redundant
+        // because ToDictionary" would be misleading, so the analyzer stays quiet.
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var pairs = db.Users.ToDictionary(u => u.Id).ToList();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoesNotReport_Redundant_ToLookupThenToList()
+    {
+        // ToLookup() produces an ILookup<,>; the trailing ToList() yields List<IGrouping<,>>,
+        // a genuine shape change, not a redundant re-materialization.
+        var test = CommonUsings + """
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var groups = db.Users.ToLookup(u => u.Age).ToList();
+                }
+            }
+            """ + MockTypes;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task DoesNotReport_WhenWhereRunsBeforeToList()
     {
         var test = CommonUsings + """
