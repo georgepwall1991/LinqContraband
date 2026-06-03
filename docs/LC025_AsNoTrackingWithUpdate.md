@@ -70,6 +70,8 @@ The rule is order-aware. It does not report when a local is reassigned from a tr
 
 LC025 stays quiet when the **outermost** `Select` (the projection nearest the materializer, which determines the result shape) projects to a **newly-constructed object** (for example `Select(u => new User { ... })` or an anonymous type). EF Core never change-tracks instances you construct in a projection, so they are untracked regardless of `AsNoTracking()` — the anti-pattern simply does not apply, and removing `AsNoTracking()` would not change anything. Identity and navigation projections (`Select(u => u)`, `Select(u => u.Manager)`) return the materialized entity itself, whose tracking state *is* governed by `AsNoTracking()`, so those continue to report. Only the outermost projection counts: a constructed wrapper that is later unwrapped back to the entity (`Select(u => new { E = u }).Select(x => x.E)`) still materializes the untracked entity and continues to report.
 
+LC025 honours the **last** tracking directive in a chain, because each `AsTracking()`/`AsNoTracking()` overwrites the query's `QueryTrackingBehavior`. A trailing `AsTracking()` therefore makes the entity tracked again: `db.Users.AsNoTracking().AsTracking().First()` returns a tracked entity, so `Update()` on it is correct and the rule stays quiet. The reverse, `AsTracking().AsNoTracking()`, leaves the entity untracked and still reports.
+
 ## Code Fix
 The fixer removes the `AsNoTracking()` call from direct local declarations, simple assignments, and foreach collection expressions when that is the origin of the diagnostic.
 

@@ -45,6 +45,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) where TSource : class => source;
+        public static IQueryable<TSource> AsTracking<TSource>(this IQueryable<TSource> source) where TSource : class => source;
         public static Task<TSource> FirstOrDefaultAsync<TSource>(this IQueryable<TSource> source, CancellationToken ct = default) => Task.FromResult(default(TSource));
         public static Task<TSource> FirstOrDefaultAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, bool>> predicate, CancellationToken ct = default) => Task.FromResult(default(TSource));
         public static Task<TSource> SingleOrDefaultAsync<TSource>(this IQueryable<TSource> source, CancellationToken ct = default) => Task.FromResult(default(TSource));
@@ -70,6 +71,51 @@ namespace Test
         public void M(TestCtx ctx)
         {
             var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            {|LC044:user.Name|} = ""new"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTrackingThenAsTracking_ThenMutate_ThenSave_DoesNotTrigger()
+    {
+        // AsTracking() overrides the earlier AsNoTracking() (last tracking directive wins), so the
+        // entity is tracked and the mutation DOES persist — LC044 must stay quiet.
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().AsTracking().FirstOrDefault(u => u.Id == 1);
+            user.Name = ""new"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsTrackingThenAsNoTracking_ThenMutate_ThenSave_Triggers()
+    {
+        // AsNoTracking() is applied last, so the entity is untracked and the mutation is silently lost.
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsTracking().AsNoTracking().FirstOrDefault(u => u.Id == 1);
             {|LC044:user.Name|} = ""new"";
             ctx.SaveChanges();
         }

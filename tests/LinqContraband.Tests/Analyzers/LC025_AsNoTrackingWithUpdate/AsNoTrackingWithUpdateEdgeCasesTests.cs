@@ -30,9 +30,61 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
+        public static IQueryable<TSource> AsTracking<TSource>(this IQueryable<TSource> source) => source;
     }
 }
 ";
+
+    [Fact]
+    public async Task AsNoTrackingThenAsTracking_ShouldNotTrigger()
+    {
+        // AsTracking() overrides the earlier AsNoTracking() (last tracking directive wins), so the
+        // entity is tracked and Update is correct — LC025 must stay quiet.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            foreach (var user in users.AsNoTracking().AsTracking().ToList())
+            {
+                users.Update(user);
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsTrackingThenAsNoTracking_ShouldTrigger()
+    {
+        // AsNoTracking() is applied last, so the entity is untracked and Update is the smell.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            foreach (var user in users.AsTracking().AsNoTracking().ToList())
+            {
+                users.Update({|LC025:user|});
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
     [Fact]
     public async Task ForeachVariable_FromAsNoTrackingCollection_ShouldTrigger()
