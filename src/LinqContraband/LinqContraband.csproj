@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.1</Version>
+        <Version>5.5.2</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>Four code fixers (LC010, LC011, LC016, LC027) no longer inject a lone LF line into a CRLF file. Each terminated the statement or member it inserts or moves with a hard-coded line feed, leaving mixed line endings in a CRLF document (a spurious source-control diff that can trip formatters) and failing those fixer tests on CRLF (Windows) checkouts while passing on LF CI. They now harvest the document's own end-of-line trivia, so the applied fix preserves the file's existing line endings — CRLF or LF — on every platform.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC020 now flags a StringComparison overload whose query column flows through a method argument, not only its receiver. The constant-receiver, column-argument form (for example "admin".Contains(u.Name, StringComparison.OrdinalIgnoreCase) inside a Where) was previously missed even though EF Core cannot translate the overload and throws at runtime on the default relational providers. Detection now considers the receiver and every argument for query-parameter dependence; constant and captured-local arguments stay quiet, and the existing fixer drops the StringComparison argument.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
