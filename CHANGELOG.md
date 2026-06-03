@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.7] - 2026-06-04
+
+### Fixed
+- Stopped two false positives caused by unrecognized mutually-exclusive branch shapes. `LC040` (mixed tracking modes) now treats the two arms of a ternary (`readOnly ? db.Users.AsNoTracking().ToList() : db.Users.ToList()`) as mutually exclusive, just like `if`/`else` and `switch` — only one arm materializes, so the scope never mixes tracking modes. `LC039` (repeated SaveChanges) now treats a `SaveChanges` in a `try` block and one in a `catch` clause as mutually exclusive: the catch save runs only if the try save threw (and so never completed), making it a compensating/retry save rather than a batchable repeat (two different `catch` clauses are likewise exclusive). A materializer in a ternary's **condition** (LC040) and a `finally` save (LC039) are deliberately still counted, because they always run. Added ternary (LC040), try/catch (LC039), and a try/finally-still-fires guardrail (LC039) regression tests and documented both boundaries. (Found by an adversarial false-positive rescan.)
+
 ## [5.5.6] - 2026-06-04
 
 ### Fixed

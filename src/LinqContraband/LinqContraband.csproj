@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.6</Version>
+        <Version>5.5.7</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC025 and LC044 no longer fire when a trailing AsTracking() restores tracking. Both rules scanned the query chain for AsNoTracking() but ignored a later AsTracking(), so AsNoTracking().AsTracking() followed by Update (LC025) or a property mutation + SaveChanges (LC044) was wrongly flagged — even though EF Core applies the last tracking directive, leaving the entity tracked so the write is correct. Both scans now honour the last directive: AsNoTracking().AsTracking() is quiet, while AsTracking().AsNoTracking() and a plain AsNoTracking() still report. (Found by an adversarial false-positive rescan.)</PackageReleaseNotes>
+        <PackageReleaseNotes>LC040 and LC039 each shed a false positive from an unrecognized mutually-exclusive branch shape. LC040 (mixed tracking modes) now treats a ternary's two arms (cond ? AsNoTracking().ToList() : ToList()) as mutually exclusive, like if/else and switch. LC039 (repeated SaveChanges) now treats a save in a try block versus a save in a catch clause as mutually exclusive — the catch save is a compensating/retry save, not a batchable repeat. A ternary condition (LC040) and a finally save (LC039) still count, because they always run. (Found by an adversarial false-positive rescan.)</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
