@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.2</Version>
+        <Version>5.5.3</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC020 now flags a StringComparison overload whose query column flows through a method argument, not only its receiver. The constant-receiver, column-argument form (for example "admin".Contains(u.Name, StringComparison.OrdinalIgnoreCase) inside a Where) was previously missed even though EF Core cannot translate the overload and throws at runtime on the default relational providers. Detection now considers the receiver and every argument for query-parameter dependence; constant and captured-local arguments stay quiet, and the existing fixer drops the StringComparison argument.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC015 now flags three more ordering-dependent operators that were silently missed: ElementAt/ElementAtOrDefault (EF Core 6+ translates these to OFFSET/FETCH, non-deterministic without an ordering), their async forms, and the async LastAsync/LastOrDefaultAsync (twins of the already-flagged Last/LastOrDefault). The code fix offers an OrderBy on the primary key for them under the same single-detectable-key safety gate. TakeLast/SkipLast are deliberately not flagged because EF Core cannot translate them at all, so an add-OrderBy suggestion would be wrong.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

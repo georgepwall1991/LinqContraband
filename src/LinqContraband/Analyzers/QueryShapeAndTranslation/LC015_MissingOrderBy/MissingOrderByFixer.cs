@@ -43,7 +43,10 @@ public class MissingOrderByFixer : CodeFixProvider
         if (semanticModel == null) return;
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return;
-        if (memberAccess.Name.Identifier.ValueText is not ("Skip" or "Take" or "Last" or "LastOrDefault" or "Chunk")) return;
+        if (memberAccess.Name.Identifier.ValueText is not (
+                "Skip" or "Take" or "Last" or "LastOrDefault" or "Chunk" or
+                "ElementAt" or "ElementAtOrDefault" or "ElementAtAsync" or "ElementAtOrDefaultAsync" or
+                "LastAsync" or "LastOrDefaultAsync")) return;
 
         var sourceExpression = memberAccess.Expression;
         var sourceType = semanticModel.GetTypeInfo(sourceExpression).Type;
