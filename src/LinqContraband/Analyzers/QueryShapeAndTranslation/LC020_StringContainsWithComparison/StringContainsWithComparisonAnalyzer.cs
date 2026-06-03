@@ -52,7 +52,13 @@ public sealed class StringContainsWithComparisonAnalyzer : DiagnosticAnalyzer
         if (!hasStringComparison) return;
 
         var lambdaParameters = GetQueryableExpressionLambdaParameters(invocation);
-        if (lambdaParameters.Any(parameter => ReceiverDependsOnParameter(invocation.Instance, parameter)))
+
+        // The query column can reach the comparison through the receiver (u.Name.Contains("x", cmp))
+        // or through an argument ("admin".Contains(u.Name, cmp)). Either column-derived operand
+        // defeats SQL translation of the StringComparison overload (EF throws at runtime), so both
+        // must be considered — passing the whole invocation reuses the IInvocationOperation arm of
+        // ReceiverDependsOnParameter, which walks the instance and every argument.
+        if (lambdaParameters.Any(parameter => ReceiverDependsOnParameter(invocation, parameter)))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }

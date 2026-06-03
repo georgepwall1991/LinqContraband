@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.2] - 2026-06-04
+
+### Fixed
+- Taught `LC020` to flag a `StringComparison` overload whose query column flows through a method **argument**, not only its receiver. The check only inspected the call's receiver, so `db.Users.Where(u => "admin".Contains(u.Name, StringComparison.OrdinalIgnoreCase))` — where the constant is the receiver and the column `u.Name` is the searched-for argument — was missed even though EF Core cannot translate the overload and throws at runtime on the default relational providers (a false negative; the same class as a column reaching the comparison through the receiver). Detection now considers the receiver **and every argument** for query-parameter dependence, so the argument-derived form reports and the existing fixer drops the `StringComparison` argument (`"admin".Contains(u.Name)`). Constant and captured-local arguments stay quiet (the comparison is parameter-independent), as do in-memory/`IEnumerable` calls and custom `IQueryable` helpers that take delegate predicates. Added an argument-derived positive test, a captured-local-argument guardrail, and a fixer test; the rule doc now documents the argument-derived shape and the verified provider behavior (default providers throw; Npgsql maps `OrdinalIgnoreCase` to `ILIKE`; Pomelo MySQL opts in via `EnableStringComparisonTranslations`)
+
 ## [5.5.1] - 2026-06-03
 
 ### Fixed

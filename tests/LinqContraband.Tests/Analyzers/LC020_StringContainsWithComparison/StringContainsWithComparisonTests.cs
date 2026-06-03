@@ -308,4 +308,100 @@ namespace LinqContraband.Test
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
+
+    [Fact]
+    public async Task StringContains_WithComparison_ConstantReceiverColumnArgument_ShouldTriggerLC020()
+    {
+        // The searched-for value is the column while the receiver is a constant
+        // (""admin"".Contains(u.Name, cmp)). EF still cannot translate the StringComparison
+        // overload (it throws at runtime), so this must report just like the column-receiver form.
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        public string Name { get; set; } = """";
+    }
+
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => {|LC020:""admin"".Contains(u.Name, StringComparison.OrdinalIgnoreCase)|}).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StringContains_WithComparison_ConstantReceiverCapturedLocalArgument_ShouldNotTrigger()
+    {
+        // Neither operand is column-derived (constant receiver, captured-local argument), so the
+        // comparison is parameter-independent and stays quiet, matching the captured-local receiver case.
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        public string Name { get; set; } = """";
+    }
+
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var needle = ""x"";
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => ""admin"".Contains(needle, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ForConstantReceiverColumnArgument_ShouldRemoveStringComparison()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        public string Name { get; set; } = """";
+    }
+
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => {|LC020:""admin"".Contains(u.Name, StringComparison.OrdinalIgnoreCase)|}).ToList();
+        }
+    }
+}";
+
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class User
+    {
+        public string Name { get; set; } = """";
+    }
+
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<User>().AsQueryable();
+            var result = query.Where(u => ""admin"".Contains(u.Name)).ToList();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
 }
