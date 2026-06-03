@@ -270,6 +270,58 @@ class Program
     }
 
     [Fact]
+    public async Task TryCatchCompensatingSaveChanges_DoNotTrigger()
+    {
+        // The catch save runs only if the try save threw (and so never completed): the two are
+        // mutually exclusive — a compensating/retry save, not a batchable repeat.
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            db.SaveChanges();
+        }
+        catch
+        {
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TryFinallySaveChanges_Triggers()
+    {
+        // A finally save ALWAYS runs, so it is NOT mutually exclusive with the try save — still a
+        // repeated save on the same context (guards against over-suppressing try/finally).
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run()
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            db.SaveChanges();
+        }
+        finally
+        {
+            {|LC039:db.SaveChanges()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ElseIfSaveChangesBranches_DoNotTrigger()
     {
         var test = EFCoreMock + Types + @"

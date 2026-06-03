@@ -42,7 +42,38 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                 }
             }
 
+            // A ternary's two arms are mutually exclusive just like if/else: only one materializes
+            // at runtime, so `cond ? db.Users.AsNoTracking().ToList() : db.Users.ToList()` never
+            // mixes tracking modes. A materializer in the condition (which always runs) returns null
+            // from GetContainingTernaryArm and is intentionally not treated as exclusive.
+            foreach (var ternary in left.AncestorsAndSelf().OfType<ConditionalExpressionSyntax>())
+            {
+                if (!ternary.Span.Contains(right.SpanStart))
+                    continue;
+
+                var leftArm = GetContainingTernaryArm(ternary, left);
+                var rightArm = GetContainingTernaryArm(ternary, right);
+
+                if (leftArm != null &&
+                    rightArm != null &&
+                    leftArm != rightArm)
+                {
+                    return true;
+                }
+            }
+
             return false;
+        }
+
+        private static ExpressionSyntax? GetContainingTernaryArm(ConditionalExpressionSyntax ternary, SyntaxNode node)
+        {
+            if (ternary.WhenTrue.Span.Contains(node.SpanStart))
+                return ternary.WhenTrue;
+
+            if (ternary.WhenFalse.Span.Contains(node.SpanStart))
+                return ternary.WhenFalse;
+
+            return null;
         }
 
         private static StatementSyntax? GetContainingBranch(IfStatementSyntax ifStatement, SyntaxNode node)
