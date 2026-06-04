@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.13] - 2026-06-04
+
+### Fixed
+- Closed an `LC026` false negative: a `CancellationToken` stored in a **field** or surfaced through a readable **property** is now recognised as an available token, so an EF async call (`ToListAsync`, `SaveChangesAsync`, …) that omits it is flagged and the fixer passes it by name. The scope lookup previously accepted only `ILocalSymbol`/`IParameterSymbol`, so the common injected-token (`private CancellationToken _ct;`) and `IHostApplicationLifetime.ApplicationStopping`-style patterns were silently missed even though the token is readily passable. The fixer references the member by bare name, which binds to `this.<member>`; write-only properties are skipped. Added field-token and property-token regression tests plus a fixer test confirming the field reference is inserted. (Found by a second adversarial false-negative rescan.)
+
 ## [5.5.12] - 2026-06-04
 
 ### Fixed
