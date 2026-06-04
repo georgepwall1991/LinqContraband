@@ -34,7 +34,7 @@ var users = db.Users.Where(u => u.DateOfBirth <= minDob).ToList();
 1.  **Target**: Invocations within a lambda expression.
 2.  **Context**: Ensure the lambda is an argument to an `IQueryable` method.
 3.  **Dependency**: Require the method call to depend on the query lambda parameter.
-4.  **Query position**: Report only translation-critical positions such as filters, ordering, joins, grouping keys, and predicates.
+4.  **Query position**: Report only translation-critical positions such as filters, ordering, joins, grouping keys, predicates, and aggregate selectors (`Sum`/`Average`/`Min`/`Max`).
 5.  **Check**: Skip known framework methods, trusted provider methods, and methods explicitly marked with
     `[DbFunction]` or `[Projectable]`.
 6.  **Report**: If none of those exemptions apply, flag the invocation.

@@ -51,6 +51,31 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
+    [Theory]
+    [InlineData("Sum")]
+    [InlineData("Average")]
+    [InlineData("Min")]
+    [InlineData("Max")]
+    public async Task TestCrime_LocalMethodInAggregateSelector_ShouldTriggerLC001(string aggregate)
+    {
+        // Queryable.Sum/Average/Min/Max(source, selector) translate to SQL aggregates; a local method
+        // in the selector cannot translate (client eval / throws) — the LC001 smell.
+        var test = (Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var result = db.Users.AGG(u => {|LC001:Weight(u.Age)|});
+    }
+
+    int Weight(int age) => age * 2;
+}
+" + MockNamespace).Replace("AGG", aggregate);
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     [Fact]
     public async Task TestInnocent_PropertyAccess_ShouldNotTrigger()
     {
