@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-05-29
+Reviewed: 2026-06-04 (overnight rerun; previous deep rescan 2026-05-29)
 
 This is a deliberately harsh health audit for the 44 analyzers in `RuleCatalog`. The catalog currently declares 28 rules with code fixes and 16 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
@@ -28,6 +28,8 @@ Harsh calibration notes:
 Priority is a planning signal: `High` means the analyzer is important and has meaningful health gaps, `Medium` means useful follow-up work is warranted, and `Low` means no immediate work is needed.
 
 ## Scorecard
+
+> Per-rule rows below reflect the 2026-05-29 state. For deltas shipped since, see the **2026-06-04 Rerun** section — it hardened LC002, LC004, LC007, LC015, LC020, LC025, LC035, LC037, LC039, LC040, and LC044, and fixed a line-ending defect in the LC010/LC011/LC016/LC027 fixers. Rows are not re-scored here; the rerun table is the current source of truth for those rules.
 
 | Rule | Title | Domain | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
@@ -93,21 +95,57 @@ A fresh adversarial FP/FN sweep ran eight parallel `analyzer-fp-fn-hunter` probe
 
 Each open finding has proposed `[Fact]` names recorded by its probe; the hardening loop takes them in priority order (crash → unsafe fixes / shipped-code regressions → high-frequency FPs → security FN → remaining FP/FN). Per-rule scorecard rows above are updated as each fix ships, not when the gap is found.
 
+## 2026-06-04 Rerun
+
+An overnight hardening run cleared the 2026-05-29 Medium shortlist and then ran a **fresh four-probe `analyzer-fp-fn-hunter` rescan** over twelve Warning- and high-value-Info rules not covered by the 2026-05-29 sweep (LC004, LC007, LC008, LC012, LC013, LC025, LC034, LC035, LC036, LC039, LC040, LC044). Every finding below was **independently re-verified** against the built analyzer on net10.0 before any fix shipped, and several probe claims were **rejected on verification** — the audit's own LC020 and LC015 Medium entries were among the over-reaches corrected. Twelve releases shipped (`5.5.1` … `5.5.10`), each branch → review → merge → release, plus a dev-tooling fix.
+
+### Shipped this rerun
+
+| Release | Rule(s) | Class | What shipped |
+| --- | --- | --- | --- |
+| 5.5.1 | LC010, LC011, LC016, LC027 | Fixer line-endings | Four fixers terminated an inserted/moved node with a hard-coded `LF`, injecting a lone LF line into a CRLF file (mixed line endings) and failing every one of those fixer tests on a CRLF (Windows) checkout. They now harvest the document's own end-of-line trivia (`SyntaxTriviaExtensions.GetDocumentEndOfLine`). This greened a previously **red local baseline** — 11 failing tests on Windows that passed on LF CI. |
+| 5.5.2 | LC020 | FN | A `StringComparison` overload whose query column flows through a method **argument** (`"admin".Contains(u.Name, cmp)`), not only the receiver, is now flagged. The audit's Ordinal/OrdinalIgnoreCase **FP claim was rejected** (EF throws on the default providers, so flagging is correct). |
+| 5.5.3 | LC015 | FN | `ElementAt`/`ElementAtOrDefault` (+ async) and async `LastAsync`/`LastOrDefaultAsync` now flagged as ordering-dependent. The audit's `TakeLast`/`SkipLast` items were **rejected** (EF cannot translate them at all). |
+| 5.5.4 | LC002 | Message | A keyed (`ToDictionary`) / grouped (`ToLookup`) **source** is no longer reported as redundant — `ToDictionary().ToList()` is a shape change, not a redundant re-materialization. Closes the open "misleading-message" item. |
+| 5.5.5 | LC037 (LC018 boundary) | Security FN | `SqlQueryRaw<T>` is now an LC037 construction sink (`string.Format`/`Concat`/`StringBuilder`/aliased-local); LC018 keeps interpolation/concat, so no double-report. |
+| 5.5.6 | LC025, LC044 | FP | Both now honour the **last** tracking directive: `AsNoTracking().AsTracking()` is tracked and no longer fires. |
+| 5.5.7 | LC039, LC040 | FP | `AreMutuallyExclusiveBranches` now recognises ternary arms (LC040) and a try-block-vs-`catch` save (LC039); a ternary condition and a `finally` save still count. |
+| 5.5.8 | LC007 | FN | Deconstruction `foreach (var (a, b) in xs)` (`ForEachVariableStatementSyntax`) is now analysed via the shared `CommonForEachStatementSyntax` base. |
+| 5.5.9 | LC035 | FP | "base filter + optional narrowing" (`var q = ...Where(); if (f) q = q.Where(); q.ExecuteDelete();`) no longer fires; the unconditional base plus every later conditional reassignment must be filtered. Closes the audit's LC035 follow-up. |
+| 5.5.10 | LC004, LC044 | FN | LC004 follows a C# query expression to its source parameter; LC044 treats compound assignment (`+=`) and increment (`++`) as mutations. |
+| (tooling) | — | — | `RuleCatalogDocGenerator --check` is now line-ending-robust — it falsely reported `docs/rule-catalog.md` out-of-date on CRLF checkouts. |
+
+### Rejected or deferred on verification (skeptic notes)
+
+These probe/audit claims were **not** acted on, with rationale — do not re-chase without new evidence:
+
+| Rule | Claim | Verdict |
+| --- | --- | --- |
+| LC020 | Ordinal/OrdinalIgnoreCase over-flagged (FP) | **Rejected.** EF Core does not translate `StringComparison` overloads on the default relational providers — it throws — so flagging is correct. Only Npgsql (`OrdinalIgnoreCase`→`ILIKE`) and opt-in Pomelo MySQL translate them; the rule stays provider-agnostic. |
+| LC015 | `TakeLast`/`SkipLast` not flagged (FN) | **Rejected.** EF Core cannot translate `TakeLast`/`SkipLast` at all — they throw even with an `OrderBy` (dotnet/efcore#25242, #17065) — so "add OrderBy" is wrong advice. |
+| LC036 | Instance method-group passed to `Task.Run` not flagged (FN) | **Rejected.** Arbitrary method-group inspection is a documented non-goal of the rule. |
+| LC004 | Parameter consumed only inside a nested local function (FN) | **Deferred.** Skipping nested executables is deliberate FP-avoidance for un-invoked lambdas; distinguishing invoked-vs-not is risky. |
+| LC008 | Sync EF in a `static` local function inside an async method (FP) | **Deferred.** The maintainers intentionally flag the analogous non-async-lambda case; the strongest sub-case (an unfixable orphaned warning on a static local function) is a smaller follow-up. |
+| LC040 | try/catch branches (FP) and `Select` short-circuit (FN) | **Deferred.** The try/catch case is debatable (a tracked entity materialised before a mid-`try` throw can still be tracked); the `Select` bail correctly avoids scalar-projection noise. |
+| LC025 | Path-insensitive last-write-wins on a conditionally-reassigned local (FP/FN) | **Deferred.** Real but lower-value; porting LC044's `HasMultipleAssignments` ambiguity guard is the proposed fix. |
+| LC044 | Re-attach inside an untaken branch suppresses (FN) | **Deferred.** Treating any visible re-attach as intent is a reasonable FP-avoidance trade-off. |
+| LC012 | SaveChanges on a *different* context, or in a mutually-exclusive branch, suppresses RemoveRange (FN) | **Open follow-up.** Plausible but needs same-instance and reachability analysis; not yet verified to a shippable fix. |
+
 ## Planning Shortlist
 
-The next improvement batch should focus on rules where user impact and health gaps overlap. The 2026-05-29 deep rescan replaced the empty High tier with seven concrete, test-confirmed defects (see the Deep Rescan table); LC005's crash already shipped a fix this iteration.
+The next improvement batch should focus on rules where user impact and health gaps overlap. The 2026-06-04 rerun cleared the entire prior Medium tier (LC020, LC015, LC002, LC018; LC035 closed too); the remaining shortlist is the rerun's deferred/open follow-ups.
 
 | Priority | Rules | Work |
 | --- | --- | --- |
-| High | None | All seven High defects surfaced by the 2026-05-29 deep rescan shipped fixes in this rescan pass: **LC005** query-syntax crash, **LC014** arg-walk FP regression, **LC002** unsafe de-dup-dropping fix, **LC006** `AsSplitQuery()`-on-local FP, **LC024** three EF-9-translatable group-aggregate FPs, **LC015** `[Keyless]` unsafe partial-key fix, and **LC018** `SqlQueryRaw<T>` security FN. Promote a rule back to High only when fresh concrete false-positive / false-negative / unsafe-fix / crash evidence surfaces. |
-| Medium | LC009, LC020, LC035 | Follow-ups from the rescan that are real but lower-severity: **LC020** test-confirmed FP/FN pair (Ordinal/OrdinalIgnoreCase over-flagging + argument-derived FN, the LC014 #132 class) — Medium not High because its Importance is already low. Lower-severity rescan follow-ups also tracked here: **LC015** `TakeLast`/`SkipLast`/`ElementAt`/`LastAsync` are not flagged as pagination operators; **LC002** `ToDictionary()`/`ToLookup().ToList()` still carry a misleading "redundant" *message* (no unsafe fix); **LC018** `SqlQueryRaw` is not yet covered by LC037 construction analysis and has no `SqlQuery` auto-fix. LC009 residual: the fixer cannot prove cross-method mutation or offer the identity-resolution variant. LC035 needs richer filtered-local/reassignment cases. |
-| Low | LC001, LC003, LC004, LC005, LC007, LC008, LC010, LC011, LC012, LC013, LC016, LC017, LC019, LC021, LC022, LC023, LC025, LC026, LC027, LC028, LC029, LC030, LC031, LC032, LC033, LC034, LC036, LC037, LC038, LC039, LC040, LC041, LC042, LC043, LC044 | Treat as currently acceptable, low-impact tuning, or appropriately harsh-scored where weak. LC005's query-syntax crash was fixed in this rescan iteration; it stays Low because user impact (two-clause `orderby` is uncommon) is also low. LC012 moved here once its async-aware fixer (5.4.8) closed the sync-over-async unsafe-fix and tripled fixer coverage. |
+| High | None | No High-tier defects are open. The 2026-05-29 deep rescan's seven defects all shipped (in 5.4.13 and the LC005 crash fix); the 2026-06-04 rerun's twelve releases cleared the prior Medium tier. Promote a rule back to High only when fresh concrete false-positive / false-negative / unsafe-fix / crash evidence surfaces. |
+| Medium | LC012, LC025, LC009, LC008 | Deferred/open follow-ups from the 2026-06-04 rerun (see the Rejected/Deferred table for full rationale): **LC012** RemoveRange suppressed by a SaveChanges on a *different* context or in a mutually-exclusive branch (needs same-instance + reachability analysis); **LC025** path-insensitive last-write-wins on a conditionally-reassigned local (port LC044's `HasMultipleAssignments` ambiguity guard); **LC009** residual — the fixer cannot prove cross-method mutation or offer the identity-resolution variant; **LC008** unfixable orphaned warning on a sync EF call inside a `static` local function in an async method. All four are real but lower-severity; none has a verified shippable fix yet. |
+| Low | All other rules | Treat as currently acceptable, low-impact tuning, or appropriately harsh-scored where weak. The 2026-06-04 rerun's deferred items that are deliberate design (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 re-attach) stay here unless new evidence reframes them. |
 
 ## Verification Baseline
 
-Package version: 5.4.12
+Package version: 5.5.10
 
-Base audited commit: 840d00b (5.4.12 release); LC005 crash fix pending on `fix/lc005-query-syntax-orderby-crash`.
+Base audited commit: 07a7a0f (master, after the 2026-06-04 rerun's twelve releases). The 2026-05-29 baseline was 5.4.12 (840d00b).
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -127,7 +165,16 @@ No code, tests, or samples changed between the original 2026-05-14 sweep and the
 
 On **2026-05-29** an eight-probe `analyzer-fp-fn-hunter` deep rescan (see the Deep Rescan section above) re-examined the highest-payoff Warning-severity rules against the shipped 5.4.12 code. Unlike the 2026-05-14 scoring pass, this rescan compiled and test-confirmed every finding. It surfaced eight evidence-backed defects — one analyzer crash (LC005, fixed this iteration) and seven open FP/FN/unsafe-fix items now tracked in the High/Medium shortlist. The hardening loop addresses them one rule per iteration in severity order.
 
-Current local verification:
+On **2026-06-04** an overnight rerun shipped twelve releases (`5.5.1` … `5.5.10`, see the 2026-06-04 Rerun section) plus a dev-tooling fix. A fresh four-probe `analyzer-fp-fn-hunter` rescan over twelve previously-unswept rules surfaced this batch; every finding was independently re-verified before shipping, and several probe/audit claims (including the audit's own LC020 and LC015 Medium entries) were rejected on verification. The rerun also fixed a previously-red local Windows baseline (11 LC010/LC011/LC016/LC027 fixer tests failing on CRLF) and made `RuleCatalogDocGenerator --check` line-ending-robust.
+
+Current local verification (2026-06-04, net10.0):
+
+- `dotnet test LinqContraband.sln -c Release --framework net10.0` passed with **910 tests** (was 828 at the 2026-05-29 baseline; +82 across the rerun's fixes and new regression tests).
+- `dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` now reports `docs/rule-catalog.md` is up to date on a CRLF (Windows) checkout too (the line-ending false alarm is fixed).
+- `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` passed for 43 diagnostic paths.
+- Each release was gated by the GitHub `dotnet.yml` CI (net8/9/10) and the `publish.yml` NuGet workflow's own multi-target test run.
+
+Earlier baseline detail (2026-05-29):
 
 - `dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check` reported `docs/rule-catalog.md` is up to date.
 - `dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --configuration Release --frameworks net10.0` passed for 43 diagnostic paths.
