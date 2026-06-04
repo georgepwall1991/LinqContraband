@@ -11,13 +11,21 @@ public sealed partial class MissingCancellationTokenAnalyzer
 
         foreach (var symbol in semanticModel.LookupSymbols(position))
         {
-            if (symbol is not ILocalSymbol and not IParameterSymbol)
+            // A CancellationToken stored in a field or surfaced through a readable property (e.g. an
+            // injected token or IHostApplicationLifetime.ApplicationStopping) is just as passable as a
+            // local/parameter one; the fixer references it by bare name, which binds to this.<member>.
+            if (symbol is not ILocalSymbol and not IParameterSymbol and not IFieldSymbol and not IPropertySymbol)
+                continue;
+
+            if (symbol is IPropertySymbol { GetMethod: null })
                 continue;
 
             var type = symbol switch
             {
                 ILocalSymbol local => local.Type,
                 IParameterSymbol parameter => parameter.Type,
+                IFieldSymbol field => field.Type,
+                IPropertySymbol property => property.Type,
                 _ => null
             };
 

@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.12</Version>
+        <Version>5.5.13</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC041 no longer flags a primary-key lookup written with the key predicate on a Where step before First (the same single-row-by-key fetch as First with the predicate inline) — one of the most common EF read patterns. The key-lookup exemption previously inspected only the terminal operator's inline predicate; it now also walks the receiver chain for a Where whose predicate is a primary-key equality. A non-key Where still reports. (Found by a second adversarial false-positive rescan.)</PackageReleaseNotes>
+        <PackageReleaseNotes>LC026 now recognises a CancellationToken stored in a field or surfaced through a readable property as an available token, so an EF async call that omits it is flagged (and the fixer passes it by name) — previously only locals and parameters counted, silently missing the common injected-token / IHostApplicationLifetime.ApplicationStopping patterns. (Found by a second adversarial false-negative rescan.)</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
