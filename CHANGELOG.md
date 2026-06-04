@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.11] - 2026-06-04
+
+### Fixed
+- Closed an `LC001` false negative on aggregate selectors. A local (non-translatable) method inside a `Sum`/`Average`/`Min`/`Max` selector — `db.Users.Sum(u => Weight(u.Age))` — was not flagged because those four operators were missing from the rule's translation-critical method set, even though `Queryable.Sum`/`Average`/`Min`/`Max(source, selector)` translate to SQL `SUM`/`AVG`/`MIN`/`MAX(expr)` and a source-defined method in the selector forces client evaluation (or throws) — the same smell LC001 already catches in `Where`/`OrderBy`/`GroupBy`/predicates. The four aggregate operators are now in the set. Added a parameterized regression test across all four. (Found by a second adversarial false-negative rescan.)
+
 ## [5.5.10] - 2026-06-04
 
 ### Fixed
