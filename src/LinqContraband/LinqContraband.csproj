@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.9</Version>
+        <Version>5.5.10</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC035 no longer reports the common "base filter + optional extra narrowing" shape: var q = db.Users.Where(...); if (flag) q = q.Where(...); q.ExecuteDelete(). It previously inspected only the latest assignment (the conditional one inside the if) and bailed to no-filter, ignoring the filtered unconditional base — a false positive, since every path is filtered. The check now resolves the unconditional base assignment and requires it plus every later conditional reassignment to be filtered; a conditional path that reassigns to an unfiltered query still reports. (Found by an adversarial false-positive rescan.)</PackageReleaseNotes>
+        <PackageReleaseNotes>Two false negatives closed by the adversarial rescan. LC004 (IQueryable leak) now follows a C# query expression (from u in users where ... select ...) back to its source parameter — query-syntax enumeration of an IEnumerable parameter was silently exempt while the fluent equivalent fired, because a query expression surfaces as an ITranslatedQueryOperation the parameter-source walk did not unwrap. LC044 (AsNoTracking entity mutated then SaveChanges) now treats a compound assignment (entity.Prop += 1) and an increment/decrement (entity.Prop++) as a mutation, not only a plain assignment — each is silently lost on an untracked entity. (Found by an adversarial false-negative rescan.)</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
