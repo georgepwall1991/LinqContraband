@@ -80,6 +80,60 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteDelete_UnconditionalFilterThenOptionalNarrowing_ShouldNotTrigger()
+    {
+        // The base query is filtered on every path; the if only adds a further Where, so the delete
+        // can never affect the whole table.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool flag)
+        {
+            var q = db.Set<User>().Where(u => u.Id > 10);
+            if (flag)
+            {
+                q = q.Where(u => u.Id < 100);
+            }
+            return q.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_ConditionalReassignToUnfiltered_ShouldTrigger()
+    {
+        // The if path reassigns q to an UNfiltered query, so on that path the delete affects the whole
+        // table — must still report (the unconditional base being filtered is not enough).
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool flag)
+        {
+            var q = db.Set<User>().Where(u => u.Id > 10);
+            if (flag)
+            {
+                q = db.Set<User>();
+            }
+            return {|LC035:q.ExecuteDelete()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithWhere_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

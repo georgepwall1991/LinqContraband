@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.5.8</Version>
+        <Version>5.5.9</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC007 now flags an N+1 inside a deconstruction foreach — foreach (var (a, b) in pairs) { db.Users.Find(a); }. That shape is a distinct syntax node (ForEachVariableStatementSyntax) from a regular foreach, so the per-iteration check previously skipped it even though the fluent equivalent fired. The check (and the loop-kind label) now match the shared CommonForEachStatementSyntax base, covering both the regular and deconstruction foreach shapes and their await forms. (Found by an adversarial false-negative rescan.)</PackageReleaseNotes>
+        <PackageReleaseNotes>LC035 no longer reports the common "base filter + optional extra narrowing" shape: var q = db.Users.Where(...); if (flag) q = q.Where(...); q.ExecuteDelete(). It previously inspected only the latest assignment (the conditional one inside the if) and bailed to no-filter, ignoring the filtered unconditional base — a false positive, since every path is filtered. The check now resolves the unconditional base assignment and requires it plus every later conditional reassignment to be filtered; a conditional path that reassigns to an unfiltered query still reports. (Found by an adversarial false-positive rescan.)</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

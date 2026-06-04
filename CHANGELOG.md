@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.9] - 2026-06-04
+
+### Fixed
+- Stopped `LC035` from reporting the common "base filter + optional extra narrowing" shape. `var q = db.Users.Where(...); if (flag) q = q.Where(...); q.ExecuteDelete();` was flagged because the local-filter check inspected only the **latest** assignment before the bulk call — the conditional `q = q.Where(...)` inside the `if` — and bailed to "no filter" because it sat inside a branch, ignoring that the unconditional base already had a `Where` (a false positive: every path is filtered). The check now resolves the latest **unconditional** base assignment (which every control-flow path passes through) and treats the local as filtered only when that base **and** every later **conditional** reassignment are filtered. A conditional path that reassigns to an unfiltered query (`if (flag) q = db.Set<User>();`) still reports, as does an unfiltered base. Added the base-filter-plus-narrowing no-diagnostic test and an unfiltered-conditional-reassignment guardrail. (Found by an adversarial false-positive rescan; also closes the audit's LC035 filtered-local/reassignment follow-up.)
+
 ## [5.5.8] - 2026-06-04
 
 ### Fixed
