@@ -270,6 +270,61 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task PrimaryKeyLookupViaWhereStep_ShouldNotTrigger()
+    {
+        // Where(x => x.Id == id).First() is the same single-row-by-key fetch as First(x => x.Id == id),
+        // which is already exempt — the PK guard must inspect the Where step in the chain too.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = users.Where(x => x.Id == 1).First();
+            System.Console.WriteLine(user.Name);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NonKeyWhereStepThenFirst_ShouldStillTrigger()
+    {
+        // A non-key Where (x.IsActive) is not a primary-key lookup, so the single-property over-fetch
+        // is still reported — guards against over-suppressing the new Where-chain PK exemption.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = {|LC041:users.Where(x => x.IsActive).First()|};
+            System.Console.WriteLine(user.Name);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task MultiplePropertyUsage_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
