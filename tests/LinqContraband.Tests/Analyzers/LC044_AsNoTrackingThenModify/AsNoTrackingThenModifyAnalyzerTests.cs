@@ -125,6 +125,50 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_CompoundAssignmentMutation_ThenSave_Triggers()
+    {
+        // entity.Prop += … mutates the untracked entity just like a plain assignment — silent loss.
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public int Count { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            {|LC044:user.Count|} += 1;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_IncrementMutation_ThenSave_Triggers()
+    {
+        // entity.Prop++ mutates the untracked entity just like a plain assignment — silent loss.
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public int Count { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            {|LC044:user.Count|}++;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_ThenMutate_ThenSaveChangesAsync_Triggers()
     {
         var test = Preamble + EfCoreMock + @"

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.10] - 2026-06-04
+
+### Fixed
+- Closed two false negatives surfaced by the adversarial rescan. **LC004** (IQueryable passed as IEnumerable) now follows a C# **query expression** back to its source parameter: `int CountUsers(IEnumerable<User> users) { var q = from u in users where u.Id > 5 select u; return q.Count(); }` enumerated the parameter in memory but was silently exempt, because a query expression surfaces as an `ITranslatedQueryOperation` that the parameter-source walk did not unwrap (the fluent equivalent `users.Where(...).Count()` already fired). The walk now unwraps the lowered query, so query-syntax enumeration of an `IEnumerable` parameter is detected too. **LC044** (AsNoTracking entity mutated then SaveChanges) now treats a **compound assignment** (`entity.Prop += 1`) and an **increment/decrement** (`entity.Prop++`) as a mutation, not only a plain `=` assignment — each silently loses on an untracked entity. Added a query-expression leak test (LC004) and compound-assignment + increment tests (LC044). (Found by an adversarial false-negative rescan.)
+
 ## [5.5.9] - 2026-06-04
 
 ### Fixed

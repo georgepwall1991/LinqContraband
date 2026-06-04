@@ -105,6 +105,14 @@ internal sealed class AsNoTrackingThenModifyRootScan
                 HandleAssignment(scan, assignment);
                 break;
 
+            case ICompoundAssignmentOperation compound:
+                HandlePropertyMutation(scan, compound, compound.Target);
+                break;
+
+            case IIncrementOrDecrementOperation incrementOrDecrement:
+                HandlePropertyMutation(scan, incrementOrDecrement, incrementOrDecrement.Target);
+                break;
+
             case IInvocationOperation invocation:
                 HandleInvocation(scan, invocation, ref saves);
                 break;
@@ -113,16 +121,7 @@ internal sealed class AsNoTrackingThenModifyRootScan
 
     private static void HandleAssignment(AsNoTrackingThenModifyRootScan scan, ISimpleAssignmentOperation assignment)
     {
-        if (assignment.Target is IPropertyReferenceOperation propRef &&
-            propRef.Instance?.UnwrapConversions() is ILocalReferenceOperation instanceLocal)
-        {
-            var entry = new MutationEntry(
-                assignment,
-                propRef.Syntax.GetLocation(),
-                propRef.Property.Name,
-                assignment.Syntax.SpanStart);
-            AddMutation(scan, instanceLocal.Local, entry);
-        }
+        HandlePropertyMutation(scan, assignment, assignment.Target);
 
         if (TryParseEntryStateReattach(assignment, out var entryLocal, out var entryContext))
         {
@@ -130,6 +129,22 @@ internal sealed class AsNoTrackingThenModifyRootScan
                 scan,
                 entryLocal,
                 new ReattachEntry(entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+        }
+    }
+
+    // Records a property mutation on a local entity (entity.Prop = …, entity.Prop += …, entity.Prop++)
+    // so a later SaveChanges can be checked for silent data loss. A compound assignment and an
+    // increment/decrement mutate the entity just as a plain assignment does, so all three are tracked.
+    private static void HandlePropertyMutation(AsNoTrackingThenModifyRootScan scan, IOperation mutation, IOperation? target)
+    {
+        if (target is IPropertyReferenceOperation propRef &&
+            propRef.Instance?.UnwrapConversions() is ILocalReferenceOperation instanceLocal)
+        {
+            AddMutation(scan, instanceLocal.Local, new MutationEntry(
+                mutation,
+                propRef.Syntax.GetLocation(),
+                propRef.Property.Name,
+                mutation.Syntax.SpanStart));
         }
     }
 

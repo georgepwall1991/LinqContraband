@@ -105,6 +105,41 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Leak_WhenQueryExpressionConsumesParameter_ShouldTrigger()
+    {
+        // A C# query expression that enumerates the IEnumerable parameter leaks just like the fluent
+        // form (from u in users ... is lowered to users.Where(...).Select(...)).
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public int Main()
+        {
+            using var db = new AppDbContext();
+            var query = db.Users.Where(u => u.Id > 10);
+
+            return CountUsers({|LC004:query|});
+        }
+
+        private static int CountUsers(IEnumerable<User> users)
+        {
+            var q = from u in users where u.Id > 5 select u;
+            return q.Count();
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Leak_WhenExpressionBodiedMethodConsumesParameter_ShouldTrigger()
     {
         var test = Usings + @"

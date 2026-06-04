@@ -48,6 +48,20 @@ internal sealed partial class IQueryableLeakCompilationState
                 out parameter);
         }
 
+        // A C# query expression (`from u in users where ... select u`) surfaces as an
+        // ITranslatedQueryOperation; unwrap to its lowered form (users.Where(...).Select(...)) so the
+        // sequence-preserving walk above can trace it back to the parameter. Without this, query-syntax
+        // enumeration of an IEnumerable parameter is silently exempt while the fluent equivalent fires.
+        if (current is ITranslatedQueryOperation translatedQuery)
+        {
+            return TryResolveParameterSource(
+                translatedQuery.Operation,
+                position,
+                executableRoot,
+                visitedLocals,
+                out parameter);
+        }
+
         return false;
     }
 
