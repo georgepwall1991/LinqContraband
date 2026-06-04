@@ -32,4 +32,6 @@ Console.WriteLine(user);
 ### Notes
 The analyzer reports only when a `var` local is consumed through one scalar property read in the same executable scope. It stays silent when the entity escapes, multiple properties are read, or the property is written.
 
+A primary-key lookup is exempt: `users.First(x => x.Id == id)` and the equivalent `users.Where(x => x.Id == id).First()` are both treated as a single-row-by-key fetch (not an over-fetch), so neither is reported regardless of how the key predicate is written. A non-key `Where` (e.g. `Where(x => x.IsActive)`) is not exempt and still reports.
+
 The fixer is intentionally narrower than the analyzer. It appears for `First`, `FirstAsync`, `Single`, and `SingleAsync` because those rewrites preserve no-row behavior. It does not rewrite `FirstOrDefault`, `FirstOrDefaultAsync`, `SingleOrDefault`, or `SingleOrDefaultAsync`; projecting before those calls can turn an entity-null property access into a scalar default/null value instead of preserving the original runtime behavior.

@@ -108,6 +108,44 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
         return false;
     }
 
+    // A primary-key lookup is exempt whether the key predicate sits on the terminal operator
+    // (First(x => x.Id == id)) or on a Where step in the receiver chain
+    // (Where(x => x.Id == id).First()) — the two are the same single-row-by-key fetch, so flagging
+    // only the terminal form is a false positive on one of the most common EF read patterns.
+    private static bool IsPrimaryKeyLookupInChain(IInvocationOperation terminal, IOperation receiver, ITypeSymbol entityType)
+    {
+        if (TryGetPredicateLambda(terminal, out var terminalLambda) &&
+            IsPrimaryKeyLookup(terminalLambda, entityType))
+        {
+            return true;
+        }
+
+        var current = receiver;
+        while (current != null)
+        {
+            current = current.UnwrapConversions();
+            if (current is not IInvocationOperation invocation)
+                break;
+
+            if (invocation.TargetMethod.Name == "Where" &&
+                TryGetPredicateLambda(invocation, out var whereLambda) &&
+                IsPrimaryKeyLookup(whereLambda, entityType))
+            {
+                return true;
+            }
+
+            if (QuerySteps.Contains(invocation.TargetMethod.Name))
+            {
+                current = invocation.GetInvocationReceiver();
+                continue;
+            }
+
+            break;
+        }
+
+        return false;
+    }
+
     private static bool IsPrimaryKeyLookup(IAnonymousFunctionOperation lambda, ITypeSymbol entityType)
     {
         var primaryKey = entityType.TryFindPrimaryKey();

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.12] - 2026-06-04
+
+### Fixed
+- Stopped `LC041` from flagging a primary-key lookup written as `users.Where(x => x.Id == id).First()`. The single-entity over-fetch exemption for a key lookup only inspected the **terminal** operator's inline predicate (`First(x => x.Id == id)`), so the equivalent form with the key predicate on an upstream `Where` step — one of the most common EF read patterns — was reported even though it is the same single-row-by-key fetch. The exemption now also walks the receiver chain for a `Where` whose predicate is a primary-key equality. A non-key `Where` (e.g. `Where(x => x.IsActive)`) is not exempt and still reports. Added a `Where`-step PK no-trigger test and a non-key-`Where` still-fires guardrail. (Found by a second adversarial false-positive rescan; the rarer hoisted-`Expression`-predicate form remains a documented follow-up.)
+
 ## [5.5.11] - 2026-06-04
 
 ### Fixed

@@ -91,8 +91,7 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer : DiagnosticAna
         if (HasSelectInChain(receiver))
             return;
 
-        if (TryGetPredicateLambda(invocation, out var lambda) &&
-            IsPrimaryKeyLookup(lambda, entityType))
+        if (IsPrimaryKeyLookupInChain(invocation, receiver, entityType))
         {
             return;
         }
