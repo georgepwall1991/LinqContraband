@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ "master" ]
 
+# Cancel superseded runs on PR branches; never cancel master runs (the badge
+# commit step must not be interrupted mid-push).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 permissions:
   contents: read
 

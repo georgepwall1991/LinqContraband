@@ -55,6 +55,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RuleCatalogDocGenerator", "tools\RuleCatalogDocGenerator\RuleCatalogDocGenerator.csproj", "{E3F3AEA7-226F-4570-96BB-BD1C5DAFEF81}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleDiagnosticsVerifier", "tools\SampleDiagnosticsVerifier\SampleDiagnosticsVerifier.csproj", "{1E81AB40-A9B5-4F08-873F-4C67017F8C80}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -113,6 +115,18 @@ Global
 		{E3F3AEA7-226F-4570-96BB-BD1C5DAFEF81}.Release|x64.Build.0 = Release|Any CPU
 		{E3F3AEA7-226F-4570-96BB-BD1C5DAFEF81}.Release|x86.ActiveCfg = Release|Any CPU
 		{E3F3AEA7-226F-4570-96BB-BD1C5DAFEF81}.Release|x86.Build.0 = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|x64.Build.0 = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Debug|x86.Build.0 = Debug|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|x64.ActiveCfg = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|x64.Build.0 = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|x86.ActiveCfg = Release|Any CPU
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -122,5 +136,6 @@ Global
 		{FF55B03C-3890-46CA-8554-E2AC7ED686E1} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{BE8C692E-90BD-4F68-A353-530F3DD4E036} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{E3F3AEA7-226F-4570-96BB-BD1C5DAFEF81} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{1E81AB40-A9B5-4F08-873F-4C67017F8C80} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal
