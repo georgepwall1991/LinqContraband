@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.0] - 2026-06-09
+
+### Added
+- New rule `LC045` **Missing Include: navigation accessed on materialized entity** (Reliability, Warning, code fix). Detects the canonical EF Core read-side bug: a DbSet-rooted query is materialized (`ToList`, `FirstOrDefault`, …) and a navigation property of the result is then read without a matching `Include`/`ThenInclude` — an N+1 query per access under lazy-loading proxies, or a silent `null`/empty collection without them. The code fix inserts `.Include(x => x.Nav)` (with `.ThenInclude` for nested paths) immediately before the materializer and supports FixAll. Detection is deliberately conservative: only shape-preserving operator chains rooted in a `DbSet` property/field qualify; `Select`/`Join`/custom operators, unparseable (dynamic-string) Includes, reassigned locals, and any escape of the result (returned, passed as an argument, lambda-captured, stored non-locally) silence the query. Navigation writes (`o.Customer = c`, deconstruction, collection `Add`/`Remove`) are recognised as relationship fix-up, and an in-memory assignment satisfies later reads of that path. Null-guarded reads (`!= null`, `?.`) flag on purpose — the guard itself triggers the lazy load or hides the always-null bug. Hardened pre-release by adversarial FP/FN hunting and four cross-model review rounds (constructor bodies, `?.`-guarded and indexed access, `nameof`, keyword-named navigations, static LINQ call syntax, DbSet fields).
+
+### Fixed
+- `LC006` include-path parsing (now shared with `LC045` via `IncludePathParser`): a mid-path cast or null-forgiving operator in an Include lambda — `Include(o => o.Customer!.Address)`, `Include(o => ((Derived)o.Nav).Child)` — previously parsed as a silently truncated path (`Address`), which could mis-group sibling collections; the full path is now parsed, and an unrecognised lambda shape fails the parse instead of truncating.
+
 ## [5.5.13] - 2026-06-04
 
 ### Fixed
