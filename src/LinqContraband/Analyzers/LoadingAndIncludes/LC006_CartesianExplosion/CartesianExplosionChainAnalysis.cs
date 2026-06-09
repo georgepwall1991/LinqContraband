@@ -38,7 +38,7 @@ public sealed partial class CartesianExplosionAnalyzer
                 continue;
             }
 
-            if (!TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
+            if (!IncludePathParser.TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
                 continue;
 
             foundInclude = true;

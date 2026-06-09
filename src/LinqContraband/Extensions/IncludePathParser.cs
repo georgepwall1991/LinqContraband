@@ -1,13 +1,55 @@
 using System.Collections.Immutable;
-using LinqContraband.Extensions;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
-namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
+namespace LinqContraband.Extensions;
 
-public sealed partial class CartesianExplosionAnalyzer
+/// <summary>
+/// A single navigation step inside an Include/ThenInclude path, e.g. the "Items" in
+/// <c>Include(o => o.Items)</c>.
+/// </summary>
+internal readonly struct NavigationSegment
+{
+    public NavigationSegment(string name, bool isCollection)
+    {
+        Name = name;
+        IsCollection = isCollection;
+    }
+
+    public string Name { get; }
+    public bool IsCollection { get; }
+}
+
+/// <summary>
+/// A full eager-loading path built from one Include plus any chained ThenIncludes,
+/// e.g. "Orders.Items" for <c>Include(c => c.Orders).ThenInclude(o => o.Items)</c>.
+/// </summary>
+internal sealed class IncludePath
+{
+    public IncludePath(ImmutableArray<NavigationSegment> segments)
+    {
+        Segments = segments;
+    }
+
+    public ImmutableArray<NavigationSegment> Segments { get; }
+
+    public string Key => string.Join(".", Segments.Select(segment => segment.Name));
+
+    public IncludePath Append(IncludePath childPath)
+    {
+        return new IncludePath(Segments.AddRange(childPath.Segments));
+    }
+}
+
+/// <summary>
+/// Parses EF Core Include/ThenInclude invocations (lambda, filtered-lambda, and constant-string
+/// overloads) into <see cref="IncludePath"/> values. Shared by LC006 (cartesian explosion) and
+/// LC045 (missing include).
+/// </summary>
+internal static class IncludePathParser
 {
     private static readonly ImmutableHashSet<string> FilteredIncludeMethods = ImmutableHashSet.Create(
         System.StringComparer.Ordinal,
@@ -19,7 +61,7 @@ public sealed partial class CartesianExplosionAnalyzer
         "Skip",
         "Take");
 
-    private static bool TryGetIncludePath(
+    public static bool TryGetIncludePath(
         IInvocationOperation invocation,
         SemanticModel semanticModel,
         IncludePath? previousIncludePath,
@@ -152,9 +194,22 @@ public sealed partial class CartesianExplosionAnalyzer
         if (expression is not MemberAccessExpressionSyntax memberAccess)
             return false;
 
-        if (memberAccess.Expression is MemberAccessExpressionSyntax parentMemberAccess)
+        // Unwrap mid-path casts/parens/null-forgiving (`o.Customer!.Address`,
+        // `((Derived)o.Nav).Child`) so the parent segments are still collected. Any other
+        // parent shape fails the parse — truncating would turn an unknown into a wrong path.
+        switch (UnwrapExpression(memberAccess.Expression))
         {
-            if (!TryAddNavigationSegments(parentMemberAccess, semanticModel, builder))
+            case MemberAccessExpressionSyntax parentMemberAccess:
+                if (!TryAddNavigationSegments(parentMemberAccess, semanticModel, builder))
+                    return false;
+                break;
+            case InvocationExpressionSyntax parentInvocation:
+                if (!TryAddNavigationSegments(parentInvocation, semanticModel, builder))
+                    return false;
+                break;
+            case IdentifierNameSyntax:
+                break;
+            default:
                 return false;
         }
 
@@ -201,7 +256,7 @@ public sealed partial class CartesianExplosionAnalyzer
         return null;
     }
 
-    private static bool IsCollection(ITypeSymbol type)
+    public static bool IsCollection(ITypeSymbol type)
     {
         if (type.SpecialType == SpecialType.System_String)
             return false;
@@ -229,7 +284,7 @@ public sealed partial class CartesianExplosionAnalyzer
         return false;
     }
 
-    private static bool TryGetCollectionElementType(ITypeSymbol type, out ITypeSymbol elementType)
+    public static bool TryGetCollectionElementType(ITypeSymbol type, out ITypeSymbol elementType)
     {
         elementType = null!;
         if (type.SpecialType == SpecialType.System_String)

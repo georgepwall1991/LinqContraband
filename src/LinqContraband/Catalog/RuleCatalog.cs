@@ -623,7 +623,21 @@ public static class RuleCatalog
             samplePath: "samples/LinqContraband.Sample/Samples/LC044_AsNoTrackingThenModify/AsNoTrackingThenModifySample.cs",
             analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC044_AsNoTrackingThenModify",
             hasCodeFix: false,
-            noCodeFixRationale: "No automatic fix: the right resolution depends on intent — either remove AsNoTracking() so the entity is tracked from origin, or call Update/Attach (or set Entry.State = Modified) before SaveChanges. Both are semantically valid depending on context.")
+            noCodeFixRationale: "No automatic fix: the right resolution depends on intent — either remove AsNoTracking() so the entity is tracked from origin, or call Update/Attach (or set Entry.State = Modified) before SaveChanges. Both are semantically valid depending on context."),
+        new RuleCatalogEntry(
+            id: "LC045",
+            slug: "LC045_MissingInclude",
+            title: "Missing Include: navigation accessed on materialized entity",
+            category: "Reliability",
+            domain: "Loading & Includes",
+            severity: DiagnosticSeverity.Warning,
+            analyzerTypeName: "MissingIncludeAnalyzer",
+            fixerTypeName: "MissingIncludeFixer",
+            documentationPath: "docs/LC045_MissingInclude.md",
+            samplePath: "samples/LinqContraband.Sample/Samples/LC045_MissingInclude/MissingIncludeSample.cs",
+            analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC045_MissingInclude",
+            hasCodeFix: true,
+            noCodeFixRationale: null)
     );
 
     public static RuleCatalogEntry GetById(string id)

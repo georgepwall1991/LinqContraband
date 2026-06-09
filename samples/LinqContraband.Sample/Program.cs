@@ -34,6 +34,7 @@ using LinqContraband.Sample.Samples.LC041_SingleEntityScalarProjection;
 using LinqContraband.Sample.Samples.LC042_MissingQueryTags;
 using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
 using LinqContraband.Sample.Samples.LC044_AsNoTrackingThenModify;
+using LinqContraband.Sample.Samples.LC045_MissingInclude;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -94,5 +95,6 @@ internal class Program
         MissingQueryTagsSample.Run(db);
         await AsyncEnumerableBufferingSample.RunAsync(db);
         AsNoTrackingThenModifySample.Run(db);
+        MissingIncludeSample.Run(db);
     }
 }

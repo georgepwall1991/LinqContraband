@@ -207,3 +207,6 @@ indent_size = 2
 
 # LC044: AsNoTracking Entity Mutated - Silent write lost before SaveChanges
 # dotnet_diagnostic.LC044.severity = warning
+
+# LC045: Missing Include - Navigation accessed on materialized entity without eager loading
+# dotnet_diagnostic.LC045.severity = warning

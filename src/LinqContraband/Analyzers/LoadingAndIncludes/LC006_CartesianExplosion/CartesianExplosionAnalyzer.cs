@@ -85,35 +85,6 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         Single
     }
 
-    private readonly struct NavigationSegment
-    {
-        public NavigationSegment(string name, bool isCollection)
-        {
-            Name = name;
-            IsCollection = isCollection;
-        }
-
-        public string Name { get; }
-        public bool IsCollection { get; }
-    }
-
-    private sealed class IncludePath
-    {
-        public IncludePath(ImmutableArray<NavigationSegment> segments)
-        {
-            Segments = segments;
-        }
-
-        public ImmutableArray<NavigationSegment> Segments { get; }
-
-        public string Key => string.Join(".", Segments.Select(segment => segment.Name));
-
-        public IncludePath Append(IncludePath childPath)
-        {
-            return new IncludePath(Segments.AddRange(childPath.Segments));
-        }
-    }
-
     private sealed class IncludeChainAnalysis
     {
         private readonly System.Collections.Generic.List<IncludePath> includePaths = new();

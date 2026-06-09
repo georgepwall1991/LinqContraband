@@ -1,7 +1,7 @@
 # LinqContraband — Project Guide for Claude Code
 
 **LinqContraband** is a Roslyn analyzer (NuGet package, id `LinqContraband`) that catches EF Core
-query anti-patterns at compile time. 44 rules (`LC001`–`LC044`) across 8 "neighborhoods", each
+query anti-patterns at compile time. 45 rules (`LC001`–`LC045`) across 8 "neighborhoods", each
 shipped with an analyzer, tests, a sample, a doc page, and a central catalog entry.
 
 - Analyzer project targets **`netstandard2.0`**; tests/samples multi-target **net8.0/9.0/10.0**.
