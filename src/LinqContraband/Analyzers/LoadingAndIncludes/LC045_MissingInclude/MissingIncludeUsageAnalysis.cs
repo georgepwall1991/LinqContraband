@@ -83,15 +83,19 @@ public sealed partial class MissingIncludeAnalyzer
                             entityLocals.Add(loopLocal);
                         break;
 
+                    // A local fed from the result by index only counts while it can't be
+                    // repointed at some unrelated object: require a single assignment.
                     case IVariableDeclaratorOperation declarator when
                         declarator.Initializer != null &&
-                        IsIndexedAccessOf(declarator.Initializer.Value, resultLocal):
+                        IsIndexedAccessOf(declarator.Initializer.Value, resultLocal) &&
+                        LocalAssignmentCache.GetAssignments(executableRoot, declarator.Symbol, cancellationToken).Count == 1:
                         entityLocals.Add(declarator.Symbol);
                         break;
 
                     case ISimpleAssignmentOperation assignmentOperation when
                         assignmentOperation.Target is ILocalReferenceOperation targetLocal &&
-                        IsIndexedAccessOf(assignmentOperation.Value, resultLocal):
+                        IsIndexedAccessOf(assignmentOperation.Value, resultLocal) &&
+                        LocalAssignmentCache.GetAssignments(executableRoot, targetLocal.Local, cancellationToken).Count == 1:
                         entityLocals.Add(targetLocal.Local);
                         break;
                 }
@@ -105,7 +109,17 @@ public sealed partial class MissingIncludeAnalyzer
                     entityLocals.Contains(localReference.Local));
         }
 
+        bool IsEntitySource(IOperation? operation)
+        {
+            if (IsTrackedLocal(operation))
+                return true;
+
+            // Direct indexed access: orders[0].Customer without an intermediate local.
+            return returnsCollection && operation != null && IsIndexedAccessOf(operation, resultLocal);
+        }
+
         var accesses = new List<NavigationAccess>();
+        var satisfiedPaths = new HashSet<string>(System.StringComparer.Ordinal);
 
         foreach (var descendant in executableRoot.Descendants())
         {
@@ -139,15 +153,50 @@ public sealed partial class MissingIncludeAnalyzer
                     return null;
 
                 case IPropertyReferenceOperation propertyReference:
-                    if (IsWriteUsage(propertyReference))
+                    if (IsInsideNameOf(propertyReference))
                         break;
-                    if (TryGetAccessPath(propertyReference, entityType, entityTypes, IsTrackedLocal, out var path))
-                        accesses.Add(new NavigationAccess(path, propertyReference.Syntax));
+                    if (!TryGetAccessPath(propertyReference, entityType, entityTypes, IsEntitySource, out var path))
+                        break;
+
+                    if (IsWriteTarget(propertyReference))
+                    {
+                        // o.Customer = c assigns an in-memory object, so later reads of that
+                        // path (and below it) are backed regardless of Include.
+                        satisfiedPaths.Add(path);
+                        break;
+                    }
+
+                    // o.Items.Add(x): mutating a tracked entity's collection does not read it.
+                    if (IsCollectionMutatorReceiver(propertyReference))
+                        break;
+
+                    accesses.Add(new NavigationAccess(path, propertyReference.Syntax));
                     break;
             }
         }
 
+        if (satisfiedPaths.Count > 0)
+            accesses.RemoveAll(access => IsSatisfied(access.Path, satisfiedPaths));
+
         return accesses;
+    }
+
+    private static bool IsSatisfied(string path, HashSet<string> satisfiedPaths)
+    {
+        foreach (var satisfied in satisfiedPaths)
+        {
+            if (path.Length == satisfied.Length && path == satisfied)
+                return true;
+
+            if (path.Length > satisfied.Length &&
+                path[satisfied.Length] == '.' &&
+                path.StartsWith(satisfied, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<NavigationAccess> CollectInlineAccesses(
@@ -164,7 +213,7 @@ public sealed partial class MissingIncludeAnalyzer
                IsPropertyOfEntity(propertyReference.Property, currentEntity) &&
                TryGetNavigationTarget(propertyReference.Property, entityTypes, out var target, out var isCollection))
         {
-            if (IsWriteUsage(propertyReference))
+            if (IsWriteTarget(propertyReference) || IsCollectionMutatorReceiver(propertyReference))
                 break;
 
             path = path == null ? propertyReference.Property.Name : path + "." + propertyReference.Property.Name;
@@ -184,7 +233,7 @@ public sealed partial class MissingIncludeAnalyzer
         IPropertyReferenceOperation propertyReference,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        System.Func<IOperation?, bool> isTrackedLocal,
+        System.Func<IOperation?, bool> isEntitySource,
         out string path)
     {
         path = null!;
@@ -194,7 +243,12 @@ public sealed partial class MissingIncludeAnalyzer
 
         var instance = propertyReference.Instance?.UnwrapConversions();
 
-        if (instance is ILocalReferenceOperation && isTrackedLocal(instance))
+        // order?.Customer: the instance is the conditional-access placeholder; resolve it to
+        // the guarded receiver so idiomatic null-guarded reads are still recognized.
+        if (instance is IConditionalAccessInstanceOperation)
+            instance = ResolveConditionalAccessReceiver(propertyReference)?.UnwrapConversions();
+
+        if (isEntitySource(instance))
         {
             if (!IsPropertyOfEntity(propertyReference.Property, entityType))
                 return false;
@@ -205,7 +259,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         // Nested access through a reference navigation: o.Customer.Address => "Customer.Address".
         if (instance is IPropertyReferenceOperation parentReference &&
-            TryGetAccessPath(parentReference, entityType, entityTypes, isTrackedLocal, out var parentPath))
+            TryGetAccessPath(parentReference, entityType, entityTypes, isEntitySource, out var parentPath))
         {
             if (!TryGetNavigationTarget(parentReference.Property, entityTypes, out var parentTarget, out var parentIsCollection) ||
                 parentIsCollection)
@@ -223,16 +277,54 @@ public sealed partial class MissingIncludeAnalyzer
         return false;
     }
 
-    private static bool IsWriteUsage(IPropertyReferenceOperation propertyReference)
+    private static IOperation? ResolveConditionalAccessReceiver(IOperation operation)
     {
-        // o.Customer = c: relationship fix-up, not a read of unloaded data.
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is IConditionalAccessOperation conditionalAccess)
+                return conditionalAccess.Operation;
+        }
+
+        return null;
+    }
+
+    private static bool IsInsideNameOf(IOperation operation)
+    {
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is INameOfOperation)
+                return true;
+            if (current is IBlockOperation or IExpressionStatementOperation)
+                return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsWriteTarget(IPropertyReferenceOperation propertyReference)
+    {
+        // o.Customer = c (also += / ??=): relationship fix-up, not a read of unloaded data.
         if (propertyReference.Parent is IAssignmentOperation assignment &&
             assignment.Target == propertyReference)
         {
             return true;
         }
 
-        // o.Items.Add(x): mutating a tracked entity's collection does not require loading it.
+        // (o.Customer, o.Status) = (...): the property sits in a tuple on the target side.
+        IOperation child = propertyReference;
+        var parent = propertyReference.Parent;
+        while (parent is ITupleOperation or IConversionOperation or IParenthesizedOperation)
+        {
+            child = parent;
+            parent = parent.Parent;
+        }
+
+        return parent is IDeconstructionAssignmentOperation deconstruction &&
+               deconstruction.Target == child;
+    }
+
+    private static bool IsCollectionMutatorReceiver(IPropertyReferenceOperation propertyReference)
+    {
         return propertyReference.Parent is IInvocationOperation parentCall &&
                parentCall.Instance == propertyReference &&
                CollectionMutatorMethods.Contains(parentCall.TargetMethod.Name);

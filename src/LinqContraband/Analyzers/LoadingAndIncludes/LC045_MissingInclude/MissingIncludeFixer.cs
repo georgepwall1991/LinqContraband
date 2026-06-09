@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using System.Composition;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LinqContraband.Extensions;
@@ -32,29 +31,31 @@ public sealed class MissingIncludeFixer : CodeFixProvider
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
         var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
-        var diagnostic = context.Diagnostics.First();
 
-        if (!diagnostic.Properties.TryGetValue(MissingIncludeAnalyzer.NavigationPathProperty, out var navigationPath) ||
-            string.IsNullOrWhiteSpace(navigationPath))
+        foreach (var diagnostic in context.Diagnostics)
         {
-            return;
+            if (!diagnostic.Properties.TryGetValue(MissingIncludeAnalyzer.NavigationPathProperty, out var navigationPath) ||
+                string.IsNullOrWhiteSpace(navigationPath))
+            {
+                continue;
+            }
+
+            if (diagnostic.AdditionalLocations.Count == 0)
+                continue;
+
+            var materializerNode = root?.FindNode(diagnostic.AdditionalLocations[0].SourceSpan, getInnermostNodeForTie: true);
+            var materializer = materializerNode as InvocationExpressionSyntax ??
+                               materializerNode?.FirstAncestorOrSelf<InvocationExpressionSyntax>();
+            if (materializer?.Expression is not MemberAccessExpressionSyntax)
+                continue;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    $"Add .Include() for '{navigationPath}'",
+                    c => ApplyFixAsync(context.Document, materializer, navigationPath!, c),
+                    "LC045_AddInclude:" + navigationPath),
+                diagnostic);
         }
-
-        if (diagnostic.AdditionalLocations.Count == 0)
-            return;
-
-        var materializerNode = root?.FindNode(diagnostic.AdditionalLocations[0].SourceSpan, getInnermostNodeForTie: true);
-        var materializer = materializerNode as InvocationExpressionSyntax ??
-                           materializerNode?.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-        if (materializer?.Expression is not MemberAccessExpressionSyntax)
-            return;
-
-        context.RegisterCodeFix(
-            CodeAction.Create(
-                $"Add .Include() for '{navigationPath}'",
-                c => ApplyFixAsync(context.Document, materializer, navigationPath!, c),
-                "LC045_AddInclude:" + navigationPath),
-            diagnostic);
     }
 
     private static async Task<Document> ApplyFixAsync(

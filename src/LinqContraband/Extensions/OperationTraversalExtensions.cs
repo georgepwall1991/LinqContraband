@@ -63,7 +63,9 @@ public static partial class AnalysisExtensions
         var current = operation;
         while (current != null)
         {
-            if (current is IMethodBodyOperation or ILocalFunctionOperation or IAnonymousFunctionOperation)
+            // IMethodBodyBaseOperation covers both ordinary method bodies and constructor
+            // bodies — analyzers must not go blind inside constructors.
+            if (current is IMethodBodyBaseOperation or ILocalFunctionOperation or IAnonymousFunctionOperation)
                 return current;
 
             current = current.Parent;

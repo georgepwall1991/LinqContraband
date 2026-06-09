@@ -194,9 +194,22 @@ internal static class IncludePathParser
         if (expression is not MemberAccessExpressionSyntax memberAccess)
             return false;
 
-        if (memberAccess.Expression is MemberAccessExpressionSyntax parentMemberAccess)
+        // Unwrap mid-path casts/parens/null-forgiving (`o.Customer!.Address`,
+        // `((Derived)o.Nav).Child`) so the parent segments are still collected. Any other
+        // parent shape fails the parse — truncating would turn an unknown into a wrong path.
+        switch (UnwrapExpression(memberAccess.Expression))
         {
-            if (!TryAddNavigationSegments(parentMemberAccess, semanticModel, builder))
+            case MemberAccessExpressionSyntax parentMemberAccess:
+                if (!TryAddNavigationSegments(parentMemberAccess, semanticModel, builder))
+                    return false;
+                break;
+            case InvocationExpressionSyntax parentInvocation:
+                if (!TryAddNavigationSegments(parentInvocation, semanticModel, builder))
+                    return false;
+                break;
+            case IdentifierNameSyntax:
+                break;
+            default:
                 return false;
         }
 

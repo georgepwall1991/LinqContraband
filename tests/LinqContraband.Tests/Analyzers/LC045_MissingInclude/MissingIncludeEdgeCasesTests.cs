@@ -514,6 +514,137 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_NullForgivingMidPathInclude_NoDiagnostic()
+    {
+        // o.Customer!.Address is the idiomatic NRT spelling of a multi-level include; the
+        // parser must see "Customer.Address", not a truncated "Address".
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer!.Address).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Address.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_CastMidPathInclude_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => ((Customer)o.Customer).Address).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Address.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_NavAssignedThenRead_NoDiagnostic()
+    {
+        // The navigation now points at an in-memory object, so the later read is backed
+        // regardless of Include.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        order.Customer = new Customer();
+        Console.WriteLine(order.Customer.Name);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_EntityLocalReusedAcrossObjects_NoDiagnostic()
+    {
+        // The local is repointed between a fresh in-memory object and a query entity; with
+        // more than one assignment we cannot prove which object any given read sees.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Order t = new Order();
+        Console.WriteLine(t.Customer.Name);
+        t = orders[0];
+        Console.WriteLine(t.Id);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_NameofNavigation_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(nameof(o.Customer));
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DeconstructionAssignmentToNav_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            (o.Customer, o.Status) = (new Customer(), ""done"");
+        }
+        db.SaveChanges();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AggregateTerminal_NoDiagnostic()
     {
         var test = Usings + @"

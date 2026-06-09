@@ -51,10 +51,20 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            // The DbSet entity-type set is a per-context-type fact; cache it for the
+            // compilation instead of re-walking the context's members per materializer.
+            var entityTypeCache = new System.Collections.Concurrent.ConcurrentDictionary<INamedTypeSymbol, System.Collections.Generic.HashSet<INamedTypeSymbol>>(SymbolEqualityComparer.Default);
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, entityTypeCache),
+                OperationKind.Invocation);
+        });
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        System.Collections.Concurrent.ConcurrentDictionary<INamedTypeSymbol, System.Collections.Generic.HashSet<INamedTypeSymbol>> entityTypeCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
 
@@ -64,7 +74,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         if (!TryAnalyzeQueryChain(invocation, context.CancellationToken, out var query))
             return;
 
-        var entityTypes = CollectDbSetEntityTypes(query.ContextType);
+        var entityTypes = entityTypeCache.GetOrAdd(query.ContextType, static contextType => CollectDbSetEntityTypes(contextType));
         if (!entityTypes.Contains(query.EntityType))
             return;
 

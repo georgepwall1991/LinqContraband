@@ -91,7 +91,9 @@ public sealed partial class MissingIncludeAnalyzer
     {
         queryInfo = null!;
 
-        var chain = new List<IInvocationOperation>();
+        // Allocated lazily: most materializer-named invocations are plain LINQ-to-objects
+        // that fail the DbSet root proof.
+        List<IInvocationOperation>? chain = null;
         var current = materializer.GetInvocationReceiver();
 
         while (current != null)
@@ -106,7 +108,7 @@ public sealed partial class MissingIncludeAnalyzer
                     return false;
                 }
 
-                chain.Add(invocation);
+                (chain ??= new List<IInvocationOperation>()).Add(invocation);
                 current = invocation.GetInvocationReceiver();
                 continue;
             }
@@ -142,23 +144,26 @@ public sealed partial class MissingIncludeAnalyzer
         IncludePath? currentIncludePath = null;
 
         // Root-first order so each ThenInclude sees the Include path it extends.
-        chain.Reverse();
-        foreach (var invocation in chain)
+        if (chain != null)
         {
-            var methodName = invocation.TargetMethod.Name;
-            if (methodName != "Include" && methodName != "ThenInclude")
-                continue;
-
-            // An Include we cannot parse (dynamic string, unresolved symbol) could cover any
-            // navigation, so the whole query must stay quiet.
-            if (semanticModel == null ||
-                !IncludePathParser.TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
+            chain.Reverse();
+            foreach (var invocation in chain)
             {
-                return false;
-            }
+                var methodName = invocation.TargetMethod.Name;
+                if (methodName != "Include" && methodName != "ThenInclude")
+                    continue;
 
-            currentIncludePath = includePath;
-            AddPathPrefixes(includePath, includedPrefixes);
+                // An Include we cannot parse (dynamic string, unresolved symbol) could cover any
+                // navigation, so the whole query must stay quiet.
+                if (semanticModel == null ||
+                    !IncludePathParser.TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
+                {
+                    return false;
+                }
+
+                currentIncludePath = includePath;
+                AddPathPrefixes(includePath, includedPrefixes);
+            }
         }
 
         queryInfo = new QueryChainInfo(entityType, contextType, includedPrefixes);

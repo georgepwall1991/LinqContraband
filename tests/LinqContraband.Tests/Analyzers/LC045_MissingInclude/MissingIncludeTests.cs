@@ -389,6 +389,70 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_InConstructorBody_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public Program(MyDbContext db)
+    {
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ConditionalAccessNav_TriggersDiagnostic()
+    {
+        // order?.Customer is the idiomatic null guard — same deliberate decision as the
+        // explicit `!= null` check: the guard does not make the missing Include safe.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Console.WriteLine(order?{|#0:.Customer|}.Name);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_DirectIndexedAccess_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Console.WriteLine({|#0:orders[0].Customer|}.Name);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TestCrime_AsNoTrackingQuery_StillTriggersDiagnostic()
     {
         // AsNoTracking + missing Include is the worst case: even with lazy-loading proxies

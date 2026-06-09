@@ -49,15 +49,17 @@ The code fix inserts the missing eager load immediately before the materializer 
 ## False-Positive Disciplines
 - Any non-shape-preserving operator in the chain (`Select`, `Join`, custom extensions) silences the query.
 - The result (or any entity drawn from it) escaping — returned, passed as an argument (including `db.Entry(e)`), captured by a lambda, or stored outside a local — silences the query: a helper might explicitly load the navigation.
-- A reassigned result local silences the query.
-- Navigation writes are not reads: `o.Customer = c` and `o.Items.Add(x)` are recognized relationship-fix-up patterns and stay quiet.
+- A reassigned result local (or a repointed entity local) silences the query.
+- Navigation writes are not reads: `o.Customer = c` (including compound, `??=`, and deconstruction assignments) and `o.Items.Add(x)` are recognized relationship-fix-up patterns and stay quiet. A navigation assigned in memory also satisfies later reads of that path.
+- Mid-path casts and null-forgiving operators in Include lambdas (`Include(o => o.Customer!.Address)`, `Include(o => ((Derived)o.Nav).Child)`) parse as the full path; an Include shape the parser cannot prove silences the whole query.
+- `nameof(o.Customer)` evaluates nothing and is never flagged.
 - Properties whose type has no `DbSet` (owned/unmapped types) are never navigations.
 - Non-EF sources (`List<T>` LINQ) never match the DbSet root proof.
 
 ## Deliberate Decisions & Known Limits
-- **Null-guarded access still fires.** `if (o.Customer != null)` is flagged on purpose: with proxies the null check itself triggers the N+1 load, and without proxies the navigation is always null, so the guard is dead code hiding the bug. Suppress with `#pragma warning disable LC045` if the guard is intentional.
+- **Null-guarded access still fires.** `if (o.Customer != null)` and `order?.Customer` are flagged on purpose: with proxies the null check itself triggers the N+1 load, and without proxies the navigation is always null, so the guard is dead code hiding the bug. Suppress with `#pragma warning disable LC045` if the guard is intentional.
 - Model-level `AutoInclude()` configuration is invisible to the analyzer; if you rely on it, suppress LC045 at the access site or project instead.
-- v1 scope is intra-procedural and local-based. Out of scope (quiet, not flagged): second-level access through collection navigations (`foreach (var i in o.Items) i.Product`), accesses inside lambdas over the result, `Entry(...).Reference/Collection(...).Load()` recognition, `IQueryable` parameters or repository-returned queries as roots, and `foreach` directly over an inline materializer.
+- v1 scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): second-level access through collection navigations (`foreach (var i in o.Items) i.Product`), accesses inside lambdas over the result, property patterns (`order is { Customer: null }`), `Entry(...).Reference/Collection(...).Load()` recognition, `db.Set<T>()` / `IQueryable` parameters / repository-returned queries as roots, and `foreach` directly over an inline materializer.
 
 ## Test Cases
 

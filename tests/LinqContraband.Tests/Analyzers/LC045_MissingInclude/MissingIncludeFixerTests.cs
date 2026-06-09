@@ -299,6 +299,63 @@ class Program
     }
 
     [Fact]
+    public async Task FixCrime_TwoMissingNavsOnOneQuery_FixesBoth()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+            Console.WriteLine({|#1:o.Items|}.Count);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.Customer).Include(x => x.Items).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+            Console.WriteLine(o.Items.Count);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            NumberOfFixAllIterations = 2
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC045", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Customer", "Order")
+                .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC045", DiagnosticSeverity.Warning)
+                .WithLocation(1)
+                .WithArguments("Items", "Order")
+                .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_AddsIncludeToEveryFlaggedQuery()
     {
         var test = Usings + @"
