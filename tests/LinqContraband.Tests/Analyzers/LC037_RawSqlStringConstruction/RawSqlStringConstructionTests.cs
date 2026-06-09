@@ -25,6 +25,7 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TEntity> FromSqlRaw<TEntity>(this IQueryable<TEntity> source, string sql, params object[] parameters) => source;
         public static int ExecuteSqlRaw(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => 0;
         public static Task<int> ExecuteSqlRawAsync(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => Task.FromResult(0);
+        public static IQueryable<TResult> SqlQueryRaw<TResult>(this DatabaseFacade databaseFacade, string sql, params object[] parameters) => Enumerable.Empty<TResult>().AsQueryable();
     }
 }
 ";
@@ -160,6 +161,87 @@ namespace TestApp
         {
             var sql = string.Format(""SELECT * FROM Users WHERE Id = {0}"", id);
             var result = query.FromSqlRaw({|LC037:sql|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithStringFormat_ShouldTrigger()
+    {
+        // SqlQueryRaw is the DatabaseFacade scalar/keyless raw-SQL sink; String.Format construction
+        // is LC037's territory (LC018 owns only interpolation and '+' concatenation).
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = string.Format(""SELECT Name FROM Users WHERE Id = {0}"", id);
+            var result = db.Database.SqlQueryRaw<string>({|LC037:sql|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithStringConcatMethod_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, string name)
+        {
+            var result = db.Database.SqlQueryRaw<string>({|LC037:string.Concat(""SELECT Name FROM Users WHERE Name = '"", name, ""'"")|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithInterpolatedString_ShouldNotTrigger_OwnedByLC018()
+    {
+        // Interpolation is owned by LC018 (which now covers SqlQueryRaw); LC037 must defer so the
+        // sink is not double-reported.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.SqlQueryRaw<int>($""SELECT Id FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SqlQueryRaw_WithConstantString_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var result = db.Database.SqlQueryRaw<string>(""SELECT Name FROM Users"");
         }
     }
 }";

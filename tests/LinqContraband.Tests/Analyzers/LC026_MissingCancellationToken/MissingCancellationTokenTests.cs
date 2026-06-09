@@ -67,6 +67,101 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task ToListAsync_WithFieldToken_ShouldTriggerLC026()
+    {
+        // A CancellationToken stored in a field is passable, so the unparameterized async call is flagged.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken _token;
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var result = await {|LC026:query.ToListAsync()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToListAsync_WithPropertyToken_ShouldTriggerLC026()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken Token { get; set; }
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var result = await {|LC026:query.ToListAsync()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_PassesFieldToken()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken _token;
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var result = await {|LC026:query.ToListAsync()|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken _token;
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var result = await query.ToListAsync(_token);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
     public async Task ToListAsync_WithoutToken_WithoutTokenInScope_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

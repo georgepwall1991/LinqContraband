@@ -162,6 +162,48 @@ class Program
     }
 
     [Fact]
+    public async Task SaveChangesInDoWhile_MovedStatement_KeepsCrlfLineEndings()
+    {
+        // Forces CRLF on both the source and the expected fix regardless of the checkout's
+        // line endings, so this guards cross-platform against the fixer terminating the moved
+        // statement with a lone LF — which would leave mixed line endings inside a CRLF file.
+        // See SyntaxTriviaExtensions.GetDocumentEndOfLine.
+        var test = ToCrlf(Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+            {|LC010:db.SaveChanges()|};
+        }
+        while (i < 10);
+    }
+}" + MockNamespace);
+
+        var fixedCode = ToCrlf(Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+        }
+        while (i < 10);
+        db.SaveChanges();
+    }
+}" + MockNamespace);
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
     public async Task SaveChanges_WithControlFlowInsideLoop_HasNoFix()
     {
         var test = Usings + @"
@@ -362,6 +404,11 @@ class Program
         await VerifyFix(test, fixedCode);
     }
 
+    // Normalizes every line ending to CRLF so a test can assert line-ending behaviour
+    // independently of how the repository is checked out (autocrlf on Windows, LF on Unix).
+    private static string ToCrlf(string value) =>
+        value.Replace("\r\n", "\n").Replace("\n", "\r\n");
+
     [Fact]
     public async Task FixAll_RewritesAllMultipleDoWhileSaveChangesCases()
     {
@@ -402,6 +449,7 @@ class Program
         }
         while (i < 10);
         db.SaveChanges();
+
         int j = 0;
         do
         {

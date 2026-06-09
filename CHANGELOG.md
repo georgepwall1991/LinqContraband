@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.13] - 2026-06-04
+
+### Fixed
+- Closed an `LC026` false negative: a `CancellationToken` stored in a **field** or surfaced through a readable **property** is now recognised as an available token, so an EF async call (`ToListAsync`, `SaveChangesAsync`, …) that omits it is flagged and the fixer passes it by name. The scope lookup previously accepted only `ILocalSymbol`/`IParameterSymbol`, so the common injected-token (`private CancellationToken _ct;`) and `IHostApplicationLifetime.ApplicationStopping`-style patterns were silently missed even though the token is readily passable. The fixer references the member by bare name, which binds to `this.<member>`; write-only properties are skipped. Added field-token and property-token regression tests plus a fixer test confirming the field reference is inserted. (Found by a second adversarial false-negative rescan.)
+
+## [5.5.12] - 2026-06-04
+
+### Fixed
+- Stopped `LC041` from flagging a primary-key lookup written as `users.Where(x => x.Id == id).First()`. The single-entity over-fetch exemption for a key lookup only inspected the **terminal** operator's inline predicate (`First(x => x.Id == id)`), so the equivalent form with the key predicate on an upstream `Where` step — one of the most common EF read patterns — was reported even though it is the same single-row-by-key fetch. The exemption now also walks the receiver chain for a `Where` whose predicate is a primary-key equality. A non-key `Where` (e.g. `Where(x => x.IsActive)`) is not exempt and still reports. Added a `Where`-step PK no-trigger test and a non-key-`Where` still-fires guardrail. (Found by a second adversarial false-positive rescan; the rarer hoisted-`Expression`-predicate form remains a documented follow-up.)
+
+## [5.5.11] - 2026-06-04
+
+### Fixed
+- Closed an `LC001` false negative on aggregate selectors. A local (non-translatable) method inside a `Sum`/`Average`/`Min`/`Max` selector — `db.Users.Sum(u => Weight(u.Age))` — was not flagged because those four operators were missing from the rule's translation-critical method set, even though `Queryable.Sum`/`Average`/`Min`/`Max(source, selector)` translate to SQL `SUM`/`AVG`/`MIN`/`MAX(expr)` and a source-defined method in the selector forces client evaluation (or throws) — the same smell LC001 already catches in `Where`/`OrderBy`/`GroupBy`/predicates. The four aggregate operators are now in the set. Added a parameterized regression test across all four. (Found by a second adversarial false-negative rescan.)
+
+## [5.5.10] - 2026-06-04
+
+### Fixed
+- Closed two false negatives surfaced by the adversarial rescan. **LC004** (IQueryable passed as IEnumerable) now follows a C# **query expression** back to its source parameter: `int CountUsers(IEnumerable<User> users) { var q = from u in users where u.Id > 5 select u; return q.Count(); }` enumerated the parameter in memory but was silently exempt, because a query expression surfaces as an `ITranslatedQueryOperation` that the parameter-source walk did not unwrap (the fluent equivalent `users.Where(...).Count()` already fired). The walk now unwraps the lowered query, so query-syntax enumeration of an `IEnumerable` parameter is detected too. **LC044** (AsNoTracking entity mutated then SaveChanges) now treats a **compound assignment** (`entity.Prop += 1`) and an **increment/decrement** (`entity.Prop++`) as a mutation, not only a plain `=` assignment — each silently loses on an untracked entity. Added a query-expression leak test (LC004) and compound-assignment + increment tests (LC044). (Found by an adversarial false-negative rescan.)
+
+## [5.5.9] - 2026-06-04
+
+### Fixed
+- Stopped `LC035` from reporting the common "base filter + optional extra narrowing" shape. `var q = db.Users.Where(...); if (flag) q = q.Where(...); q.ExecuteDelete();` was flagged because the local-filter check inspected only the **latest** assignment before the bulk call — the conditional `q = q.Where(...)` inside the `if` — and bailed to "no filter" because it sat inside a branch, ignoring that the unconditional base already had a `Where` (a false positive: every path is filtered). The check now resolves the latest **unconditional** base assignment (which every control-flow path passes through) and treats the local as filtered only when that base **and** every later **conditional** reassignment are filtered. A conditional path that reassigns to an unfiltered query (`if (flag) q = db.Set<User>();`) still reports, as does an unfiltered base. Added the base-filter-plus-narrowing no-diagnostic test and an unfiltered-conditional-reassignment guardrail. (Found by an adversarial false-positive rescan; also closes the audit's LC035 filtered-local/reassignment follow-up.)
+
+## [5.5.8] - 2026-06-04
+
+### Fixed
+- Closed an `LC007` false negative on the deconstruction `foreach` shape. `foreach (var (a, b) in pairs) { db.Users.Find(a); }` is a `ForEachVariableStatementSyntax` — a distinct syntax node from a regular `foreach` (`ForEachStatementSyntax`) — so the per-iteration check (and the loop-kind label) skipped it, and an N+1 inside a tuple/deconstruction loop was silently missed even though the fluent equivalent fired. The per-iteration check and the loop-kind helper now match the shared `CommonForEachStatementSyntax` base, covering both the regular and deconstruction `foreach` shapes (and their `await` forms). Added a deconstruction-foreach regression test. (Found by an adversarial false-negative rescan.)
+
+## [5.5.7] - 2026-06-04
+
+### Fixed
+- Stopped two false positives caused by unrecognized mutually-exclusive branch shapes. `LC040` (mixed tracking modes) now treats the two arms of a ternary (`readOnly ? db.Users.AsNoTracking().ToList() : db.Users.ToList()`) as mutually exclusive, just like `if`/`else` and `switch` — only one arm materializes, so the scope never mixes tracking modes. `LC039` (repeated SaveChanges) now treats a `SaveChanges` in a `try` block and one in a `catch` clause as mutually exclusive: the catch save runs only if the try save threw (and so never completed), making it a compensating/retry save rather than a batchable repeat (two different `catch` clauses are likewise exclusive). A materializer in a ternary's **condition** (LC040) and a `finally` save (LC039) are deliberately still counted, because they always run. Added ternary (LC040), try/catch (LC039), and a try/finally-still-fires guardrail (LC039) regression tests and documented both boundaries. (Found by an adversarial false-positive rescan.)
+
+## [5.5.6] - 2026-06-04
+
+### Fixed
+- Stopped `LC025` and `LC044` from firing on a query whose tracking is restored by a trailing `AsTracking()`. Both rules scanned the query chain for `AsNoTracking()` but ignored a later `AsTracking()`, so `db.Users.AsNoTracking().AsTracking().First()` followed by `Update()` (LC025) or a property mutation + `SaveChanges()` (LC044) was wrongly flagged — even though EF Core applies the **last** tracking directive (`AsTracking()` overwrites the earlier `AsNoTracking()`), leaving the entity tracked so the write is correct. Both chain scans now honour the last directive: the first directive encountered walking up the receiver chain (the one applied last) decides the effective mode. `AsNoTracking().AsTracking()` no longer reports; the reverse `AsTracking().AsNoTracking()` (untracked) and a plain `AsNoTracking()` still report. Added override and reverse-order regression tests to both rules and documented the last-directive-wins behavior. (Found by an adversarial false-positive rescan.)
+
+## [5.5.5] - 2026-06-04
+
+### Fixed
+- Closed a raw-SQL injection false negative: `LC037` now treats `SqlQueryRaw<T>` (the EF7+ scalar/keyless raw-SQL query on `DbContext.Database`, `db.Database.SqlQueryRaw<T>(sql)`) as a construction sink. A SQL string built with `string.Format(...)`, `string.Concat(...)`, a `StringBuilder`, or an aliased local and passed to `SqlQueryRaw` was invisible to the entire Raw SQL neighborhood — `LC018` covers only its interpolation and `+` concatenation (added in 5.4.13), and `LC037` did not list `SqlQueryRaw` among its sinks (it had only `FromSqlRaw`/`ExecuteSqlRaw`/`ExecuteSqlRawAsync`). `SqlQueryRaw` is now in `LC037`'s target set, and LC037's existing deferral keeps interpolation and `+` concatenation owned by `LC018` (no double-report). Added `string.Format` and `string.Concat` positive tests for the facade `SqlQueryRaw` sink plus interpolation-deferral and constant-SQL guardrails, and documented the new sink and the LC018/LC037 boundary
+
+## [5.5.4] - 2026-06-04
+
+### Fixed
+- Stopped `LC002` from reporting a misleading "redundant" materialization when the **source** is a keyed (`ToDictionary`/`ToDictionaryAsync`) or grouped (`ToLookup`) materializer. `db.Users.ToDictionary(u => u.Id).ToList()` and `db.Users.ToLookup(u => u.Age).ToList()` were flagged as "`ToList` is redundant because `ToDictionary`/`ToLookup`", but the trailing call is a genuine shape change — it yields `List<KeyValuePair<,>>` and `List<IGrouping<,>>` respectively, not a redundant re-materialization of the same sequence, and removing the keyed/grouped source would change the result type. These sources are now treated like the existing de-duplicating set sources (`ToHashSet().ToList()`) and left quiet: no diagnostic and no fix are offered. Genuinely redundant non-keyed collapses (`ToArray().ToList()`, `ToList().ToHashSet()`) still report and fix, and the separate premature-materialization diagnostic for a keyed source feeding a query operator or terminal aggregate (`ToDictionary(...).Where(...)`, `ToDictionary(...).Count()`) is unaffected. Added `ToDictionary().ToList()` and `ToLookup().ToList()` no-diagnostic regression tests and documented the keyed/grouped-source exclusion
+
+## [5.5.3] - 2026-06-04
+
+### Fixed
+- Closed three `LC015` false negatives by extending the ordering-dependent operator set. `ElementAt`/`ElementAtOrDefault` (EF Core 6+ translates these to `OFFSET … FETCH`, which is non-deterministic without an ordering), their async forms `ElementAtAsync`/`ElementAtOrDefaultAsync`, and the async `LastAsync`/`LastOrDefaultAsync` (the async twins of the already-flagged `Last`/`LastOrDefault`, which EF reverses the ordering for and throws without one) are now reported on an unordered EF `IQueryable`. The code fix also offers `OrderBy(x => x.<key>)` for these operators, subject to the same single-detectable-primary-key safety gate as `Skip`/`Take`/`Last` (it still declines composite-, `[Keyless]`-, and unconventional-key entities). `TakeLast`/`SkipLast` are deliberately **not** flagged: EF Core cannot translate them to SQL at all — they throw "could not be translated" even after an `OrderBy` (dotnet/efcore#25242, #17065) — so "add an ordering" would be wrong advice; the operator itself, not a missing ordering, is the problem. Added analyzer tests for each new operator, an `OrderBy`-upstream guardrail, a `TakeLast`-not-flagged guardrail, and `ElementAt`/`LastAsync` fixer tests, and documented the expanded operator set and the `TakeLast`/`SkipLast` exclusion in the rule doc
+
+## [5.5.2] - 2026-06-04
+
+### Fixed
+- Taught `LC020` to flag a `StringComparison` overload whose query column flows through a method **argument**, not only its receiver. The check only inspected the call's receiver, so `db.Users.Where(u => "admin".Contains(u.Name, StringComparison.OrdinalIgnoreCase))` — where the constant is the receiver and the column `u.Name` is the searched-for argument — was missed even though EF Core cannot translate the overload and throws at runtime on the default relational providers (a false negative; the same class as a column reaching the comparison through the receiver). Detection now considers the receiver **and every argument** for query-parameter dependence, so the argument-derived form reports and the existing fixer drops the `StringComparison` argument (`"admin".Contains(u.Name)`). Constant and captured-local arguments stay quiet (the comparison is parameter-independent), as do in-memory/`IEnumerable` calls and custom `IQueryable` helpers that take delegate predicates. Added an argument-derived positive test, a captured-local-argument guardrail, and a fixer test; the rule doc now documents the argument-derived shape and the verified provider behavior (default providers throw; Npgsql maps `OrdinalIgnoreCase` to `ILIKE`; Pomelo MySQL opts in via `EnableStringComparisonTranslations`)
+
+## [5.5.1] - 2026-06-03
+
+### Fixed
+- Stopped four code fixers from injecting a lone `LF` line into a `CRLF` file. `LC010` (move `SaveChanges` after a do-while loop), `LC011` (insert a missing `Id` primary-key property), `LC016` (extract `DateTime.Now`/`UtcNow` to a local), and `LC027` (insert an explicit foreign-key property) each terminated the statement or member they add with a hard-coded line feed — `SyntaxFactory.ElasticLineFeed` or `SyntaxFactory.EndOfLine("\n")`. On a CRLF document that produced a single LF line amid CRLF lines (a mixed-line-ending file that surfaces as a spurious source-control diff and can trip formatters/linters), and it made every one of those fixer tests fail on a CRLF (Windows) checkout while passing on LF CI. The fixers now terminate the inserted/moved node with an end-of-line trivia harvested from the document itself (the new `SyntaxTriviaExtensions.GetDocumentEndOfLine`), so the applied fix preserves the file's existing line endings — CRLF or LF — on every platform. The two fixers that emit their newline as *leading* trivia after a warning comment already produce the platform newline through the formatter and are unaffected. Added a cross-platform `LC010` regression test that pins CRLF on both the source and the expected fix regardless of how the repository is checked out
+
 ## [5.5.0] - 2026-05-29
 
 ### Added

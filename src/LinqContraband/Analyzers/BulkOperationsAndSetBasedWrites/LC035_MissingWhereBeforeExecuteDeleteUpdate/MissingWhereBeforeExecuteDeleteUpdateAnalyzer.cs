@@ -133,40 +133,44 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         if (executableRoot == null)
             return false;
 
-        if (!TryGetLatestStraightLineAssignedValueBefore(
-                executableRoot,
-                localReference,
-                cancellationToken,
-                out var assignedValue))
-        {
-            return false;
-        }
-
-        return HasWhereInChain(assignedValue, cancellationToken, visitedLocals);
-    }
-
-    private static bool TryGetLatestStraightLineAssignedValueBefore(
-        IOperation executableRoot,
-        ILocalReferenceOperation localReference,
-        CancellationToken cancellationToken,
-        out IOperation assignedValue)
-    {
-        assignedValue = null!;
-        LocalAssignment? latest = null;
+        // Split the assignments before this use into the latest unconditional one — the "base" every
+        // control-flow path passes through — and the conditional reassignments after it, each taken
+        // only on some paths. The local is filtered on EVERY path iff the unconditional base is
+        // filtered AND every later conditional reassignment is also filtered. This stops a false
+        // positive on the common "base filter + optional extra narrowing" shape
+        //   var q = db.Set<User>().Where(...); if (flag) q = q.Where(...); q.ExecuteDelete();
+        // while still reporting when a conditional path reassigns to an UNfiltered query.
+        LocalAssignment? latestUnconditional = null;
+        var conditionalReassignments = new List<LocalAssignment>();
 
         foreach (var assignment in LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken))
         {
             if (assignment.SpanStart >= localReference.Syntax.SpanStart)
                 continue;
 
-            if (latest == null || assignment.SpanStart > latest.Value.SpanStart)
-                latest = assignment;
+            if (IsControlFlowConditionalAssignment(assignment.Value.Syntax))
+                conditionalReassignments.Add(assignment);
+            else if (latestUnconditional == null || assignment.SpanStart > latestUnconditional.Value.SpanStart)
+                latestUnconditional = assignment;
         }
 
-        if (latest == null || IsControlFlowConditionalAssignment(latest.Value.Value.Syntax))
+        if (latestUnconditional == null)
             return false;
 
-        assignedValue = latest.Value.Value.UnwrapConversions();
+        if (!HasWhereInChain(latestUnconditional.Value.Value.UnwrapConversions(), cancellationToken, visitedLocals))
+            return false;
+
+        foreach (var conditional in conditionalReassignments)
+        {
+            // Only reassignments after the dominating unconditional base can change the value on a path;
+            // earlier conditional assignments are overwritten by the base.
+            if (conditional.SpanStart <= latestUnconditional.Value.SpanStart)
+                continue;
+
+            if (!HasWhereInChain(conditional.Value.UnwrapConversions(), cancellationToken, visitedLocals))
+                return false;
+        }
+
         return true;
     }
 

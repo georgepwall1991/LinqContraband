@@ -1,7 +1,7 @@
 # Spec: LC015 - Ensure OrderBy Before Skip/Take
 
 ## Goal
-Detect usages of `Skip()`, `Take()` (via the unordered-pagination operator family), `Last()`, `LastOrDefault()`, or `Chunk()` on an `IQueryable` that has not been ordered. Without an explicit ordering, the database is free to return rows in any order, so pagination, "last item" lookups, and chunked enumeration become non-deterministic.
+Detect usages of `Skip()`, `Take()`, `Last()`/`LastOrDefault()` (and their async `LastAsync()`/`LastOrDefaultAsync()` forms), `ElementAt()`/`ElementAtOrDefault()` (and async), or `Chunk()` on an `IQueryable` that has not been ordered. Without an explicit ordering, the database is free to return rows in any order, so pagination, positional access, "last item" lookups, and chunked enumeration become non-deterministic.
 
 ## The Problem
 
@@ -23,6 +23,10 @@ var page3 = db.Users.Take(10).OrderBy(u => u.Name).ToList();
 
 // 3. Non-deterministic "last".
 var newest = db.Events.LastOrDefault();
+
+// 4. Positional access without ordering: which row is "at index 5"?
+//    EF Core 6+ translates ElementAt to OFFSET/FETCH, which needs an ordering.
+var sixth = db.Users.ElementAt(5);
 ```
 
 ### The Fix
@@ -80,6 +84,7 @@ The order must be established upstream of the reported operator; an `OrderBy` af
 - **vs LC005** (multiple `OrderBy` calls): LC005 fires when consecutive `OrderBy` calls reset the sort. LC015 fires when *no* upstream ordering exists for a pagination/last/chunk operator. They can co-occur: `db.Users.OrderBy(x => x.Name).OrderBy(x => x.Id).Skip(10)` would trip LC005 (second `OrderBy` resets) but LC015 would stay quiet (an `OrderBy` is present).
 - **vs LC023** (`Find` over `FirstOrDefault` on PK): LC023 looks for `FirstOrDefault(x => x.Id == ...)` patterns and suggests `Find`. LC015 cares only about ordering of pagination — the two rules can fire on the same query without overlap.
 - **Misplaced-OrderBy diagnostic** is a separate `MisplacedRule` descriptor and is reported on the trailing `OrderBy` invocation itself; the fixer deliberately does not register for it because a mechanical "add another OrderBy" would entrench the bug.
+- **`TakeLast`/`SkipLast` are intentionally *not* flagged.** EF Core cannot translate them to SQL at all — they throw "could not be translated" even after an `OrderBy` ([dotnet/efcore#25242](https://github.com/dotnet/efcore/issues/25242), [#17065](https://github.com/dotnet/efcore/issues/17065)) — so "add an ordering" would be the wrong advice. The operator itself, not a missing ordering, is the problem.
 
 ## Test Cases
 
@@ -89,6 +94,9 @@ db.Users.Skip(10);
 db.Users.Where(x => x.Active).Skip(5);
 db.Users.Last();
 db.Users.LastOrDefault();
+await db.Users.LastAsync();                           // async terminal, EF requires an upstream OrderBy
+db.Users.ElementAt(5);                               // positional access (OFFSET/FETCH) needs ordering
+db.Users.ElementAtOrDefault(5);
 db.Users.Select(x => x.Name).Chunk(10);
 db.Users.Take(10).OrderBy(u => u.Name);              // misplaced OrderBy
 ```

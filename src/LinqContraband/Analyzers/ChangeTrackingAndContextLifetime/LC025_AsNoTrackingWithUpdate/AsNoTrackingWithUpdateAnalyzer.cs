@@ -247,7 +247,6 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
     private bool HasAsNoTrackingInChain(IOperation operation)
     {
         var current = operation.UnwrapConversions();
-        var foundAsNoTracking = false;
         var outermostSelectChecked = false;
         while (current is IInvocationOperation inv)
         {
@@ -266,14 +265,21 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
                     return false;
             }
 
+            // The last tracking directive applied wins — each AsTracking/AsNoTracking overwrites the
+            // query's QueryTrackingBehavior. Walking up the receiver chain, the first directive
+            // encountered is the one applied last, so it decides the effective mode:
+            // AsNoTracking().AsTracking() is tracked (AsTracking overrides) and must NOT fire, while
+            // AsTracking().AsNoTracking() is untracked and still fires.
             if (IsEfCoreAsNoTracking(inv.TargetMethod))
-                foundAsNoTracking = true;
+                return true;
+            if (IsEfCoreAsTracking(inv.TargetMethod))
+                return false;
 
             var next = inv.GetInvocationReceiver();
             if (next == null) break;
             current = next.UnwrapConversions();
         }
-        return foundAsNoTracking;
+        return false;
     }
 
     private static bool IsProjectionToConstructedObject(IInvocationOperation invocation)
@@ -315,6 +321,16 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
     private static bool IsEfCoreAsNoTracking(IMethodSymbol method)
     {
         if (method.Name != "AsNoTracking")
+            return false;
+
+        var namespaceName = method.ContainingNamespace?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
+    }
+
+    private static bool IsEfCoreAsTracking(IMethodSymbol method)
+    {
+        if (method.Name != "AsTracking")
             return false;
 
         var namespaceName = method.ContainingNamespace?.ToString();

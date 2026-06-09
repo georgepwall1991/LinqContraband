@@ -35,7 +35,7 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 ### Algorithm
 1.  **Target Methods**: Intercept invocations of methods ending in `Async` that belong to `Microsoft.EntityFrameworkCore`.
 2.  **Parameter Check**: Check if the method signature accepts a `CancellationToken`.
-3.  **Scope Check**: Only report when a `CancellationToken` local or parameter is available at the call site.
+3.  **Scope Check**: Only report when a `CancellationToken` local, parameter, field, or readable property is available at the call site (the fixer references it by bare name, which binds to `this.<member>` for fields/properties).
 4.  **Argument Check**: Report when the target token parameter is omitted, passed `default`, or passed `CancellationToken.None`.
 5.  **Fix Strategy**: Prefer a variable named `cancellationToken`, then `ct`, then the first available token. The fixer appends the token when the optional argument was omitted and replaces an explicit `default`, named `cancellationToken: default`, or `CancellationToken.None` argument when one was already supplied.
 

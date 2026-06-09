@@ -88,6 +88,26 @@ class Program
     }
 
     [Fact]
+    public async Task TernaryTrackedAndNoTrackingArms_DoNotTrigger()
+    {
+        // The two ternary arms are mutually exclusive — only one materializes at runtime — so no
+        // scope actually mixes tracking modes (matches the if/else contract).
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool readOnly)
+    {
+        var list = readOnly
+            ? db.Users.AsNoTracking().ToList()
+            : db.Users.ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTrackingWithIdentityResolution_CountsAsNoTracking()
     {
         var test = EFCoreMock + Types + @"

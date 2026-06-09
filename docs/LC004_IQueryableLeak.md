@@ -29,6 +29,7 @@ public void ProcessUsers(IQueryable<User> users) { ... }
   - terminal or materializing `Enumerable` calls such as `Any`, `Count`, `ToList`, or `ToArray`.
   - known BCL collection constructors such as `new List<T>(users)` or `new HashSet<T>(users)`.
   - forwarding into another same-compilation parameter already proven hazardous.
+  - A C# query expression on the parameter (`from u in users where … select …`) is followed to its enumeration just like the fluent equivalent (`users.Where(...)`).
 - Does not report for framework methods, delegate invocations, parameters already typed as `IQueryable`, custom constructors, or callees without source bodies.
 
 ## Fixer Behavior

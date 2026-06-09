@@ -51,7 +51,14 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         "Last",
         "LastOrDefault",
         "SkipWhile",
-        "TakeWhile");
+        "TakeWhile",
+        // Aggregate operators with a selector: Queryable.Sum/Average/Min/Max(source, selector)
+        // translate to SQL SUM/AVG/MIN/MAX(expr); a local/source method inside the selector cannot
+        // translate and forces client evaluation (or throws), the exact LC001 smell.
+        "Sum",
+        "Average",
+        "Min",
+        "Max");
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,

@@ -6,6 +6,8 @@ Detect `string.Contains(...)`, `StartsWith(...)`, and `EndsWith(...)` overloads 
 ## The Problem
 EF Core's SQL translation logic is optimized for simple string predicate overloads such as `Contains(string)`, `StartsWith(string)`, and `EndsWith(string)`. Passing `StringComparison` asks for .NET comparison semantics that many database providers cannot express directly. Depending on the provider and EF Core version, the query may fail translation or use semantics that are not what the application intended.
 
+On the default EF Core relational providers — including SQL Server — these `StringComparison` overloads are **not translated and throw `InvalidOperationException` at runtime** (this is by design: SQL string comparison is collation-driven and EF will not guess). A few providers translate a subset: Npgsql maps `StringComparison.OrdinalIgnoreCase` to `ILIKE`, and Pomelo MySQL translates them only when `EnableStringComparisonTranslations` is opted in. The rule therefore stays provider-agnostic and flags the overload whenever the searched value is column-derived, which is the case the default provider rejects.
+
 ### Example Violation
 ```csharp
 // Violation: likely to fail translation or depend on provider-specific behavior
@@ -36,7 +38,7 @@ var users = db.Users.Where(u => needle.Contains("a", StringComparison.OrdinalIgn
 1. **Target methods**: inspect `string.Contains`, `string.StartsWith`, and `string.EndsWith`.
 2. **Overload check**: require an argument or bound parameter of type `System.StringComparison`.
 3. **Queryable context check**: require an enclosing lambda passed to a `System.Linq.Queryable` invocation over an `IQueryable` source.
-4. **Parameter-dependency check**: require the string receiver to depend on a query lambda parameter, such as `u.Name.Contains(...)` or a nested collection predicate like `u.Orders.Any(o => o.Number.Contains(...))`. Nested local enumerable predicates, captured locals, constants, and other client-side strings are ignored.
+4. **Parameter-dependency check**: require either the string receiver *or* a method argument to depend on a query lambda parameter — `u.Name.Contains("admin", ...)` (column receiver), `"admin".Contains(u.Name, ...)` (column argument), or a nested collection predicate like `u.Orders.Any(o => o.Number.Contains(...))`. The searched value is column-derived in each case, so the overload cannot translate. Nested local enumerable predicates, captured locals, constants, and other client-side strings are ignored.
 
 ### Exceptions
 - Calls on in-memory strings or `IEnumerable`.
@@ -52,6 +54,7 @@ db.Users.Where(x => x.Name.Contains("abc", StringComparison.OrdinalIgnoreCase));
 db.Users.Any(x => x.Email.StartsWith("test", StringComparison.CurrentCulture));
 db.Users.Where(x => x.Name.EndsWith(".org", StringComparison.OrdinalIgnoreCase));
 db.Users.Where(x => x.Orders.Any(o => o.Number.Contains("rush", StringComparison.OrdinalIgnoreCase)));
+db.Users.Where(u => "admin".Contains(u.Name, StringComparison.OrdinalIgnoreCase)); // column flows through the argument
 ```
 
 ### Valid

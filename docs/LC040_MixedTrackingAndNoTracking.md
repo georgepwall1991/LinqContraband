@@ -25,4 +25,4 @@ Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWit
 
 Straight-line local query aliases are resolved at the materialization point. A local reassigned from tracked to no-tracking queries on the same context can report, while a reassignment from a different context or inside conditional control flow stays quiet.
 
-Mutually exclusive `if`/`else` branches and `switch` sections are not treated as mixed tracking evidence by themselves. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.
+Mutually exclusive `if`/`else` branches, `switch` sections, and ternary (`cond ? a : b`) arms are not treated as mixed tracking evidence by themselves. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.

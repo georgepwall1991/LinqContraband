@@ -56,7 +56,44 @@ public sealed partial class NestedSaveChangesAnalyzer
                 }
             }
 
+            // A SaveChanges in a try block and one in a catch clause are mutually exclusive: the
+            // catch body only runs if the try threw, in which case the try's SaveChanges never
+            // completed — this is a compensating/retry save, not a batchable repeat. Two different
+            // catch clauses are likewise exclusive. A `finally` save is NOT exclusive (finally always
+            // runs), so GetContainingTryBranch deliberately returns null for the finally block.
+            foreach (var tryStatement in left.AncestorsAndSelf().OfType<TryStatementSyntax>())
+            {
+                if (!tryStatement.Span.Contains(right.SpanStart))
+                    continue;
+
+                var leftTryBranch = GetContainingTryBranch(tryStatement, left);
+                var rightTryBranch = GetContainingTryBranch(tryStatement, right);
+
+                if (leftTryBranch != null &&
+                    rightTryBranch != null &&
+                    leftTryBranch != rightTryBranch)
+                {
+                    return true;
+                }
+            }
+
             return false;
+        }
+
+        private static SyntaxNode? GetContainingTryBranch(TryStatementSyntax tryStatement, SyntaxNode node)
+        {
+            if (tryStatement.Block.Span.Contains(node.SpanStart))
+                return tryStatement.Block;
+
+            foreach (var catchClause in tryStatement.Catches)
+            {
+                if (catchClause.Block.Span.Contains(node.SpanStart))
+                    return catchClause;
+            }
+
+            // A node in the finally block (or in a nested try handled by an outer iteration) is not
+            // treated as a mutually exclusive branch: finally always runs.
+            return null;
         }
 
         private static bool AreInsideSameTransactionUsing(SyntaxNode left, SyntaxNode right, int[] transactionBoundaries)

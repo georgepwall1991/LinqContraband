@@ -318,12 +318,23 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
     {
         rootReceiver = null;
         var current = operation.UnwrapConversions();
-        var sawAsNoTracking = false;
+
+        // The last tracking directive applied wins (each AsTracking/AsNoTracking overwrites the
+        // query's QueryTrackingBehavior). Walking up the receiver chain, the first directive
+        // encountered is the one applied last, so it decides the effective mode: a trailing
+        // AsTracking() (AsNoTracking().AsTracking()) makes the entity tracked, so the mutation
+        // persists and LC044 must not fire. Keep walking to the root receiver regardless.
+        bool? effectiveNoTracking = null;
 
         while (current is IInvocationOperation inv)
         {
-            if (inv.TargetMethod.Name == "AsNoTracking")
-                sawAsNoTracking = true;
+            if (effectiveNoTracking is null)
+            {
+                if (inv.TargetMethod.Name == "AsNoTracking")
+                    effectiveNoTracking = true;
+                else if (inv.TargetMethod.Name == "AsTracking")
+                    effectiveNoTracking = false;
+            }
 
             var next = inv.GetInvocationReceiver();
             if (next == null)
@@ -335,7 +346,7 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
             current = next.UnwrapConversions();
         }
 
-        if (!sawAsNoTracking) return false;
+        if (effectiveNoTracking != true) return false;
 
         if (rootReceiver == null) rootReceiver = current;
         return true;

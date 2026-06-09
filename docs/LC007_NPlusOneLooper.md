@@ -6,7 +6,7 @@ Catch EF Core database execution that is provably performed once per loop iterat
 ## What LC007 Reports
 
 ### 1. Direct EF lookups inside loops
-`Find` and `FindAsync` on `DbSet<T>` are reported when they execute inside `for`, `foreach`, `await foreach`, `while`, or `do` loops.
+`Find` and `FindAsync` on `DbSet<T>` are reported when they execute inside `for`, `foreach` (including the deconstruction form `foreach (var (a, b) in …)`), `await foreach`, `while`, or `do` loops.
 
 ```csharp
 foreach (var id in ids)

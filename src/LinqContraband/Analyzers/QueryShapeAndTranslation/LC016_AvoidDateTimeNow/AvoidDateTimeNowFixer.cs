@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using LinqContraband.Extensions;
 
 namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 
@@ -75,7 +76,7 @@ public sealed class AvoidDateTimeNowFixer : CodeFixProvider
                     )
                 )
             )
-        ).WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
+        ).WithTrailingTrivia(statement.GetDocumentEndOfLine());
 
         foreach (var access in FindMatchingClockAccesses(memberAccess, semanticModel, cancellationToken))
         {

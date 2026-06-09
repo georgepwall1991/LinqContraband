@@ -151,6 +151,31 @@ class Program
     }
 
     [Fact]
+    public async Task Find_InDeconstructionForeach_TriggersDiagnostic()
+    {
+        // A deconstruction foreach (foreach (var (a, b) in xs)) is a ForEachVariableStatementSyntax —
+        // a distinct node from a regular foreach — so the per-iteration check must still recognise it.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var pairs = new List<(int, int)>();
+
+        foreach (var (a, b) in pairs)
+        {
+            var user = {|#0:db.Users.Find(a)|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007").WithLocation(0).WithArguments("Find");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task FindAsync_InForeachLoop_TriggersDiagnostic()
     {
         var test = Usings + @"

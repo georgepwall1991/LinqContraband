@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using LinqContraband.Extensions;
 
 namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 
@@ -93,7 +94,7 @@ public sealed class EntityMissingPrimaryKeyFixer : CodeFixProvider
             .AddAccessorListAccessors(
                 SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)),
                 SyntaxFactory.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))
-            .WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
+            .WithTrailingTrivia(entitySyntax.GetDocumentEndOfLine());
 
         editor.InsertMembers(entitySyntax, 0, new[] { idProperty });
 

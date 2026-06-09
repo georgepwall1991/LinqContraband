@@ -43,7 +43,15 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC015_MissingOrderBy.md");
 
     private static readonly ImmutableHashSet<string> PaginationMethods = ImmutableHashSet.Create(
-        "Skip", "Take", "Last", "LastOrDefault", "Chunk"
+        "Skip", "Take", "Last", "LastOrDefault", "Chunk",
+        // EF Core 6+ translates ElementAt/ElementAtOrDefault to OFFSET/FETCH, which is
+        // non-deterministic without an ordering; the async forms behave identically.
+        "ElementAt", "ElementAtOrDefault", "ElementAtAsync", "ElementAtOrDefaultAsync",
+        // Async twins of Last/LastOrDefault — EF reverses the ordering and throws without one.
+        "LastAsync", "LastOrDefaultAsync"
+        // NB: TakeLast/SkipLast are deliberately excluded. EF Core cannot translate them at all
+        // (they throw "could not be translated" even after an OrderBy), so "add OrderBy" would be
+        // the wrong advice — the operator itself, not a missing ordering, is the problem.
     );
 
     private static readonly ImmutableHashSet<string> SortingMethods = ImmutableHashSet.Create(

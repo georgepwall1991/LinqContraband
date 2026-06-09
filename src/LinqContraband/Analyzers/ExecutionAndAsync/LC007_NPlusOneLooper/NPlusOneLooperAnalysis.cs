@@ -117,7 +117,9 @@ internal static class NPlusOneLooperAnalysis
 
         return loop.Syntax switch
         {
-            ForEachStatementSyntax forEach => forEach.Statement.Span.Contains(spanStart),
+            // CommonForEachStatementSyntax covers both the regular `foreach (var x in xs)` and the
+            // deconstruction `foreach (var (a, b) in xs)` (ForEachVariableStatementSyntax) shapes.
+            CommonForEachStatementSyntax forEach => forEach.Statement.Span.Contains(spanStart),
             ForStatementSyntax forStatement =>
                 forStatement.Statement.Span.Contains(spanStart) ||
                 (forStatement.Condition?.Span.Contains(spanStart) == true) ||

@@ -120,6 +120,74 @@ class Program {
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
+    [Fact]
+    public async Task ElementAt_AddsOrderBy_WithId()
+    {
+        var test = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var u = db.Users.{|#0:ElementAt|}(5);
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var u = db.Users.OrderBy(x => x.Id).ElementAt(5);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(0).WithArguments("ElementAt");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task LastAsync_AddsOrderBy_WithId()
+    {
+        var test = CommonUsings + @"using System.Threading.Tasks;
+" + MockEfCore + @"
+static class EfAsyncExtensions
+{
+    public static Task<T> LastAsync<T>(this IQueryable<T> source) => Task.FromResult(source.Last());
+}
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    async Task Main() {
+        var db = new AppDbContext();
+        var u = await db.Users.{|#0:LastAsync|}();
+    }
+}";
+
+        var fixedCode = CommonUsings + @"using System.Threading.Tasks;
+" + MockEfCore + @"
+static class EfAsyncExtensions
+{
+    public static Task<T> LastAsync<T>(this IQueryable<T> source) => Task.FromResult(source.Last());
+}
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    async Task Main() {
+        var db = new AppDbContext();
+        var u = await db.Users.OrderBy(x => x.Id).LastAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(0).WithArguments("LastAsync");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
     /// <summary>
     /// Tests that the fixer does NOT generate code when the entity has no detectable primary key.
     /// This prevents generating invalid code like OrderBy(x => x.Id) when Id doesn't exist.

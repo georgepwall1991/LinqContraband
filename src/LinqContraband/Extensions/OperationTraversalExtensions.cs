@@ -49,8 +49,8 @@ public static partial class AnalysisExtensions
     {
         return loop.Syntax switch
         {
-            ForEachStatementSyntax forEach when forEach.AwaitKeyword != default => "await foreach",
-            ForEachStatementSyntax => "foreach",
+            CommonForEachStatementSyntax forEach when forEach.AwaitKeyword != default => "await foreach",
+            CommonForEachStatementSyntax => "foreach",
             ForStatementSyntax => "for",
             WhileStatementSyntax => "while",
             DoStatementSyntax => "do",
