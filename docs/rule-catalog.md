@@ -43,6 +43,7 @@ This page is generated from that catalog and grouped by domain.
 | `LC028` Deep ThenInclude Chain | `Warning` | `Performance` | Manual only | [`LC028_DeepThenInclude`](./LC028_DeepThenInclude.md) | `Samples/LC028_DeepThenInclude/` |
 | `LC038` Avoid excessive eager loading | `Info` | `Performance` | Manual only | [`LC038_ExcessiveEagerLoading`](./LC038_ExcessiveEagerLoading.md) | `Samples/LC038_ExcessiveEagerLoading/` |
 | `LC042` Complex query should be tagged | `Info` | `Performance` | Manual only | [`LC042_MissingQueryTags`](./LC042_MissingQueryTags.md) | `Samples/LC042_MissingQueryTags/` |
+| `LC045` Missing Include: navigation accessed on materialized entity | `Warning` | `Reliability` | Code fix | [`LC045_MissingInclude`](./LC045_MissingInclude.md) | `Samples/LC045_MissingInclude/` |
 
 ## Materialization & Projection
 

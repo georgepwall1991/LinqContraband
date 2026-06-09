@@ -39,7 +39,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **44 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **45 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ## 🗺️ Rule Neighborhoods
 
@@ -49,7 +49,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | --- | --- |
 | Query Shape & Translation | LC001, LC004, LC005, LC014, LC015, LC016, LC020, LC024 |
 | Materialization & Projection | LC002, LC003, LC017, LC022, LC023, LC029, LC031, LC033, LC041 |
-| Loading & Includes | LC006, LC019, LC028, LC038, LC042 |
+| Loading & Includes | LC006, LC019, LC028, LC038, LC042, LC045 |
 | Execution & Async | LC007, LC008, LC026, LC036, LC043 |
 | Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044 |
 | Bulk Operations & Set-Based Writes | LC012, LC032, LC035 |
@@ -1630,6 +1630,49 @@ db.SaveChanges();
   provable inside one method and no re-attach (`Update`, `Attach`, `Entry(entity).State = Modified|Added`) intervenes.
 - Ambiguous dataflow, mutations in branches that never reach `SaveChanges`, and entities that arrive as parameters are
   intentionally skipped to keep false positives at zero.
+
+---
+
+### LC045: Missing Include
+
+If you materialize a query (`ToList`, `FirstOrDefault`, …) and then read a navigation property the query never
+`Include`d, one of two bugs ships: with lazy-loading proxies every access fires an extra query (the classic read-side
+N+1); without proxies the navigation is silently `null` or an empty collection.
+
+**👶 Explain it like I'm a ten year old:** You ordered a burger but didn't ask for fries. Now either the kitchen makes
+a separate trip for every single fry you reach for (slow!), or there are simply no fries on your plate and you go
+hungry (null!).
+
+**❌ The Crime:**
+
+```csharp
+var orders = db.Orders.ToList();
+foreach (var o in orders)
+{
+    Console.WriteLine(o.Customer.Name); // N+1 query per order, or NullReferenceException
+}
+```
+
+**✅ The Fix:**
+Eagerly load the navigation (the code fix does this for you), or project exactly what you need.
+
+```csharp
+// Option A: eager load
+var orders = db.Orders.Include(o => o.Customer).ToList();
+
+// Option B: project
+var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).ToList();
+```
+
+**🛡️ Reliability Notes:**
+- LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
+  operators (`Where`, `OrderBy`, `Include`, …), a single-assignment result local, and a navigation access on it.
+- Any `Select`/`Join`/custom operator, a reassigned local, a dynamic `Include(variable)`, or the result escaping
+  (returned, passed to a method, captured by a lambda) makes the rule stay quiet.
+- Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
+  and are not flagged.
+- Null-guarded reads still fire deliberately: under proxies the null check itself triggers the N+1, and without
+  proxies the guard is dead code hiding the missing `Include`.
 
 ---
 
