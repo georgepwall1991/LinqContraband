@@ -77,7 +77,7 @@ public sealed class MissingIncludeFixer : CodeFixProvider
         foreach (var segment in navigationPath.Split('.'))
         {
             var methodName = first ? "Include" : "ThenInclude";
-            var lambda = SyntaxFactory.ParseExpression($"x => x.{segment}");
+            var lambda = SyntaxFactory.ParseExpression($"x => x.{EscapeIdentifier(segment)}");
             current = SyntaxFactory.InvocationExpression(
                 SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
@@ -90,6 +90,13 @@ public sealed class MissingIncludeFixer : CodeFixProvider
         editor.ReplaceNode(source, current.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    private static string EscapeIdentifier(string name)
+    {
+        // A navigation named after a reserved keyword (e.g. `@event`) is stored unescaped in
+        // the diagnostic path; emit it back with the verbatim prefix or the fix won't compile.
+        return SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
     }
 
     /// <summary>

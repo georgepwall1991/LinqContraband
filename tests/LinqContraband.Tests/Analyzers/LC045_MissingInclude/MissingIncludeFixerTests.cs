@@ -97,6 +97,7 @@ namespace TestNamespace
         public int Id { get; set; }
         public string Status { get; set; }
         public Customer Customer { get; set; }
+        public Customer @event { get; set; }
         public List<OrderItem> Items { get; set; }
     }
 
@@ -383,6 +384,48 @@ class Program
         foreach (var o in orders)
         {
             Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_KeywordNamedNavigation_EscapesTheIdentifier()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.@event|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.@event).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.@event.Name);
         }
     }
 }
