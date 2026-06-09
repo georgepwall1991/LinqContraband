@@ -119,7 +119,7 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         var accesses = new List<NavigationAccess>();
-        var satisfiedPaths = new HashSet<string>(System.StringComparer.Ordinal);
+        var satisfiedPaths = new Dictionary<string, int>(System.StringComparer.Ordinal);
 
         foreach (var descendant in executableRoot.Descendants())
         {
@@ -160,9 +160,12 @@ public sealed partial class MissingIncludeAnalyzer
 
                     if (IsWriteTarget(propertyReference))
                     {
-                        // o.Customer = c assigns an in-memory object, so later reads of that
-                        // path (and below it) are backed regardless of Include.
-                        satisfiedPaths.Add(path);
+                        // o.Customer = c assigns an in-memory object, so reads of that path
+                        // (and below it) AFTER the assignment are backed regardless of
+                        // Include. Reads before it still flag.
+                        var spanStart = propertyReference.Syntax.SpanStart;
+                        if (!satisfiedPaths.TryGetValue(path, out var existingSpan) || spanStart < existingSpan)
+                            satisfiedPaths[path] = spanStart;
                         break;
                     }
 
@@ -176,21 +179,27 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         if (satisfiedPaths.Count > 0)
-            accesses.RemoveAll(access => IsSatisfied(access.Path, satisfiedPaths));
+            accesses.RemoveAll(access => IsSatisfied(access, satisfiedPaths));
 
         return accesses;
     }
 
-    private static bool IsSatisfied(string path, HashSet<string> satisfiedPaths)
+    private static bool IsSatisfied(NavigationAccess access, Dictionary<string, int> satisfiedPaths)
     {
-        foreach (var satisfied in satisfiedPaths)
+        foreach (var pair in satisfiedPaths)
         {
-            if (path.Length == satisfied.Length && path == satisfied)
+            // Lexical ordering is the v1 heuristic: only reads after the assignment count
+            // as backed (a conditional assignment before a read is conservatively quiet).
+            if (access.Syntax.SpanStart < pair.Value)
+                continue;
+
+            var satisfied = pair.Key;
+            if (access.Path.Length == satisfied.Length && access.Path == satisfied)
                 return true;
 
-            if (path.Length > satisfied.Length &&
-                path[satisfied.Length] == '.' &&
-                path.StartsWith(satisfied, System.StringComparison.Ordinal))
+            if (access.Path.Length > satisfied.Length &&
+                access.Path[satisfied.Length] == '.' &&
+                access.Path.StartsWith(satisfied, System.StringComparison.Ordinal))
             {
                 return true;
             }

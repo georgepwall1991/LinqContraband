@@ -14,10 +14,17 @@ public sealed partial class MissingIncludeAnalyzer
         {
             foreach (var member in current.GetMembers())
             {
-                if (member is not IPropertySymbol property) continue;
-                if (property.Type is not INamedTypeSymbol propertyType) continue;
-                if (!propertyType.IsDbSet()) continue;
-                if (propertyType.TypeArguments.Length > 0 && propertyType.TypeArguments[0] is INamedTypeSymbol entityType)
+                // TryGetDbSetRoot accepts both property and field DbSet roots, so both must
+                // contribute to the entity-type set.
+                var memberType = member switch
+                {
+                    IPropertySymbol property => property.Type as INamedTypeSymbol,
+                    IFieldSymbol field => field.Type as INamedTypeSymbol,
+                    _ => null
+                };
+
+                if (memberType == null || !memberType.IsDbSet()) continue;
+                if (memberType.TypeArguments.Length > 0 && memberType.TypeArguments[0] is INamedTypeSymbol entityType)
                     entityTypes.Add(entityType);
             }
         }

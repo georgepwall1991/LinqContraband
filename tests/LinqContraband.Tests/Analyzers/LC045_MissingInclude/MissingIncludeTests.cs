@@ -124,6 +124,12 @@ namespace TestNamespace
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
     }
+
+    public class FieldDbContext : DbContext
+    {
+        public DbSet<Order> Orders = null;
+        public DbSet<Customer> Customers = null;
+    }
 }";
 
     [Fact]
@@ -443,6 +449,52 @@ class Program
         var db = new MyDbContext();
         var orders = db.Orders.ToList();
         Console.WriteLine({|#0:orders[0].Customer|}.Name);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ReadBeforeNavAssignment_StillTriggersDiagnostic()
+    {
+        // The assignment only backs reads AFTER it; this read happens first and still hits
+        // unloaded data.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Console.WriteLine({|#0:order.Customer|}.Name);
+        order.Customer = new Customer();
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_DbSetFieldRoot_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new FieldDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
     }
 }
 " + MockNamespace;
