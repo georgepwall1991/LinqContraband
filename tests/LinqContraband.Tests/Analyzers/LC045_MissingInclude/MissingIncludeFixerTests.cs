@@ -356,6 +356,48 @@ class Program
     }
 
     [Fact]
+    public async Task FixCrime_StaticCallSyntax_WrapsTheArgumentNotTheTypeName()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = System.Linq.Enumerable.ToList(db.Orders);
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = System.Linq.Enumerable.ToList(db.Orders.Include(x => x.Customer));
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_AddsIncludeToEveryFlaggedQuery()
     {
         var test = Usings + @"

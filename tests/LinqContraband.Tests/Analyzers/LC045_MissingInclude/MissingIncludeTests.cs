@@ -98,6 +98,7 @@ namespace TestNamespace
         public int Id { get; set; }
         public string Name { get; set; }
         public Address Address { get; set; }
+        public void Clear() { }
     }
 
     public class Address
@@ -494,6 +495,50 @@ class Program
         foreach (var o in orders)
         {
             Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_InlineConditionalAccessOnMaterializer_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var name = db.Orders.FirstOrDefault()?{|#0:.Customer|}.Name;
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_MutatorNamedMethodOnReferenceNav_StillTriggersDiagnostic()
+    {
+        // Clear() here is an instance method on the Customer entity, not a collection
+        // mutation: evaluating o.Customer is still a read of unloaded data.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders)
+        {
+            {|#0:o.Customer|}.Clear();
         }
     }
 }

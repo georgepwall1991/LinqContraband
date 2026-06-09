@@ -645,6 +645,28 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_IndexedEntityPassedAsArgument_NoDiagnostic()
+    {
+        // orders[0] escapes to a helper that could explicitly load the navigation.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Hydrate(orders[0]);
+        Console.WriteLine(orders[0].Customer.Name);
+    }
+
+    void Hydrate(Order order) { }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AggregateTerminal_NoDiagnostic()
     {
         var test = Usings + @"

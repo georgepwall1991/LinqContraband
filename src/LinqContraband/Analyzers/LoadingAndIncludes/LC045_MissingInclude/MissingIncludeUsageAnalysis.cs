@@ -49,7 +49,17 @@ public sealed partial class MissingIncludeAnalyzer
             // single-entity materializers.
             return returnsCollection
                 ? null
-                : CollectInlineAccesses(materializer, entityType, entityTypes);
+                : CollectInlineAccesses(WalkUpThroughWrappers(materializer.Parent), entityType, entityTypes);
+        }
+
+        // db.Orders.FirstOrDefault()?.Customer.Name — the materializer is the guarded
+        // receiver of a conditional access; the nav chain lives in WhenNotNull.
+        if (upwardParent is IConditionalAccessOperation conditionalParent &&
+            conditionalParent.Operation.UnwrapConversions() == materializer)
+        {
+            return returnsCollection
+                ? null
+                : CollectInlineAccesses(FindConditionalAccessEntryProperty(conditionalParent), entityType, entityTypes);
         }
 
         var resultLocal = FindVariableAssignment(materializer);
@@ -129,15 +139,17 @@ public sealed partial class MissingIncludeAnalyzer
             {
                 case IReturnOperation returnOperation when
                     returnOperation.ReturnedValue != null &&
-                    IsTrackedLocal(returnOperation.ReturnedValue):
+                    IsEntitySource(returnOperation.ReturnedValue):
                     return null;
 
                 case IInvocationOperation call when call != materializer:
-                    if (IsTrackedLocal(call.Instance))
+                    if (IsEntitySource(call.Instance))
                         return null;
                     foreach (var argument in call.Arguments)
                     {
-                        if (IsTrackedLocal(argument.Value))
+                        // Hydrate(orders) and Hydrate(orders[0]) both hand the entity to a
+                        // helper that could explicitly load the navigation.
+                        if (IsEntitySource(argument.Value))
                             return null;
                     }
 
@@ -148,7 +160,7 @@ public sealed partial class MissingIncludeAnalyzer
                     return null;
 
                 case ISimpleAssignmentOperation assignmentOperation when
-                    IsTrackedLocal(assignmentOperation.Value) &&
+                    IsEntitySource(assignmentOperation.Value) &&
                     assignmentOperation.Target.UnwrapConversions() is not ILocalReferenceOperation:
                     return null;
 
@@ -170,8 +182,13 @@ public sealed partial class MissingIncludeAnalyzer
                     }
 
                     // o.Items.Add(x): mutating a tracked entity's collection does not read it.
-                    if (IsCollectionMutatorReceiver(propertyReference))
+                    // Only collection navigations qualify — order.Customer.Clear() still reads
+                    // the Customer navigation.
+                    if (IsCollectionNavigation(propertyReference, entityTypes) &&
+                        IsCollectionMutatorReceiver(propertyReference))
+                    {
                         break;
+                    }
 
                     accesses.Add(new NavigationAccess(path, propertyReference.Syntax));
                     break;
@@ -209,12 +226,12 @@ public sealed partial class MissingIncludeAnalyzer
     }
 
     private static List<NavigationAccess> CollectInlineAccesses(
-        IInvocationOperation materializer,
+        IOperation? start,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes)
     {
         var accesses = new List<NavigationAccess>();
-        var current = WalkUpThroughWrappers(materializer.Parent);
+        var current = start;
         var currentEntity = entityType;
         string? path = null;
 
@@ -222,8 +239,11 @@ public sealed partial class MissingIncludeAnalyzer
                IsPropertyOfEntity(propertyReference.Property, currentEntity) &&
                TryGetNavigationTarget(propertyReference.Property, entityTypes, out var target, out var isCollection))
         {
-            if (IsWriteTarget(propertyReference) || IsCollectionMutatorReceiver(propertyReference))
+            if (IsWriteTarget(propertyReference) ||
+                (isCollection && IsCollectionMutatorReceiver(propertyReference)))
+            {
                 break;
+            }
 
             path = path == null ? propertyReference.Property.Name : path + "." + propertyReference.Property.Name;
             accesses.Add(new NavigationAccess(path, propertyReference.Syntax));
@@ -284,6 +304,34 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsCollectionNavigation(
+        IPropertyReferenceOperation propertyReference,
+        HashSet<INamedTypeSymbol> entityTypes)
+    {
+        return TryGetNavigationTarget(propertyReference.Property, entityTypes, out _, out var isCollection) &&
+               isCollection;
+    }
+
+    /// <summary>
+    /// For db.Orders.First()?.Customer.Name the navigation chain hangs off WhenNotNull;
+    /// descend it to the property whose instance is the conditional-access placeholder.
+    /// </summary>
+    private static IOperation? FindConditionalAccessEntryProperty(IConditionalAccessOperation conditionalAccess)
+    {
+        IOperation? current = conditionalAccess.WhenNotNull.UnwrapConversions();
+
+        while (current is IPropertyReferenceOperation propertyReference)
+        {
+            var instance = propertyReference.Instance?.UnwrapConversions();
+            if (instance is IConditionalAccessInstanceOperation)
+                return propertyReference;
+
+            current = instance;
+        }
+
+        return null;
     }
 
     private static IOperation? ResolveConditionalAccessReceiver(IOperation operation)

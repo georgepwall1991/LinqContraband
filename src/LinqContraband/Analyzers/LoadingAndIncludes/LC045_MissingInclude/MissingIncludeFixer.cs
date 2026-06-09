@@ -46,7 +46,7 @@ public sealed class MissingIncludeFixer : CodeFixProvider
             var materializerNode = root?.FindNode(diagnostic.AdditionalLocations[0].SourceSpan, getInnermostNodeForTie: true);
             var materializer = materializerNode as InvocationExpressionSyntax ??
                                materializerNode?.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-            if (materializer?.Expression is not MemberAccessExpressionSyntax)
+            if (materializer == null)
                 continue;
 
             context.RegisterCodeFix(
@@ -68,12 +68,9 @@ public sealed class MissingIncludeFixer : CodeFixProvider
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
-        if (materializer.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var source = await GetQuerySourceAsync(document, materializer, cancellationToken).ConfigureAwait(false);
+        if (source == null)
             return document;
-
-        // Wrap the materializer's receiver: recv.ToList() => recv.Include(x => x.Nav).ToList().
-        // This is always a valid position for Include and lands after any existing Includes.
-        var source = memberAccess.Expression;
         ExpressionSyntax current = source;
         var first = true;
 
@@ -93,5 +90,28 @@ public sealed class MissingIncludeFixer : CodeFixProvider
         editor.ReplaceNode(source, current.WithTriviaFrom(source));
 
         return editor.GetChangedDocument();
+    }
+
+    /// <summary>
+    /// The query expression to wrap with Include: the member-access receiver for reduced
+    /// extension syntax (q.ToList()), or the first argument for static syntax
+    /// (Enumerable.ToList(q)) — wrapping the type name there would produce invalid code.
+    /// </summary>
+    private static async Task<ExpressionSyntax?> GetQuerySourceAsync(
+        Document document,
+        InvocationExpressionSyntax materializer,
+        CancellationToken cancellationToken)
+    {
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel?.GetSymbolInfo(materializer, cancellationToken).Symbol is not IMethodSymbol method)
+            return null;
+
+        if (method.MethodKind == MethodKind.ReducedExtension)
+            return (materializer.Expression as MemberAccessExpressionSyntax)?.Expression;
+
+        if (method.IsStatic && materializer.ArgumentList.Arguments.Count > 0)
+            return materializer.ArgumentList.Arguments[0].Expression;
+
+        return null;
     }
 }
