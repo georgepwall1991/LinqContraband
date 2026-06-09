@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC043_AsyncEnumerableBuffering.AsyncEnumerableBufferingAnalyzer,
+    LinqContraband.Analyzers.LC043_AsyncEnumerableBuffering.AsyncEnumerableBufferingFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC043_AsyncEnumerableBuffering.AsyncEnumerableBufferingAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -235,5 +241,78 @@ namespace TestApp
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_ConvertsMultipleBufferedAsyncEnumerablesToAwaitForeach()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users, IAsyncEnumerable<User> otherUsers)
+        {
+            var items = await {|#0:users.ToListAsync()|};
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+
+            var others = await {|#1:otherUsers.ToArrayAsync()|};
+            foreach (var other in others)
+            {
+                System.Console.WriteLine(other.Name);
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users, IAsyncEnumerable<User> otherUsers)
+        {
+            await foreach (var item in users)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+            await foreach (var other in otherUsers)
+            {
+                System.Console.WriteLine(other.Name);
+            }
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseAwaitForeach"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC043")
+                .WithLocation(0)
+                .WithArguments("ToListAsync"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC043")
+                .WithLocation(1)
+                .WithArguments("ToArrayAsync"));
+
+        await testObj.RunAsync();
     }
 }

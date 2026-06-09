@@ -37,7 +37,8 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC006_CartesianExplosion.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

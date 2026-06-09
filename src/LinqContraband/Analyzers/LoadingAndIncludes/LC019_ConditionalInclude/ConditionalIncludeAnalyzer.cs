@@ -30,7 +30,8 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC019_ConditionalInclude.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

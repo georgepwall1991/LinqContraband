@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC012_OptimizeRemoveRange.OptimizeRemoveRangeAnalyzer,
+    LinqContraband.Analyzers.LC012_OptimizeRemoveRange.OptimizeRemoveRangeFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC012_OptimizeRemoveRange.OptimizeRemoveRangeAnalyzer,
     LinqContraband.Analyzers.LC012_OptimizeRemoveRange.OptimizeRemoveRangeFixer>;
@@ -338,5 +344,67 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllRemoveRangeInvocations()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var query1 = users.Where(x => x.Id > 0);
+            {|#0:users.RemoveRange(query1)|};
+
+            var query2 = users.Where(x => x.Id < 100);
+            {|#1:users.RemoveRange(query2)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var query1 = users.Where(x => x.Id > 0);
+            // Warning: ExecuteDelete bypasses change tracking and cascades.
+            query1.ExecuteDelete();
+
+            var query2 = users.Where(x => x.Id < 100);
+            // Warning: ExecuteDelete bypasses change tracking and cascades.
+            query2.ExecuteDelete();
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseExecuteDelete"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC012")
+                .WithLocation(0)
+                .WithArguments("RemoveRange"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC012")
+                .WithLocation(1)
+                .WithArguments("RemoveRange"));
+
+        await testObj.RunAsync();
     }
 }

@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC020_StringContainsWithComparison;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(StringContainsWithComparisonFixer))]
 [Shared]
-public class StringContainsWithComparisonFixer : CodeFixProvider
+public sealed class StringContainsWithComparisonFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(StringContainsWithComparisonAnalyzer.DiagnosticId);

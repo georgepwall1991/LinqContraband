@@ -33,7 +33,8 @@ public sealed class IQueryableLeakAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC004_IQueryableLeak.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

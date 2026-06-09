@@ -31,7 +31,8 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC024_GroupByNonTranslatable.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

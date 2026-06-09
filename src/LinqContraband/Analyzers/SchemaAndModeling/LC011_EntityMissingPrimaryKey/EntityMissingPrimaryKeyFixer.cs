@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(EntityMissingPrimaryKeyFixer))]
 [Shared]
-public class EntityMissingPrimaryKeyFixer : CodeFixProvider
+public sealed class EntityMissingPrimaryKeyFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(EntityMissingPrimaryKeyAnalyzer.DiagnosticId);

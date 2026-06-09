@@ -30,7 +30,8 @@ public sealed partial class DisposedContextQueryAnalyzer : DiagnosticAnalyzer
         "Returning a deferred query from a disposed context causes runtime errors.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description);
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC013_DisposedContextQuery.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

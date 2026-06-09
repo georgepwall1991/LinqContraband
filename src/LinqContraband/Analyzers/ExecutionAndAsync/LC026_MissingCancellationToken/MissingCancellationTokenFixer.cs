@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC026_MissingCancellationToken;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingCancellationTokenFixer))]
 [Shared]
-public class MissingCancellationTokenFixer : CodeFixProvider
+public sealed class MissingCancellationTokenFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingCancellationTokenAnalyzer.DiagnosticId);

@@ -36,7 +36,8 @@ public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC016_AvoidDateTimeNow.md");
 
     private static readonly HashSet<string> TargetLinqMethods = new()
     {

@@ -35,10 +35,12 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
         "Pagination and Last operations on unordered IQueryables are non-deterministic. Sorting must happen before Skip/Take.";
 
     public static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description);
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC015_MissingOrderBy.md");
 
     public static readonly DiagnosticDescriptor MisplacedRule = new(
-        DiagnosticId, "OrderBy after Skip/Take", MisplacedMessageFormat, Category, DiagnosticSeverity.Warning, true, Description);
+        DiagnosticId, "OrderBy after Skip/Take", MisplacedMessageFormat, Category, DiagnosticSeverity.Warning, true, Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC015_MissingOrderBy.md");
 
     private static readonly ImmutableHashSet<string> PaginationMethods = ImmutableHashSet.Create(
         "Skip", "Take", "Last", "LastOrDefault", "Chunk"

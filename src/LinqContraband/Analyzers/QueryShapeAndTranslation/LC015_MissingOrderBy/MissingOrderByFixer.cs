@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC015_MissingOrderBy;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingOrderByFixer))]
 [Shared]
-public class MissingOrderByFixer : CodeFixProvider
+public sealed class MissingOrderByFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingOrderByAnalyzer.DiagnosticId);

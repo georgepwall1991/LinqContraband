@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC022_ToListInSelectProjection.ToListInSelectProjectionAnalyzer,
+    LinqContraband.Analyzers.LC022_ToListInSelectProjection.ToListInSelectProjectionFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC022_ToListInSelectProjection.ToListInSelectProjectionAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -277,5 +283,49 @@ class TestClass
 }" + MockNamespaces;
 
         await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllRemovableMaterializersFromProjections()
+    {
+        var test = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result1 = users.Select(u => {|#0:u.Orders.ToList()|});
+        var result2 = users.Select(u => {|#1:u.Orders.ToList()|});
+    }
+}" + MockNamespaces;
+
+        var fixedCode = Usings + @"
+class TestClass
+{
+    void TestMethod(DbSet<User> users)
+    {
+        var result1 = users.Select(u => u.Orders);
+        var result2 = users.Select(u => u.Orders);
+    }
+}" + MockNamespaces;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "RemoveMaterializerFromProjection"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC022")
+                .WithLocation(0)
+                .WithArguments("ToList"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC022")
+                .WithLocation(1)
+                .WithArguments("ToList"));
+
+        await testObj.RunAsync();
     }
 }

@@ -88,7 +88,8 @@ public sealed partial class MissingQueryTagsAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC042_MissingQueryTags.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC034_AvoidExecuteSqlRawWithInterpolation.AvoidExecuteSqlRawWithInterpolationAnalyzer,
+    LinqContraband.Analyzers.LC034_AvoidExecuteSqlRawWithInterpolation.AvoidExecuteSqlRawWithInterpolationFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC034_AvoidExecuteSqlRawWithInterpolation.AvoidExecuteSqlRawWithInterpolationAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -620,5 +626,61 @@ namespace TestApp
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllExecuteSqlRawCalls()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id, string name)
+        {
+            var result1 = db.Database.ExecuteSqlRaw({|#0:$""UPDATE Users SET Name = {id}""|});
+            var result2 = db.Database.ExecuteSqlRaw({|#1:$""UPDATE Users SET IsActive = 1 WHERE Id = {id}""|});
+            var result3 = db.Database.ExecuteSqlRaw({|#2:$""DELETE FROM Users WHERE Name = {name}""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id, string name)
+        {
+            var result1 = db.Database.ExecuteSql($""UPDATE Users SET Name = {id}"");
+            var result2 = db.Database.ExecuteSql($""UPDATE Users SET IsActive = 1 WHERE Id = {id}"");
+            var result3 = db.Database.ExecuteSql($""DELETE FROM Users WHERE Name = {name}"");
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 3,
+            CodeFixEquivalenceKey = "ExecuteSql"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC034")
+                .WithLocation(0)
+                .WithArguments("ExecuteSql", "ExecuteSqlRaw"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC034")
+                .WithLocation(1)
+                .WithArguments("ExecuteSql", "ExecuteSqlRaw"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC034")
+                .WithLocation(2)
+                .WithArguments("ExecuteSql", "ExecuteSqlRaw"));
+
+        await testObj.RunAsync();
     }
 }

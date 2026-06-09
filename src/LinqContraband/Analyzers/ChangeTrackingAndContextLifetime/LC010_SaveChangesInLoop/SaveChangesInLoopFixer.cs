@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC010_SaveChangesInLoop;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(SaveChangesInLoopFixer))]
 [Shared]
-public class SaveChangesInLoopFixer : CodeFixProvider
+public sealed class SaveChangesInLoopFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(SaveChangesInLoopAnalyzer.DiagnosticId);

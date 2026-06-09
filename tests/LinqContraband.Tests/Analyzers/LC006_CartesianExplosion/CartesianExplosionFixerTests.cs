@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionAnalyzer,
     LinqContraband.Analyzers.LC006_CartesianExplosion.CartesianExplosionFixer,
@@ -243,6 +245,52 @@ class Program
             TestCode = test,
             FixedCode = fixedCode
         };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllCartesianExplosionCases()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query1 = {|#0:db.Users.Include(u => u.Orders).Include(u => u.Roles)|}.ToList();
+        var query2 = {|#1:db.Users.Where(u => u.Id > 0).Include(u => u.Orders).Include(u => u.Roles)|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query1 = db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
+        var query2 = db.Users.Where(u => u.Id > 0).AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseAsSplitQuery"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC006", DiagnosticSeverity.Warning)
+                .WithLocation(1));
 
         await testObj.RunAsync();
     }

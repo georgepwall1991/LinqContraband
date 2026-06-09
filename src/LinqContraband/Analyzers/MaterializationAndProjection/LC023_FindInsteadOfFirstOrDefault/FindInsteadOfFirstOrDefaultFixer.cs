@@ -19,7 +19,7 @@ namespace LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(FindInsteadOfFirstOrDefaultFixer))]
 [Shared]
-public class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
+public sealed class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(FindInsteadOfFirstOrDefaultAnalyzer.DiagnosticId);

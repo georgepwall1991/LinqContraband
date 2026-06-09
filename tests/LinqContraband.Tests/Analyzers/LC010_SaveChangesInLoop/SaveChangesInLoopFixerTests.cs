@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC010_SaveChangesInLoop.SaveChangesInLoopAnalyzer,
@@ -359,6 +360,75 @@ class Program
 }" + MockNamespace;
 
         await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllMultipleDoWhileSaveChangesCases()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+            {|#0:db.SaveChanges()|};
+        }
+        while (i < 10);
+
+        int j = 0;
+        do
+        {
+            j++;
+            {|#1:db.SaveChanges()|};
+        }
+        while (j < 5);
+    }
+}" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        int i = 0;
+        do
+        {
+            i++;
+        }
+        while (i < 10);
+        db.SaveChanges();
+        int j = 0;
+        do
+        {
+            j++;
+        }
+        while (j < 5);
+        db.SaveChanges();
+    }
+}" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "MoveSaveChangesAfterLoop"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC010", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC010", DiagnosticSeverity.Warning)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 
     private static async Task VerifyFix(string test, string fixedCode)

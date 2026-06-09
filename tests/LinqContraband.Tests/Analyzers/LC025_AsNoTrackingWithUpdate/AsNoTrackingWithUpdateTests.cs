@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateAnalyzer,
+    LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate.AsNoTrackingWithUpdateAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -488,5 +494,65 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_RemovesAsNoTrackingFromAllProblematicVariables()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user1 = users.AsNoTracking().FirstOrDefault(x => x.Id == 1);
+            users.Update({|#0:user1|});
+
+            var user2 = users.AsNoTracking().FirstOrDefault(x => x.Id == 2);
+            users.Update({|#1:user2|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user1 = users.FirstOrDefault(x => x.Id == 1);
+            users.Update(user1);
+
+            var user2 = users.FirstOrDefault(x => x.Id == 2);
+            users.Update(user2);
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "RemoveAsNoTracking"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC025")
+                .WithLocation(0)
+                .WithArguments("Update"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC025")
+                .WithLocation(1)
+                .WithArguments("Update"));
+
+        await testObj.RunAsync();
     }
 }

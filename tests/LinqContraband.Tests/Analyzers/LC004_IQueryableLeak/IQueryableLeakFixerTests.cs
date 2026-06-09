@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC004_IQueryableLeak.IQueryableLeakAnalyzer,
+    LinqContraband.Analyzers.LC004_IQueryableLeak.IQueryableLeakFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC004_IQueryableLeak.IQueryableLeakAnalyzer,
     LinqContraband.Analyzers.LC004_IQueryableLeak.IQueryableLeakFixer>;
@@ -326,5 +332,91 @@ namespace TestApp
 
         var expected = VerifyFix.Diagnostic("LC004").WithLocation(0).WithArguments("users", "IEnumerable");
         await VerifyFix.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task FixAll_MaterializesAllIQueryableLeakArguments()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var query1 = db.Users.Where(u => u.Id > 10);
+            var query2 = db.Users.Where(u => u.Id > 20);
+
+            ProcessUsers({|#0:query1|});
+            ProcessUsers({|#1:query2|});
+        }
+
+        private static void ProcessUsers(IEnumerable<User> users)
+        {
+            foreach (var user in users)
+            {
+                Console.WriteLine(user.Id);
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var query1 = db.Users.Where(u => u.Id > 10);
+            var query2 = db.Users.Where(u => u.Id > 20);
+
+            ProcessUsers(query1.ToList());
+            ProcessUsers(query2.ToList());
+        }
+
+        private static void ProcessUsers(IEnumerable<User> users)
+        {
+            foreach (var user in users)
+            {
+                Console.WriteLine(user.Id);
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "IQueryableLeakFixer"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC004", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("users", "IEnumerable<User>"));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC004", DiagnosticSeverity.Warning)
+                .WithLocation(1)
+                .WithArguments("users", "IEnumerable<User>"));
+
+        await testObj.RunAsync();
     }
 }

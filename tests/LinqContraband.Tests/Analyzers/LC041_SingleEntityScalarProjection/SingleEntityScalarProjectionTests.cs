@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC041_SingleEntityScalarProjection.SingleEntityScalarProjectionAnalyzer,
+    LinqContraband.Analyzers.LC041_SingleEntityScalarProjection.SingleEntityScalarProjectionFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC041_SingleEntityScalarProjection.SingleEntityScalarProjectionAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -376,5 +382,75 @@ namespace TestApp
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesMultipleScalarProjections()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var activeUser = {|#0:users.First(x => x.IsActive)|};
+            System.Console.WriteLine(activeUser.Name);
+
+            var inactiveUser = {|#1:users.Single(x => !x.IsActive)|};
+            System.Console.WriteLine(inactiveUser.Name);
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var activeUser = users.Where(x => x.IsActive).Select(x => x.Name).First();
+            System.Console.WriteLine(activeUser);
+
+            var inactiveUser = users.Where(x => !x.IsActive).Select(x => x.Name).Single();
+            System.Console.WriteLine(inactiveUser);
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "ProjectConsumedScalar"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC041")
+                .WithArguments("First", "Name")
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC041")
+                .WithArguments("Single", "Name")
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 }

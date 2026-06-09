@@ -31,7 +31,8 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC031_UnboundedQueryMaterialization.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

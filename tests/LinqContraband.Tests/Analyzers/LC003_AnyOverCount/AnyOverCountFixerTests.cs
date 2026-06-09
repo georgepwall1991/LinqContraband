@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC003_AnyOverCount.AnyOverCountAnalyzer,
@@ -221,6 +222,64 @@ namespace LinqContraband.Test
         // VerifyCS handles constructing the diagnostic expectation if using the helper,
         // but here we are using CodeFixTest directly.
         // The {|LC003:..|} syntax in TestCode handles the location assertion.
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_ReplacesAllCountComparisonsWithAny()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|#0:query.Count() > 0|})
+            {
+            }
+            if ({|#1:query.Count(x => x > 10) > 0|})
+            {
+            }
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if (query.Any())
+            {
+            }
+            if (query.Any(x => x > 10))
+            {
+            }
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "ReplaceCountWithAny",
+            CompilerDiagnostics = CompilerDiagnostics.None
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC003", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC003", DiagnosticSeverity.Warning)
+                .WithLocation(1));
 
         await testObj.RunAsync();
     }

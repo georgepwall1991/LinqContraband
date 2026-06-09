@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC003_AnyOverCount;
 /// especially critical with large result sets where Count() might scan millions of rows unnecessarily.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class AnyOverCountAnalyzer : DiagnosticAnalyzer
+public sealed class AnyOverCountAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC003";
     private const string Category = "Performance";
@@ -36,7 +36,8 @@ public class AnyOverCountAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC003_AnyOverCount.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

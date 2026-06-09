@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidIgnoreQueryFiltersFixer))]
 [Shared]
-public class AvoidIgnoreQueryFiltersFixer : CodeFixProvider
+public sealed class AvoidIgnoreQueryFiltersFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidIgnoreQueryFiltersAnalyzer.DiagnosticId);

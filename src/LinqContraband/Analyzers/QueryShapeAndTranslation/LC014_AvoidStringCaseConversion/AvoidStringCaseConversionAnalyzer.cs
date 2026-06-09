@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC014_AvoidStringCaseConversion;
 /// scans. Instead, use database collation, a normalized column, or provider-specific collation support.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
+public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC014";
     private const string Category = "Performance";
@@ -35,7 +35,8 @@ public class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC014_AvoidStringCaseConversion.md");
 
     private static readonly HashSet<string> CaseConversionMethods = new()
     {

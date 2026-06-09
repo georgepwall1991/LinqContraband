@@ -36,7 +36,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC009_MissingAsNoTracking.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

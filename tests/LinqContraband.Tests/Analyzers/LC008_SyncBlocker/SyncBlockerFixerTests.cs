@@ -259,4 +259,58 @@ class Program
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task FixAll_RewritesAllSyncBlockerCases()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = {|#0:db.Users.ToList()|};
+        var count = {|#1:db.Users.Count()|};
+        var first = {|#2:db.Users.First()|};
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = await db.Users.ToListAsync();
+        var count = await db.Users.CountAsync();
+        var first = await db.Users.FirstAsync();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 3,
+            CodeFixEquivalenceKey = "UseAsyncMethod"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+                .WithSpan(14, 21, 14, 38)
+                .WithArguments("ToList", "ToListAsync"));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+                .WithSpan(15, 21, 15, 37)
+                .WithArguments("Count", "CountAsync"));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+                .WithSpan(16, 21, 16, 37)
+                .WithArguments("First", "FirstAsync"));
+
+        await testObj.RunAsync();
+    }
 }
