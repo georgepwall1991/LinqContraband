@@ -19,7 +19,7 @@ namespace LinqContraband.Analyzers.LC025_AsNoTrackingWithUpdate;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AsNoTrackingWithUpdateFixer))]
 [Shared]
-public class AsNoTrackingWithUpdateFixer : CodeFixProvider
+public sealed class AsNoTrackingWithUpdateFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AsNoTrackingWithUpdateAnalyzer.DiagnosticId);

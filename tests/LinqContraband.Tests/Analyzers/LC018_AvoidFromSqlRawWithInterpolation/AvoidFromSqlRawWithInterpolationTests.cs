@@ -1,8 +1,14 @@
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation.AvoidFromSqlRawWithInterpolationAnalyzer,
+    LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation.AvoidFromSqlRawWithInterpolationFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation.AvoidFromSqlRawWithInterpolationAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation.AvoidFromSqlRawWithInterpolationAnalyzer,
     LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation.AvoidFromSqlRawWithInterpolationFixer>;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 
 namespace LinqContraband.Tests.Analyzers.LC018_AvoidFromSqlRawWithInterpolation;
 
@@ -830,5 +836,59 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllFromSqlRawWithInterpolatedStringInstances()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id1 = 1;
+            var id2 = 2;
+            var query = new int[0].AsQueryable();
+            var result1 = query.FromSqlRaw({|#0:$""SELECT * FROM Table WHERE Id = {id1}""|});
+            var result2 = query.FromSqlRaw({|#1:$""SELECT * FROM Table WHERE Id = {id2}""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var id1 = 1;
+            var id2 = 2;
+            var query = new int[0].AsQueryable();
+            var result1 = query.FromSqlInterpolated($""SELECT * FROM Table WHERE Id = {id1}"");
+            var result2 = query.FromSqlInterpolated($""SELECT * FROM Table WHERE Id = {id2}"");
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "ReplaceFromSqlRawWithInterpolated"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC018", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC018", DiagnosticSeverity.Warning)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 }

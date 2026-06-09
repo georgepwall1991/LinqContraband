@@ -1,7 +1,10 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
     LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersAnalyzer,
     LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersFixer,
     Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
+using LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters;
 
 namespace LinqContraband.Tests.Analyzers.LC021_AvoidIgnoreQueryFilters;
 
@@ -182,6 +185,56 @@ namespace LinqContraband.Test
             TestCode = test,
             FixedCode = fixedCode
         };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllIgnoreQueryFiltersInstances()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result1 = {|#0:query.IgnoreQueryFilters()|}.Where(x => x > 0).ToList();
+            var result2 = {|#1:query.Where(x => x < 100).IgnoreQueryFilters()|}.ToArray();
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result1 = query.Where(x => x > 0).ToList();
+            var result2 = query.Where(x => x < 100).ToArray();
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "RemoveIgnoreQueryFilters"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC021", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC021", DiagnosticSeverity.Warning)
+                .WithLocation(1));
 
         await testObj.RunAsync();
     }

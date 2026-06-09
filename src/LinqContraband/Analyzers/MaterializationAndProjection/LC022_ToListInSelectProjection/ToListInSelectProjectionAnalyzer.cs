@@ -31,7 +31,8 @@ public sealed class ToListInSelectProjectionAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC022_ToListInSelectProjection.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

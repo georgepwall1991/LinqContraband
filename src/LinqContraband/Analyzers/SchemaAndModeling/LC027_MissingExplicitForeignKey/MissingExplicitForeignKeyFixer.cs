@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC027_MissingExplicitForeignKey;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingExplicitForeignKeyFixer))]
 [Shared]
-public class MissingExplicitForeignKeyFixer : CodeFixProvider
+public sealed class MissingExplicitForeignKeyFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingExplicitForeignKeyAnalyzer.DiagnosticId);

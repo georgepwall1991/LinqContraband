@@ -1,8 +1,14 @@
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonAnalyzer,
+    LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonAnalyzer,
     LinqContraband.Analyzers.LC020_StringContainsWithComparison.StringContainsWithComparisonFixer>;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 
 namespace LinqContraband.Tests.Analyzers.LC020_StringContainsWithComparison;
 
@@ -403,5 +409,58 @@ namespace LinqContraband.Test
 }";
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+    [Fact]
+    public async Task FixAll_RewritesAllStringComparisonArguments()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<string>().AsQueryable();
+            var result = query
+                .Where(x => {|#0:x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)|})
+                .Where(y => {|#1:y.StartsWith(""xyz"", StringComparison.CurrentCulture)|})
+                .ToList();
+        }
+    }
+}";
+
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<string>().AsQueryable();
+            var result = query
+                .Where(x => x.Contains(""abc""))
+                .Where(y => y.StartsWith(""xyz""))
+                .ToList();
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "RemoveStringComparison"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC020", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC020", DiagnosticSeverity.Warning)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 }

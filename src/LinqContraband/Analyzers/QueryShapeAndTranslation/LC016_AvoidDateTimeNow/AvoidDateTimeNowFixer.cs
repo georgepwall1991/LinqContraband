@@ -19,7 +19,7 @@ namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidDateTimeNowFixer))]
 [Shared]
-public class AvoidDateTimeNowFixer : CodeFixProvider
+public sealed class AvoidDateTimeNowFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidDateTimeNowAnalyzer.DiagnosticId);

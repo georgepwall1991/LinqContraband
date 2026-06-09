@@ -19,7 +19,7 @@ namespace LinqContraband.Analyzers.LC012_OptimizeRemoveRange;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(OptimizeRemoveRangeFixer))]
 [Shared]
-public class OptimizeRemoveRangeFixer : CodeFixProvider
+public sealed class OptimizeRemoveRangeFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(OptimizeRemoveRangeAnalyzer.DiagnosticId);

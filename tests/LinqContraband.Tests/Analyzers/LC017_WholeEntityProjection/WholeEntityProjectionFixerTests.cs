@@ -1,6 +1,12 @@
 using System.Threading.Tasks;
 using LinqContraband.Analyzers.LC017_WholeEntityProjection;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 using Xunit;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC017_WholeEntityProjection.WholeEntityProjectionAnalyzer,
+    LinqContraband.Analyzers.LC017_WholeEntityProjection.WholeEntityProjectionFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS =
     Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
         LinqContraband.Analyzers.LC017_WholeEntityProjection.WholeEntityProjectionAnalyzer,
@@ -276,6 +282,70 @@ class Program
 
         var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 38).WithArguments("LargeEntity", "1", "12");
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllWholeEntityProjectionInstances()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities1 = {|#0:db.LargeEntities.ToList()|};
+        foreach (var e in entities1)
+        {
+            Console.WriteLine(e.Name);
+        }
+
+        var entities2 = {|#1:db.LargeEntities.ToArray()|};
+        foreach (var e in entities2)
+        {
+            Console.WriteLine(e.Id);
+        }
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities1 = db.LargeEntities.Select(e => new { e.Name }).ToList();
+        foreach (var e in entities1)
+        {
+            Console.WriteLine(e.Name);
+        }
+
+        var entities2 = db.LargeEntities.Select(e => new { e.Id }).ToArray();
+        foreach (var e in entities2)
+        {
+            Console.WriteLine(e.Id);
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "WholeEntityProjectionFixer_AnonymousType"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC017", DiagnosticSeverity.Info)
+                .WithLocation(0)
+                .WithArguments("LargeEntity", "1", "12"));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC017", DiagnosticSeverity.Info)
+                .WithLocation(1)
+                .WithArguments("LargeEntity", "1", "12"));
+
+        await testObj.RunAsync();
     }
 
 }

@@ -1,4 +1,9 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperAnalyzer,
+    LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperAnalyzer,
     LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperFixer>;
@@ -232,5 +237,63 @@ class Program
 
         var expected = VerifyFix.Diagnostic("LC007").WithLocation(0).WithArguments("Load");
         await VerifyFix.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllNPlusOneLooperCases()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var user in db.Users.ToList())
+        {
+            {|#0:db.Entry(user).Collection(u => u.Orders).Load()|};
+        }
+        foreach (var user in db.Users.ToList())
+        {
+            {|#1:db.Entry(user).Reference(u => u.Profile).Load()|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var user in db.Users.Include(u => u.Orders).ToList())
+        {
+        }
+        foreach (var user in db.Users.Include(u => u.Profile).ToList())
+        {
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseIncludeForExplicitLoad"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC007")
+                .WithLocation(0)
+                .WithArguments("Load"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC007")
+                .WithLocation(1)
+                .WithArguments("Load"));
+
+        await testObj.RunAsync();
     }
 }

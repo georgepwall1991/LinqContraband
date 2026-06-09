@@ -35,7 +35,8 @@ public sealed class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC043_AsyncEnumerableBuffering.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(CartesianExplosionFixer))]
 [Shared]
-public class CartesianExplosionFixer : CodeFixProvider
+public sealed class CartesianExplosionFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(CartesianExplosionAnalyzer.DiagnosticId);

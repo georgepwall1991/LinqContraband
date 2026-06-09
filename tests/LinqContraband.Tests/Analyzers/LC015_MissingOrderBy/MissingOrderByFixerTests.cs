@@ -1,6 +1,10 @@
 using System.Threading.Tasks;
 using LinqContraband.Analyzers.LC015_MissingOrderBy;
 using Xunit;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC015_MissingOrderBy.MissingOrderByAnalyzer,
+    LinqContraband.Analyzers.LC015_MissingOrderBy.MissingOrderByFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS =
     Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
         LinqContraband.Analyzers.LC015_MissingOrderBy.MissingOrderByAnalyzer,
@@ -373,5 +377,49 @@ class Program {
 
         var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(42, 26).WithArguments("Skip");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task FixAll_AddsOrderByToAllUnorderedSkips()
+    {
+        var test = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q1 = db.Users.Skip(10);
+        var q2 = db.Users.Skip(20);
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q1 = db.Users.OrderBy(x => x.Id).Skip(10);
+        var q2 = db.Users.OrderBy(x => x.Id).Skip(20);
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = nameof(MissingOrderByFixer)
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(35, 27).WithArguments("Skip"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(36, 27).WithArguments("Skip"));
+
+        await testObj.RunAsync();
     }
 }

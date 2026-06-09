@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC029_RedundantIdentitySelect;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(RedundantIdentitySelectFixer))]
 [Shared]
-public class RedundantIdentitySelectFixer : CodeFixProvider
+public sealed class RedundantIdentitySelectFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(RedundantIdentitySelectAnalyzer.DiagnosticId);

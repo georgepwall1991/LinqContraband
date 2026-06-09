@@ -15,7 +15,7 @@ namespace LinqContraband.Analyzers.LC005_MultipleOrderBy;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MultipleOrderByFixer))]
 [Shared]
-public class MultipleOrderByFixer : CodeFixProvider
+public sealed class MultipleOrderByFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MultipleOrderByAnalyzer.DiagnosticId);

@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC001_LocalMethod;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(LocalMethodFixer))]
 [Shared]
-public class LocalMethodFixer : CodeFixProvider
+public sealed class LocalMethodFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(LocalMethodAnalyzer.DiagnosticId);

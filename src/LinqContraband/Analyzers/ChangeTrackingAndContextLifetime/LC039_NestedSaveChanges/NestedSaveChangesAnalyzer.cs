@@ -32,6 +32,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC039_NestedSaveChanges.md",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     private static readonly ImmutableHashSet<string> SaveMethodNames = ImmutableHashSet.Create(

@@ -32,6 +32,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC040_MixedTrackingAndNoTracking.md",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     private static readonly ImmutableHashSet<string> MaterializerNames = ImmutableHashSet.Create(

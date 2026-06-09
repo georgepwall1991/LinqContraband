@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByAnalyzer,
+    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByAnalyzer,
     LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByFixer>;
@@ -68,5 +74,56 @@ class Test
 }";
 
         await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task FixAll_ReplacesAllConsecutiveOrderBysWithThenBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = list
+            .OrderBy(x => x)
+            .{|#0:OrderBy|}(x => x)
+            .{|#1:OrderBy|}(x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = list
+            .OrderBy(x => x)
+            .ThenBy(x => x)
+            .ThenBy(x => x);
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fix,
+            BatchFixedCode = fix,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "MultipleOrderByFixer"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC005", DiagnosticSeverity.Warning)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC005", DiagnosticSeverity.Warning)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 }

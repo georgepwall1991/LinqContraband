@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesAnalyzer,
     LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates.ExecuteUpdateForBulkUpdatesFixer>;
@@ -858,5 +859,63 @@ class Program
 }");
 
         await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllQualifyingBulkUpdateLoops()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|#0:foreach (var user in db.Users.Where(u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+
+        {|#1:foreach (var user in db.Users.Where(u => !u.IsActive))
+        {
+            user.LoginCount = user.LoginCount + 1;
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        var fixedCode = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        " + WarningComment + @"
+        db.Users.Where(u => u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.Name, user => ""Archived""));
+        db.SaveChanges();
+
+        " + WarningComment + @"
+        db.Users.Where(u => !u.IsActive).ExecuteUpdate(setters => setters.SetProperty(user => user.LoginCount, user => user.LoginCount + 1));
+        db.SaveChanges();
+    }
+}");
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseExecuteUpdate"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC032", DiagnosticSeverity.Info)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC032", DiagnosticSeverity.Info)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 }

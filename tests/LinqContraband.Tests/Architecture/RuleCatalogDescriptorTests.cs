@@ -35,8 +35,9 @@ public sealed class RuleCatalogDescriptorTests
             Assert.Equal(rule.Severity, descriptor.DefaultSeverity);
 
             var expectedHelpLink = $"https://github.com/georgepwall1991/LinqContraband/blob/master/{rule.DocumentationPath}";
-            if (!string.IsNullOrWhiteSpace(descriptor.HelpLinkUri))
-                Assert.Equal(expectedHelpLink, descriptor.HelpLinkUri);
+            Assert.True(!string.IsNullOrWhiteSpace(descriptor.HelpLinkUri),
+                $"{rule.Id}: descriptor must declare a helpLinkUri pointing at {expectedHelpLink}.");
+            Assert.Equal(expectedHelpLink, descriptor.HelpLinkUri);
         }
     }
 }

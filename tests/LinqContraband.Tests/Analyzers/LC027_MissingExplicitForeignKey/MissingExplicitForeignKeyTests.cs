@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC027_MissingExplicitForeignKey.MissingExplicitForeignKeyAnalyzer>;
@@ -312,6 +313,73 @@ namespace TestApp
             FixedCode = fixedCode,
             CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
         }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_RewritesAllMissingForeignKeyNavigations()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer {|#0:Customer|} { get; set; }
+        public Supplier {|#1:Supplier|} { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+    public class Supplier { public Guid Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+        public DbSet<Supplier> Suppliers { get; set; }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public int CustomerId { get; set; }
+        public Customer Customer { get; set; }
+        public Guid SupplierId { get; set; }
+        public Supplier Supplier { get; set; }
+    }
+
+    public class Customer { public int Id { get; set; } }
+    public class Supplier { public Guid Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+        public DbSet<Supplier> Suppliers { get; set; }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "AddForeignKeyProperty",
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC027", DiagnosticSeverity.Info)
+                .WithLocation(0));
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC027", DiagnosticSeverity.Info)
+                .WithLocation(1));
+
+        await testObj.RunAsync();
     }
 
 }

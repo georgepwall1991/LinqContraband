@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidFromSqlRawWithInterpolationFixer))]
 [Shared]
-public class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
+public sealed class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidFromSqlRawWithInterpolationAnalyzer.DiagnosticId);

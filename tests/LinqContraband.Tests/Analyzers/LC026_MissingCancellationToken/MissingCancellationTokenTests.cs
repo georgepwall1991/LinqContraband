@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Testing;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC026_MissingCancellationToken.MissingCancellationTokenAnalyzer,
+    LinqContraband.Analyzers.LC026_MissingCancellationToken.MissingCancellationTokenFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC026_MissingCancellationToken.MissingCancellationTokenAnalyzer>;
 using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
@@ -338,5 +344,65 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FixAll_PassesCancellationTokenToAllAsyncCalls()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken cancellationToken)
+        {
+            var result1 = await {|#0:query.ToListAsync()|};
+            var result2 = await {|#1:query.FirstOrDefaultAsync()|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken cancellationToken)
+        {
+            var result1 = await query.ToListAsync(cancellationToken);
+            var result2 = await query.FirstOrDefaultAsync(cancellationToken);
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "PassCancellationToken"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC026")
+                .WithLocation(0)
+                .WithArguments("ToListAsync"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC026")
+                .WithLocation(1)
+                .WithArguments("FirstOrDefaultAsync"));
+
+        await testObj.RunAsync();
     }
 }

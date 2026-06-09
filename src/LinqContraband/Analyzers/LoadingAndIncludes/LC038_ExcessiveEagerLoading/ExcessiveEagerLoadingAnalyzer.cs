@@ -32,7 +32,8 @@ public sealed partial class ExcessiveEagerLoadingAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC038_ExcessiveEagerLoading.md");
 
     private static readonly ImmutableHashSet<string> IncludeLikeMethods = ImmutableHashSet.Create(
         StringComparer.Ordinal,

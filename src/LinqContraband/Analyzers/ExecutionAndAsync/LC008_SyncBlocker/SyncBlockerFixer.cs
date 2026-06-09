@@ -19,7 +19,7 @@ namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(SyncBlockerFixer))]
 [Shared]
-public class SyncBlockerFixer : CodeFixProvider
+public sealed class SyncBlockerFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(SyncBlockerAnalyzer.DiagnosticId);

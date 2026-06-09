@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC003_AnyOverCount;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AnyOverCountFixer))]
 [Shared]
-public class AnyOverCountFixer : CodeFixProvider
+public sealed class AnyOverCountFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AnyOverCountAnalyzer.DiagnosticId);

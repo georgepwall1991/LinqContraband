@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC010_SaveChangesInLoop;
 /// the context within the loop and SaveChanges should be called once after the loop completes, enabling batch processing.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
+public sealed class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC010";
     private const string Category = "Performance";
@@ -36,7 +36,8 @@ public class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         true,
-        Description);
+        Description,
+        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC010_SaveChangesInLoop.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

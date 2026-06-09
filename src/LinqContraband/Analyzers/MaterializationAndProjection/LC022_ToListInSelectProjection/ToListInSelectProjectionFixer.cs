@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC022_ToListInSelectProjection;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(ToListInSelectProjectionFixer))]
 [Shared]
-public class ToListInSelectProjectionFixer : CodeFixProvider
+public sealed class ToListInSelectProjectionFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(ToListInSelectProjectionAnalyzer.DiagnosticId);
