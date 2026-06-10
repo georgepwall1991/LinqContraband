@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.6] - 2026-06-10
+
+### Fixed
+- `LC009` no longer suggests `AsNoTracking()` for methods that **mutate the materialized entity and commit through a helper**, closing the deferred cross-method residual from the 2026-06-04 rerun. The write detection only saw same-body `SaveChanges`/`Add`/`Update`/`Remove` calls, so the common repository shape — materialize, set a property, call `_repository.Commit()` — was flagged read-only, and applying the suggested `AsNoTracking()` would have silently dropped the save. A property mutation of the materialized result now marks the body as a write path: on the result local (only when the materializer's value is stored directly into a single-assignment local), on `foreach` iteration variables over the result or the inline materializer, and inline on the materializer itself (`db.Users.First(...).Name = x`); compound assignment and `++`/`--` count. Guards keep the rule honest: a DTO populated from entity values, a repointed local mutated while it held a different object, and indexer element replacement (`users[0] = new User()`) all still report. The caller-mutates-the-returned-entity case remains documented as unprovable locally.
+
 ## [5.6.5] - 2026-06-10
 
 ### Fixed

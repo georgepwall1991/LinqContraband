@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.5</Version>
+        <Version>5.6.6</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC025 (Avoid AsNoTracking with Update/Remove) is now path-aware for conditionally reassigned locals. When the latest assignment before the write sits in a branch that may not execute and the latest unconditional fallback disagrees on tracking-ness, the entity's state depends on the path taken and the rule stays quiet instead of judging by the lexically-last write. Unconditional latest assignments, agreeing fallbacks (every path untracked), superseded history, and same-branch reassign-plus-write shapes all keep firing.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC009 (Missing AsNoTracking in read-only path) no longer flags methods that mutate the materialized entity and commit through a helper. A property mutation of the result — on the result local (stored directly into a single-assignment local), a foreach variable over it, or inline on the materializer, compound assignment and increment included — now marks the body as a write path, where the suggested AsNoTracking() would have silently dropped the cross-method save. DTO mutation, repointed locals, and collection-element replacement do not suppress.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
