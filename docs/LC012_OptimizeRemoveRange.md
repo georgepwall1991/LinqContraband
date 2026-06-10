@@ -30,13 +30,13 @@ db.Logs.Where(l => l.Date < oneYearAgo).ExecuteDelete();
 LC012 is conservative. It reports only when:
 - the project exposes an EF Core `ExecuteDelete()` extension from the real `Microsoft.EntityFrameworkCore` namespace (so project-local or lookalike helpers do not enable the rule),
 - the single `RemoveRange(...)` argument is still query-shaped (`IQueryable<T>` / `DbSet<T>`), and
-- no `SaveChanges()` / `SaveChangesAsync()` follows later in the same executable body.
+- no *relevant* `SaveChanges()` / `SaveChangesAsync()` follows later in the same executable body. A later save is relevant unless it provably cannot commit these removals: a save on a **provably different context instance** — both receivers resolve, through single-assignment alias chains, to two different freshly-created (`new`) locals — and a save in a **mutually exclusive `if`/`else` or `switch` branch** (with no `goto case`/`goto default` in the switch) do not suppress the report.
 
 ### When it stays quiet (non-goals)
 - Materialized lists or arrays (e.g. `...ToList()`) and tracked entity collections — the fetch already happened, so there is nothing to optimize away.
 - Mixed or multiple `RemoveRange(query, entity)` `params` arguments — no single `ExecuteDelete()` replacement preserves that call shape.
 - Custom or lookalike `ExecuteDelete()` helpers outside the EF Core namespace, and EF Core versions where `ExecuteDelete()` is unavailable.
-- Calls followed by `SaveChanges()` / `SaveChangesAsync()` later in the same executable body — replacing deferred tracked deletion with immediate `ExecuteDelete()` would change unit-of-work timing.
+- Calls followed by `SaveChanges()` / `SaveChangesAsync()` later in the same executable body on the same or a possibly-aliasing context — replacing deferred tracked deletion with immediate `ExecuteDelete()` would change unit-of-work timing. Aliases resolve through single-assignment chains (`var db2 = db1;` saves through `db2` still suppress); context parameters, fields, factory results, and reassigned locals can never be proven distinct and conservatively suppress. When the `DbSet` arrives as a parameter/local its owning context is unknowable, so any later save suppresses; a `RemoveRange` in a `try` with a save in a `catch` also stays quiet, because the try may throw *after* the removals were registered and the catch-side save would still commit them; a `switch` containing `goto case`/`goto default` keeps suppressing because sections can flow into each other.
 
 ## Code Fix
 
