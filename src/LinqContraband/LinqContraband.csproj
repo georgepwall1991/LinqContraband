@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.3</Version>
+        <Version>5.6.4</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC023 (Prefer Find/FindAsync) no longer reports for entities with a visible global query filter. Find checks the change tracker before querying, and a tracker hit bypasses HasQueryFilter — so the FirstOrDefault(pk) to Find(pk) rewrite could silently resurrect soft-deleted or other-tenant rows. The gate keys on the DbSet's entity type (an Id inherited from a base class doesn't dodge it), walks base types (EF declares filters on the hierarchy root), and recognises OnModelCreating, EntityTypeBuilder configuration classes, and the non-generic Entity(typeof(X)).HasQueryFilter(...) form. Filters configured in another assembly remain invisible to the analyzer.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC012 (Use ExecuteDelete instead of RemoveRange) no longer lets an unrelated SaveChanges hide the report: a save on a provably different context instance (both receivers resolve through single-assignment alias chains to different freshly-created locals) and a save in a mutually exclusive if/else or switch branch can never commit the pending removals, so the suggestion now fires. Aliased contexts (var db2 = db1), context parameters/fields/factory results, switches containing goto case, and try/catch shapes stay conservatively quiet.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

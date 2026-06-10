@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.4] - 2026-06-10
+
+### Fixed
+- `LC012` no longer lets an unrelated `SaveChanges` hide the RemoveRange→`ExecuteDelete` suggestion. Two false negatives are closed: a save on a **provably different context instance** (`db1.Users.RemoveRange(q); db2.SaveChanges();` — proof requires both receivers to resolve, through single-assignment alias chains, to two *different freshly-created* locals) and a save in a **mutually exclusive `if`/`else` or `switch` branch**, which can never run after the `RemoveRange` in the same execution. Precision stays deliberately conservative: aliased contexts (`var db2 = db1;`) still suppress, context parameters/fields/factory results and reassigned locals can never be proven distinct and suppress, a `switch` containing `goto case`/`goto default` keeps suppressing because sections can flow into each other, and a try-block `RemoveRange` with a catch-side save stays quiet because the try may throw *after* the removals were registered. (Closes the LC012 open follow-up from the 2026-06-04 rerun.)
+
 ## [5.6.3] - 2026-06-10
 
 ### Fixed
