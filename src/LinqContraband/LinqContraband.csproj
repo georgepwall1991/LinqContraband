@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.0</Version>
+        <Version>5.6.1</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>New rule LC045 (Missing Include): flags navigation properties read from materialized query results that the query never eagerly loaded — the classic read-side N+1 under lazy-loading proxies, or a silent null/empty collection without them. Ships with a code fix that inserts .Include()/.ThenInclude() before the materializer (FixAll supported) and conservative escape analysis to keep false positives at zero. Also fixes the Include-path parsing shared with LC006: mid-path casts and null-forgiving operators (o.Customer!.Address) now parse as the full navigation path instead of a silently truncated segment.</PackageReleaseNotes>
+        <PackageReleaseNotes>Critical fix for LC045 (Missing Include): reading a navigation through a chained null-conditional — order?.Customer?.Name — sent the analyzer into infinite recursion, and the resulting StackOverflowException is uncatchable, so it crashed the csc process itself and failed the whole build (reported from a production codebase on 5.6.0). Conditional-access placeholders now resolve to their owning access, the mixed shape order?.Customer.Address?.City is fixed too, and the null-guarded collection mutation order?.Items?.Add(x) no longer produces a false positive now that the shape analyzes instead of crashing. If you disabled the rule with dotnet_diagnostic.LC045.severity = none, it is safe to re-enable on 5.6.1.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

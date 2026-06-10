@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.1] - 2026-06-10
+
+### Fixed
+- **Critical:** `LC045` crashed the C# compiler itself — an uncatchable `StackOverflowException`, not a containable AD0001 — whenever a materialized entity's navigation was read through a **chained null-conditional** (`order?.Customer?.Name`). The conditional-access placeholder of the middle link belongs to the *outer* `?.`, but the receiver resolution matched the first conditional access found walking up, which for nested accesses returned the property reference being resolved itself, so `TryGetAccessPath` recursed on its own input until the stack overflowed and the whole `csc` process died (reported against 5.6.0 from a production codebase; the mixed shape `order?.Customer.Address?.City` triggered the same crash via mutual recursion). Placeholders now resolve to the conditional access reached from its `WhenNotNull` side, bounding the walk by expression size. Un-crashing these shapes also unmasked one false positive, fixed here too: `order?.Items?.Add(x)` — the null-guarded spelling of the collection-mutation pattern the rule deliberately ignores — is now recognised by the mutator-receiver check instead of being flagged as an unloaded read. Anyone who disabled the rule with `dotnet_diagnostic.LC045.severity = none` to unblock builds can re-enable it on this version.
+
 ## [5.6.0] - 2026-06-09
 
 ### Added
