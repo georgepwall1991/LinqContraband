@@ -156,6 +156,11 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
             {
                 // If the local function is async, we're in async context
                 if (localFunc.Symbol.IsAsync) return true;
+
+                // A static local function cannot capture the enclosing async context — it
+                // is a deliberate synchronous boundary, and a diagnostic inside it would be
+                // unfixable (await is illegal there). Do not look further up.
+                if (localFunc.Symbol.IsStatic) return false;
                 // Otherwise, continue checking parent scope
             }
 
@@ -179,6 +184,10 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
             while (currentMethod != null)
             {
                 if (currentMethod.IsAsync) return true;
+
+                // Same static-local-function boundary as the operation-tree walk.
+                if (currentMethod.MethodKind == MethodKind.LocalFunction && currentMethod.IsStatic)
+                    return false;
 
                 // Get the containing symbol - could be another method (for local functions) or a type
                 currentMethod = currentMethod.ContainingSymbol as IMethodSymbol;
