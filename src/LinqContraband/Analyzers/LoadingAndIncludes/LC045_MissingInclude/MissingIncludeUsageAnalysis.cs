@@ -336,10 +336,22 @@ public sealed partial class MissingIncludeAnalyzer
 
     private static IOperation? ResolveConditionalAccessReceiver(IOperation operation)
     {
+        // o?.Customer?.Name nests two conditional accesses, and Customer's placeholder belongs
+        // to the OUTER one: its owner is the nearest ancestor reached from the WhenNotNull
+        // side. Matching the first IConditionalAccessOperation ancestor regardless of side
+        // returns the inner access — whose Operation is the very property reference being
+        // resolved — and TryGetAccessPath then recurses on its own input until the stack
+        // overflows, killing the whole compilation.
+        var child = operation;
         for (var current = operation.Parent; current != null; current = current.Parent)
         {
-            if (current is IConditionalAccessOperation conditionalAccess)
+            if (current is IConditionalAccessOperation conditionalAccess &&
+                conditionalAccess.WhenNotNull == child)
+            {
                 return conditionalAccess.Operation;
+            }
+
+            child = current;
         }
 
         return null;
@@ -382,9 +394,20 @@ public sealed partial class MissingIncludeAnalyzer
 
     private static bool IsCollectionMutatorReceiver(IPropertyReferenceOperation propertyReference)
     {
-        return propertyReference.Parent is IInvocationOperation parentCall &&
-               parentCall.Instance == propertyReference &&
-               CollectionMutatorMethods.Contains(parentCall.TargetMethod.Name);
+        if (propertyReference.Parent is IInvocationOperation parentCall &&
+            parentCall.Instance == propertyReference &&
+            CollectionMutatorMethods.Contains(parentCall.TargetMethod.Name))
+        {
+            return true;
+        }
+
+        // o?.Items?.Add(x): the mutator call hangs off a conditional access guarding the
+        // navigation, so its instance is the placeholder rather than the property reference.
+        return propertyReference.Parent is IConditionalAccessOperation conditionalAccess &&
+               conditionalAccess.Operation == propertyReference &&
+               conditionalAccess.WhenNotNull.UnwrapConversions() is IInvocationOperation conditionalCall &&
+               conditionalCall.Instance is IConditionalAccessInstanceOperation &&
+               CollectionMutatorMethods.Contains(conditionalCall.TargetMethod.Name);
     }
 
     private static bool LambdaReferencesTrackedLocal(

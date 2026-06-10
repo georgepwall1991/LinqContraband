@@ -667,6 +667,49 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_ConditionalCollectionMutatorCall_NoDiagnostic()
+    {
+        // order?.Items?.Add(x) is the null-guarded spelling of the mutation pattern that the
+        // rule deliberately ignores: the Add call hangs off a conditional access, so the
+        // mutator-receiver check must look through the placeholder.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        order?.Items?.Add(new OrderItem());
+        db.SaveChanges();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ChainedConditionalAccessCoveredByInclude_NoDiagnostic()
+    {
+        // order?.Customer?.Name nests two conditional accesses — the shape that previously
+        // sent TryGetAccessPath into infinite recursion. With the Include present the
+        // analyzer must both terminate and stay quiet.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
+        Console.WriteLine(order?.Customer?.Name);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AggregateTerminal_NoDiagnostic()
     {
         var test = Usings + @"
