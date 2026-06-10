@@ -240,6 +240,90 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_SyncEfInStaticLocalFunctionInsideAsyncMethod_NoDiagnostic()
+    {
+        // A static local function cannot capture the enclosing async context — it is a
+        // deliberate synchronous boundary, and the warning would be unfixable (await is
+        // illegal inside it). Stay quiet.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = Load(db);
+        await Task.Delay(1);
+
+        static List<User> Load(MyDbContext db)
+        {
+            return db.Users.Where(u => u.Id > 0).ToList();
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SyncEfInNonStaticLocalFunctionInsideAsyncMethod_StillTriggers()
+    {
+        // A capturing local function in an async method is refactoring debt the rule
+        // deliberately flags — only the static (capture-free) form is exempt.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = Load();
+        await Task.Delay(1);
+
+        List<User> Load()
+        {
+            return {|#0:db.Users.Where(u => u.Id > 0).ToList()|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC008")
+            .WithLocation(0)
+            .WithArguments("ToList", "ToListAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_SyncEfInAsyncStaticLocalFunction_StillTriggers()
+    {
+        // An async static local function CAN await — the sync call is fixable and flags.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var users = await Load(db);
+        await Task.Delay(1);
+
+        static async Task<List<User>> Load(MyDbContext db)
+        {
+            await Task.Delay(1);
+            return {|#0:db.Users.Where(u => u.Id > 0).ToList()|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC008")
+            .WithLocation(0)
+            .WithArguments("ToList", "ToListAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TestInnocent_SyncLambdaInSyncMethod_NoDiagnostic()
     {
         var test = Usings + @"
