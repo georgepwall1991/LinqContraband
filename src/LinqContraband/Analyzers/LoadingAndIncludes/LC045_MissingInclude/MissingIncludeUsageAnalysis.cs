@@ -253,6 +253,15 @@ public sealed partial class MissingIncludeAnalyzer
 
             currentEntity = target;
             current = WalkUpThroughWrappers(propertyReference.Parent);
+
+            // ...?.Address continues the chain on the conditional access's WhenNotNull side —
+            // but only when this property is the access's guarded receiver (Operation side).
+            // Following a WhenNotNull-side parent would revisit this same property forever.
+            if (current is IConditionalAccessOperation chainedAccess &&
+                chainedAccess.Operation.UnwrapConversions() == propertyReference)
+            {
+                current = FindConditionalAccessEntryProperty(chainedAccess);
+            }
         }
 
         return accesses;
@@ -322,16 +331,34 @@ public sealed partial class MissingIncludeAnalyzer
     {
         IOperation? current = conditionalAccess.WhenNotNull.UnwrapConversions();
 
-        while (current is IPropertyReferenceOperation propertyReference)
+        while (true)
         {
+            // X()?.Customer?.Name nests another conditional access in WhenNotNull; the entry
+            // property lives on the nested access's Operation side. Descending Operation
+            // sides strictly shrinks the tree, so this cannot revisit a node.
+            if (current is IConditionalAccessOperation nested)
+            {
+                current = nested.Operation.UnwrapConversions();
+                continue;
+            }
+
+            // X()?.Customer.Clear(): the arm is an invocation whose instance chain holds the
+            // navigation; descend into the receiver.
+            if (current is IInvocationOperation invocation)
+            {
+                current = invocation.Instance?.UnwrapConversions();
+                continue;
+            }
+
+            if (current is not IPropertyReferenceOperation propertyReference)
+                return null;
+
             var instance = propertyReference.Instance?.UnwrapConversions();
             if (instance is IConditionalAccessInstanceOperation)
                 return propertyReference;
 
             current = instance;
         }
-
-        return null;
     }
 
     private static IOperation? ResolveConditionalAccessReceiver(IOperation operation)
@@ -442,9 +469,19 @@ public sealed partial class MissingIncludeAnalyzer
     private static bool IsIndexedAccessOf(IOperation operation, ILocalSymbol collectionLocal)
     {
         var unwrapped = operation.UnwrapConversions();
+
+        // orders?[0]: the conditional access wraps the indexed access; the indexer sits on
+        // the WhenNotNull side with the collection behind the placeholder. WhenNotNull
+        // strictly descends, so the recursion is bounded by the nesting depth.
+        if (unwrapped is IConditionalAccessOperation conditionalAccess)
+            return IsIndexedAccessOf(conditionalAccess.WhenNotNull, collectionLocal);
+
         if (unwrapped is IPropertyReferenceOperation propertyReference && propertyReference.Arguments.Length > 0)
         {
             var instance = propertyReference.Instance?.UnwrapConversions();
+            if (instance is IConditionalAccessInstanceOperation)
+                instance = ResolveConditionalAccessReceiver(propertyReference)?.UnwrapConversions();
+
             if (instance is ILocalReferenceOperation localReference &&
                 SymbolEqualityComparer.Default.Equals(localReference.Local, collectionLocal))
             {
@@ -452,11 +489,17 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
-        if (unwrapped is IArrayElementReferenceOperation arrayElement &&
-            arrayElement.ArrayReference.UnwrapConversions() is ILocalReferenceOperation arrayLocal &&
-            SymbolEqualityComparer.Default.Equals(arrayLocal.Local, collectionLocal))
+        if (unwrapped is IArrayElementReferenceOperation arrayElement)
         {
-            return true;
+            var arrayReference = arrayElement.ArrayReference.UnwrapConversions();
+            if (arrayReference is IConditionalAccessInstanceOperation)
+                arrayReference = ResolveConditionalAccessReceiver(arrayElement)?.UnwrapConversions();
+
+            if (arrayReference is ILocalReferenceOperation arrayLocal &&
+                SymbolEqualityComparer.Default.Equals(arrayLocal.Local, collectionLocal))
+            {
+                return true;
+            }
         }
 
         return false;
