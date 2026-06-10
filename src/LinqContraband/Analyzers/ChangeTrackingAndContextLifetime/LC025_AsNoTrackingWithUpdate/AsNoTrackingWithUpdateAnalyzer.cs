@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -147,8 +148,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
         var root = currentOperation.FindOwningExecutableRoot() ?? currentOperation;
         var currentStart = currentOperation.Syntax.SpanStart;
-        var bestOriginPosition = -1;
-        var bestOriginIsNoTracking = false;
+        var origins = new List<LocalOrigin>();
 
         foreach (var op in EnumerateOperations(root))
         {
@@ -156,11 +156,12 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
             if (op is ISimpleAssignmentOperation assignment &&
                 assignment.Target is ILocalReferenceOperation targetLocal &&
                 SymbolEqualityComparer.Default.Equals(targetLocal.Local, local) &&
-                assignment.Syntax.SpanStart < currentStart &&
-                assignment.Syntax.SpanStart >= bestOriginPosition)
+                assignment.Syntax.SpanStart < currentStart)
             {
-                bestOriginPosition = assignment.Syntax.SpanStart;
-                bestOriginIsNoTracking = IsNoTrackingSource(assignment.Value, assignment, visited);
+                origins.Add(new LocalOrigin(
+                    assignment.Syntax.SpanStart,
+                    IsNoTrackingSource(assignment.Value, assignment, visited),
+                    assignment.Syntax));
             }
 
             // 2. Variable Declarations
@@ -170,11 +171,12 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
                 {
                     if (SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) &&
                         declarator.Initializer != null &&
-                        declarator.Syntax.SpanStart < currentStart &&
-                        declarator.Syntax.SpanStart >= bestOriginPosition)
+                        declarator.Syntax.SpanStart < currentStart)
                     {
-                        bestOriginPosition = declarator.Syntax.SpanStart;
-                        bestOriginIsNoTracking = IsNoTrackingSource(declarator.Initializer.Value, declarator.Initializer.Value, visited);
+                        origins.Add(new LocalOrigin(
+                            declarator.Syntax.SpanStart,
+                            IsNoTrackingSource(declarator.Initializer.Value, declarator.Initializer.Value, visited),
+                            declarator.Syntax));
                     }
                 }
             }
@@ -185,16 +187,90 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
                 // Check if our target 'local' is one of the locals defined by the loop
                 if (forEach.Locals.Any(l => SymbolEqualityComparer.Default.Equals(l, local)) &&
                     forEach.Syntax.Span.Contains(currentStart) &&
-                    forEach.Collection.Syntax.SpanStart < currentStart &&
-                    forEach.Collection.Syntax.SpanStart >= bestOriginPosition)
+                    forEach.Collection.Syntax.SpanStart < currentStart)
                 {
-                    bestOriginPosition = forEach.Collection.Syntax.SpanStart;
-                    bestOriginIsNoTracking = IsNoTrackingSource(forEach.Collection, forEach.Collection, visited);
+                    // The loop local is rebound from the collection on every iteration the
+                    // use participates in, so this origin is never conditional.
+                    origins.Add(new LocalOrigin(
+                        forEach.Collection.Syntax.SpanStart,
+                        IsNoTrackingSource(forEach.Collection, forEach.Collection, visited),
+                        null));
                 }
             }
         }
 
-        return bestOriginIsNoTracking;
+        if (origins.Count == 0) return false;
+
+        var best = origins[0];
+        for (var i = 1; i < origins.Count; i++)
+        {
+            if (origins[i].Position >= best.Position)
+                best = origins[i];
+        }
+
+        if (!best.IsNoTracking) return false;
+
+        // Path-insensitivity guard: when the latest origin sits in a branch that may not
+        // execute before the use, the effective state on the skip path is whatever the
+        // latest UNCONDITIONAL origin before it established (anything earlier is dead,
+        // superseded history). If that fallback disagrees — or only conditional origins
+        // exist at all — the verdict depends on the path taken: stay quiet (same ambiguity
+        // trade-off as LC044's multiple-assignment gate). An unconditional latest origin
+        // dominates and needs no guard.
+        if (IsConditionalRelativeTo(best.Syntax, currentStart, root.Syntax))
+        {
+            LocalOrigin? fallback = null;
+            foreach (var origin in origins)
+            {
+                if (origin.Position < best.Position &&
+                    (fallback == null || origin.Position > fallback.Value.Position) &&
+                    !IsConditionalRelativeTo(origin.Syntax, currentStart, root.Syntax))
+                {
+                    fallback = origin;
+                }
+            }
+
+            if (fallback == null || !fallback.Value.IsNoTracking)
+                return false;
+        }
+
+        return true;
+    }
+
+    private readonly struct LocalOrigin
+    {
+        public LocalOrigin(int position, bool isNoTracking, SyntaxNode? syntax)
+        {
+            Position = position;
+            IsNoTracking = isNoTracking;
+            Syntax = syntax;
+        }
+
+        public int Position { get; }
+        public bool IsNoTracking { get; }
+        public SyntaxNode? Syntax { get; }
+    }
+
+    private static bool IsConditionalRelativeTo(SyntaxNode? originSyntax, int usePosition, SyntaxNode rootSyntax)
+    {
+        if (originSyntax == null) return false;
+
+        for (var node = originSyntax.Parent; node != null && node != rootSyntax; node = node.Parent)
+        {
+            var isBranching = node is IfStatementSyntax
+                or SwitchStatementSyntax
+                or SwitchExpressionSyntax
+                or ConditionalExpressionSyntax
+                or CatchClauseSyntax
+                or WhileStatementSyntax
+                or ForStatementSyntax
+                or CommonForEachStatementSyntax;
+
+            if (isBranching && !node.Span.Contains(usePosition))
+                return true;
+        }
+
+        return false;
     }
 
     private bool IsNoTrackingSource(IOperation source, IOperation boundaryOperation, ISet<ISymbol> visited)
