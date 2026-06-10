@@ -79,6 +79,12 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (HasWriteOperations(context.Operation, writeOperationCache))
             return;
 
+        // A property mutation of the materialized entity marks this as a write path even
+        // when the SaveChanges lives in a helper the analyzer cannot see — suggesting
+        // AsNoTracking would break that cross-method save.
+        if (MaterializedEntityIsMutated(invocation, context.CancellationToken))
+            return;
+
         var containingMethodName = GetContainingMethodName(context.Operation);
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));

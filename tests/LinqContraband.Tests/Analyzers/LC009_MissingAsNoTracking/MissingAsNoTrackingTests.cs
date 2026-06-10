@@ -44,7 +44,7 @@ namespace Microsoft.EntityFrameworkCore
 
 namespace TestNamespace
 {
-    public class User { public int Id { get; set; } }
+    public class User { public int Id { get; set; } public string Name { get; set; } }
     public class UserDto { public int Id { get; set; } }
     
     public class MyDbContext : DbContext
@@ -91,6 +91,138 @@ class Program
 " + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_MaterializedEntityMutated_SavedElsewhere_NoDiagnostic()
+    {
+        // The mutation marks this as a write path even though SaveChanges lives in a
+        // helper the analyzer cannot see — suggesting AsNoTracking here would break the
+        // cross-method save.
+        var test = Usings + @"
+class Program
+{
+    public void Rename(string name)
+    {
+        var db = new MyDbContext();
+        var user = db.Users.First(u => u.Id == 1);
+        user.Name = name;
+        Commit(db);
+    }
+
+    void Commit(MyDbContext db) { }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ForeachEntityMutated_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public void Touch()
+    {
+        var db = new MyDbContext();
+        var users = db.Users.ToList();
+        foreach (var u in users)
+        {
+            u.Name = ""touched"";
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ForeachOverInlineMaterializerMutated_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public void Touch()
+    {
+        var db = new MyDbContext();
+        foreach (var u in db.Users.ToList())
+        {
+            u.Id += 1;
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_InlineMutationOnMaterializer_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public void Rename(string name)
+    {
+        var db = new MyDbContext();
+        db.Users.First(u => u.Id == 1).Name = name;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DtoMutationOnly_StillTriggersDiagnostic()
+    {
+        // Mutating an unrelated DTO is not a write path for the queried entities.
+        var test = Usings + @"
+class Program
+{
+    public List<User> GetUsers()
+    {
+        var db = new MyDbContext();
+        var users = {|#0:db.Users.Where(u => u.Id > 0).ToList()|};
+        var dto = new UserDto();
+        dto.Id = 5;
+        return users;
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC009")
+            .WithLocation(0)
+            .WithArguments("GetUsers");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_EntityPropertyOnlyRead_StillTriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    public void Print()
+    {
+        var db = new MyDbContext();
+        var users = {|#0:db.Users.ToList()|};
+        foreach (var u in users)
+        {
+            Console.WriteLine(u.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC009")
+            .WithLocation(0)
+            .WithArguments("Print");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]

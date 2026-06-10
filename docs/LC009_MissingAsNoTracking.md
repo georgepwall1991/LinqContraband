@@ -44,6 +44,7 @@ LC009 reports when a read-only query is materialized (`ToList`/`ToArray`/`First`
 - The enclosing method returns `IQueryable<T>` (deferred execution — the caller owns the tracking decision).
 - The source is an `IQueryable<T>`/`DbSet<T>` **parameter or local** (ambiguous origin — the caller may use it for writes).
 - A write is detected in the same executable body (`SaveChanges`/`SaveChangesAsync`, or `Add`/`AddRange`/`Update`/`Remove`/`RemoveRange` on a `DbSet`/`DbContext`).
+- A **property of the materialized result is mutated** in the same body — on the result local, a `foreach` iteration variable over it, or inline on the materializer (`db.Users.First(...).Name = x`, compound assignment and `++`/`--` included). A mutation implies the entity is on a write path even when the `SaveChanges` lives in a helper the analyzer cannot see, and suggesting `AsNoTracking()` would break that cross-method save. Mutating an unrelated object (a DTO being populated from the entity) does not count.
 
 ## Code Fix
 The fixer inserts `AsNoTracking()` directly on the EF source it found, using the semantic type rather than syntax so it places the call correctly for both shapes:
@@ -59,5 +60,5 @@ db.Set<User>().Where(...).ToList()  ->  db.Set<User>().AsNoTracking().Where(...)
 `AsNoTracking()` is a behaviour change, not just a perf tweak — apply the fix only on genuinely read-only paths:
 
 - **Identity resolution.** No-tracking queries do not de-duplicate entity instances. A query that `Include`s a collection (or otherwise returns the same entity more than once) yields multiple distinct instances. Use `AsNoTrackingWithIdentityResolution()` when a single shared instance per entity matters.
-- **Deferred / cross-method mutation.** LC009's write detection is scoped to the current method. If the materialized entity is returned and later mutated and saved by a caller, `AsNoTracking()` will silently drop the change. The diagnostic is `Info` precisely because this cross-method case cannot be proven locally.
+- **Deferred / cross-method mutation.** A *local* mutation of the materialized entity now suppresses the rule (see above), but if the entity is returned untouched and a **caller** mutates and saves it, that remains invisible — `AsNoTracking()` would silently drop the change. The diagnostic is `Info` precisely because this cross-method case cannot be proven locally.
 - **Re-attach / explicit state.** If the entity is later `Attach`ed or has `Entry(entity).State` set for an update, it must be tracked — do not add `AsNoTracking()`.

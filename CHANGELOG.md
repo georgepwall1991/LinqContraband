@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.5] - 2026-06-10
+
+### Fixed
+- `LC025` is now **path-aware** for conditionally reassigned locals, closing a false positive deferred since the 2026-06-04 rerun: `var user = db.Users.First(); if (flag) user = db.Users.AsNoTracking().First(); db.Users.Update(user);` no longer fires — on the `flag=false` path the entity is tracked, so the verdict depends on the path taken. The latest assignment before the write decides alone only when it is unconditional; a conditional latest is compared against the latest *unconditional fallback* (the state if the branch is skipped), with superseded history — e.g. an initial `= null` overwritten before the branch — excluded so it cannot manufacture false ambiguity. A disagreeing fallback or a conditional-only origin set stays quiet (the same ambiguity trade-off `LC044` makes for multiply-assigned locals); unconditional latest assignments, agreeing fallbacks, and same-branch reassign+write shapes all keep firing.
+
 ## [5.6.4] - 2026-06-10
 
 ### Fixed
