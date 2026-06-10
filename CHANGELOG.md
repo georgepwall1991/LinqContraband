@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.2] - 2026-06-10
+
+### Fixed
+- `LC045` was silent on the **null-conditional spellings** of shapes it already flags in plain form, contradicting the rule doc's "null-guarded access still fires" contract. Five false negatives are closed: chained inline access on the materializer (`db.Orders.FirstOrDefault()?.Customer?.Name` — the entry-property descent stopped at a nested conditional access), the mixed chain (`FirstOrDefault()?.Customer.Address?.City`), a method call on the navigation (`FirstOrDefault()?.Customer.Clear()` — the `WhenNotNull` arm is an invocation), conditional element access on the result (`orders?[0].Customer.Name`), and a local initialized from a conditional indexer (`var o = orders?[0];`). The fixes descend only strictly-shrinking sides of the operation tree (a conditional access's `Operation` side, an invocation's receiver), so the 5.6.0 recursion-crash class cannot recur — and the same adversarial pass that found these confirmed no surviving crash shapes across deep `?.` chains, `!`/cast mixes, interpolation, and nested conditional access in arguments, all locked in by regression tests. Residual documented polish: a parenthesized regrouping (`(order?.Customer)?.Address?.City`) truncates the reported path to `Customer`.
+
 ## [5.6.1] - 2026-06-10
 
 ### Fixed
