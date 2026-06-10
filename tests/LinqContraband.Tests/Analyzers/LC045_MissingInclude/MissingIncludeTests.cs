@@ -440,6 +440,73 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_ChainedConditionalAccessNav_TriggersDiagnostic()
+    {
+        // order?.Customer?.Name nests two conditional accesses; Customer's placeholder belongs
+        // to the OUTER one. Resolving it to the inner one returns the Customer reference
+        // itself, and TryGetAccessPath recurses on its own input until the stack overflows —
+        // an uncatchable crash that kills the whole csc process (5.6.0 regression).
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Console.WriteLine(order?{|#0:.Customer|}?.Name);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ChainedConditionalAccessNestedNav_FlagsTheFullPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Console.WriteLine(order?.Customer?{|#0:.Address|}?.City);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_MixedPlainAndConditionalChain_FlagsTheFullPath()
+    {
+        // order?.Customer.Address?.City was a second, independent crash shape: Customer's
+        // placeholder walk used to resolve to its own PARENT (the Address reference),
+        // producing mutual recursion instead of self-recursion.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Console.WriteLine(order?{|#0:.Customer.Address|}?.City);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TestCrime_DirectIndexedAccess_TriggersDiagnostic()
     {
         var test = Usings + @"
