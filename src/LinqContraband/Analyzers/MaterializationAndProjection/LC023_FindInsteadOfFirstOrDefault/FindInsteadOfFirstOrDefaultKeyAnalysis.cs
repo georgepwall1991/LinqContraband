@@ -46,6 +46,8 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
         private readonly bool useConventionFallbackWhenConfigurationUnknown;
         private readonly ConcurrentDictionary<ITypeSymbol, ConfiguredPrimaryKey> configuredPrimaryKeys =
             new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<ITypeSymbol, byte> queryFilteredEntities =
+            new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<SyntaxTree, byte> scannedTrees = new();
         private bool fullyScanned;
 
@@ -87,6 +89,63 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
                 AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
         }
 
+        public void RegisterQueryFilter(IInvocationOperation invocation)
+        {
+            if (invocation.TargetMethod.Name != "HasQueryFilter")
+                return;
+
+            if (TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType))
+            {
+                queryFilteredEntities.TryAdd(entityType, 0);
+                return;
+            }
+
+            // modelBuilder.Entity(typeof(User)).HasQueryFilter(...): the non-generic builder
+            // carries no type argument; recover the entity from the Entity(Type) call's typeof.
+            if (invocation.GetInvocationReceiverType() is INamedTypeSymbol receiverType &&
+                !receiverType.IsGenericType &&
+                IsEntityTypeBuilder(receiverType) &&
+                invocation.GetInvocationReceiver() is IInvocationOperation entityCall &&
+                entityCall.TargetMethod.Name == "Entity" &&
+                entityCall.Arguments.Length >= 1 &&
+                entityCall.Arguments[0].Value.UnwrapConversions() is ITypeOfOperation typeOf &&
+                typeOf.TypeOperand is INamedTypeSymbol namedOperand)
+            {
+                queryFilteredEntities.TryAdd(namedOperand, 0);
+            }
+        }
+
+        /// <summary>
+        /// True when the entity type — or a base type, since EF declares filters on the
+        /// hierarchy root and propagates them down — has a visible global query filter.
+        /// Find's change-tracker hit bypasses query filters, so the FirstOrDefault-to-Find
+        /// advice is wrong there. Without full-scan permission an unseen filter cannot be
+        /// ruled out, but the rule keeps reporting — the same trade-off the convention-key
+        /// fallback already makes.
+        /// </summary>
+        public bool HasQueryFilter(ITypeSymbol entityType, CancellationToken cancellationToken)
+        {
+            if (HasRegisteredQueryFilter(entityType))
+                return true;
+
+            if (!allowFullScan)
+                return false;
+
+            EnsureFullyScanned(cancellationToken);
+            return HasRegisteredQueryFilter(entityType);
+        }
+
+        private bool HasRegisteredQueryFilter(ITypeSymbol entityType)
+        {
+            for (ITypeSymbol? current = entityType; current != null; current = current.BaseType)
+            {
+                if (queryFilteredEntities.ContainsKey(current))
+                    return true;
+            }
+
+            return false;
+        }
+
         public void EnsureSyntaxTreeScanned(
             SyntaxTree syntaxTree,
             SemanticModel semanticModel,
@@ -101,13 +160,16 @@ internal static class FindInsteadOfFirstOrDefaultKeyAnalysis
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (invocationSyntax.Expression is not MemberAccessExpressionSyntax memberAccess ||
-                    memberAccess.Name.Identifier.ValueText != "HasKey")
+                    memberAccess.Name.Identifier.ValueText is not ("HasKey" or "HasQueryFilter"))
                 {
                     continue;
                 }
 
                 if (semanticModel.GetOperation(invocationSyntax, cancellationToken) is IInvocationOperation invocation)
+                {
                     RegisterConfiguredPrimaryKey(invocation);
+                    RegisterQueryFilter(invocation);
+                }
             }
         }
 

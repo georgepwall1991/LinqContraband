@@ -58,6 +58,9 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
         if (method.Name == "HasKey")
             primaryKeyCache.RegisterConfiguredPrimaryKey(invocation);
 
+        if (method.Name == "HasQueryFilter")
+            primaryKeyCache.RegisterQueryFilter(invocation);
+
         if (!TargetMethods.Contains(method.Name)) return;
 
         // Ensure receiver is directly a DbSet (Find doesn't work on complex queries)
@@ -85,8 +88,23 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
             var primaryKey = primaryKeyCache.TryFindSafePrimaryKey(
                 property.ContainingType,
                 context.CancellationToken);
-            if (primaryKey != null && property.Name == primaryKey)
-                context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+            if (primaryKey == null || property.Name != primaryKey)
+                return;
+
+            // Find returns an already-tracked instance even when a global query filter
+            // would exclude it (only its database fallback applies filters), so on a
+            // HasQueryFilter entity the rewrite can resurrect soft-deleted/other-tenant
+            // rows. The filtered FirstOrDefault is semantically meaningful — stay quiet.
+            // Check the DbSet's entity type, not the key's declaring type: an inherited
+            // Id puts property.ContainingType at the base class while the filter is
+            // registered for the concrete entity.
+            var dbSetEntityType = receiver.Type is INamedTypeSymbol namedDbSet && namedDbSet.TypeArguments.Length == 1
+                ? namedDbSet.TypeArguments[0]
+                : property.ContainingType;
+            if (primaryKeyCache.HasQueryFilter(dbSetEntityType, context.CancellationToken))
+                return;
+
+            context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
     }
 
