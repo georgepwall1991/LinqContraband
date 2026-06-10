@@ -710,6 +710,46 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_NavAssignedThenChainedConditionalRead_NoDiagnostic()
+    {
+        // The write backs the later chained-?. read; satisfaction must work through
+        // conditional-access placeholders just as it does for plain reads.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        order.Customer = new Customer();
+        Console.WriteLine(order?.Customer?.Name);
+        db.SaveChanges();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeCoversInlineChainedConditionalAccess_NoDiagnostic()
+    {
+        // The chained-?. inline shape stays quiet when the Include covers the path.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var name = db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer?.Name;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AggregateTerminal_NoDiagnostic()
     {
         var test = Usings + @"
