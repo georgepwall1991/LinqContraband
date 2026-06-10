@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.7] - 2026-06-10
+
+### Fixed
+- `LC008` no longer fires on a sync EF call inside a **`static` local function** declared in an `async` method, closing the deferred orphaned-warning item from the 2026-06-04 rerun. A `static` local function cannot capture the enclosing async context and `await` is illegal inside it, so the suggested "use the async counterpart and await it" was impossible to apply — the warning's only resolutions were suppression or removing `static`. Both async-context walks (operation tree and the semantic-model fallback) now treat a non-async `static` local function as a hard synchronous boundary. Capturing (non-static) local functions and lambdas inside async methods still flag — that refactoring debt is the rule's deliberate signal — and an `async static` local function still flags because it can await. This completes the 2026-06-10 Medium shortlist — every planned hardening item from the health-audit batch has now shipped (see the 5.6.2 through 5.6.6 entries above).
+
 ## [5.6.6] - 2026-06-10
 
 ### Fixed

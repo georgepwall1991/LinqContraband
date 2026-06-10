@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.6</Version>
+        <Version>5.6.7</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC009 (Missing AsNoTracking in read-only path) no longer flags methods that mutate the materialized entity and commit through a helper. A property mutation of the result — on the result local (stored directly into a single-assignment local), a foreach variable over it, or inline on the materializer, compound assignment and increment included — now marks the body as a write path, where the suggested AsNoTracking() would have silently dropped the cross-method save. DTO mutation, repointed locals, and collection-element replacement do not suppress.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC008 (Synchronous EF method in async context) no longer fires inside a static local function declared in an async method. A static local function cannot capture the enclosing async context and await is illegal inside it, so the previous warning was unfixable — its only resolutions were suppression or removing static. Capturing (non-static) local functions and lambdas inside async methods still flag, and an async static local function still flags because it can await the async counterpart.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
