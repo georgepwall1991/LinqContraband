@@ -38,6 +38,10 @@ The analyzer intentionally stays silent for chained queries such as `AsNoTrackin
 
 When visible EF Fluent API configuration declares `EntityTypeBuilder<TEntity>.HasKey(...)`, that configuration takes precedence over convention-based `Id`/`{EntityName}Id` inference. LC023 reports for a single configured key property, stays silent when the predicate targets a different convention property, and ignores unrelated generic helper methods named `HasKey` so non-EF metadata cannot override the entity key. Attribute-based fallback requires the real `System.ComponentModel.DataAnnotations.KeyAttribute`; project-local same-name attributes are ignored. The analyzer also stays silent for composite or otherwise unsupported key expressions because `Find(...)` would require the complete key value set in the configured order.
 
+### Global query filters gate the rule
+
+`Find` checks the change tracker **before** querying, and a tracker hit bypasses global query filters — only the database fallback applies them (`EntityFinder` falls through to `queryRoot.FirstOrDefault(...)`). On an entity configured with `HasQueryFilter(...)` (soft delete, multi-tenancy), rewriting `FirstOrDefault(x => x.Id == id)` to `Find(id)` can therefore return an already-tracked row the filtered query would have excluded — a silent correctness change, not a perf win. LC023 stays completely silent for entities with a visible `HasQueryFilter(...)` — in `OnModelCreating`, an `EntityTypeBuilder<TEntity>` configuration class, or the non-generic `modelBuilder.Entity(typeof(X)).HasQueryFilter(...)` form. The check uses the `DbSet`'s entity type (a key inherited from a base class doesn't dodge the gate) and walks base types, since EF declares filters on the hierarchy root and propagates them to derived entities. A lookalike `HasQueryFilter` on a non-EF builder type does not suppress. A filter configured in another assembly is invisible to the analyzer — treat `Find` on filtered entities as a manual review point.
+
 ## Fixer Behavior
 
 The code fix rewrites simple synchronous lookups to `Find(key)` and awaited async lookups to `FindAsync(key)`.
