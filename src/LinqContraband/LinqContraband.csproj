@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.2</Version>
+        <Version>5.6.3</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 (Missing Include) now flags the null-conditional spellings of inline and indexed navigation reads that were silently missed: db.Orders.FirstOrDefault()?.Customer?.Name, FirstOrDefault()?.Customer.Address?.City, FirstOrDefault()?.Customer.Clear(), orders?[0].Customer.Name, and var o = orders?[0]. A dedicated adversarial pass over the conditional-access surface (the code behind the 5.6.0 csc crash) confirmed no remaining crash shapes — deep ?. chains, !/cast mixes, interpolation, and nested conditional access in arguments all terminate cleanly and are locked in by regression tests.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC023 (Prefer Find/FindAsync) no longer reports for entities with a visible global query filter. Find checks the change tracker before querying, and a tracker hit bypasses HasQueryFilter — so the FirstOrDefault(pk) to Find(pk) rewrite could silently resurrect soft-deleted or other-tenant rows. The gate keys on the DbSet's entity type (an Id inherited from a base class doesn't dodge it), walks base types (EF declares filters on the hierarchy root), and recognises OnModelCreating, EntityTypeBuilder configuration classes, and the non-generic Entity(typeof(X)).HasQueryFilter(...) form. Filters configured in another assembly remain invisible to the analyzer.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

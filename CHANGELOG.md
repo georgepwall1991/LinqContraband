@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.3] - 2026-06-10
+
+### Fixed
+- `LC023` no longer suggests `Find`/`FindAsync` for entities with a visible **global query filter**. `Find` checks the change tracker before querying, and a tracker hit bypasses `HasQueryFilter` (verified against EF Core 9's `EntityFinder`: only the database fallback runs through the filtered query root) — so the `FirstOrDefault(x => x.Id == id)` → `Find(id)` rewrite could silently return an already-tracked soft-deleted or other-tenant row the filtered query excluded. The gate keys on the `DbSet`'s entity type rather than the key's declaring type (an `Id` inherited from a `BaseEntity` doesn't dodge it), walks base types because EF declares filters on the hierarchy root and propagates them to derived entities, and recognises `OnModelCreating`, `EntityTypeBuilder<T>` configuration classes, and the non-generic `modelBuilder.Entity(typeof(X)).HasQueryFilter(...)` form. Lookalike `HasQueryFilter` methods on non-EF builder types and filters on unrelated entities do not suppress. A filter configured in another assembly remains invisible — documented as a manual review point. (Closes the hazard deferred from the 2026-06-04 Round-2 rescan.)
+
 ## [5.6.2] - 2026-06-10
 
 ### Fixed
