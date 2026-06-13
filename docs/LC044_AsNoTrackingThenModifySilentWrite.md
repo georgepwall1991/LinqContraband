@@ -42,7 +42,7 @@ db.SaveChanges();
 4. **Same-context gate**: extract the DbSet-owner context symbol from the query chain and require `SymbolEqualityComparer` match against the SaveChanges context symbol.
 5. **Single-assignment gate**: skip locals that are assigned more than once (ambiguous dataflow).
 6. **Mutation scan**: find the first property mutation whose target is an `IPropertyReferenceOperation` instance-referencing the local, positioned between the local's declaration and the SaveChanges. A plain assignment (`entity.Prop = …`), a compound assignment (`entity.Prop += …`), and an increment/decrement (`entity.Prop++`) all count — each mutates the untracked entity and is silently lost.
-7. **Block reachability**: the mutation's enclosing `IBlockOperation` must be an ancestor of (or equal to) the SaveChanges's enclosing block — otherwise the mutation lives in a branch the SaveChanges can't reach in lexical order.
+7. **Block reachability**: the mutation must be in the same executable root as the SaveChanges and reachable from it. The mutation's block and the SaveChanges's block must be on the same branch (one is the same block, an ancestor, or a descendant of the other); blocks that are siblings under different `if`/`else` branches or `switch` sections do not reach each other. Explicit `return`/`throw` terminators between the mutation and the SaveChanges break reachability.
 8. **Earlier-save gate**: if another SaveChanges on the same context already ran between the mutation and the current one, this anchor is not the silent-write site; skip.
 9. **Re-attach gate**: between the mutation and the SaveChanges, scan for `DbContext.Update/Attach/UpdateRange/AttachRange`, their `DbSet` counterparts, or `DbContext.Entry(entity).State = EntityState.Modified | Added` — on the same context, with the entity as the argument. If any such re-attach is found, suppress the diagnostic.
 10. **Emit**: report on the property reference (`entity.Prop`) of the first matching mutation with the entity name and the property name.
@@ -53,7 +53,7 @@ db.SaveChanges();
 - Re-attach of any form present between the mutation and SaveChanges.
 - SaveChanges is on a different context instance than the query.
 - Multiple reassignments to the same local (ambiguous dataflow).
-- Mutation sits inside a branch that's not an ancestor of the SaveChanges's block (e.g., an `if` branch that returns early).
+- Mutation sits inside a branch that's not an ancestor of the SaveChanges's block (e.g., an `if` branch that returns or throws early, or a sibling branch the SaveChanges cannot reach).
 - Entity arrives as a parameter from outside the method (v1 scope is intra-procedural; cross-method is future work).
 - A different entity is mutated (symbol identity on `ILocalSymbol` prevents cross-entity confusion).
 - Mutation is a collection member call (`list.Add(x)`), not an entity property assignment.
