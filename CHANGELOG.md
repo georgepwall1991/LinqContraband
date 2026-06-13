@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.8] - 2026-06-13
+
 ### Fixed
 - `LC044` now detects silent-data-loss patterns where the mutation happens inside a **nested block that falls through to `SaveChanges`**. Previously the rule required the property mutation and `SaveChanges` to be in the same immediate block, so mutations inside `if`/`else`/`using`/`while` bodies before a later `SaveChanges` were missed. The reachability check now accepts ancestor/descendant block relationships and blocks on explicit `return`/`throw` terminators between the mutation and the save, while still excluding sibling branches (e.g., mutation in one `if` branch and save only reachable through the other). Added regression coverage for nested-scope mutations, foreach-mutation on an `AsNoTracking()` queryable source, and nested `if` inside a foreach body.
 
