@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.7</Version>
+        <Version>5.6.8</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC008 (Synchronous EF method in async context) no longer fires inside a static local function declared in an async method. A static local function cannot capture the enclosing async context and await is illegal inside it, so the previous warning was unfixable — its only resolutions were suppression or removing static. Capturing (non-static) local functions and lambdas inside async methods still flag, and an async static local function still flags because it can await the async counterpart.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC044 (AsNoTracking entity mutated then SaveChanges) now detects silent-data-loss patterns where the mutation happens inside a nested block that falls through to SaveChanges. The rule previously required the mutation and SaveChanges to be in the same immediate block, so mutations inside if/else/using/while bodies before a later SaveChanges were missed. The reachability check now accepts ancestor/descendant block relationships and blocks on explicit return/throw terminators, while still excluding sibling branches (e.g. mutation in one if branch and save only reachable through the other).</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
