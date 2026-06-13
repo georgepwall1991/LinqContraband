@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
@@ -271,19 +273,185 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static bool BlockReaches(IOperation mutation, IOperation saveChanges)
+    private static bool BlockReaches(IOperation start, IOperation saveChanges)
     {
-        var mutationBlock = FindEnclosingBlock(mutation);
-        if (mutationBlock == null) return true;
+        // Local functions and lambdas are separate executable roots; do not let a mutation
+        // inside one reach a SaveChanges in the enclosing method.
+        if (!start.SharesOwningExecutableRoot(saveChanges)) return false;
 
-        var current = saveChanges.Parent;
+        var startSyntax = start.Syntax;
+        var saveSyntax = saveChanges.Syntax;
+        if (saveSyntax.SpanStart <= startSyntax.SpanStart) return false;
+
+        var startBlock = FindEnclosingBlock(start);
+        var saveBlock = FindEnclosingBlock(saveChanges);
+        if (startBlock == null || saveBlock == null) return true;
+
+        if (ReferenceEquals(startBlock, saveBlock))
+        {
+            return !HasTerminatorBetween(startBlock.Operations, startSyntax.SpanStart, saveSyntax.SpanStart, saveSyntax);
+        }
+
+        // Mutation in a nested block, SaveChanges in an ancestor block (e.g., mutation inside
+        // an `if`/`using`/`while` body, save after that statement). Walk up the block chain and
+        // verify every intermediate block can fall through from the mutation path to the save.
+        if (IsBlockAncestor(saveBlock, startBlock))
+        {
+            var currentBlock = startBlock;
+            while (currentBlock != null && !ReferenceEquals(currentBlock, saveBlock))
+            {
+                var afterSpan = ReferenceEquals(currentBlock, startBlock)
+                    ? startSyntax.SpanStart
+                    : currentBlock.Syntax.Span.Start;
+
+                if (HasTerminatorBetween(currentBlock.Operations, afterSpan, currentBlock.Syntax.Span.End, saveSyntax))
+                    return false;
+
+                var parentBlock = FindEnclosingBlock(currentBlock);
+                if (parentBlock == null) return false;
+
+                var childInParent = FindDirectChildOperationContainingSpan(parentBlock.Operations, currentBlock.Syntax.Span);
+                if (childInParent == null) return false;
+
+                var beforeSpan = ReferenceEquals(parentBlock, saveBlock)
+                    ? saveSyntax.SpanStart
+                    : parentBlock.Syntax.Span.End;
+
+                if (HasTerminatorBetween(parentBlock.Operations, childInParent.Syntax.Span.End, beforeSpan, saveSyntax))
+                    return false;
+
+                currentBlock = parentBlock;
+            }
+
+            return true;
+        }
+
+        // SaveChanges in a nested block, mutation in an ancestor block (e.g., mutation at the
+        // top level, save inside a conditional branch that follows it).
+        if (IsBlockAncestor(startBlock, saveBlock))
+        {
+            var containingOperation = FindDirectChildOperationContainingSpan(startBlock.Operations, saveBlock.Syntax.Span);
+            if (containingOperation == null) return false;
+
+            if (HasTerminatorBetween(startBlock.Operations, startSyntax.SpanStart, containingOperation.Syntax.SpanStart, saveSyntax))
+                return false;
+
+            return !HasTerminatorBetween(saveBlock.Operations, saveBlock.Syntax.Span.Start, saveSyntax.SpanStart, saveSyntax);
+        }
+
+        // The blocks are siblings under a common ancestor (different branches of an `if`,
+        // separate `case` labels, etc.) — there is no guaranteed path from one to the other.
+        return false;
+    }
+
+    private static bool IsBlockAncestor(IBlockOperation ancestor, IBlockOperation descendant)
+    {
+        var current = descendant.Parent;
         while (current != null)
         {
-            if (ReferenceEquals(current, mutationBlock)) return true;
+            if (ReferenceEquals(current, ancestor)) return true;
             current = current.Parent;
         }
 
         return false;
+    }
+
+    private static bool HasTerminatorBetween(
+        System.Collections.Immutable.ImmutableArray<IOperation> operations,
+        int afterSpanStart,
+        int beforeSpanStart,
+        SyntaxNode saveSyntax)
+    {
+        foreach (var operation in operations)
+        {
+            if (operation.Syntax.SpanStart <= afterSpanStart || operation.Syntax.SpanStart >= beforeSpanStart)
+                continue;
+
+            // Unconditional exits that leave the current executable root block reachability.
+            if (operation is IReturnOperation or IThrowOperation)
+                return true;
+
+            // Branch operations that skip the remainder of the current region can break
+            // reachability. `break` exits a loop/switch; `continue` jumps to the loop
+            // condition. Both only block the save when the save is lexically inside the
+            // same construct and after the branch. `goto` is treated conservatively as a
+            // terminator because its target is harder to resolve.
+            if (operation is IBranchOperation branch)
+            {
+                if (branch.BranchKind == BranchKind.GoTo)
+                    return true;
+
+                if (branch.BranchKind == BranchKind.Break && IsBreakBlocking(branch, saveSyntax))
+                    return true;
+
+                if (branch.BranchKind == BranchKind.Continue && IsContinueBlocking(branch, saveSyntax))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsBreakBlocking(IBranchOperation branch, SyntaxNode saveSyntax)
+    {
+        var breakSyntax = branch.Syntax;
+        var enclosingConstruct = breakSyntax.Ancestors().FirstOrDefault(a =>
+            a.IsKind(SyntaxKind.WhileStatement) ||
+            a.IsKind(SyntaxKind.DoStatement) ||
+            a.IsKind(SyntaxKind.ForStatement) ||
+            a.IsKind(SyntaxKind.ForEachStatement) ||
+            a.IsKind(SyntaxKind.ForEachVariableStatement) ||
+            a.IsKind(SyntaxKind.SwitchStatement));
+
+        if (enclosingConstruct == null)
+            return true;
+
+        // If the SaveChanges is after the loop/switch, the break transfers control to it,
+        // so the mutation can still reach the save.
+        if (!saveSyntax.AncestorsAndSelf().Contains(enclosingConstruct))
+            return false;
+
+        // If the SaveChanges is inside the same construct but before the break, it is on a
+        // different path; the break only matters when the save is lexically after it.
+        return saveSyntax.SpanStart > breakSyntax.SpanStart;
+    }
+
+    private static bool IsContinueBlocking(IBranchOperation branch, SyntaxNode saveSyntax)
+    {
+        var continueSyntax = branch.Syntax;
+        var enclosingLoop = continueSyntax.Ancestors().FirstOrDefault(a =>
+            a.IsKind(SyntaxKind.WhileStatement) ||
+            a.IsKind(SyntaxKind.DoStatement) ||
+            a.IsKind(SyntaxKind.ForStatement) ||
+            a.IsKind(SyntaxKind.ForEachStatement) ||
+            a.IsKind(SyntaxKind.ForEachVariableStatement));
+
+        if (enclosingLoop == null)
+            return true;
+
+        // A continue jumps to the loop condition. If the SaveChanges is after the loop,
+        // the mutation can still reach it when the loop exits, so the continue does not block.
+        if (!saveSyntax.AncestorsAndSelf().Contains(enclosingLoop))
+            return false;
+
+        // If the SaveChanges is inside the same loop but before the continue, it is on a
+        // different path; the continue only matters when the save is lexically after it.
+        return saveSyntax.SpanStart > continueSyntax.SpanStart;
+    }
+
+    private static IOperation? FindDirectChildOperationContainingSpan(
+        System.Collections.Immutable.ImmutableArray<IOperation> operations,
+        TextSpan span)
+    {
+        IOperation? best = null;
+        foreach (var operation in operations)
+        {
+            if (!operation.Syntax.Span.Contains(span.Start)) continue;
+            if (best == null || operation.Syntax.Span.Length < best.Syntax.Span.Length)
+                best = operation;
+        }
+
+        return best;
     }
 
     private static IBlockOperation? FindEnclosingBlock(IOperation operation)
