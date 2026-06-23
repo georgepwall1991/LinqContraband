@@ -59,7 +59,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC023 | Prefer Find/FindAsync for primary key lookups | Materialization & Projection | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | Careful key/Async detection with a shipped fixer; **the Round-2 query-filter hazard is closed (2026-06-10)** — the rule now stays silent for entities with a visible `HasQueryFilter(...)` (OnModelCreating or configuration-class), because `Find`'s change-tracker hit bypasses global query filters and the rewrite could resurrect soft-deleted/other-tenant rows (verified against the EF Core 9 `EntityFinder` source: only the database fallback applies filters). The gate keys on the DbSet's entity type (so a base-class `Id` doesn't dodge it), walks base types (EF declares filters on the hierarchy root), and resolves the non-generic `Entity(typeof(X)).HasQueryFilter(...)` builder; lookalike-`HasQueryFilter` and different-entity guards are locked in; 26 tests. Residual (documented): a filter configured in another assembly is invisible, and there is still no dedicated fixer-edge test file. |
 | LC024 | GroupBy with non-translatable projection | Query Shape & Translation | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Strong fluent and query-syntax coverage (25 tests); `Any`/`All` are recognised aggregates and an aggregate whose receiver chain roots at `g` through translatable operators (`Where`/`Select`/`OrderBy`/`Distinct`) is accepted, while non-aggregate terminals still report. Manual-only is correct — the fix depends on business intent. |
 | LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Sound dataflow over nearest origins, foreach paths, and explicit `Entry.State`; honours the **last** tracking directive (5.5.6) and stays quiet on constructed-object projections. **The deferred path-insensitivity item is closed (2026-06-10)**: when the latest origin before the write is conditional relative to the use and the latest *unconditional fallback* disagrees on tracking-ness (superseded history doesn't count), the verdict is path-dependent and the rule stays quiet — while unconditional latest origins, agreeing fallbacks, and same-branch reassign+write shapes all keep firing (locked in by 6 new tests; 31 total). T moves 3→4 with the conditional-reassignment family covered. |
-| LC026 | Missing CancellationToken in async call | Execution & Async | Info | 3 | 3 | 4 | 3 | 3 | 3 | Low | Deliberately simple pattern matcher; 5.5.13 extended token discovery to fields and readable properties (fixer passes them by name). The ambiguous-token boundary (multiple tokens in scope, naming-heuristic preference) remains a real noise source, and tests are thin on multi-token scenarios. |
+| LC026 | Missing CancellationToken in async call | Execution & Async | Info | 3 | 3 | 4 | 4 | 4 | 3 | Low | Deliberately simple pattern matcher; 5.5.13 extended token discovery to fields and readable properties (fixer passes them by name). Coverage now locks multi-token fixer selection (`cancellationToken`/`ct` preference), readable property tokens, field-token replacement for `CancellationToken.None`, and named-default replacement with multiple tokens (21 tests). Analyzer/FP stay `3` because domain-specific token intent is still intentionally local and ambiguous. |
 | LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 4 | 4 | 4 | 3 | 4 | 3 | Low | Solid modeling rule for explicit-FK teams (respects `[ForeignKey]`, owned types, conventional and configured shadow FKs; type-inferring fixer with 5.5.1 CRLF fix). 14 tests are light on inherited configurations and chained Fluent-builder patterns. |
 | LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 3 | 3 | 4 | 3 | 4 | 3 | Low | Configurable-depth heuristic (editorconfig `max_depth`, default 3) with 11 test methods. Coverage now locks configured-threshold overrides, invalid-config fallback to the default threshold, sibling include-chain depth resets, and per-chain reporting when multiple sibling chains exceed the threshold. Manual-only stance is appropriate for a review-flag rule. |
 | LC029 | Redundant identity Select | Materialization & Projection | Info | 4 | 4 | 4 | 2 | 4 | 2 | Low | Cosmetic cleanup rule; 5 test methods total and no guidance on intentional materialization-boundary uses of `Select(x => x)`. Low importance is the point — no further investment warranted. |
@@ -174,6 +174,14 @@ Focused coverage and documentation pass on the bulk execute safety rule.
 | --- | --- | --- |
 | LC035 | **T 3→4** | Added coverage for overwritten earlier unfiltered assignments, conditional reassignment to another filtered local, multiple optional filtered narrowings, and unfiltered catch-path reassignment. Expanded the doc with every-path filtering guidance, project-local `Where` boundaries, and the no-fixer rationale. DS stays 4; the doc was already adequate, but now mirrors the analyzer's local-assignment contract more directly. |
 
+## 2026-06-23 LC026 docs/test-depth pass
+
+Focused coverage and documentation pass on the cancellation-token async-call rule.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC026 | **T 3→4, DS 3→4** | Added multi-token fixer coverage for `ct` preference when `cancellationToken` is unavailable, readable property tokens, field-token replacement for `CancellationToken.None`, and named-default replacement when multiple tokens exist. Expanded the doc with the local token-selection contract, field/property handling, ambiguity boundaries, and the no-new-token fixer rationale. Analyzer/FP stay 3 because the rule deliberately avoids inferring business intent between domain-specific tokens. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -182,7 +190,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, and LC035 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, LC035 docs/test depth, and LC026 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -249,16 +257,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.14**
+Package version: **5.6.15**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC035 docs/test-depth pass):
+Current local verification (2026-06-23, release-bound LC026 docs/test-depth pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1075 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1079 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
