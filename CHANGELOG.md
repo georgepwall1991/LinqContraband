@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.16] - 2026-06-23
+
+### Changed
+- `LC003` existence-check validation now locks scalar expression contexts, including boolean assignments, return expressions, and async `LongCountAsync` replacement with `AnyAsync`. The docs now explain provider cost, supported comparison patterns, when `Count()` is still the correct API, and the exact fixer behaviour.
+
 ## [5.6.15] - 2026-06-23
 
 ### Changed
