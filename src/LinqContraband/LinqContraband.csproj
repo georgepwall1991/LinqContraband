@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.8</Version>
+        <Version>5.6.9</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC044 (AsNoTracking entity mutated then SaveChanges) now detects silent-data-loss patterns where the mutation happens inside a nested block that falls through to SaveChanges. The rule previously required the mutation and SaveChanges to be in the same immediate block, so mutations inside if/else/using/while bodies before a later SaveChanges were missed. The reachability check now accepts ancestor/descendant block relationships and blocks on explicit return/throw terminators, while still excluding sibling branches (e.g. mutation in one if branch and save only reachable through the other).</PackageReleaseNotes>
+        <PackageReleaseNotes>LC034 and LC037 raw SQL docs now clarify direct raw-execution interpolation/concatenation versus hidden constructed-SQL flows. The docs include parameterized rewrite guidance and analyzer-backed examples for string.Format, string.Concat, chained StringBuilder, and SqlQueryRaw&lt;T&gt; so users can choose the right safe API without assuming unsupported coverage.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
