@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.17] - 2026-06-23
+
+### Fixed
+- `LC001` code fix now handles static `Queryable` forms, including fully qualified `System.Linq.Queryable`, aliases to `System.Linq.Queryable`, reordered named `source:`/`outer:` arguments for operators such as `Where` and `Join`, ordered static continuations such as `ThenBy`, extension/static ordered source chains, and nested static continuations after the fixed operator, by rewriting safe operators to `Enumerable` and inserting an explicit `AsEnumerable()` source boundary. Bare static and alias fallbacks use `System.Linq.Enumerable` to avoid user-defined `Enumerable` collisions, semantic guards keep extension calls on receivers named `Queryable` on the extension-fixer path, static wrappers without `Enumerable` counterparts such as `Queryable.AsQueryable` stay on `Queryable`, upstream translatable static operators such as `Queryable.Take` remain server-side before the boundary, and complex source expressions such as awaited sources are parenthesized before `.AsEnumerable()`. The docs now clarify the client-evaluation trade-off, preferred SQL-translatable rewrites, mapped-function/projectable alternatives, intentional client-side filtering, reported query positions, and safe non-row-dependent helper cases.
+
 ## [5.6.16] - 2026-06-23
 
 ### Changed
