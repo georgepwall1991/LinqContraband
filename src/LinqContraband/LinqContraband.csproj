@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.17</Version>
+        <Version>5.6.18</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC001 Local Method fixer and docs now cover static Queryable calls, including aliases, reordered named source/outer arguments, ordered continuations, extension/static ordered source chains, nested static continuations, Queryable wrappers without Enumerable counterparts, upstream static operators that should stay server-side, and complex source expressions requiring parentheses before AsEnumerable, by rewriting safe operators to Enumerable over an explicit boundary, qualifying static fallbacks safely, and documenting client-evaluation trade-offs, translatable alternatives, and intentional client-side filtering.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC021 IgnoreQueryFilters validation now covers type-level SuppressMessage, static extension-call pragma suppression, editorconfig severity suppression, and generated-code exclusion, complementing the existing direct diagnostic, EF/lookalike, IEnumerable, local pragma, and method-level SuppressMessage coverage. Docs now distinguish narrow reviewed suppressions from broader project-policy disablement for intentional filter bypasses.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
