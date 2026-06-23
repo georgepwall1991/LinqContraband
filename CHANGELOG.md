@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.10] - 2026-06-23
+
+### Changed
+- `LC039` repeated `SaveChanges` docs now explain the intended batching shape, explicit EF Core transaction boundaries, branch/try/catch suppression rules, separate-context behaviour, executable-root scoping, and why the advisory remains manual-only.
+
 ## [5.6.9] - 2026-06-23
 
 ### Changed
