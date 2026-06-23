@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.9</Version>
+        <Version>5.6.10</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC034 and LC037 raw SQL docs now clarify direct raw-execution interpolation/concatenation versus hidden constructed-SQL flows. The docs include parameterized rewrite guidance and analyzer-backed examples for string.Format, string.Concat, chained StringBuilder, and SqlQueryRaw&lt;T&gt; so users can choose the right safe API without assuming unsupported coverage.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC039 repeated SaveChanges docs now explain the intended batching shape, explicit EF Core transaction boundaries, branch/try/catch suppression rules, separate-context behavior, executable-root scoping, and why the advisory remains manual-only.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
