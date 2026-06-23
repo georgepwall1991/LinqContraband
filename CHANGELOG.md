@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.13] - 2026-06-23
+
+### Changed
+- `LC038` excessive eager-loading validation now locks threshold fallback/lowering, transparent EF query options, and non-EF `Include` lookalikes. The docs now explain intentional large-load cases, projection and split-query alternatives, and the LC006 cartesian-explosion boundary.
+
 ## [5.6.12] - 2026-06-23
 
 ### Changed
