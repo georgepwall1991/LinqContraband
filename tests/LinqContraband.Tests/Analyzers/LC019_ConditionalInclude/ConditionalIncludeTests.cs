@@ -200,6 +200,29 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ThenInclude_WithCoalescedReceiverInPath_ShouldTriggerLC019()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public Customer Customer { get; set; } }
+    public class Customer { public int Id { get; set; } public Address BillingAddress { get; set; } public Address ShippingAddress { get; set; } }
+    public class Address { public int Id { get; set; } public Country Country { get; set; } }
+    public class Country { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = {|LC019:orders.Include(o => o.Customer).ThenInclude(c => (c.BillingAddress ?? c.ShippingAddress).Country)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ThenInclude_Normal_ShouldNotTrigger()
     {
         var test = EFCoreMock + @"
@@ -243,6 +266,30 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task FilteredInclude_WithConditionalOrderingAndTake_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order { public int Id { get; set; } public ICollection<OrderLine> Lines { get; set; } }
+    public class OrderLine { public int Id { get; set; } public int Priority { get; set; } public bool IsOpen { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders, bool priorityFirst, bool shortList)
+        {
+            var result = orders.Include(o => o.Lines
+                .Where(l => l.IsOpen)
+                .OrderBy(l => priorityFirst ? l.Priority : l.Id)
+                .Take(shortList ? 5 : 10));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NonEfInclude_WithTernary_ShouldNotTrigger()
     {
         var test = EFCoreMock + @"
@@ -264,6 +311,41 @@ namespace TestApp
         public void TestMethod(IEnumerable<Order> orders, bool usePrimary)
         {
             var result = orders.Include(o => usePrimary ? o.Customer : o.FallbackCustomer);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NonEfThenInclude_WithTernary_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    using System;
+    using System.Collections.Generic;
+
+    public sealed class FakeIncludable<TEntity, TPrevious> : List<TEntity> { }
+
+    public static class IncludeExtensions
+    {
+        public static FakeIncludable<T, TProperty> Include<T, TProperty>(this IEnumerable<T> source, Func<T, TProperty> selector) => new();
+        public static FakeIncludable<T, TProperty> ThenInclude<T, TPrevious, TProperty>(this FakeIncludable<T, TPrevious> source, Func<TPrevious, TProperty> selector) => new();
+    }
+
+    public class Order { public int Id { get; set; } public Customer Customer { get; set; } }
+    public class Customer { public int Id { get; set; } public Address BillingAddress { get; set; } public Address ShippingAddress { get; set; } }
+    public class Address { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IEnumerable<Order> orders, bool useBilling)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => useBilling ? c.BillingAddress : c.ShippingAddress);
         }
     }
 }";
