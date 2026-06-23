@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.11] - 2026-06-23
+
+### Changed
+- `LC028` deep `ThenInclude` validation now locks sibling include-chain depth resets, per-chain reporting when multiple sibling chains exceed the threshold, and invalid `dotnet_code_quality.LC028.max_depth` fallback to the default threshold.
+
 ## [5.6.10] - 2026-06-23
 
 ### Changed

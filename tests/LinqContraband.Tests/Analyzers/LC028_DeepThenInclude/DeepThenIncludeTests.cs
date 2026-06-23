@@ -253,6 +253,95 @@ dotnet_code_quality.LC028.max_depth = 2
     }
 
     [Fact]
+    public async Task ThenInclude_InvalidConfiguredMaxDepth_FallsBackToDefault()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC028_DeepThenInclude.DeepThenIncludeAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                {|LC028:.ThenInclude(r => r.Continent)|};
+        }
+    }
+}"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC028.max_depth = not-a-number
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task SiblingIncludeChains_EachWithinDefaultDepth_ShouldNotTrigger()
+    {
+        var test = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SiblingIncludeChains_EachExceedingDefaultDepth_ShouldReportPerChain()
+    {
+        var test = Preamble + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(DbSet<Order> orders)
+        {
+            var result = orders
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                {|LC028:.ThenInclude(r => r.Continent)|}
+                .Include(o => o.Customer)
+                .ThenInclude(c => c.Address)
+                .ThenInclude(a => a.Country)
+                .ThenInclude(c => c.Region)
+                {|LC028:.ThenInclude(r => r.Continent)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NonEfCoreThenInclude_ShouldNotTrigger()
     {
         var test = Preamble + @"
