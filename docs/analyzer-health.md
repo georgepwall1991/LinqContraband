@@ -52,7 +52,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC016 | Avoid DateTime.Now/UtcNow in queries | Query Shape & Translation | Warning | 4 | 4 | 3 | 4 | 2 | 2 | Low | Clock detection, per-lambda dedup, and unique-naming fixer are fine (5.5.1 CRLF fix in place); 31-line doc never covers testability/mocking or modern EF constant-folding, and the impact (cacheability/testability, not correctness) caps Importance at 2. |
 | LC017 | Whole entity projection | Materialization & Projection | Info | 4 | 4 | 3 | 4 | 5 | 3 | Low | Strong 38-test heuristic with a 171-line doc; FS stays `3` because the fixer rewrites to anonymous types, forcing caller refactoring rather than a safety-preserving change (a DTO-helper alternative is the obvious upgrade). |
 | LC018 | FromSqlRaw with interpolated strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Security-critical with broad call-shape coverage, an exhaustive constant-only safe-shape suite (35 tests), and `SqlQueryRaw<T>` detection on the `DatabaseFacade`. Auto-fix stays `FromSqlRaw`→`FromSqlInterpolated`; `SqlQueryRaw` is report-only. Residual follow-ups: the `SqlQueryRaw`→`SqlQuery` auto-fix is not offered, and the LC018/LC037 boundary deserves clearer doc text. Demoted from Medium: the security FN shipped (LC037 owns construction sinks since 5.5.5). |
-| LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 3 | 3 | 3 | 4 | Low | Manual-only rule with sound rationale (a conditional inside an Include lambda always throws at runtime); only 10 test methods and no filtered-Include or non-EF Include negatives; doc is light on the "split query vs. project earlier vs. eager-load both branches" decision tree. |
+| LC019 | Conditional Include expression | Loading & Includes | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Low | Manual-only rule with sound rationale (conditional Include/ThenInclude navigation choices fail at runtime). Coverage now includes 13 tests: root and receiver conditionals, coalesce, collection ThenInclude, filtered-Include predicate/order/take negatives, and non-EF Include/ThenInclude lookalikes. Docs now cover split-query, projection, eager-load-both, branch-specific filtered Include, and the filtered-Include boundary. |
 | LC020 | Untranslatable string comparison overloads | Query Shape & Translation | Warning | 3 | 3 | 4 | 4 | 4 | 3 | Low | 5.5.2 closed the argument-flow FN (`"admin".Contains(u.Name, cmp)`); the Ordinal/OrdinalIgnoreCase FP claim was rejected on verification (default providers throw, so flagging is correct). Still not provider-aware (Npgsql `ILIKE`, opt-in Pomelo) and EF 9 `Collate()` is not addressed — both Analyzer and FP stay at `3`. |
 | LC021 | IgnoreQueryFilters usage | Raw SQL & Security | Warning | 4 | 4 | 3 | 3 | 4 | 4 | Low | Narrow EF-extension detection is conservative; Round-2 rejected the EF9 selective `IgnoreQueryFilters(filterKeys)` FP claim (selective bypass still bypasses soft-delete/tenant filters). 14 tests but no `[SuppressMessage]` negatives documenting the intended suppression path. |
 | LC022 | Nested collection materialization inside projection | Materialization & Projection | Info | 3 | 3 | 3 | 4 | 3 | 2 | Low | EF 9 correlated-collection translation has largely closed the gap this rule targeted; the analyzer can flag patterns EF now translates correctly, and the 43-line doc carries no EF-version caveat. Both A/FP and Importance stay pulled down. |
@@ -150,6 +150,14 @@ Focused coverage pass on the deep eager-loading review rule.
 | --- | --- | --- |
 | LC028 | **T 2→3** | Added regression coverage for invalid `dotnet_code_quality.LC028.max_depth` fallback, sibling include-chain depth reset, and per-chain diagnostics when multiple sibling chains exceed the configured threshold. The rule remains a heuristic/manual-review warning, so deeper behavior investment is low priority. |
 
+## 2026-06-23 LC019 docs/test-depth pass
+
+Focused coverage and documentation pass on the conditional Include correctness rule.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC019 | **T 3→4, DS 3→4** | Added coverage for `ThenInclude` coalesced receiver paths, filtered Include ordering/window conditionals that must stay quiet, and non-EF `ThenInclude` lookalikes. Expanded the doc with the split-query vs. projection vs. eager-load-both decision path, branch-specific filtered Include guidance, and the filtered-Include boundary. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -158,7 +166,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | LC019 | LC039 doc expansion and LC028 test depth addressed in this pass; next cheap backfill is LC019 test depth if no higher-severity evidence appears. Everything else is currently acceptable or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, and LC019 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -225,16 +233,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.11**
+Package version: **5.6.12**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC028 test-depth pass):
+Current local verification (2026-06-23, release-bound LC019 docs/test-depth pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1064 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1067 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

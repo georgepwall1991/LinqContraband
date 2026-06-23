@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.12] - 2026-06-23
+
+### Changed
+- `LC019` conditional `Include` validation now locks `ThenInclude` receiver conditionals, richer filtered Include negatives, and non-EF `ThenInclude` lookalikes. The docs now explain when to split the query, project the conditional shape, or eager-load both branches explicitly.
+
 ## [5.6.11] - 2026-06-23
 
 ### Changed
