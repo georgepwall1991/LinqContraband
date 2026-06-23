@@ -134,6 +134,126 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteDelete_EarlierConditionalUnfilteredAssignmentOverwrittenByFilteredBase_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool flag)
+        {
+            IQueryable<User> query = db.Set<User>();
+            if (flag)
+            {
+                query = db.Set<User>();
+            }
+
+            query = db.Set<User>().Where(u => u.Id > 10);
+
+            return query.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_ConditionalReassignToFilteredLocal_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool flag)
+        {
+            var baseQuery = db.Set<User>().Where(u => u.Id > 10);
+            var archived = baseQuery.Where(u => u.Id < 100);
+            IQueryable<User> query = baseQuery;
+
+            if (flag)
+            {
+                query = archived;
+            }
+
+            return query.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteUpdate_MultipleOptionalFilteredReassignments_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } public bool IsActive { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool activeOnly, bool smallBatch)
+        {
+            var query = db.Set<User>().Where(u => u.Id > 10);
+
+            if (activeOnly)
+            {
+                query = query.Where(u => u.IsActive);
+            }
+
+            if (smallBatch)
+            {
+                query = query.Where(u => u.Id < 100);
+            }
+
+            return query.ExecuteUpdate();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteUpdate_CatchPathReassignsToUnfilteredQuery_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db)
+        {
+            var query = db.Set<User>().Where(u => u.Id > 10);
+
+            try
+            {
+                query = query.Where(u => u.Id < 100);
+            }
+            catch (System.Exception)
+            {
+                query = db.Set<User>();
+            }
+
+            return {|LC035:query.ExecuteUpdate()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithWhere_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
