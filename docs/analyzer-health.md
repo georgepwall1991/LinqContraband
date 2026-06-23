@@ -68,7 +68,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC032 | ExecuteUpdate for bulk scalar updates | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 4 | 4 | 4 | 3 | Low | **Re-scored — the prior row was stale.** The rule now ships a full async-aware fixer (loop+`SaveChanges` → `ExecuteUpdate`, warning comment, token preservation, duplicate-write collapse, declines on observed results / value-rereads / local-source inlining) with 38 tests (24 fixer) and a 108-line doc covering the safety contract; FS/T/DS all move 3→4. Conservative declines are documented and reasonable. |
 | LC033 | Use FrozenSet for static membership caches | Materialization & Projection | Info | 4 | 4 | 4 | 4 | 4 | 2 | Low | Healthy niche optimization across 7 files and 18 tests (multi-phase compilation-end analysis with strict Contains-only usage gates); low real-world impact keeps it a poor near-term investment. |
 | LC034 | ExecuteSqlRaw with interpolated strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Strong sync/async raw-SQL detection (29 tests) with named/direct unsafe SQL, lookalike negatives, and quote-sensitive fixer suppression. Docs now spell out LC018/LC034/LC037 ownership, direct-vs-hidden construction, quoted-interpolation limits, and parameterized `ExecuteSqlRaw` alternatives. |
-| LC035 | Missing Where before bulk execute | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 4 | 3 | 4 | 4 | Low | High-impact safety smell; 5.5.9 closed the "base filter + optional narrowing" FP (unconditional base plus every conditional reassignment must be filtered). 18 tests still below peers on filtered-local/reassignment depth. Imp stays `4` — transactions and audit logging diminish bare data-loss risk in modern stacks. Demoted from Medium: the named FP shipped. |
+| LC035 | Missing Where before bulk execute | Bulk Operations & Set-Based Writes | Info | 4 | 4 | 4 | 4 | 4 | 4 | Low | High-impact safety smell; 5.5.9 closed the "base filter + optional narrowing" FP and 5.6.14 locks the surrounding reassignment depth: overwritten earlier unfiltered assignments, filtered-local conditional reassignments, multiple optional filtered narrowings, and unfiltered catch-path reassignments. 22 tests. Imp stays `4` because transactions and audit logging diminish bare data-loss risk in modern stacks. Demoted from Medium: the named FP shipped. |
 | LC036 | DbContext captured by thread work item | Execution & Async | Warning | 4 | 4 | 4 | 4 | 5 | 5 | Low | High-value thread-safety rule covering lambda, anonymous-method, callback, async-lambda, member capture, factory/scope-safe, materialized-value, and local-function shapes (17 tests). The method-group FN claim was rejected — arbitrary method-group inspection is a documented non-goal. Compact 41-line doc remains a DS=5 anchor (violation, safer shape, intent, explicit non-goals). |
 | LC037 | Constructed raw SQL strings | Raw SQL & Security | Warning | 4 | 4 | 4 | 4 | 4 | 5 | Low | Strong manual security rule (3-file analyzer: concatenation, `string.Format`/`Concat`, `StringBuilder`, aliased-local resolution; 26 tests); 5.5.5 added `SqlQueryRaw<T>` as a construction sink with no LC018 double-report. Docs now include concrete `string.Format`, `string.Concat`, `StringBuilder`, parameterized rewrite, and LC018/LC034 boundary examples. |
 | LC038 | Excessive eager loading | Loading & Includes | Info | 3 | 4 | 4 | 4 | 4 | 2 | Low | Coarse but documented depth-threshold heuristic (configurable, default 4) with 10 test methods covering default/suppressing/lowering/invalid thresholds, `DbContext.Set`, transparent LINQ/EF query options, and non-EF Include lookalikes. Docs now frame the warning as a manual review prompt, explain intentional full-aggregate loads, projection/separate-query alternatives, split-query limits, and the LC006 cartesian-explosion boundary. |
@@ -166,6 +166,14 @@ Focused low-importance polish pass on the excessive eager-loading review rule.
 | --- | --- | --- |
 | LC038 | **T 3→4, DS 3→4** | Added threshold fallback/lowering coverage, remaining transparent EF query-option coverage (`AsTracking`, `AsNoTrackingWithIdentityResolution`, `AsSingleQuery`), and non-EF Include lookalike negatives. Expanded the doc with intentional large-load rationale, projection/separate-query alternatives, split-query limits, and the LC006 boundary. Importance stays 2 because modern EF split queries and explicit projections often make this a review-smell rather than a correctness problem. |
 
+## 2026-06-23 LC035 docs/test-depth pass
+
+Focused coverage and documentation pass on the bulk execute safety rule.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC035 | **T 3→4** | Added coverage for overwritten earlier unfiltered assignments, conditional reassignment to another filtered local, multiple optional filtered narrowings, and unfiltered catch-path reassignment. Expanded the doc with every-path filtering guidance, project-local `Where` boundaries, and the no-fixer rationale. DS stays 4; the doc was already adequate, but now mirrors the analyzer's local-assignment contract more directly. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -174,7 +182,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, and LC038 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, and LC035 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -241,16 +249,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.13**
+Package version: **5.6.14**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC038 docs/test-depth pass):
+Current local verification (2026-06-23, release-bound LC035 docs/test-depth pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1071 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1075 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

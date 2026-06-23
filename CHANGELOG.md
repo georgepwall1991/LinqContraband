@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.14] - 2026-06-23
+
+### Changed
+- `LC035` bulk execute validation now locks deeper filtered-local and reassignment paths, including overwritten earlier assignments, filtered-local conditional reassignments, multiple optional filtered narrowings, and unfiltered catch-path reassignment. The docs now explain every-path filtering, project-local `Where` lookalikes, and why the rule has no automatic fixer.
+
 ## [5.6.13] - 2026-06-23
 
 ### Changed
