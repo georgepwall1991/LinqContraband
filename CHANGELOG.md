@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.9] - 2026-06-23
+
+### Changed
+- `LC034` and `LC037` raw SQL docs now clarify direct raw-execution interpolation/concatenation versus hidden constructed-SQL flows. The docs include parameterized rewrite guidance and analyzer-backed examples for `string.Format`, `string.Concat`, chained `StringBuilder`, and `SqlQueryRaw<T>` so users can choose the right safe API without assuming unsupported coverage.
+
 ## [5.6.8] - 2026-06-13
 
 ### Fixed
