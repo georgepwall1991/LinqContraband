@@ -61,7 +61,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC025 | AsNoTracking with Update/Remove | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Sound dataflow over nearest origins, foreach paths, and explicit `Entry.State`; honours the **last** tracking directive (5.5.6) and stays quiet on constructed-object projections. **The deferred path-insensitivity item is closed (2026-06-10)**: when the latest origin before the write is conditional relative to the use and the latest *unconditional fallback* disagrees on tracking-ness (superseded history doesn't count), the verdict is path-dependent and the rule stays quiet — while unconditional latest origins, agreeing fallbacks, and same-branch reassign+write shapes all keep firing (locked in by 6 new tests; 31 total). T moves 3→4 with the conditional-reassignment family covered. |
 | LC026 | Missing CancellationToken in async call | Execution & Async | Info | 3 | 3 | 4 | 3 | 3 | 3 | Low | Deliberately simple pattern matcher; 5.5.13 extended token discovery to fields and readable properties (fixer passes them by name). The ambiguous-token boundary (multiple tokens in scope, naming-heuristic preference) remains a real noise source, and tests are thin on multi-token scenarios. |
 | LC027 | Missing explicit foreign key property | Schema & Modeling | Info | 4 | 4 | 4 | 3 | 4 | 3 | Low | Solid modeling rule for explicit-FK teams (respects `[ForeignKey]`, owned types, conventional and configured shadow FKs; type-inferring fixer with 5.5.1 CRLF fix). 14 tests are light on inherited configurations and chained Fluent-builder patterns. |
-| LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 3 | 3 | 4 | 2 | 4 | 3 | Low | Configurable-depth heuristic (editorconfig `max_depth`, default 3) with only 8 test methods — no multi-Include sibling chains and no config-override tests; T drops to `2` on the harsh calibration. Manual-only stance is appropriate for a review-flag rule. |
+| LC028 | Deep ThenInclude chain | Loading & Includes | Warning | 3 | 3 | 4 | 3 | 4 | 3 | Low | Configurable-depth heuristic (editorconfig `max_depth`, default 3) with 11 test methods. Coverage now locks configured-threshold overrides, invalid-config fallback to the default threshold, sibling include-chain depth resets, and per-chain reporting when multiple sibling chains exceed the threshold. Manual-only stance is appropriate for a review-flag rule. |
 | LC029 | Redundant identity Select | Materialization & Projection | Info | 4 | 4 | 4 | 2 | 4 | 2 | Low | Cosmetic cleanup rule; 5 test methods total and no guidance on intentional materialization-boundary uses of `Select(x => x)`. Low importance is the point — no further investment warranted. |
 | LC030 | DbContext lifetime mismatch | Change Tracking & Context Lifetime | Info | 4 | 4 | 4 | 4 | 5 | 4 | Low | Strong manual-only lifetime rule: long-lived types proven via interface/base-class and DI registration shapes (BackgroundService, middleware, singletons), optional `long_lived_types` config, 22-test suite, 81-line doc explaining why no single fix exists. Severity keeps it out of the urgent stack. |
 | LC031 | Unbounded query materialization | Materialization & Projection | Info | 4 | 4 | 3 | 3 | 3 | 3 | Low | Sound chain walker, correct about `Chunk` (not a bounding operator) and `TakeLast`/`SkipLast` (untranslatable, so flagging stands). Advisory-only without a fixer-rationale doc; 17 tests light on query-syntax shapes; intentional full-scan guidance thin. |
@@ -142,6 +142,14 @@ Focused reliability-docs pass on the repeated-save advisory.
 | --- | --- | --- |
 | LC039 | **DS 3→4** | Expanded the rule doc with batching guidance, explicit EF Core transaction examples, branch and try/catch/finally boundaries, separate-context and executable-root scoping, EF-only transaction-boundary recognition, and the manual-only rationale for keeping or rewriting repeated saves. |
 
+## 2026-06-23 LC028 test-depth pass
+
+Focused coverage pass on the deep eager-loading review rule.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC028 | **T 2→3** | Added regression coverage for invalid `dotnet_code_quality.LC028.max_depth` fallback, sibling include-chain depth reset, and per-chain diagnostics when multiple sibling chains exceed the configured threshold. The rule remains a heuristic/manual-review warning, so deeper behavior investment is low priority. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -150,7 +158,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | LC019, LC028 | LC039 doc expansion addressed in this pass; next cheap backfill is LC019/LC028 test depth. Everything else is currently acceptable or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | LC019 | LC039 doc expansion and LC028 test depth addressed in this pass; next cheap backfill is LC019 test depth if no higher-severity evidence appears. Everything else is currently acceptable or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -217,16 +225,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.10**
+Package version: **5.6.11**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC039 docs pass):
+Current local verification (2026-06-23, release-bound LC028 test-depth pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1061 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1064 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
