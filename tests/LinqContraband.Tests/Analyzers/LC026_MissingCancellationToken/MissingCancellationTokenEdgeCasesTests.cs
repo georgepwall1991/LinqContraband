@@ -75,6 +75,174 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task ShortCtName_IsUsedWhenCancellationTokenNameIsUnavailable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken requestAborted, CancellationToken ct)
+        {
+            var users = await {|LC026:query.ToListAsync()|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken requestAborted, CancellationToken ct)
+        {
+            var users = await query.ToListAsync(ct);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task ReadablePropertyToken_IsUsedWhenNoParameterTokenExists()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken RequestAborted { get; }
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var users = await {|LC026:query.ToListAsync()|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken RequestAborted { get; }
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var users = await query.ToListAsync(RequestAborted);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task FieldToken_ReplacesCancellationTokenNone_WhenNoCloserTokenExists()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken _shutdownToken;
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var users = await {|LC026:query.ToListAsync(CancellationToken.None)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        private CancellationToken _shutdownToken;
+
+        public async Task TestMethod(DbSet<User> query)
+        {
+            var users = await query.ToListAsync(_shutdownToken);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task NamedDefaultArgument_UsesPreferredTokenWhenMultipleTokensExist()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken ct, CancellationToken cancellationToken)
+        {
+            var users = await {|LC026:query.ToListAsync(cancellationToken: default)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken ct, CancellationToken cancellationToken)
+        {
+            var users = await query.ToListAsync(cancellationToken: cancellationToken);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
     public async Task DefaultTokenInNestedLocalFunction_UsesNestedScopeToken()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

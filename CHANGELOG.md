@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.15] - 2026-06-23
+
+### Changed
+- `LC026` cancellation-token validation now locks multi-token fixer selection, including `ct` preference when `cancellationToken` is unavailable, readable property tokens, field-token replacement for `CancellationToken.None`, and named-default replacement when multiple tokens exist. The docs now explain the local token-selection contract, field/property handling, ambiguity boundaries, and why the fixer does not synthesize new tokens.
+
 ## [5.6.14] - 2026-06-23
 
 ### Changed
