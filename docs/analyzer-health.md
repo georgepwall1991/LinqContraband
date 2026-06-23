@@ -36,7 +36,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | LC001 | Local method usage in IQueryable | Query Shape & Translation | Warning | 4 | 3 | 2 | 3 | 3 | 3 | Low | Detection is sound and now includes aggregate selectors (`Sum`/`Average`/`Min`/`Max` selector FN fixed in 5.5.11). Fixer remains a thin `AsEnumerable()` guard (2 fixer tests, no guidance on parameterized constants or translatable SQL functions); doc lacks the client-eval trade-off. Modern EF partial client evaluation keeps urgency moderate. |
 | LC002 | Premature query continuation after materialization | Materialization & Projection | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Strong analyzer/fixer pair (45 tests, 14 fixer). De-duplicating set sources (`ToHashSet().ToList()`) and keyed/grouped sources (`ToDictionary().ToList()`, 5.5.4) are no longer treated as redundant, closing both the unsafe fix and the misleading message. Doc still sparse on `ToList()`/`ToArray()`/`AsEnumerable()` variance and intentional client-boundary patterns. |
-| LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 3 | 4 | 4 | 3 | 2 | 3 | Low | Single-shape binary-comparison detection with a safe fixer; the 2026-06-04 Round-2 probe found no defects ("robust" on `== 0` / `> 0` / reversed / const-folded / cast forms). Doc is boilerplate (31 lines, no perf/provider nuance, no scalar-context guidance). |
+| LC003 | Prefer Any() over Count() existence checks | Materialization & Projection | Warning | 3 | 4 | 4 | 4 | 4 | 3 | Low | Single-shape binary-comparison detection with a safe fixer; the 2026-06-04 Round-2 probe found no defects ("robust" on `== 0` / `> 0` / reversed / const-folded / cast forms). Coverage now locks scalar expression contexts, including boolean assignments, return expressions, and async `LongCountAsync` replacement with `AnyAsync` (29 tests). Docs now cover provider cost, supported comparison patterns, threshold boundaries, `IQueryable` scope, and exact fixer behaviour. |
 | LC004 | IQueryable passed as IEnumerable | Query Shape & Translation | Warning | 4 | 4 | 3 | 4 | 3 | 4 | Low | Solid API-boundary analyzer proving foreach/forwarding/materializing sinks; 5.5.10 closed the query-expression FN (a C# query expression is now followed to its source parameter). Docs short on forwarding chains and method-body scoping nuance. Nested-local-function skipping stays a deliberate FP-avoidance non-goal. |
 | LC005 | Multiple OrderBy calls | Query Shape & Translation | Warning | 4 | 4 | 4 | 3 | 3 | 3 | Low | Linear chain heuristic with a safe `ThenBy` fixer; the query-comprehension crash (`orderby a orderby b` → AD0001) is fixed and reported at the `orderby` clause (report-only). Tests thin (12 methods, 3 fixer). Residual: chains broken across intervening operators or locals are not walked. |
 | LC006 | Multiple collection Includes | Loading & Includes | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Low | High-impact rule with a sibling-collection precision contract; `LocalAssignmentCache` follows single-assignment locals (closing both the `AsSplitQuery()`-across-a-local FP and the split-sibling FN). Include-path parsing now lives in the shared `IncludePathParser` (5.6.0 refactor, shared with LC045). 94-line doc covers the split-query trade-off and LC028/LC038 boundaries. FS stays `3` — `AsSplitQuery()` is a trade-off the user must own. Demoted from Medium: all named defects shipped; multi-reassignment chains stay an intentional non-goal. |
@@ -182,6 +182,14 @@ Focused coverage and documentation pass on the cancellation-token async-call rul
 | --- | --- | --- |
 | LC026 | **T 3→4, DS 3→4** | Added multi-token fixer coverage for `ct` preference when `cancellationToken` is unavailable, readable property tokens, field-token replacement for `CancellationToken.None`, and named-default replacement when multiple tokens exist. Expanded the doc with the local token-selection contract, field/property handling, ambiguity boundaries, and the no-new-token fixer rationale. Analyzer/FP stay 3 because the rule deliberately avoids inferring business intent between domain-specific tokens. |
 
+## 2026-06-23 LC003 docs/test-depth pass
+
+Focused coverage and documentation pass on the Any-over-Count existence-check rule.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC003 | **T 3→4, DS 2→4** | Added scalar-context coverage for boolean assignments, return expressions, and async `LongCountAsync` replacement with `AnyAsync`. Expanded the doc with provider cost guidance, supported comparison patterns, threshold boundaries where `Count()` is still correct, `IQueryable` scope, and exact fixer behaviour. Analyzer stays 3 because the rule is intentionally limited to direct binary comparisons rather than deeper dataflow. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -190,7 +198,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, LC035 docs/test depth, and LC026 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | None | LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, LC035 docs/test depth, LC026 docs/test depth, and LC003 docs/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -257,16 +265,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.15**
+Package version: **5.6.16**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC026 docs/test-depth pass):
+Current local verification (2026-06-23, release-bound LC003 docs/test-depth pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1079 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1084 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

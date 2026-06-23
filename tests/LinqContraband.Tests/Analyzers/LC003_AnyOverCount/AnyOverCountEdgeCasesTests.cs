@@ -72,6 +72,71 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task CountGreaterThanZero_InBooleanAssignment_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            var hasAny = {|LC003:query.Count() > 0|};
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CountEqualsZero_InReturnExpression_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public bool TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            return {|LC003:query.Count() == 0|};
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task LongCountAsyncNotEqualsZero_InBooleanAssignment_ShouldTriggerLC003()
+    {
+        var test = Usings + @"
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static Task<long> LongCountAsync<TSource>(this IQueryable<TSource> source, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(0L);
+    }
+}
+
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async Task TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            var hasAny = {|LC003:await query.LongCountAsync() != 0|};
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ZeroNotEqualToCount_OnIQueryable_ShouldTriggerLC003()
     {
         var test = Usings + @"
