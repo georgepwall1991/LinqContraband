@@ -130,10 +130,10 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         {
             if (current is IInvocationOperation queryInvocation)
             {
-                // Handle both extension syntax (Instance populated) and static call syntax (Instance null, use first arg)
+                // Handle extension syntax (Instance populated) and static syntax (source is a bound argument).
                 var type = queryInvocation.Instance?.Type;
-                if (type == null && queryInvocation.Arguments.Length > 0)
-                    type = queryInvocation.Arguments[0].Value.Type;
+                if (type == null)
+                    type = GetInputSequenceArgument(queryInvocation)?.Value.Type;
 
                 if (type.IsIQueryable())
                 {
@@ -148,6 +148,25 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
             current = current.Parent;
         }
+    }
+
+    private static IArgumentOperation? GetInputSequenceArgument(IInvocationOperation invocation)
+    {
+        IArgumentOperation? firstArgument = null;
+        IArgumentOperation? namedSequenceArgument = null;
+
+        foreach (var argument in invocation.Arguments)
+        {
+            firstArgument ??= argument;
+
+            if (argument.Parameter?.Type.IsIQueryable() == true)
+                return argument;
+
+            if (argument.Parameter?.Name is "source" or "outer")
+                namedSequenceArgument ??= argument;
+        }
+
+        return namedSequenceArgument ?? firstArgument;
     }
 
     private static bool InvocationDependsOnLambdaParameter(

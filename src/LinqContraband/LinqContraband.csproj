@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.16</Version>
+        <Version>5.6.17</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC003 Any-over-Count documentation and validation now cover scalar expression contexts, boolean assignments, return expressions, async LongCountAsync replacement with AnyAsync, supported existence-check patterns, and when Count remains the right API.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC001 Local Method fixer and docs now cover static Queryable calls, including aliases, reordered named source/outer arguments, ordered continuations, extension/static ordered source chains, nested static continuations, Queryable wrappers without Enumerable counterparts, upstream static operators that should stay server-side, and complex source expressions requiring parentheses before AsEnumerable, by rewriting safe operators to Enumerable over an explicit boundary, qualifying static fallbacks safely, and documenting client-evaluation trade-offs, translatable alternatives, and intentional client-side filtering.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
