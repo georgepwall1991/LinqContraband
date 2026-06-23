@@ -82,4 +82,6 @@ public List<User> GetAllTenantsForAdminReview()
 }
 ```
 
+Method-level and type-level `SuppressMessage` suppressions are supported for reviewed bypass services. Repository-wide analyzer config such as `dotnet_diagnostic.LC021.severity = none` is also honored by Roslyn, but treat it as a project policy decision rather than a local exception. Generated code is excluded from LC021 analysis.
+
 The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call, or the equivalent static extension wrapper, and preserves the rest of the query chain. Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.

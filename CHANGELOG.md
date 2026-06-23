@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.18] - 2026-06-23
+
+### Changed
+- `LC021` suppression-path validation now covers type-level `SuppressMessage`, static extension-call pragma suppression, `.editorconfig` severity suppression, and generated-code exclusion, complementing the existing direct diagnostic, EF/lookalike, `IEnumerable`, local pragma, and method-level `SuppressMessage` coverage. The docs now distinguish narrow reviewed suppressions from broader project-policy disablement for intentional `IgnoreQueryFilters` bypasses.
+
 ## [5.6.17] - 2026-06-23
 
 ### Fixed
