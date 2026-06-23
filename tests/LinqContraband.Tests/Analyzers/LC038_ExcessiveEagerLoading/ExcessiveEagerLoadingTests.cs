@@ -44,7 +44,10 @@ namespace Microsoft.EntityFrameworkCore
         public static IncludableQueryable<TEntity, TProperty> Include<TEntity, TProperty>(this IQueryable<TEntity> source, Expression<Func<TEntity, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
         public static IncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(this IncludableQueryable<TEntity, TPreviousProperty> source, Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
         public static IQueryable<TEntity> AsNoTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsNoTrackingWithIdentityResolution<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
         public static IQueryable<TEntity> AsSplitQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsSingleQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
         public static IQueryable<TEntity> TagWith<TEntity>(this IQueryable<TEntity> source, string tag) where TEntity : class => source;
         public static List<TEntity> ToList<TEntity>(this IQueryable<TEntity> source) => new List<TEntity>();
     }
@@ -150,6 +153,71 @@ dotnet_code_quality.LC038.include_threshold = 5
     }
 
     [Fact]
+    public async Task InvalidThresholdFromAnalyzerConfig_FallsBackToDefaultAndReportsFourStepChain()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC038_ExcessiveEagerLoading.ExcessiveEagerLoadingAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var parents = {|LC038:db.Parents
+            .Include(p => p.Child1)
+            .Include(p => p.Child2)
+            .Include(p => p.Child3)
+            .Include(p => p.Child4)|}
+            .ToList();
+    }
+}"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC038.include_threshold = not-a-number
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task LowerThresholdFromAnalyzerConfig_ReportsThreeStepChain()
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC038_ExcessiveEagerLoading.ExcessiveEagerLoadingAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var parents = {|LC038:db.Parents
+            .Include(p => p.Child1)
+            .Include(p => p.Child2)
+            .Include(p => p.Child3)|}
+            .ToList();
+    }
+}"
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", """
+root = true
+
+[*.cs]
+dotnet_code_quality.LC038.include_threshold = 3
+"""));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task DirectDbSetSetInvocation_WithFiveSteps_Triggers()
     {
         var test = EFCoreMock + Types + @"
@@ -189,6 +257,78 @@ class Program
             .Include(p => p.Child3)
             .Include(p => p.Child4)|}
             .ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TrackingOptionsBeforeIncludeChain_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var parents = {|LC038:db.Parents
+            .AsTracking()
+            .AsNoTrackingWithIdentityResolution()
+            .AsSingleQuery()
+            .Include(p => p.Child1)
+            .Include(p => p.Child2)
+            .Include(p => p.Child3)
+            .Include(p => p.Child4)|}
+            .ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NonEfIncludeLookalike_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+namespace CustomIncludes
+{
+    using System;
+    using System.Linq;
+    using System.Linq.Expressions;
+
+    public sealed class CustomQueryable<T> : IQueryable<T>
+    {
+        public Type ElementType => typeof(T);
+        public Expression Expression => Expression.Constant(this);
+        public IQueryProvider Provider => null;
+        public System.Collections.IEnumerator GetEnumerator() => null;
+        System.Collections.Generic.IEnumerator<T> System.Collections.Generic.IEnumerable<T>.GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public static class IncludeExtensions
+    {
+        public static CustomQueryable<T> Include<T, TProperty>(this CustomQueryable<T> source, Func<T, TProperty> selector) => source;
+    }
+}
+
+namespace NonEfScenario
+{
+    using CustomIncludes;
+
+    class Program
+    {
+        void Run(CustomQueryable<TestApp.Parent> parents)
+        {
+            var results = parents
+                .Include(p => p.Child1)
+                .Include(p => p.Child2)
+                .Include(p => p.Child3)
+                .Include(p => p.Child4)
+                .ToList();
+        }
     }
 }";
 
