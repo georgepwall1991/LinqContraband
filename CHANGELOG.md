@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.20] - 2026-06-25
+
+### Changed
+- `LC002` docs and sample now explain `ToList()`/`ToArray()`/`AsEnumerable()` boundary differences, provider-safe lambda gates, intentional client-side continuation patterns, redundant materialization versus shape-changing materializers, and the narrow fixer contract for premature materialization chains.
+
 ## [5.6.19] - 2026-06-25
 
 ### Changed
