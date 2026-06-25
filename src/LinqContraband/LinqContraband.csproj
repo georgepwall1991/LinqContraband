@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.20</Version>
+        <Version>5.6.21</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC002 premature materialization docs and sample now explain ToList/ToArray/AsEnumerable boundary differences, provider-safe lambda gates, intentional client-side continuation patterns, redundant materialization versus shape-changing materializers, and the narrow fixer contract.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC008 sync-over-async docs and sample now explain mapped EF async counterpart families, no-async-equivalent guidance, query-expression translation boundaries, static-local-function scoping, non-async lambda/local-function fixer limits, cancellation-token non-goals, and scalar terminal examples.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
