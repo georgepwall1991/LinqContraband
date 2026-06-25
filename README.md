@@ -695,34 +695,38 @@ foreach (var p in products)
 
 ---
 
-### LC018: Avoid FromSqlRaw with Interpolation
+### LC018: Avoid Raw Query SQL with Interpolation
 
-Using interpolated strings (`$"{var}"`) with `FromSqlRaw` is a major security risk. It embeds variables directly into
-the SQL string, bypassing parameterization and opening your database to SQL injection attacks.
+Using interpolated strings (`$"{var}"`) with `FromSqlRaw(...)` or `SqlQueryRaw<T>(...)` is a major security risk. It
+embeds variables directly into the SQL string, bypassing parameterization and opening your database to SQL injection
+attacks.
 
 **👶 Explain it like I'm a ten year old:** Imagine a bank where you write your name on a slip to get money. If you use
 a special pen that lets you erase "Name: John" and write "Give John everything in the vault," you've just robbed the
-bank. `FromSqlRaw` with interpolated strings is like using that eraseable pen.
+bank. Raw query SQL with interpolated strings is like using that erasable pen.
 
 **❌ The Crime:**
 
 ```csharp
 // Potential SQL Injection!
 var users = db.Users.FromSqlRaw($"SELECT * FROM Users WHERE Name = '{name}'").ToList();
+var ids = db.Database.SqlQueryRaw<int>($"SELECT Id FROM Users WHERE Name = {name}").ToList();
 ```
 
 **✅ The Fix:**
-Use `FromSqlInterpolated` or `FromSql` (EF Core 7+), and remove SQL quotes around interpolated values so EF can parameterize them.
+Use `FromSqlInterpolated`/`FromSql` for entity queries or `SqlQuery<T>` for scalar/keyless queries, and remove SQL quotes around interpolated values so EF can parameterize them.
 
 ```csharp
 // Safe: EF Core handles parameterization
 var users = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {name}").ToList();
+var ids = db.Database.SqlQuery<int>($"SELECT Id FROM Users WHERE Name = {name}").ToList();
 ```
 
 **🛡️ Reliability Notes:**
-- LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)`.
+- LC018 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `FromSqlRaw(...)` and `SqlQueryRaw<T>(...)`.
 - Interpolated strings only report when an interpolation hole contains runtime data; no-hole and constant-only interpolations stay quiet.
-- LC018 binds to EF Core namespaces and queryable/DbSet receivers exactly, so same-named extension methods in lookalike namespaces or on unrelated receiver types stay quiet.
+- LC018 binds to EF Core namespaces and queryable/DbSet or `DatabaseFacade` receivers exactly, so same-named extension methods in lookalike namespaces or on unrelated receiver types stay quiet.
+- The fixer rewrites direct `FromSqlRaw(...)` interpolation to `FromSqlInterpolated(...)` and direct `SqlQueryRaw<T>(...)` interpolation to `SqlQuery<T>(...)`, preserving generic type arguments.
 - The fixer is not offered when an interpolation hole is inside SQL quotes, such as `'{name}'`; that rewrite needs manual quote removal.
 - Broader constructed-SQL flows such as local aliases, `string.Format(...)`, `string.Concat(...)`, and `StringBuilder` are covered by `LC037`.
 

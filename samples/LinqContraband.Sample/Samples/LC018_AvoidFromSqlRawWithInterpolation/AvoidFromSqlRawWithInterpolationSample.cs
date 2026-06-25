@@ -17,10 +17,16 @@ public class AvoidFromSqlRawWithInterpolationSample
         // VIOLATION: Potential SQL Injection using string concatenation
         var users2 = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = '" + name + "'").ToList();
 
+        // VIOLATION: SqlQueryRaw<T> is also a raw string sink for scalar/keyless queries.
+        var userIds = db.Database.SqlQueryRaw<int>($"SELECT Id FROM Users WHERE Name = {name}").ToList();
+
         // CORRECT: Safe parameterization
         var users3 = db.Users.FromSqlRaw("SELECT * FROM Users WHERE Name = {0}", name).ToList();
 
         // CORRECT: Use FromSqlInterpolated and remove SQL quotes around interpolated values.
         var users4 = db.Users.FromSqlInterpolated($"SELECT * FROM Users WHERE Name = {name}").ToList();
+
+        // CORRECT: SqlQuery<T> accepts FormattableString and parameterizes interpolation holes.
+        var safeUserIds = db.Database.SqlQuery<int>($"SELECT Id FROM Users WHERE Name = {name}").ToList();
     }
 }

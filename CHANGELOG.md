@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.22] - 2026-06-26
+
+### Fixed
+- `LC018` now offers a safe `SqlQueryRaw<T>` → `SqlQuery<T>` fixer for direct interpolated scalar/keyless query SQL, preserving generic type arguments while keeping quoted interpolation, concatenation, and raw-parameter shapes manual.
+
 ## [5.6.21] - 2026-06-25
 
 ### Changed

@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.21</Version>
+        <Version>5.6.22</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC008 sync-over-async docs and sample now explain mapped EF async counterpart families, no-async-equivalent guidance, query-expression translation boundaries, static-local-function scoping, non-async lambda/local-function fixer limits, cancellation-token non-goals, and scalar terminal examples.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC018 now offers a safe SqlQueryRaw&lt;T&gt; to SqlQuery&lt;T&gt; fixer for direct interpolated scalar/keyless query SQL, preserving generic type arguments while keeping quoted interpolation, concatenation, and raw-parameter shapes manual.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

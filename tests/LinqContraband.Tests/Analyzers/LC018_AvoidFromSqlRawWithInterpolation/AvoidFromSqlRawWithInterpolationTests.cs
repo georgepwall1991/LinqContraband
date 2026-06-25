@@ -839,6 +839,60 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task Fixer_ShouldReplaceSqlQueryRawWithSqlQuery()
+    {
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, int id)
+        {
+            var rows = db.SqlQueryRaw<int>({|LC018:$""SELECT Id FROM Users WHERE Id = {id}""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, int id)
+        {
+            var rows = db.SqlQuery<int>($""SELECT Id FROM Users WHERE Id = {id}"");
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegisterForSqlQueryRaw_WhenInterpolationIsInsideSqlStringLiteral()
+    {
+        var test = @"using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;" + EFCoreFacadeMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void Run(DatabaseFacade db, string name)
+        {
+            var rows = db.SqlQueryRaw<int>({|LC018:$""SELECT Id FROM Users WHERE Name = '{name}'""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task FixAll_RewritesAllFromSqlRawWithInterpolatedStringInstances()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
