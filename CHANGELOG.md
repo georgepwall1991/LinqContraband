@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.19] - 2026-06-25
+
+### Changed
+- `LC004` docs now explain when to keep `IQueryable<T>` signatures versus explicitly materializing with `.ToList()`, plus forwarding-chain detection, expression-bodied and query-syntax consumption, safe deferred boundaries, source-body limits, nested local-function/lambda scoping, and the narrow fixer contract for `IQueryable` to `IEnumerable` leaks.
+
 ## [5.6.18] - 2026-06-23
 
 ### Changed
