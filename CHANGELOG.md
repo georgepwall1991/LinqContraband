@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.21] - 2026-06-25
+
+### Changed
+- `LC008` docs and sample now explain the mapped EF async counterpart families, no-async-equivalent guidance, query-expression translation boundaries, static-local-function scoping, non-async lambda/local-function fixer limits, cancellation-token non-goals, and scalar terminal sync-over-async examples.
+
 ## [5.6.20] - 2026-06-25
 
 ### Changed

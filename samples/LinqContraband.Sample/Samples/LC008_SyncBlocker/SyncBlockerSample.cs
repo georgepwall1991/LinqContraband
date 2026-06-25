@@ -8,8 +8,7 @@ namespace LinqContraband.Sample.Samples.LC008_SyncBlocker;
 /// <remarks>
 ///     <para>
 ///         <strong>The Crime:</strong> Calling synchronous database methods (like <c>ToList()</c>, <c>First()</c>,
-///         <c>Count()</c>)
-///         inside an <c>async</c> method.
+///         <c>Count()</c>) inside an <c>async</c> method.
 ///     </para>
 ///     <para>
 ///         <strong>Why it's bad:</strong> In a web server environment (ASP.NET Core), threads are a limited resource.
@@ -33,9 +32,12 @@ public class SyncBlockerSample
     {
         Console.WriteLine("Testing LC008...");
 
-        // VIOLATION: Blocking the thread with synchronous ToList() inside an async method.
+        // VIOLATION 1: Blocking the thread with synchronous ToList() inside an async method.
         // The thread is held hostage while the query executes.
         var syncBlocker = users.ToList();
+
+        // VIOLATION 2: Scalar terminals such as Count() also execute the database query synchronously.
+        var syncCount = users.Count();
 
         await Task.Delay(10); // Ensure async context
     }
