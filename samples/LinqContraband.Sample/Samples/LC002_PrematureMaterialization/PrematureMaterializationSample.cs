@@ -30,20 +30,20 @@ public class PrematureMaterializationSample
     {
         Console.WriteLine("Testing LC002...");
 
-        // VIOLATION 1: ToList() executes the query (SELECT * FROM Users).
+        // VIOLATION 1: ToList() executes the query before the filter.
         // The Where() clause then runs in memory on the entire dataset.
-        var prematureResult = users.Where(u => u.Age > 20).ToList();
+        var prematureResult = users.ToList().Where(u => u.Age > 20).ToList();
 
         // VIOLATION 2: AsEnumerable() switches to LINQ-to-Objects context.
         // This forces client-side evaluation for all subsequent operators.
-        var prematureAsEnumerable = users.Where(u => u.Age > 30).ToList();
+        var prematureAsEnumerable = users.AsEnumerable().OrderBy(u => u.Name).ToList();
 
         // VIOLATION 3: Materializing to a Dictionary first.
         // This fetches everything before filtering.
         var prematureDictionary = users.ToDictionary(u => u.Id).Where(kvp => kvp.Value.Age > 25).ToList();
 
-        // VIOLATION 4: Redundant materialization (Merged from LC028).
-        // Calling AsEnumerable() immediately followed by ToList() is redundant.
-        var redundant = users.AsEnumerable().ToList();
+        // VIOLATION 4: Redundant materialization.
+        // ToArray() already materializes the query, so the trailing ToList() is redundant.
+        var redundant = users.ToArray().ToList();
     }
 }

@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.19</Version>
+        <Version>5.6.20</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC004 IQueryable-to-IEnumerable leak docs now explain when to keep IQueryable signatures versus explicitly materializing with ToList, plus forwarding-chain detection, expression-bodied and query-syntax consumption, safe deferred boundaries, source-body limits, nested local-function/lambda scoping, and the narrow fixer contract.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC002 premature materialization docs and sample now explain ToList/ToArray/AsEnumerable boundary differences, provider-safe lambda gates, intentional client-side continuation patterns, redundant materialization versus shape-changing materializers, and the narrow fixer contract.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
