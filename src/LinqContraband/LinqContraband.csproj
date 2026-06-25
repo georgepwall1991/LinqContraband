@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.18</Version>
+        <Version>5.6.19</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC021 IgnoreQueryFilters validation now covers type-level SuppressMessage, static extension-call pragma suppression, editorconfig severity suppression, and generated-code exclusion, complementing the existing direct diagnostic, EF/lookalike, IEnumerable, local pragma, and method-level SuppressMessage coverage. Docs now distinguish narrow reviewed suppressions from broader project-policy disablement for intentional filter bypasses.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC004 IQueryable-to-IEnumerable leak docs now explain when to keep IQueryable signatures versus explicitly materializing with ToList, plus forwarding-chain detection, expression-bodied and query-syntax consumption, safe deferred boundaries, source-body limits, nested local-function/lambda scoping, and the narrow fixer contract.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
