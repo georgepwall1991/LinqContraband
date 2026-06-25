@@ -13,7 +13,7 @@ using Microsoft.CodeAnalysis.Editing;
 namespace LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation;
 
 /// <summary>
-/// Provides code fixes for LC018. Replaces FromSqlRaw with FromSqlInterpolated when interpolated strings are used.
+/// Provides code fixes for LC018. Replaces raw SQL query APIs with interpolated counterparts when safe.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AvoidFromSqlRawWithInterpolationFixer))]
 [Shared]
@@ -38,8 +38,11 @@ public sealed class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
         var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null) return;
 
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess ||
-            memberAccess.Name.Identifier.Text != "FromSqlRaw")
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return;
+
+        var replacementName = GetReplacementName(memberAccess.Name.Identifier.Text);
+        if (replacementName is null)
             return;
 
         var sqlArgument = GetSqlArgument(invocation);
@@ -54,17 +57,43 @@ public sealed class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
 
         context.RegisterCodeFix(
             CodeAction.Create(
-                "Replace with FromSqlInterpolated",
-                c => ApplyFixAsync(context.Document, memberAccess, c),
-                "ReplaceFromSqlRawWithInterpolated"),
+                $"Replace with {replacementName}",
+                c => ApplyFixAsync(context.Document, memberAccess, replacementName, c),
+                GetEquivalenceKey(memberAccess.Name.Identifier.Text)),
             diagnostic);
     }
 
-    private static async Task<Document> ApplyFixAsync(Document document, MemberAccessExpressionSyntax memberAccess, CancellationToken cancellationToken)
+    private static async Task<Document> ApplyFixAsync(Document document, MemberAccessExpressionSyntax memberAccess, string replacementName, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        editor.ReplaceNode(memberAccess, memberAccess.WithName(SyntaxFactory.IdentifierName("FromSqlInterpolated")));
+        editor.ReplaceNode(memberAccess, memberAccess.WithName(WithReplacementName(memberAccess.Name, replacementName)));
         return editor.GetChangedDocument();
+    }
+
+    private static SimpleNameSyntax WithReplacementName(SimpleNameSyntax name, string replacementName)
+    {
+        return name is GenericNameSyntax genericName
+            ? genericName.WithIdentifier(SyntaxFactory.Identifier(replacementName))
+            : SyntaxFactory.IdentifierName(replacementName);
+    }
+
+    private static string? GetReplacementName(string methodName)
+    {
+        return methodName switch
+        {
+            "FromSqlRaw" => "FromSqlInterpolated",
+            "SqlQueryRaw" => "SqlQuery",
+            _ => null
+        };
+    }
+
+    private static string GetEquivalenceKey(string methodName)
+    {
+        return methodName switch
+        {
+            "SqlQueryRaw" => "ReplaceSqlQueryRawWithSqlQuery",
+            _ => "ReplaceFromSqlRawWithInterpolated"
+        };
     }
 
     private static ArgumentSyntax? GetSqlArgument(InvocationExpressionSyntax invocation)
