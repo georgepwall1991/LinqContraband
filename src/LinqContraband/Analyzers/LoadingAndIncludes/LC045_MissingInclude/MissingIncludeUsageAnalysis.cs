@@ -261,6 +261,13 @@ public sealed partial class MissingIncludeAnalyzer
                 chainedAccess.Operation.UnwrapConversions() == propertyReference)
             {
                 current = FindConditionalAccessEntryProperty(chainedAccess);
+                continue;
+            }
+
+            if (current is IConditionalAccessOperation completedConditionalAccess &&
+                TryFindRegroupedConditionalContinuation(completedConditionalAccess, out var continuation))
+            {
+                current = continuation;
             }
         }
 
@@ -312,7 +319,137 @@ public sealed partial class MissingIncludeAnalyzer
             return true;
         }
 
+        // Parenthesized conditional regrouping, e.g. (order?.Customer)?.Address, resolves the
+        // Address instance back to the whole inner conditional access rather than directly to
+        // the Customer property. Re-enter through the terminal navigation property so the
+        // deeper path is still reported as Customer.Address.
+        if (instance is IConditionalAccessOperation conditionalInstance &&
+            FindConditionalAccessTerminalProperty(conditionalInstance) is IPropertyReferenceOperation conditionalParentReference &&
+            TryGetAccessPath(conditionalParentReference, entityType, entityTypes, isEntitySource, out var conditionalParentPath))
+        {
+            if (!TryResolveNavigationTargetForPath(entityType, conditionalParentPath, entityTypes, out var conditionalParentTarget, out var conditionalParentIsCollection) ||
+                conditionalParentIsCollection)
+            {
+                return false;
+            }
+
+            if (!IsPropertyOfEntity(propertyReference.Property, conditionalParentTarget))
+                return false;
+
+            path = conditionalParentPath + "." + propertyReference.Property.Name;
+            return true;
+        }
+
         return false;
+    }
+
+    private static bool TryResolveNavigationTargetForPath(
+        INamedTypeSymbol entityType,
+        string path,
+        HashSet<INamedTypeSymbol> entityTypes,
+        out INamedTypeSymbol targetEntity,
+        out bool isCollection)
+    {
+        targetEntity = null!;
+        isCollection = false;
+        var currentEntity = entityType;
+
+        foreach (var segment in path.Split('.'))
+        {
+            var segmentProperty = FindEntityProperty(currentEntity, segment);
+
+            if (segmentProperty == null ||
+                !TryGetNavigationTarget(segmentProperty, entityTypes, out targetEntity, out isCollection))
+            {
+                return false;
+            }
+
+            if (isCollection)
+                return true;
+
+            currentEntity = targetEntity;
+        }
+
+        return targetEntity != null;
+    }
+
+    private static IPropertySymbol? FindEntityProperty(INamedTypeSymbol entityType, string name)
+    {
+        for (INamedTypeSymbol? current = entityType; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers(name))
+            {
+                if (member is IPropertySymbol property && IsPropertyOfEntity(property, entityType))
+                    return property;
+            }
+        }
+
+        return null;
+    }
+
+    private static IPropertyReferenceOperation? FindConditionalAccessTerminalProperty(IConditionalAccessOperation conditionalAccess)
+    {
+        var current = conditionalAccess.WhenNotNull.UnwrapConversions();
+
+        while (true)
+        {
+            if (current is IConditionalAccessOperation nested)
+            {
+                current = nested.WhenNotNull.UnwrapConversions();
+                continue;
+            }
+
+            if (current is IInvocationOperation)
+            {
+                return null;
+            }
+
+            return current as IPropertyReferenceOperation;
+        }
+    }
+
+    private static bool TryFindRegroupedConditionalContinuation(
+        IConditionalAccessOperation completedConditionalAccess,
+        out IOperation? continuation)
+    {
+        continuation = null;
+
+        for (var parent = completedConditionalAccess.Parent; parent != null; parent = parent.Parent)
+        {
+            if (parent is IConversionOperation or IParenthesizedOperation)
+                continue;
+
+            if (parent is IConditionalAccessOperation regroupedConditionalAccess &&
+                UnwrapOperandWrappers(regroupedConditionalAccess.Operation) == completedConditionalAccess)
+            {
+                continuation = FindConditionalAccessEntryProperty(regroupedConditionalAccess);
+                return continuation != null;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    private static IOperation UnwrapOperandWrappers(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation conversion:
+                    operation = conversion.Operand;
+                    continue;
+
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+
+                default:
+                    return operation;
+            }
+        }
     }
 
     private static bool IsCollectionNavigation(

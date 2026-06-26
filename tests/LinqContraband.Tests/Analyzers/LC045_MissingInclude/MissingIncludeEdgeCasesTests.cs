@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC045_MissingInclude.MissingIncludeAnalyzer>;
 
@@ -5,6 +6,14 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
 public class MissingIncludeEdgeCasesTests
 {
+    private static DiagnosticResult Diagnostic(int markupKey, string navigationPath, string entityName)
+    {
+        return VerifyCS.Diagnostic("LC045")
+            .WithLocation(markupKey)
+            .WithArguments(navigationPath, entityName)
+            .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations);
+    }
+
     private const string Usings = @"
 using System;
 using System.Linq;
@@ -72,6 +81,11 @@ namespace Microsoft.EntityFrameworkCore
 
 namespace TestNamespace
 {
+    public class OrderBase
+    {
+        public Customer Customer { get; set; }
+    }
+
     public class Order
     {
         public int Id { get; set; }
@@ -81,17 +95,30 @@ namespace TestNamespace
         public OrderSummary Summary { get; set; }
     }
 
+    public class SpecialOrder : OrderBase
+    {
+        public int Id { get; set; }
+    }
+
     public class Customer
     {
         public int Id { get; set; }
         public string Name { get; set; }
         public Address Address { get; set; }
+        public Customer GetDetached() => new Customer { Address = new Address() };
     }
 
     public class Address
     {
         public int Id { get; set; }
         public string City { get; set; }
+        public Region Region { get; set; }
+    }
+
+    public class Region
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class OrderItem
@@ -108,9 +135,11 @@ namespace TestNamespace
     public class MyDbContext : DbContext
     {
         public DbSet<Order> Orders { get; set; }
+        public DbSet<SpecialOrder> SpecialOrders { get; set; }
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
+        public DbSet<Region> Regions { get; set; }
     }
 
     public static class MyExtensions
@@ -742,6 +771,106 @@ class Program
     {
         var db = new MyDbContext();
         var name = db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer?.Name;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ParenthesizedConditionalAccessReportsFullNestedPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
+        Console.WriteLine((order?.Customer)?{|#0:.Address|}?.City);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_DeeperParenthesizedConditionalAccessReportsFullNestedPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders
+            .Include(o => o.Customer)
+            .ThenInclude(c => c.Address)
+            .FirstOrDefault();
+        Console.WriteLine((order?.Customer?.Address)?{|#0:.Region|}?.Name);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address.Region", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_InlineMaterializerParenthesizedConditionalAccessReportsFullNestedPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var city = (db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer)?{|#0:.Address|}?.City;
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address", "Order");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_InheritedNavigationParenthesizedConditionalAccessReportsFullNestedPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.SpecialOrders.Include(o => o.Customer).FirstOrDefault();
+        Console.WriteLine((order?.Customer)?{|#0:.Address|}?.City);
+    }
+}
+" + MockNamespace;
+
+        var expected = Diagnostic(0, "Customer.Address", "SpecialOrder");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ConditionalMethodReturnDoesNotAppendReceiverPath_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
+        var city = (order?.Customer.GetDetached())?.Address?.City;
     }
 }
 " + MockNamespace;

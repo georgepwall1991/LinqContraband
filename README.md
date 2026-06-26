@@ -1676,7 +1676,9 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 - Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
   and are not flagged.
 - Null-guarded reads still fire deliberately: under proxies the null check itself triggers the N+1, and without
-  proxies the guard is dead code hiding the missing `Include`.
+  proxies the guard is dead code hiding the missing `Include`. Regrouped conditional paths such as
+  `(order?.Customer)?.Address?.City` report the full `Customer.Address` navigation, including inline materializer
+  and inherited-navigation forms, while conditional method-call results stay outside the queried receiver path.
 
 ---
 
