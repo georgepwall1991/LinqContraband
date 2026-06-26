@@ -10,7 +10,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj" />
-        <PackageReference Include="Microsoft.CodeAnalysis" Version="4.3.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis" Version="4.14.0" />
     </ItemGroup>
 
 </Project>
