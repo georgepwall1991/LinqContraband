@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.31</Version>
+        <Version>5.6.32</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC040 docs, README guidance, sample comments, and tests now clarify manual-only remediation for mixed tracking modes, including transparent query options, explicit transactions, and split-workflow boundaries.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC016 docs, README guidance, and sample comments now clarify deterministic clock boundaries, injected-clock testability, UTC timestamp preference, provider-specific server-clock alternatives, and the narrow local-variable fixer contract.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

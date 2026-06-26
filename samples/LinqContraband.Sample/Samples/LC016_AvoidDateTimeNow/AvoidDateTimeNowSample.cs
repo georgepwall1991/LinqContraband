@@ -15,8 +15,7 @@ public class AvoidDateTimeNowSample
     public void Run()
     {
         // ❌ The Crime: Using DateTime.Now directly in the query.
-        // This prevents query plan caching because the constant value changes every execution.
-        // It also makes unit testing impossible without mocking the system clock.
+        // This hides the clock boundary inside the expression tree and makes tests harder to control.
         var badQuery = _db.ConfigurationEntities
             .AsNoTracking()
             .Where(c => c.CreatedAt < DateTime.Now)
@@ -25,6 +24,7 @@ public class AvoidDateTimeNowSample
             .ToList();
 
         // ✅ The Fix: Store the date in a variable first.
+        // In production code, prefer an injected clock and use UtcNow for persisted timestamps.
         var now = DateTime.Now;
         var goodQuery = _db.ConfigurationEntities
             .AsNoTracking()

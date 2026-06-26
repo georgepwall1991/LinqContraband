@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.32] - 2026-06-26
+
+### Changed
+- `LC016` docs, README guidance, and executable sample now explain deterministic clock boundaries, injected-clock/testability guidance, `UtcNow` timestamp preference, and provider-specific server-clock alternatives while preserving the narrow local-variable fixer contract.
+
 ## [5.6.31] - 2026-06-26
 
 ### Changed
