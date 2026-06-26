@@ -28,6 +28,8 @@ dotnet add package LinqContraband
 - Silent no-tracking writes and mixed tracking modes
 - Bulk update/delete operations without an explicit filter
 
+For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
+
 ## Why Compile-Time Analysis Helps
 
 EF Core problems often hide behind ordinary-looking LINQ. A query can compile, pass local testing, and still create a
@@ -42,6 +44,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 The full catalog contains 45 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
+- [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
 - [LC007: N+1 query loops](/LinqContraband/LC007_NPlusOneLooper.html)
 - [LC045: missing include](/LinqContraband/LC045_MissingInclude.html)
 - [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html)

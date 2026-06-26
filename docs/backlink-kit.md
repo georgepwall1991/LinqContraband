@@ -18,6 +18,7 @@ repository or the GitHub Pages documentation hub.
 - Package: [https://www.nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
+- N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Maintainer: [https://www.georgewall.uk/](https://www.georgewall.uk/)
 
 ## Suggested Anchor Text
@@ -25,6 +26,7 @@ repository or the GitHub Pages documentation hub.
 - EF Core LINQ performance analyzer
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
+- EF Core N+1 query detector for .NET
 - LINQ query performance analyzer for .NET
 - LinqContraband Roslyn analyzer
 
@@ -66,6 +68,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents 45 EF Core analyzer rules covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
+## N+1 Guide Link
+
+```markdown
+[EF Core N+1 query detector](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/) explains how LinqContraband flags loop execution, missing includes, and risky loading patterns at compile time.
 ```
 
 ## HTML Link
