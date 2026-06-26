@@ -293,15 +293,21 @@ a:hover {
   color: var(--muted);
 }
 
-.feature-grid,
-.link-grid {
+.feature-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
+.link-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .feature-card,
 .link-card,
+.snippet-card,
 .metric,
 .rule-card {
   border: 1px solid var(--line);
@@ -310,22 +316,32 @@ a:hover {
 }
 
 .feature-card,
-.link-card {
+.link-card,
+.snippet-card {
   min-height: 188px;
   padding: 20px;
 }
 
 .feature-card h3,
-.link-card h3 {
+.link-card h3,
+.snippet-card h3 {
   margin: 0 0 10px;
   font-size: 1.05rem;
   line-height: 1.25;
 }
 
 .feature-card p,
-.link-card p {
+.link-card p,
+.snippet-card p {
   margin: 0;
   color: var(--muted);
+}
+
+.snippet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0 24px;
 }
 
 .install-band {
@@ -439,6 +455,10 @@ a:hover {
 .markdown p,
 .markdown li {
   font-size: 1.02rem;
+}
+
+.markdown a {
+  overflow-wrap: anywhere;
 }
 
 .markdown ul,
@@ -689,6 +709,7 @@ a:hover {
   .section-heading,
   .feature-grid,
   .link-grid,
+  .snippet-grid,
   .install-grid,
   .page-shell,
   .catalog-intro,

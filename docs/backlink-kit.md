@@ -3,17 +3,21 @@ layout: default
 title: LinqContraband Link Kit
 description: Short, safe descriptions and canonical links for articles, lists, newsletters, and documentation that mention LinqContraband.
 permalink: /backlink-kit/
+body_class: page-backlink-kit
 ---
 
 # LinqContraband Link Kit
 
-Use these snippets when linking to LinqContraband from articles, newsletters, tool lists, personal sites, talks, or
-documentation.
+Use these snippets when linking to LinqContraband from articles, newsletters, tool lists, personal sites, talks,
+conference notes, internal engineering docs, or curated .NET resources. The safest link target is the canonical
+repository or the GitHub Pages documentation hub.
 
 ## Canonical Links
 
 - Project: [https://github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - Package: [https://www.nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
+- Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
+- Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Maintainer: [https://www.georgewall.uk/](https://www.georgewall.uk/)
 
 ## Suggested Anchor Text
@@ -23,6 +27,23 @@ documentation.
 - EF Core N+1 query detector
 - LINQ query performance analyzer for .NET
 - LinqContraband Roslyn analyzer
+
+## Curator-ready snippets
+
+<div class="snippet-grid">
+  <article class="snippet-card">
+    <h3>Directory listing</h3>
+    <p>LinqContraband is an open-source EF Core LINQ performance analyzer for .NET. It uses Roslyn analyzers to catch query performance, reliability, and raw SQL safety issues during compilation.</p>
+  </article>
+  <article class="snippet-card">
+    <h3>Newsletter blurb</h3>
+    <p>Worth a look for .NET teams using EF Core: LinqContraband catches common LINQ query problems before they hit production, including N+1 loops, premature materialization, missing includes, and unsafe raw SQL interpolation.</p>
+  </article>
+  <article class="snippet-card">
+    <h3>Talk notes</h3>
+    <p>Use LinqContraband as a concrete example of moving EF Core query review into compile-time feedback with Roslyn analyzers.</p>
+  </article>
+</div>
 
 ## One-Line Description
 
@@ -41,11 +62,26 @@ unsafe raw SQL interpolation, and tracking mistakes.
 [LinqContraband](https://github.com/georgepwall1991/LinqContraband) is an EF Core LINQ performance analyzer for catching query issues at compile time.
 ```
 
+## Documentation Link
+
+```markdown
+[LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents 45 EF Core analyzer rules covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
 ## HTML Link
 
 ```html
 <a href="https://github.com/georgepwall1991/LinqContraband">LinqContraband</a> is an EF Core LINQ performance analyzer for catching query issues at compile time.
 ```
+
+## Suggested Categories
+
+- .NET static analysis
+- Entity Framework Core tooling
+- Roslyn analyzers
+- LINQ performance
+- Query reliability
+- Developer productivity
 
 ## Badge
 
@@ -57,3 +93,7 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 Install LinqContraband from NuGet or the canonical GitHub repository only. The project is not distributed as a standalone
 ZIP installer or executable.
+
+```markdown
+Install LinqContraband from NuGet or the canonical GitHub repository only. The project is not distributed as a standalone ZIP installer or executable.
+```
