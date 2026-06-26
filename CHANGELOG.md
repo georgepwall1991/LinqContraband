@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.31] - 2026-06-26
+
+### Changed
+- `LC040` docs, README guidance, and executable sample now explain legitimate split workflows, why transactions and transparent query options do not change tracking mode, and why the rule remains manual-only. Test coverage now locks mixed-mode detection through `AsSplitQuery()`/`TagWith(...)` chains and explicit transactions.
+
 ## [5.6.30] - 2026-06-26
 
 ### Changed

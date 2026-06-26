@@ -1525,6 +1525,8 @@ var related = await db.Users.AsNoTracking().Where(u => u.ManagerId == id).ToList
 - LC040 only reports when the same proven context can materialize both tracked and no-tracking entities on one execution path.
 - Straight-line local query aliases are resolved at the materialization point, so reassigned locals can still report for the same context while different-context or conditional reassignments stay quiet.
 - Mutually exclusive `if`/`else` and `switch` tracking choices are ignored, but later materialization is still compared against every reachable earlier mode.
+- Transparent query options such as `AsSplitQuery()` and `TagWith(...)` do not change tracking mode, and an explicit transaction does not make mixed modes safe by itself.
+- LC040 has no automatic fixer because the right answer may be fully tracked, fully no-tracking, or a split workflow with separate scopes/contexts.
 
 ---
 
