@@ -7,7 +7,7 @@ disable-model-invocation: true
 # Verify One Rule
 
 A focused inner-loop check for a **single** rule while iterating on it. The full
-`RuleCatalogIntegrityTests` validates all 44 rules at once; this narrows to the one you're editing
+`RuleCatalogIntegrityTests` validates every catalogued rule at once; this narrows to the one you're editing
 so you get fast feedback before running the whole suite or `/pre-pr`.
 
 ## Input
