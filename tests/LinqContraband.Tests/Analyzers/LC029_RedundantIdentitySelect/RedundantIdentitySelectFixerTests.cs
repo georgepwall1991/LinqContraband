@@ -79,6 +79,37 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    [Fact]
+    public async Task SelectIdentity_AfterAsEnumerable_ShouldPreserveBoundary()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            var result = {|LC029:query.AsEnumerable().Select(x => x)|}.ToList();
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            var result = query.AsEnumerable().ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest

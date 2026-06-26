@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.29] - 2026-06-26
+
+### Fixed
+- `LC029` now recognises statement-bodied interface-enumerable identity projections such as `items.Select(x => { return x; })`, preserves parenthesized/cast/null-forgiving fluent receivers, keeps static, concrete-enumerable, awaited-task, explicit-cast, and type-changing projection forms out of the safe-fixer path, and clarifies that explicit boundaries such as `AsEnumerable()` should be kept directly rather than marked with `Select(x => x)`.
+
 ## [5.6.28] - 2026-06-26
 
 ### Fixed

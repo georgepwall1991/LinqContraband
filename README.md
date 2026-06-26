@@ -1087,8 +1087,9 @@ var orders = db.Orders.Select(o => new {
 
 ### LC029: Redundant Identity Select
 
-`Select(x => x)` tells the database "For every item, return that item." It's the default behavior, so writing it out
-just makes your code harder to read.
+`Select(x => x)` tells the database or enumerable pipeline "For every item, return that item." It's the default
+behavior, so writing it out just makes your code harder to read. LC029 also catches statement-bodied identity lambdas
+such as `Select(x => { return x; })` on enumerable sources.
 
 **👶 Explain it like I'm a ten year old:** Imagine you ask a friend to go to the store and buy apples. But then you say,
 "And for every apple you find, make sure the apple you bring back is an apple." Your friend will look at you funny
@@ -1099,14 +1100,25 @@ because they were already going to do that!
 ```csharp
 // Violation: Does nothing
 var users = db.Users.Select(u => u).ToList();
+
+// Violation: AsEnumerable is the real boundary; Select still does nothing
+var users = db.Users.AsEnumerable().Select(u => u).ToList();
 ```
 
 **✅ The Fix:**
-Remove the redundant Select.
+Remove the redundant Select. If the query needs an explicit client-side or materialization boundary, keep that boundary
+directly with `AsEnumerable()`, `AsAsyncEnumerable()`, `ToList()`, or `ToArray()` instead of using identity projection
+as a marker. Static `Enumerable.Select(...)` calls, concrete enumerable receivers such as `List<T>`, awaited-task
+projections such as `Select(async x => await x)`, explicit-cast projections such as `Select<Base, Base>(x => (Derived)x)`,
+and type-changing projections such as `Select(x => (object)x)` stay unreported because removing them is not the same safe fluent rewrite.
+Parenthesized, explicitly cast, and null-forgiven fluent receivers still report when the projection is an identity.
 
 ```csharp
 // Correct
 var users = db.Users.ToList();
+
+// Correct: boundary preserved
+var users = db.Users.AsEnumerable().ToList();
 ```
 
 ---

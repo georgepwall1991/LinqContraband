@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -41,17 +42,26 @@ public sealed class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
         var method = invocation.TargetMethod;
 
         if (method.Name != "Select") return;
+        if (!IsLinqSelect(method)) return;
 
         // Check if receiver is IQueryable or IEnumerable
-        var receiver = invocation.GetInvocationReceiver();
+        var rawReceiver = invocation.GetInvocationReceiver(unwrapConversions: false);
+        if (rawReceiver == null) return;
+
+        var receiver = UnwrapImplicitConversions(rawReceiver);
         if (receiver == null || (!receiver.Type.IsIQueryable() && !IsEnumerable(receiver.Type))) return;
+        if (!IsFluentInvocation(invocation, rawReceiver)) return;
 
         // Check if there is a predicate
         if (invocation.Arguments.Length < (method.IsExtensionMethod ? 2 : 1)) return;
 
         var predicateArg = method.IsExtensionMethod ? invocation.Arguments[1] : invocation.Arguments[0];
-        var lambda = predicateArg.Value.UnwrapConversions() as IAnonymousFunctionOperation;
+        var lambda = TryGetLambda(predicateArg.Value, out var isDelegateCreation);
         if (lambda == null) return;
+
+        if (isDelegateCreation && !IsExactEnumerableInterface(receiver.Type)) return;
+
+        if (!IsTypePreservingSelector(lambda)) return;
 
         if (IsIdentityLambda(lambda))
         {
@@ -59,13 +69,72 @@ public sealed class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private bool IsIdentityLambda(IAnonymousFunctionOperation lambda)
+    private static bool IsLinqSelect(IMethodSymbol method)
+    {
+        var original = method.ReducedFrom ?? method;
+        var containingType = original.ContainingType?.ToDisplayString();
+        return containingType is "System.Linq.Enumerable" or "System.Linq.Queryable";
+    }
+
+    private static bool IsFluentInvocation(IInvocationOperation invocation, IOperation receiver)
+    {
+        return invocation.Syntax is InvocationExpressionSyntax
+        {
+            Expression: MemberAccessExpressionSyntax memberAccess
+        } && memberAccess.Expression.Span.Contains(receiver.Syntax.Span);
+    }
+
+    private static IOperation UnwrapImplicitConversions(IOperation operation)
+    {
+        var current = operation;
+        while (current is IConversionOperation { IsImplicit: true } conversion)
+        {
+            current = conversion.Operand;
+        }
+
+        return current;
+    }
+
+    private static IAnonymousFunctionOperation? TryGetLambda(IOperation operation, out bool isDelegateCreation)
+    {
+        isDelegateCreation = false;
+        var value = operation.UnwrapConversions();
+        if (value is IAnonymousFunctionOperation lambda)
+        {
+            return lambda;
+        }
+
+        if (value is IDelegateCreationOperation { Target: IAnonymousFunctionOperation delegateLambda })
+        {
+            isDelegateCreation = true;
+            return delegateLambda;
+        }
+
+        return null;
+    }
+
+    private static bool IsExactEnumerableInterface(ITypeSymbol? type)
+    {
+        return type is INamedTypeSymbol namedType &&
+               namedType.Name == "IEnumerable" &&
+               namedType.ContainingNamespace?.ToString() == "System.Collections.Generic" &&
+               namedType.TypeArguments.Length == 1;
+    }
+
+    private static bool IsTypePreservingSelector(IAnonymousFunctionOperation lambda)
+    {
+        var parameter = lambda.Symbol.Parameters.FirstOrDefault();
+        return parameter != null &&
+               SymbolEqualityComparer.Default.Equals(parameter.Type, lambda.Symbol.ReturnType);
+    }
+
+    private static bool IsIdentityLambda(IAnonymousFunctionOperation lambda)
     {
         var body = lambda.Body.Operations.FirstOrDefault();
         if (body is IReturnOperation returnOp) body = returnOp.ReturnedValue;
         if (body == null) return false;
 
-        body = body.UnwrapConversions();
+        body = UnwrapIdentityValue(body);
 
         if (body is IParameterReferenceOperation paramRef)
         {
@@ -73,6 +142,27 @@ public sealed class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static IOperation UnwrapIdentityValue(IOperation operation)
+    {
+        var current = operation;
+        while (true)
+        {
+            if (current is IConversionOperation { IsImplicit: true } conversion)
+            {
+                current = conversion.Operand;
+                continue;
+            }
+
+            if (current is IParenthesizedOperation parenthesized)
+            {
+                current = parenthesized.Operand;
+                continue;
+            }
+
+            return current;
+        }
     }
 
     private bool IsEnumerable(ITypeSymbol? type)

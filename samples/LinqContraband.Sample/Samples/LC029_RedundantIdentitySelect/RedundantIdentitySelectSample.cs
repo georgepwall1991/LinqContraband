@@ -8,10 +8,10 @@ public class RedundantIdentitySelectSample
     {
         Console.WriteLine("Testing LC029...");
 
-        // VIOLATION: Redundant identity projection
+        // VIOLATION: Redundant identity projection.
         var result1 = users.Select(u => u).ToList();
 
-        // CORRECT
+        // CORRECT: Remove the identity projection.
         var result2 = users.ToList();
     }
 }
