@@ -77,6 +77,66 @@ class Test
     }
 
     [Fact]
+    public async Task ExplicitOrderedEnumerableLocal_RewritesToThenBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IOrderedEnumerable<int> sorted = list.OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IOrderedEnumerable<int> sorted = list.OrderBy(x => x);
+        var q = sorted.ThenBy(x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task StaticEnumerableOrderBy_RewritesToThenBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = Enumerable.{|LC005:OrderBy|}(list.OrderBy(x => x), x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = Enumerable.ThenBy(list.OrderBy(x => x), x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
     public async Task FixAll_ReplacesAllConsecutiveOrderBysWithThenBy()
     {
         var test = @"
