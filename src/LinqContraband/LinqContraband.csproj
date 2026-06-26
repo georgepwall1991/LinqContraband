@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.32</Version>
+        <Version>5.6.33</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -17,8 +17,8 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC016 docs, README guidance, and sample comments now clarify deterministic clock boundaries, injected-clock testability, UTC timestamp preference, provider-specific server-clock alternatives, and the narrow local-variable fixer contract.</PackageReleaseNotes>
+        <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
+        <PackageReleaseNotes>Canonical project metadata, README safe-install guidance, GitHub Pages documentation, sitemap, backlink kit, and authenticity guidance now make the official LinqContraband package easier to find and verify.</PackageReleaseNotes>
         <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

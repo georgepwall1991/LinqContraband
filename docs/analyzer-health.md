@@ -393,16 +393,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.32**
+Package version: **5.6.33**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current verification (2026-06-26, release-bound LC016 clock-boundary guidance pass):
+Current verification (2026-06-26, release-bound SEO/authenticity metadata pass):
 
-- `RuleCatalogDocGenerator --check`, `dotnet restore`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed locally for this docs/sample pass.
-- Local analyzer-verifier tests are blocked on this Mac by the same pre-existing Roslyn test reference issue reproduced on clean `origin/master` (`CS0518`/missing `System.Object`, `DateTime`, and `IQueryable<>` inside verifier compilations). Local arm64 net8.0/net9.0 testhost runs are also unavailable because only arm64 `Microsoft.NETCore.App 10.0.9` is installed.
+- `dotnet restore LinqContraband.sln`, `RuleCatalogDocGenerator --check`, `dotnet build LinqContraband.sln --configuration Release --no-restore`, `SampleDiagnosticsVerifier --configuration Release --frameworks net10.0`, focused `RuleQualityContractTests` on `net10.0`, Release `dotnet pack`, package metadata readback, `git diff --check`, hygiene scan, and `codex review --uncommitted` passed locally for the SEO/authenticity metadata release.
+- Local broad multi-target analyzer-verifier tests remain limited on this Mac by the same pre-existing Roslyn test reference issue reproduced on clean `origin/master` (`CS0518`/missing `System.Object`, `DateTime`, and `IQueryable<>` inside verifier compilations). Local arm64 net8.0/net9.0 testhost runs are also unavailable because only arm64 `Microsoft.NETCore.App 10.0.9` is installed.
 - Full analyzer test coverage for the release remains delegated to GitHub CI's Ubuntu `dotnet test --no-build --verbosity normal` matrix after PR creation, matching the repository workflow.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

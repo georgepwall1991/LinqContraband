@@ -15,17 +15,18 @@ namespace LinqContraband.Tests.Architecture;
 public sealed class RuleQualityContractTests
 {
     private const string RepositoryUrl = "https://github.com/georgepwall1991/LinqContraband";
+    private const string ProjectUrl = "https://georgepwall1991.github.io/LinqContraband/";
     private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
 
     [Fact]
-    public void PackageMetadata_PointsToThePublicRepository()
+    public void PackageMetadata_PointsToOfficialProjectSurfaces()
     {
         var properties = LoadPackageProperties();
 
         Assert.Equal("LinqContraband", properties["PackageId"]);
         Assert.Equal("LinqContraband", properties["Title"]);
         Assert.Equal(RepositoryUrl, properties["RepositoryUrl"]);
-        Assert.Equal(RepositoryUrl, properties["PackageProjectUrl"]);
+        Assert.Equal(ProjectUrl, properties["PackageProjectUrl"]);
         Assert.True(properties.TryGetValue("PackageReleaseNotes", out var releaseNotes) && !string.IsNullOrWhiteSpace(releaseNotes));
     }
 
