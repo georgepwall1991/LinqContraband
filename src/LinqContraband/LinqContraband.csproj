@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.28</Version>
+        <Version>5.6.29</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC041 now reports null-conditional single-property reads and chains such as user?.Name, user?.Name.Length, and user?.Name.Trim() while keeping conditional-access diagnostics manual-only.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC029 now reports statement-bodied enumerable identity projections, preserves wrapped fluent receivers, and keeps unsafe awaited-task, explicit-cast, static, concrete, and type-changing projection shapes out of the safe fixer path.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
