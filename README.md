@@ -858,6 +858,7 @@ var result = db.Users.Select(u => u.Orders).ToList();
 
 **🛡️ Reliability Notes:**
 - LC022 applies to normal `IQueryable.Select(...)` projections where the collection materializer may add avoidable work.
+- The fixer removes only safe `ToList()` shapes where the receiver type already matches the materialized type; DTO/object initializer, argument, array, dictionary, set, and type-changing shapes stay manual.
 - Grouped projections like `GroupBy(...).Select(g => g.ToList())` are owned by `LC024`, which gives the more specific non-translatable `GroupBy` guidance.
 
 ---
