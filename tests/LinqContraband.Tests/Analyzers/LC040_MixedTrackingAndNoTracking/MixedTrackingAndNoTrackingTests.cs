@@ -16,7 +16,17 @@ namespace Microsoft.EntityFrameworkCore
 {
     public class DbContext
     {
+        public DatabaseFacade Database { get; } = new DatabaseFacade();
         public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+    }
+
+    public class DatabaseFacade
+    {
+        public IDbContextTransaction BeginTransaction() => null;
+    }
+
+    public interface IDbContextTransaction : System.IDisposable
+    {
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
@@ -33,6 +43,8 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> AsNoTrackingWithIdentityResolution<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> AsTracking<TSource>(this IQueryable<TSource> source) => source;
+        public static IQueryable<TSource> AsSplitQuery<TSource>(this IQueryable<TSource> source) => source;
+        public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
     }
 }
 ";
@@ -118,6 +130,42 @@ class Program
     {
         var first = db.Users.ToList();
         var second = {|LC040:db.Users.AsNoTrackingWithIdentityResolution().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TransparentEfQueryOptions_PreserveTrackingModeEvidence()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var first = db.Users.AsSplitQuery().TagWith(""tracked path"").ToList();
+        var second = {|LC040:db.Users.AsNoTracking().AsSplitQuery().TagWith(""read-only path"").ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExplicitTransaction_DoesNotHideMixedTrackingModes()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        using var transaction = db.Database.BeginTransaction();
+
+        var tracked = db.Users.ToList();
+        var readOnly = {|LC040:db.Users.AsNoTracking().ToList()|};
     }
 }";
 

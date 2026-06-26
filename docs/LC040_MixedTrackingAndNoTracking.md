@@ -26,3 +26,17 @@ Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWit
 Straight-line local query aliases are resolved at the materialization point. A local reassigned from tracked to no-tracking queries on the same context can report, while a reassignment from a different context or inside conditional control flow stays quiet.
 
 Mutually exclusive `if`/`else` branches, `switch` sections, and ternary (`cond ? a : b`) arms are not treated as mixed tracking evidence by themselves. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.
+
+Transparent EF query options such as `AsSplitQuery()` and `TagWith(...)` do not change the tracking mode. LC040 follows through those calls and still reports when the same context materializes one tracked result and one no-tracking result.
+
+An explicit transaction does not make mixed tracking modes safer by itself. Transactions coordinate database writes; they do not change whether EF tracks the materialized entities. If a transactional workflow needs both read-only and write paths, split the workflow into clearly named scopes or contexts, or document why the mixed mode is intentional.
+
+## No automatic fixer
+
+LC040 is manual-only because the correct resolution depends on intent:
+
+- choose fully tracked queries when the method will modify or save entities;
+- choose fully no-tracking queries for read-only work;
+- split the workflow across separate methods, contexts, or scopes when one operation genuinely needs both modes.
+
+The analyzer deliberately stays quiet for different context instances and for mutually exclusive branches where one execution path does not actually mix modes.

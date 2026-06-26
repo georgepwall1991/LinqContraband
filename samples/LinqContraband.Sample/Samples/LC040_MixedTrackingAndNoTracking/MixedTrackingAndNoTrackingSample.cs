@@ -10,6 +10,7 @@ public static class MixedTrackingAndNoTrackingSample
         Console.WriteLine("Testing LC040...");
 
         // ADVISORY: Mixed tracking modes on the same context in one method.
+        // Pick one mode for the scope, or split the read-only and write workflows.
         var trackedUsers = db.Users.ToList();
         var noTrackingUsers = db.Users.AsNoTracking().ToList();
 
