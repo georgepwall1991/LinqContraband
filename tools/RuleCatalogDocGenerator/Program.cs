@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using LinqContraband.Catalog;
 
@@ -57,44 +58,77 @@ static string GenerateMarkdown()
     builder.AppendLine("title: LinqContraband Rule Catalog");
     builder.AppendLine("description: Full LinqContraband EF Core analyzer rule catalog grouped by query, materialization, loading, async, tracking, raw SQL, and schema design.");
     builder.AppendLine("permalink: /rule-catalog.html");
+    builder.AppendLine("body_class: page-rule-catalog");
     builder.AppendLine("---");
     builder.AppendLine();
-    builder.AppendLine("# Rule Catalog");
-    builder.AppendLine();
-    builder.AppendLine("The source of truth for rule metadata lives in `src/LinqContraband/Catalog/RuleCatalog.cs`.");
-    builder.AppendLine("This page is generated from that catalog and grouped by domain.");
-    builder.AppendLine();
-
-    var groups = RuleCatalog.All
+    var rules = RuleCatalog.All
         .OrderBy(rule => rule.Domain, StringComparer.Ordinal)
         .ThenBy(rule => rule.Id, StringComparer.Ordinal)
+        .ToArray();
+
+    var warningCount = rules.Count(rule => rule.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning);
+    var codeFixCount = rules.Count(rule => rule.HasCodeFix);
+    var domainCount = rules.Select(rule => rule.Domain).Distinct(StringComparer.Ordinal).Count();
+
+    builder.AppendLine("<section class=\"catalog-intro\">");
+    builder.AppendLine("  <div class=\"catalog-intro__copy\">");
+    builder.AppendLine("    <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>");
+    builder.AppendLine("  </div>");
+    builder.AppendLine("  <div class=\"metric-strip\" aria-label=\"Rule catalog summary\">");
+    builder.AppendLine($"    <div class=\"metric\"><strong>{rules.Length}</strong><span>rules</span></div>");
+    builder.AppendLine($"    <div class=\"metric\"><strong>{warningCount}</strong><span>warnings</span></div>");
+    builder.AppendLine($"    <div class=\"metric\"><strong>{codeFixCount}</strong><span>code fixes</span></div>");
+    builder.AppendLine("  </div>");
+    builder.AppendLine("</section>");
+    builder.AppendLine();
+    builder.AppendLine($"<p class=\"eyebrow\">{domainCount} diagnostic domains</p>");
+    builder.AppendLine();
+
+    var groups = rules
         .GroupBy(rule => rule.Domain, StringComparer.Ordinal);
 
     foreach (var group in groups)
     {
-        builder.AppendLine($"## {group.Key}");
-        builder.AppendLine();
-        builder.AppendLine("| Rule | Severity | Legacy Category | Fix | Docs | Sample |\n| --- | --- | --- | --- | --- | --- |");
+        var domainId = ToToken(group.Key);
+
+        builder.AppendLine($"<section class=\"rule-domain\" aria-labelledby=\"{domainId}\">");
+        builder.AppendLine("  <div class=\"rule-domain__heading\">");
+        builder.AppendLine($"    <h2 id=\"{domainId}\">{Encode(group.Key)}</h2>");
+        builder.AppendLine($"    <p>{Encode(GetDomainDescription(group.Key))}</p>");
+        builder.AppendLine("  </div>");
+        builder.AppendLine("  <div class=\"rule-grid\">");
 
         foreach (var rule in group)
         {
             var fixText = rule.HasCodeFix ? "Code fix" : "Manual only";
+            var fixClass = rule.HasCodeFix ? "fix" : "manual";
             var docsFileName = Path.ChangeExtension(Path.GetFileName(rule.DocumentationPath), ".html");
-            var docsLink = $"[`{rule.Slug}`](./{docsFileName})";
             var sampleDirectory = Path.GetDirectoryName(rule.SamplePath)?.Replace('\\', '/');
             var shortSampleDirectory = sampleDirectory is null
                 ? rule.SamplePath.Replace('\\', '/')
                 : sampleDirectory.Replace("samples/LinqContraband.Sample/", string.Empty, StringComparison.Ordinal);
 
-            builder.AppendLine($"| `{rule.Id}` {EscapePipes(rule.Title)} | `{rule.Severity}` | `{rule.Category}` | {fixText} | {docsLink} | `{shortSampleDirectory}/` |");
+            builder.AppendLine($"    <a class=\"rule-card\" href=\"./{EncodeAttribute(docsFileName)}\">");
+            builder.AppendLine("      <span class=\"rule-card__top\">");
+            builder.AppendLine($"        <span class=\"rule-card__id\">{Encode(rule.Id)}</span>");
+            builder.AppendLine($"        <span class=\"pill pill--{ToToken(rule.Severity.ToString())}\">{Encode(rule.Severity.ToString())}</span>");
+            builder.AppendLine("      </span>");
+            builder.AppendLine($"      <h3>{Encode(rule.Title)}</h3>");
+            builder.AppendLine("      <span class=\"rule-card__meta\">");
+            builder.AppendLine($"        <span>{Encode(rule.Category)}</span>");
+            builder.AppendLine($"        <span class=\"pill pill--{fixClass}\">{Encode(fixText)}</span>");
+            builder.AppendLine("      </span>");
+            builder.AppendLine($"      <span class=\"rule-card__sample\">{Encode(shortSampleDirectory)}/</span>");
+            builder.AppendLine("    </a>");
         }
 
+        builder.AppendLine("  </div>");
+        builder.AppendLine("</section>");
         builder.AppendLine();
     }
 
-    // StringBuilder.AppendLine emits Environment.NewLine (CRLF on Windows) while line 67 embeds a
-    // literal "\n"; normalize the whole document to LF so generation is byte-identical on every
-    // platform and matches the LF form stored in git.
+    // StringBuilder.AppendLine emits Environment.NewLine (CRLF on Windows); normalize the whole
+    // document to LF so generation is byte-identical on every platform and matches git.
     return NormalizeNewlines(builder.ToString());
 }
 
@@ -103,7 +137,50 @@ static string NormalizeNewlines(string value)
     return value.Replace("\r\n", "\n").Replace("\r", "\n");
 }
 
-static string EscapePipes(string value)
+static string Encode(string value)
 {
-    return value.Replace("|", "\\|", StringComparison.Ordinal);
+    return WebUtility.HtmlEncode(value);
+}
+
+static string EncodeAttribute(string value)
+{
+    return WebUtility.HtmlEncode(value);
+}
+
+static string GetDomainDescription(string domain)
+{
+    return domain switch
+    {
+        "Bulk Operations & Set-Based Writes" => "Keep destructive and high-volume writes set-based while making the risky cases explicit.",
+        "Change Tracking & Context Lifetime" => "Spot DbContext lifetime leaks, tracking-mode surprises, and writes that silently do nothing.",
+        "Execution & Async" => "Find synchronous calls, repeated database execution, and async paths that drop cancellation or buffer too early.",
+        "Loading & Includes" => "Make relationship loading deliberate before N+1 round trips or over-eager include graphs reach production.",
+        "Materialization & Projection" => "Keep work in SQL where it belongs and avoid loading whole entities or unbounded result sets by accident.",
+        "Query Shape & Translation" => "Catch LINQ patterns that EF Core cannot translate reliably or cannot page deterministically.",
+        "Raw SQL & Security" => "Flag SQL construction patterns that can bypass parameterization, tenant filters, or review expectations.",
+        "Schema & Modeling" => "Guard model shape choices that produce fragile entity mappings and unclear relationships.",
+        _ => "Review the EF Core query and model shapes covered by this diagnostic group."
+    };
+}
+
+static string ToToken(string value)
+{
+    var builder = new StringBuilder(value.Length);
+    var previousWasDash = false;
+
+    foreach (var character in value)
+    {
+        if (char.IsLetterOrDigit(character))
+        {
+            builder.Append(char.ToLowerInvariant(character));
+            previousWasDash = false;
+        }
+        else if (!previousWasDash)
+        {
+            builder.Append('-');
+            previousWasDash = true;
+        }
+    }
+
+    return builder.ToString().Trim('-');
 }
