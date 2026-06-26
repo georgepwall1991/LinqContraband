@@ -145,6 +145,28 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ToList_FromQuerySyntaxOverDbContextSet_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result =
+                {|LC031:(from user in db.Set<User>()
+                         where user.IsActive
+                         orderby user.Id
+                         select user).ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToList_FromDbContextSet_WithoutBounding_ShouldTriggerLC031()
     {
         var test = Usings + EFCoreMock + Entities + @"
@@ -241,6 +263,30 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ToList_FromQuerySyntaxAliasWithTake_ShouldNotTrigger()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query =
+                from user in db.Users
+                where user.IsActive
+                orderby user.Id
+                select user;
+
+            var result = query.Take(100).ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToList_FromBoundedLocalQueryAlias_ShouldNotTrigger()
     {
         var test = Usings + EFCoreMock + Entities + @"
@@ -276,6 +322,70 @@ namespace TestApp
             }
 
             var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_WithSkipWithoutTake_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Users.OrderBy(u => u.Id).Skip(100).ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_WithTakeLast_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public static class TakeLastExtensions
+    {
+        public static IEnumerable<T> TakeLast<T>(this IEnumerable<T> source, int count) => null;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Users.TakeLast(10).ToList()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToList_WithTransparentQueryOption_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Users.AsNoTracking().Where(u => u.IsActive).ToList()|};
         }
     }
 }";
@@ -354,9 +464,8 @@ namespace TestApp
     [Fact]
     public async Task Chunk_WithoutOtherBounding_ShouldTriggerLC031()
     {
-        // Chunk bounds the chunk SIZE, not the number of rows fetched. There is no
-        // Queryable.Chunk, so db.Users.Chunk(n) binds to Enumerable.Chunk and materializes
-        // the entire table before partitioning — exactly the unbounded load LC031 targets.
+        // Chunk bounds each chunk, not the number of rows fetched; it is still the
+        // unbounded load LC031 targets unless a real row bound appears first.
         var test = Usings + EFCoreMock + Entities + @"
 namespace TestApp
 {

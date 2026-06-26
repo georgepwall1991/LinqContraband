@@ -17,8 +17,8 @@ namespace LinqContraband.Sample.Samples.LC031_UnboundedQueryMaterialization;
 ///         memory. This is the most common cause of out-of-memory errors in production EF Core applications.
 ///     </para>
 ///     <para>
-///         <strong>The Fix:</strong> Add <c>Take(n)</c> to bound the result set, or use a single-element materializer
-///         like <c>FirstOrDefault()</c>.
+///         <strong>The Fix:</strong> Add an ordered <c>Take(n)</c> or <c>Skip(n)</c>/<c>Take(n)</c> page to bound the
+///         result set, or use a single-element materializer like <c>FirstOrDefault()</c>.
 ///     </para>
 /// </remarks>
 public class UnboundedQueryMaterializationSample
@@ -30,10 +30,10 @@ public class UnboundedQueryMaterializationSample
     {
         Console.WriteLine("Testing LC031...");
 
-        // VIOLATION: No bounding method — could load millions of rows
+        // VIOLATION: Where filters matching rows, but does not cap the row count.
         var result = db.Users.Where(u => u.Age > 18).ToList();
 
-        // CORRECT: Bounded with Take()
+        // CORRECT: Bounded with a deterministic order and Take().
         var correctResult = db.Users.Where(u => u.Age > 18).OrderBy(x => x.Id).Take(1000).ToList();
     }
 }
