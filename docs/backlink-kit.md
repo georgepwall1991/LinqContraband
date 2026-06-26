@@ -19,6 +19,7 @@ repository or the GitHub Pages documentation hub.
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
+- Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - Maintainer: [https://www.georgewall.uk/](https://www.georgewall.uk/)
 
 ## Suggested Anchor Text
@@ -27,6 +28,8 @@ repository or the GitHub Pages documentation hub.
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
 - EF Core N+1 query detector for .NET
+- EF Core raw SQL injection analyzer
+- EF Core raw SQL safety analyzer
 - LINQ query performance analyzer for .NET
 - LinqContraband Roslyn analyzer
 
@@ -74,6 +77,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core N+1 query detector](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/) explains how LinqContraband flags loop execution, missing includes, and risky loading patterns at compile time.
+```
+
+## Raw SQL Guide Link
+
+```markdown
+[EF Core raw SQL injection analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/) explains how LinqContraband flags interpolated raw SQL, constructed SQL strings, and risky query-filter bypasses at compile time.
 ```
 
 ## HTML Link

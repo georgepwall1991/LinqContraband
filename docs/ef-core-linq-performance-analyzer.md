@@ -29,6 +29,7 @@ dotnet add package LinqContraband
 - Bulk update/delete operations without an explicit filter
 
 For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
+For security-sensitive SQL usage, see the [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 
 ## Why Compile-Time Analysis Helps
 
@@ -45,6 +46,7 @@ The full catalog contains 45 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
+- [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - [LC007: N+1 query loops](/LinqContraband/LC007_NPlusOneLooper.html)
 - [LC045: missing include](/LinqContraband/LC045_MissingInclude.html)
 - [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html)
