@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.28] - 2026-06-26
+
+### Fixed
+- `LC041` now treats null-conditional single-property reads, scalar chains, and method chains such as `user?.Name`, `user?.Name.Length`, and `user?.Name.Trim()` as the same single-scalar over-fetch pattern as direct `user.Name` chains, while keeping those conditional-access diagnostics manual-only so the fixer does not leave stale `?.` syntax behind.
+
 ## [5.6.27] - 2026-06-26
 
 ### Changed
