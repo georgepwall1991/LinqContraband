@@ -3,4 +3,11 @@ description: EF Core LINQ performance analyzer and Roslyn analyzer for catching 
 url: "https://georgepwall1991.github.io"
 baseurl: "/LinqContraband"
 repository: georgepwall1991/LinqContraband
-theme: jekyll-theme-minimal
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: default
+exclude:
+  - .jekyll-cache

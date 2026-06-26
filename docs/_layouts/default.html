@@ -1,0 +1,105 @@
+<!doctype html>
+{% assign file_prefix = page.name | slice: 0, 2 %}
+{% assign is_rule_page = false %}
+{% if file_prefix == "LC" %}
+  {% assign is_rule_page = true %}
+{% endif %}
+{% assign page_description = page.description | default: site.description %}
+<html lang="{{ page.lang | default: 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title | escape }} · {{ site.title | escape }}{% else %}{{ site.title | escape }}{% endif %}</title>
+  <meta name="description" content="{{ page_description | escape }}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  <meta property="og:title" content="{% if page.title %}{{ page.title | escape }} · {{ site.title | escape }}{% else %}{{ site.title | escape }}{% endif %}">
+  <meta property="og:description" content="{{ page_description | escape }}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="{{ '/assets/img/favicon.png' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+  {% if page.url == "/" %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "LinqContraband",
+    "description": "EF Core LINQ performance analyzer and Roslyn analyzer for catching N+1 queries, client-side evaluation, sync-over-async calls, raw SQL risks, and other query issues at compile time.",
+    "codeRepository": "https://github.com/georgepwall1991/LinqContraband",
+    "programmingLanguage": "C#",
+    "runtimePlatform": ".NET",
+    "license": "https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE",
+    "creator": {
+      "@type": "Person",
+      "name": "George Wall",
+      "url": "https://www.georgewall.uk/"
+    },
+    "sameAs": [
+      "https://www.nuget.org/packages/LinqContraband",
+      "https://github.com/georgepwall1991/LinqContraband",
+      "https://www.georgewall.uk/"
+    ]
+  }
+  </script>
+  {% endif %}
+</head>
+<body class="site {{ page.body_class }}{% if is_rule_page %} page-rule{% endif %}">
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Primary">
+      <a class="site-brand" href="{{ '/' | relative_url }}" aria-label="LinqContraband home">
+        <span class="site-brand__mark">LC</span>
+        <span class="site-brand__text">LinqContraband</span>
+      </a>
+      <div class="site-nav__links">
+        <a href="{{ '/rule-catalog.html' | relative_url }}">Rules</a>
+        <a href="{{ '/ef-core-linq-performance-analyzer/' | relative_url }}">Guide</a>
+        <a href="{{ '/security-and-authenticity/' | relative_url }}">Authenticity</a>
+        <a href="https://www.nuget.org/packages/LinqContraband">NuGet</a>
+        <a href="https://github.com/georgepwall1991/LinqContraband">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="content">
+    {% if page.url == "/" %}
+      {{ content }}
+    {% else %}
+      <div class="page-shell">
+        <aside class="page-rail" aria-label="Project navigation">
+          <p class="page-rail__label">Reference</p>
+          <a href="{{ '/rule-catalog.html' | relative_url }}">Rule catalog</a>
+          <a href="{{ '/ef-core-linq-performance-analyzer/' | relative_url }}">EF Core guide</a>
+          <a href="{{ '/backlink-kit/' | relative_url }}">Link kit</a>
+          <a href="{{ '/security-and-authenticity/' | relative_url }}">Authenticity</a>
+        </aside>
+        <article class="page-content markdown">
+          <header class="page-hero">
+            <p class="eyebrow">
+              {% if is_rule_page %}
+                Analyzer rule
+              {% elsif page.body_class == "page-rule-catalog" %}
+                Rule reference
+              {% else %}
+                Documentation
+              {% endif %}
+            </p>
+            <h1>{{ page.title | default: site.title | escape }}</h1>
+            <p>{{ page_description | escape }}</p>
+          </header>
+          {{ content }}
+        </article>
+      </div>
+    {% endif %}
+  </main>
+
+  <footer class="site-footer">
+    <div>
+      <strong>LinqContraband</strong>
+      <span>MIT-licensed EF Core analyzer maintained by <a href="https://www.georgewall.uk/">George Wall</a>.</span>
+    </div>
+    <a href="https://github.com/georgepwall1991/LinqContraband">Canonical repository</a>
+  </footer>
+</body>
+</html>
