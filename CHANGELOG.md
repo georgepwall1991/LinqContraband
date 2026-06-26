@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.23] - 2026-06-26
+
+### Fixed
+- `LC045` now reports the full nested navigation path for parenthesized null-conditional regrouping such as `(order?.Customer)?.Address?.City`, including inline materializer and inherited-navigation forms, so an already-included `Customer` no longer hides the missing `Customer.Address` include. Conditional method-call results such as `(order?.Customer.GetDetached())?.Address` remain outside the queried receiver path.
+
 ## [5.6.22] - 2026-06-26
 
 ### Fixed

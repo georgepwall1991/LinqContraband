@@ -78,7 +78,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC042 | Complex query should be tagged | Loading & Includes | Info | 2 | 2 | 4 | 2 | 2 | 2 | Low | Crude operator-count threshold with 4 test methods; no semantic complexity distinction (`Where`+`OrderBy`+`Take` ranks the same as nested `SelectMany`+aggregates). Pure team-policy observability rule — appropriately harsh-scored, no investment warranted. |
 | LC043 | Prefer await foreach over buffering async streams | Execution & Async | Info | 4 | 4 | 4 | 3 | 3 | 2 | Low | Intentionally narrow immediate-buffer-then-loop detection with proven `IAsyncEnumerable<T>` source gates; 8 test methods with no CancellationToken or buffer-argument variants (the fixer deliberately leaves token-carrying calls alone). Streaming optimization, not a correctness issue. |
 | LC044 | AsNoTracking entity mutated then SaveChanges | Change Tracking & Context Lifetime | Warning | 4 | 4 | 4 | 4 | 5 | 5 | Low | Reference-quality manual rule (chain proof, context-symbol identity, single-assignment gate, block reachability, earlier-save and re-attach gates); honours the last tracking directive (5.5.6) and counts compound assignment / increment as mutations (5.5.10). 76-line doc is a DS=5 anchor. **Tests move 3→4**: nested-scope reachability (mutation inside `if`/`else`/`using`/`while` blocks that fall through to `SaveChanges`) and additional foreach-mutation shapes are now covered (30 tests). Deferred by design: a re-attach in an untaken branch suppresses (treating visible re-attach as intent is a reasonable FP trade-off). |
-| LC045 | Missing Include — navigation on materialized entity | Loading & Includes | Warning | 4 | 3 | 4 | 4 | 4 | 5 | Low | **New in 5.6.0; conditional-access surface adversarially probed 2026-06-10.** Detects the canonical EF Core read-side bug: navigation access on a materialized entity without `Include` — N+1 with lazy proxies, silent null without. The dedicated post-crash adversarial pass found **no remaining crash/hang shapes** (deep `?.` chains, `!`/cast mixes, interpolation, nested conditional access in arguments, `?.` invocations all clean) and five FNs — every null-conditional spelling of already-flagged shapes (`First()?.Customer?.Name`, `First()?.Customer.Address?.City`, `First()?.Customer.Clear()`, `orders?[0].Customer`, `var o = orders?[0]`) — all fixed with regression locks (65 tests). A moves 3→4 on that evidence. FP stays `3`: `AutoInclude()` is invisible and null-guarded access deliberately fires (documented). Residual polish: parenthesized CA regrouping truncates the reported path to its head; C# 14 null-conditional assignment is a watch item for newer-Roslyn consumers. |
+| LC045 | Missing Include — navigation on materialized entity | Loading & Includes | Warning | 4 | 3 | 4 | 4 | 4 | 5 | Low | **New in 5.6.0; conditional-access surface adversarially probed 2026-06-10.** Detects the canonical EF Core read-side bug: navigation access on a materialized entity without `Include` — N+1 with lazy proxies, silent null without. The dedicated post-crash adversarial pass found **no remaining crash/hang shapes** (deep `?.` chains, `!`/cast mixes, interpolation, nested conditional access in arguments, `?.` invocations all clean) and five FNs — every null-conditional spelling of already-flagged shapes (`First()?.Customer?.Name`, `First()?.Customer.Address?.City`, `First()?.Customer.Clear()`, `orders?[0].Customer`, `var o = orders?[0]`) — all fixed with regression locks. Parenthesized conditional regrouping now reports the full nested path (`(order?.Customer)?.Address` → `Customer.Address`, `(order?.Customer?.Address)?.Region` → `Customer.Address.Region`, inline materializer and inherited-navigation forms included) instead of letting an included parent hide a missing child Include, while method-call results such as `(order?.Customer.GetDetached())?.Address` remain outside the receiver path (70 tests). A stays 4 and FP stays `3`: `AutoInclude()` is invisible and null-guarded access deliberately fires (documented). Remaining watch item: C# 14 null-conditional assignment for newer-Roslyn consumers. |
 
 ## Importance Ranking — what matters most to catch
 
@@ -238,6 +238,14 @@ Focused fixer pass on the raw-SQL query API family.
 | --- | --- | --- |
 | LC018 | No score change | Added a safe `SqlQueryRaw<T>` → `SqlQuery<T>` fixer for direct interpolated scalar/keyless query SQL, preserving generic type arguments and keeping the existing guards for quoted interpolation holes, concatenation, and raw-parameter calls. Added focused fixer coverage and updated docs/README/sample guidance for the `FromSqlRaw`/`SqlQueryRaw<T>` safe-sibling split. FS stays `4` because the remaining manual shapes are deliberate safety boundaries rather than missing direct rewrites. |
 
+## 2026-06-26 LC045 parenthesized conditional path pass
+
+Focused precision pass on the Tier-1 missing-Include rule's null-conditional path reporting.
+
+| Rule | Change | Why |
+| --- | --- | --- |
+| LC045 | No score change | Closed the parenthesized conditional regrouping residual: `(order?.Customer)?.Address?.City` now reports `Customer.Address`, deeper regrouping such as `(order?.Customer?.Address)?.Region` reports `Customer.Address.Region`, inline materializer forms such as `(db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer)?.Address` are covered, and inherited navigation segments are resolved through base entity types. Added a guard so conditional method-call results such as `(order?.Customer.GetDetached())?.Address` do not get appended to the queried receiver path, plus regression tests and docs/README guidance. Scores stay unchanged because the analyzer already had broad conditional-access coverage; this removes a named polish gap without changing the conservative FP boundaries. |
+
 ## Planning Shortlist
 
 Work flows to rules that are high in the Importance Ranking **and** carry health gaps.
@@ -246,7 +254,7 @@ Work flows to rules that are high in the Importance Ranking **and** carry health
 | --- | --- | --- |
 | High | None | No crash, unsafe-fix-in-the-wild, or security FN is currently open. Promote on fresh concrete FP/FN/unsafe-fix/crash evidence only. |
 | Medium — next batch, in order | None | The entire 2026-06-10 Medium tier has shipped: LC045's adversarial pass (no crash shapes survived, five null-conditional FNs fixed), LC023's `HasQueryFilter` gate (the catalog's last live shipped-fix hazard), LC012's same-instance + branch-exclusivity precision for the `SaveChanges` suppression, LC025's path-ambiguity guard for conditionally-reassigned locals, LC009's mutation-as-write-path heuristic for helper-committed saves, and LC008's static-local-function sync boundary. Promote new items only on fresh concrete FP/FN/unsafe-fix/crash evidence. |
-| Low — opportunistic, Tier-1-importance hygiene first | None | LC018 `SqlQueryRaw<T>` fixer residual, LC008 docs/sample depth, LC002 docs/sample depth, LC004 docs depth, LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, LC035 docs/test depth, LC026 docs/test depth, LC003 docs/test depth, and LC021 suppression/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
+| Low — opportunistic, Tier-1-importance hygiene first | None | LC045 parenthesized conditional path reporting, LC018 `SqlQueryRaw<T>` fixer residual, LC008 docs/sample depth, LC002 docs/sample depth, LC004 docs depth, LC039 doc expansion, LC028 test depth, LC019 docs/test depth, LC038 docs/test depth, LC035 docs/test depth, LC026 docs/test depth, LC003 docs/test depth, and LC021 suppression/test depth are addressed. Everything else is currently acceptable, explicitly deferred, or appropriately harsh-scored. |
 
 Rejected/deferred-by-design items (LC004 nested-local-function, LC036 method-group, LC040 try/catch + `Select`, LC044 untaken-branch re-attach, LC020 Ordinal flagging, LC015 `TakeLast`/`SkipLast`, LC031 `TakeLast`, LC021 selective filter keys) stay closed — do not re-chase without new evidence. See the 2026-06-04 Rerun tables below for full rationale.
 
@@ -313,16 +321,17 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.16**
+Package version: **5.6.23**
 
 Base audited commit: master at `ae15734` (5.6.1 release merge). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), and the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current local verification (2026-06-23, release-bound LC003 docs/test-depth pass):
+Current local verification (2026-06-26, release-bound LC045 parenthesized conditional path pass):
 
 - `dotnet restore`, `RuleCatalogDocGenerator --check`, `dotnet build --no-restore`, and `SampleDiagnosticsVerifier --frameworks net8.0 net9.0 net10.0` passed.
-- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity normal` passed with **1084 tests**.
+- `dotnet test tests/LinqContraband.Tests/LinqContraband.Tests.csproj --framework net10.0 --filter "FullyQualifiedName~LC045_MissingInclude" --verbosity minimal` passed with **70 LC045 tests**.
+- `dotnet test LinqContraband.sln --no-build --framework net10.0 --verbosity minimal` passed with **1109 tests**.
 - `dotnet test --no-build --verbosity normal` starts the net10.0 leg successfully but cannot complete the local net8.0/net9.0 test legs on this Mac because only arm64 `Microsoft.NETCore.App 10.0.9` is installed; those target-framework test legs remain delegated to GitHub CI.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
