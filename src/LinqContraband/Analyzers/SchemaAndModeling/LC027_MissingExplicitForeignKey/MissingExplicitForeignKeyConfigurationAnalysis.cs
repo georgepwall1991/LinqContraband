@@ -94,6 +94,12 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         HashSet<string> configuredForeignKeys,
         CancellationToken cancellationToken)
     {
+        var relationshipBuilderLocals = BuildRelationshipBuilderLocalMap(
+            syntax,
+            compilationModel,
+            configuredEntityType,
+            cancellationToken);
+
         foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -118,10 +124,18 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
                 continue;
 
             var navName = ExtractNavigationNameFromChain(memberAccess.Expression);
+            INamedTypeSymbol? localRelationshipEntityType = null;
+            if (ExtractRootIdentifierFromReceiverChain(memberAccess.Expression) is IdentifierNameSyntax relationshipLocal &&
+                TryResolveRelationshipBuilderLocal(relationshipBuilderLocals, relationshipLocal, out var localRelationship))
+            {
+                navName = localRelationship.NavigationName;
+                localRelationshipEntityType = localRelationship.EntityType;
+            }
+
             if (navName == null)
                 continue;
 
-            var entityType = configuredEntityType;
+            var entityType = localRelationshipEntityType ?? configuredEntityType;
             if (entityType == null)
             {
                 var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
@@ -134,6 +148,280 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             if (entityType != null)
                 configuredForeignKeys.Add(GetNavigationConfigurationKey(entityType, navName));
         }
+    }
+
+    private static List<RelationshipConfiguration> BuildRelationshipBuilderLocalMap(
+        SyntaxNode syntax,
+        CompilationModel compilationModel,
+        INamedTypeSymbol? configuredEntityType,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<RelationshipConfiguration>();
+
+        foreach (var declarator in syntax.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (declarator.Initializer?.Value is not InvocationExpressionSyntax initializer ||
+                FindLocalScope(declarator) is not SyntaxNode scope ||
+                !HasSingleLocalAssignment(scope, declarator, cancellationToken))
+            {
+                continue;
+            }
+
+            var navName = ExtractNavigationNameFromChain(initializer);
+            if (navName == null)
+                continue;
+
+            var entityType = configuredEntityType;
+            if (entityType == null)
+            {
+                var entityTypeName = ExtractEntityTypeNameFromChain(initializer);
+                if (entityTypeName == null)
+                    continue;
+
+                entityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
+            }
+
+            if (entityType != null)
+                result.Add(new RelationshipConfiguration(declarator.Identifier.ValueText, declarator, scope, entityType, navName));
+        }
+
+        return result;
+    }
+
+    private static bool TryResolveRelationshipBuilderLocal(
+        List<RelationshipConfiguration> relationshipBuilderLocals,
+        IdentifierNameSyntax reference,
+        out RelationshipConfiguration relationship)
+    {
+        relationship = null!;
+
+        foreach (var candidate in relationshipBuilderLocals)
+        {
+            if (candidate.Name != reference.Identifier.ValueText ||
+                !IsVisibleAt(candidate.Declarator, candidate.Scope, reference) ||
+                IsShadowedByNestedLocal(reference, candidate.Declarator, candidate.Scope, candidate.Name))
+            {
+                continue;
+            }
+
+            if (relationship == null ||
+                candidate.Declarator.SpanStart > relationship.Declarator.SpanStart)
+            {
+                relationship = candidate;
+            }
+        }
+
+        return relationship != null;
+    }
+
+    private static IdentifierNameSyntax? ExtractRootIdentifierFromReceiverChain(ExpressionSyntax expression)
+    {
+        var current = expression;
+        while (current != null)
+        {
+            switch (current)
+            {
+                case IdentifierNameSyntax identifier:
+                    return identifier;
+                case InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess }:
+                    current = memberAccess.Expression;
+                    continue;
+                case MemberAccessExpressionSyntax memberAccess:
+                    current = memberAccess.Expression;
+                    continue;
+                case ParenthesizedExpressionSyntax parenthesized:
+                    current = parenthesized.Expression;
+                    continue;
+                default:
+                    return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool HasSingleLocalAssignment(
+        SyntaxNode scope,
+        VariableDeclaratorSyntax declarator,
+        CancellationToken cancellationToken)
+    {
+        var assignmentCount = 1;
+        var localName = declarator.Identifier.ValueText;
+
+        foreach (var assignment in scope.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (ContainsLocalWriteTarget(assignment.Left, declarator, scope, localName))
+                assignmentCount++;
+        }
+
+        foreach (var argument in scope.DescendantNodes().OfType<ArgumentSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (argument.RefKindKeyword.ValueText is not ("ref" or "out"))
+                continue;
+
+            if (ContainsLocalWriteTarget(argument.Expression, declarator, scope, localName))
+                assignmentCount++;
+        }
+
+        return assignmentCount == 1;
+    }
+
+    private static bool ContainsLocalWriteTarget(
+        ExpressionSyntax expression,
+        VariableDeclaratorSyntax declarator,
+        SyntaxNode scope,
+        string localName)
+    {
+        return expression switch
+        {
+            IdentifierNameSyntax identifier => IsLocalWriteTarget(identifier, declarator, scope, localName),
+            ParenthesizedExpressionSyntax parenthesized => ContainsLocalWriteTarget(parenthesized.Expression, declarator, scope, localName),
+            TupleExpressionSyntax tuple => tuple.Arguments.Any(argument =>
+                ContainsLocalWriteTarget(argument.Expression, declarator, scope, localName)),
+            _ => false
+        };
+    }
+
+    private static bool IsLocalWriteTarget(
+        IdentifierNameSyntax identifier,
+        VariableDeclaratorSyntax declarator,
+        SyntaxNode scope,
+        string localName)
+    {
+        return identifier.Identifier.ValueText == localName &&
+               IsVisibleAt(declarator, scope, identifier) &&
+               !IsShadowedByNestedLocal(identifier, declarator, scope, localName);
+    }
+
+    private static bool IsShadowedByNestedLocal(
+        IdentifierNameSyntax reference,
+        VariableDeclaratorSyntax declarator,
+        SyntaxNode scope,
+        string localName)
+    {
+        foreach (var currentDeclarator in scope.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        {
+            if (currentDeclarator == declarator ||
+                currentDeclarator.Identifier.ValueText != localName ||
+                FindLocalScope(currentDeclarator) is not SyntaxNode currentScope ||
+                currentScope == scope)
+            {
+                continue;
+            }
+
+            if (currentDeclarator.SpanStart > declarator.SpanStart &&
+                IsVisibleAt(currentDeclarator, currentScope, reference))
+            {
+                return true;
+            }
+        }
+
+        foreach (var designation in scope.DescendantNodes().OfType<SingleVariableDesignationSyntax>())
+        {
+            if (designation.Identifier.ValueText != localName ||
+                FindDesignationScope(designation) is not SyntaxNode designationScope ||
+                designationScope == scope)
+            {
+                continue;
+            }
+
+            if (designation.SpanStart > declarator.SpanStart &&
+                designationScope.Span.Contains(reference.SpanStart))
+            {
+                return true;
+            }
+        }
+
+        foreach (var foreachStatement in scope.DescendantNodes().OfType<ForEachStatementSyntax>())
+        {
+            if (foreachStatement.Identifier.ValueText != localName ||
+                FindStatementScope(foreachStatement) is not SyntaxNode foreachScope ||
+                foreachScope == scope)
+            {
+                continue;
+            }
+
+            if (foreachStatement.SpanStart > declarator.SpanStart &&
+                foreachStatement.Span.Contains(reference.SpanStart))
+            {
+                return true;
+            }
+        }
+
+        foreach (var parameter in scope.DescendantNodes().OfType<ParameterSyntax>())
+        {
+            if (parameter.Identifier.ValueText != localName ||
+                FindParameterScope(parameter) is not SyntaxNode parameterScope ||
+                parameterScope == scope)
+            {
+                continue;
+            }
+
+            if (parameter.SpanStart > declarator.SpanStart &&
+                parameterScope.Span.Contains(reference.SpanStart))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static SyntaxNode? FindDesignationScope(SingleVariableDesignationSyntax designation)
+    {
+        return designation.Ancestors().FirstOrDefault(node =>
+            node is BlockSyntax or
+                SimpleLambdaExpressionSyntax or
+                ParenthesizedLambdaExpressionSyntax or
+                AnonymousMethodExpressionSyntax or
+                LocalFunctionStatementSyntax or
+                MethodDeclarationSyntax or
+                ConstructorDeclarationSyntax);
+    }
+
+    private static SyntaxNode? FindStatementScope(StatementSyntax statement)
+    {
+        return statement.Ancestors().FirstOrDefault(node =>
+            node is BlockSyntax or
+                SimpleLambdaExpressionSyntax or
+                ParenthesizedLambdaExpressionSyntax or
+                AnonymousMethodExpressionSyntax or
+                LocalFunctionStatementSyntax or
+                MethodDeclarationSyntax or
+                ConstructorDeclarationSyntax);
+    }
+
+    private static SyntaxNode? FindParameterScope(ParameterSyntax parameter)
+    {
+        return parameter.Ancestors().FirstOrDefault(node =>
+            node is SimpleLambdaExpressionSyntax or
+                ParenthesizedLambdaExpressionSyntax or
+                AnonymousMethodExpressionSyntax or
+                LocalFunctionStatementSyntax or
+                MethodDeclarationSyntax or
+                ConstructorDeclarationSyntax);
+    }
+
+    private static SyntaxNode? FindLocalScope(VariableDeclaratorSyntax declarator)
+    {
+        return declarator.Parent?.Parent?.Parent is BlockSyntax block
+            ? block
+            : declarator.Ancestors().FirstOrDefault(node => node is MethodDeclarationSyntax or ConstructorDeclarationSyntax);
+    }
+
+    private static bool IsVisibleAt(
+        VariableDeclaratorSyntax declarator,
+        SyntaxNode scope,
+        SyntaxNode reference)
+    {
+        return reference.SpanStart >= declarator.SpanStart &&
+               scope.Span.Contains(reference.SpanStart);
     }
 
     private static string GetNavigationConfigurationKey(INamedTypeSymbol entityType, string navigationName)
@@ -268,5 +556,32 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             .Select(property => property.Type)
             .OfType<INamedTypeSymbol>()
             .FirstOrDefault();
+    }
+
+    private sealed class RelationshipConfiguration
+    {
+        public RelationshipConfiguration(
+            string name,
+            VariableDeclaratorSyntax declarator,
+            SyntaxNode scope,
+            INamedTypeSymbol entityType,
+            string navigationName)
+        {
+            Name = name;
+            Declarator = declarator;
+            Scope = scope;
+            EntityType = entityType;
+            NavigationName = navigationName;
+        }
+
+        public string Name { get; }
+
+        public VariableDeclaratorSyntax Declarator { get; }
+
+        public SyntaxNode Scope { get; }
+
+        public INamedTypeSymbol EntityType { get; }
+
+        public string NavigationName { get; }
     }
 }
