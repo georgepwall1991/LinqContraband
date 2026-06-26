@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC031: Unbounded Query Materialization"
+---
+
 # LC031: Unbounded Query Materialization
 
 ## What it flags

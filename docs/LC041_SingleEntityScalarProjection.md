@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC041 - Single Entity Scalar Projection"
+---
+
 # Spec: LC041 - Single Entity Scalar Projection
 
 ## Goal

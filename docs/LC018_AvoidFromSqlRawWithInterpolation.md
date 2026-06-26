@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings"
+---
+
 # Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings
 
 ## Goal

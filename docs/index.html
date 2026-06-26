@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LinqContraband - EF Core LINQ Performance Analyzer</title>
+  <meta name="description" content="LinqContraband is an EF Core LINQ performance analyzer and Roslyn analyzer that catches N+1 queries, client-side evaluation, sync-over-async calls, raw SQL risks, and other query issues at compile time.">
+  <link rel="canonical" href="https://georgepwall1991.github.io/LinqContraband/">
+  <meta property="og:title" content="LinqContraband - EF Core LINQ Performance Analyzer">
+  <meta property="og:description" content="A compile-time Roslyn analyzer for EF Core and LINQ query performance, reliability, and security issues.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://georgepwall1991.github.io/LinqContraband/">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "LinqContraband",
+    "description": "EF Core LINQ performance analyzer and Roslyn analyzer for catching N+1 queries, client-side evaluation, sync-over-async calls, raw SQL risks, and other query issues at compile time.",
+    "codeRepository": "https://github.com/georgepwall1991/LinqContraband",
+    "programmingLanguage": "C#",
+    "runtimePlatform": ".NET",
+    "license": "https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE",
+    "creator": {
+      "@type": "Person",
+      "name": "George Wall",
+      "url": "https://www.georgewall.uk/"
+    },
+    "sameAs": [
+      "https://www.nuget.org/packages/LinqContraband",
+      "https://github.com/georgepwall1991/LinqContraband",
+      "https://www.georgewall.uk/"
+    ]
+  }
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f9fb;
+      --panel: #ffffff;
+      --text: #18212f;
+      --muted: #536070;
+      --line: #d9e1ea;
+      --accent: #1d7a8c;
+      --accent-dark: #145766;
+      --code: #eef5f7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101418;
+        --panel: #161c22;
+        --text: #edf4f7;
+        --muted: #b4c1c9;
+        --line: #2d3943;
+        --accent: #6fc7d8;
+        --accent-dark: #98d9e5;
+        --code: #202a32;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      color: var(--text);
+      background: var(--bg);
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 48px 0 64px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr);
+      gap: 32px;
+      align-items: center;
+      min-height: 72vh;
+      padding-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: 5.2rem;
+      line-height: .95;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin-top: 48px;
+      font-size: 1.7rem;
+      letter-spacing: 0;
+    }
+    p { margin: 0 0 16px; }
+    .lede {
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 1.2rem;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    a {
+      color: var(--accent-dark);
+      font-weight: 650;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: #ffffff;
+      background: var(--accent);
+      text-decoration: none;
+    }
+    .button.secondary {
+      color: var(--accent-dark);
+      background: transparent;
+    }
+    .trust {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      background: var(--panel);
+    }
+    .trust h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+    .trust ul {
+      padding-left: 20px;
+      margin: 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .tile {
+      min-height: 170px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: var(--panel);
+    }
+    .tile h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+    .tile p {
+      color: var(--muted);
+      font-size: .95rem;
+    }
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: var(--code);
+      font-size: .95em;
+    }
+    .install {
+      overflow-x: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+    }
+    footer {
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .95rem;
+    }
+    @media (max-width: 820px) {
+      main { padding-top: 28px; }
+      h1 { font-size: 3rem; }
+      .hero, .grid { grid-template-columns: 1fr; }
+      .hero { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>LinqContraband</h1>
+        <p class="lede">An EF Core LINQ performance analyzer and Roslyn analyzer that catches query problems before they ship: N+1 loops, premature materialization, sync-over-async, missing includes, raw SQL risks, tracking mistakes, and more.</p>
+        <div class="actions">
+          <a class="button" href="https://www.nuget.org/packages/LinqContraband">Install from NuGet</a>
+          <a class="button secondary" href="https://github.com/georgepwall1991/LinqContraband">View source on GitHub</a>
+          <a class="button secondary" href="rule-catalog.html">Browse rules</a>
+        </div>
+      </div>
+      <aside class="trust" aria-label="Official project links">
+        <h2>Official project</h2>
+        <ul>
+          <li>Canonical repository: <a href="https://github.com/georgepwall1991/LinqContraband">georgepwall1991/LinqContraband</a></li>
+          <li>Official package: <a href="https://www.nuget.org/packages/LinqContraband">NuGet LinqContraband</a></li>
+          <li>Maintainer: <a href="https://www.georgewall.uk/">George Wall</a></li>
+        </ul>
+        <p style="margin-top:16px">LinqContraband is a NuGet analyzer package. It is not distributed as a standalone ZIP installer or executable.</p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>What It Catches</h2>
+      <div class="grid">
+        <article class="tile">
+          <h3>N+1 Query Patterns</h3>
+          <p>Finds database calls inside loops, missing includes, deep eager loading, and cartesian explosion risks before production latency appears.</p>
+        </article>
+        <article class="tile">
+          <h3>Query Translation Traps</h3>
+          <p>Flags local methods, string conversions, untranslatable overloads, nondeterministic pagination, and other LINQ shapes EF Core cannot translate safely.</p>
+        </article>
+        <article class="tile">
+          <h3>Raw SQL and Tracking Risks</h3>
+          <p>Catches interpolated raw SQL, constructed SQL strings, unsafe query-filter bypasses, tracking-mode mixups, and silent no-tracking writes.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Install</h2>
+      <pre class="install"><code>dotnet add package LinqContraband</code></pre>
+      <p>The analyzer runs at compile time in Visual Studio, Rider, VS Code, and CI. It adds no runtime dependency to your application.</p>
+    </section>
+
+    <section>
+      <h2>Useful Links</h2>
+      <div class="grid">
+        <article class="tile">
+          <h3>Rule Catalog</h3>
+          <p><a href="rule-catalog.html">Browse all 45 EF Core analyzer rules</a>, grouped by query shape, materialization, loading, async, tracking, raw SQL, and schema design.</p>
+        </article>
+        <article class="tile">
+          <h3>EF Core Analyzer Guide</h3>
+          <p><a href="ef-core-linq-performance-analyzer/">Read the overview</a> for teams comparing EF Core performance analyzers and Roslyn static analysis tools.</p>
+        </article>
+        <article class="tile">
+          <h3>Authenticity</h3>
+          <p><a href="security-and-authenticity/">Verify official LinqContraband links</a> before installing or linking to the project.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      LinqContraband is open source under the MIT License. Maintained by <a href="https://www.georgewall.uk/">George Wall</a>.
+    </footer>
+  </main>
+</body>
+</html>

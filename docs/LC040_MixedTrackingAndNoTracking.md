@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC040 - Mixed Tracking and No-Tracking"
+---
+
 # Spec: LC040 - Mixed Tracking and No-Tracking
 
 ## Goal

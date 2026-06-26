@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC025 - Avoid AsNoTracking with Update/Remove"
+---
+
 # LC025 - Avoid AsNoTracking with Update/Remove
 
 ## Goal

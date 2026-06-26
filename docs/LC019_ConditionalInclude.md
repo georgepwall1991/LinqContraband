@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC019: Conditional Include Expression"
+---
+
 # LC019: Conditional Include Expression
 
 ## What it flags

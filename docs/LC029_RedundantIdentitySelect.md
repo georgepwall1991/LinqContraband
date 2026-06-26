@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC029 - Redundant Identity Select"
+---
+
 # Spec: LC029 - Redundant Identity Select
 
 ## Goal

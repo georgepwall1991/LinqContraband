@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC015 - Ensure OrderBy Before Skip/Take"
+---
+
 # Spec: LC015 - Ensure OrderBy Before Skip/Take
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC020 - Avoid StringComparison overloads in query expressions"
+---
+
 # Spec: LC020 - Avoid StringComparison overloads in query expressions
 
 ## Goal

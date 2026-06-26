@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Added canonical SEO and authenticity surfaces for the official LinqContraband project, including a GitHub Pages-ready docs hub, crawler metadata, backlink kit, security policy, README safe-install guidance, and richer NuGet search metadata.
+
 ## [5.6.32] - 2026-06-26
 
 ### Changed

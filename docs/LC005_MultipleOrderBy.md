@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC005 - Multiple OrderBy Calls"
+---
+
 # Spec: LC005 - Multiple OrderBy Calls
 
 ## Goal

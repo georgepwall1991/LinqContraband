@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC009 - Missing AsNoTracking in Read Path"
+---
+
 # Spec: LC009 - Missing AsNoTracking in Read Path
 
 ## Goal

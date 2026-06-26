@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC027: Missing Explicit Foreign Key Property"
+---
+
 # LC027: Missing Explicit Foreign Key Property
 
 ## What it flags

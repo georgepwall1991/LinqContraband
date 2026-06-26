@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC012 - Optimize Bulk Delete with ExecuteDelete"
+---
+
 # Spec: LC012 - Optimize Bulk Delete with ExecuteDelete
 
 ## Goal

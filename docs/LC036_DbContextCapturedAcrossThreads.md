@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC036 - DbContext Captured Across Threads"
+---
+
 # Spec: LC036 - DbContext Captured Across Threads
 
 ## Goal

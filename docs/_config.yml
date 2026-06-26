@@ -1,0 +1,6 @@
+title: LinqContraband
+description: EF Core LINQ performance analyzer and Roslyn analyzer for catching query issues at compile time.
+url: "https://georgepwall1991.github.io"
+baseurl: "/LinqContraband"
+repository: georgepwall1991/LinqContraband
+theme: jekyll-theme-minimal

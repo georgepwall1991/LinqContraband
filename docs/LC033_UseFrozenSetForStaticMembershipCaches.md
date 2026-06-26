@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Caches"
+---
+
 # Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Caches
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC045 - Missing Include: navigation accessed on materialized entity"
+---
+
 # Spec: LC045 - Missing Include: navigation accessed on materialized entity
 
 ## Goal

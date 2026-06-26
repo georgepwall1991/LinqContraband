@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC016 - Avoid DateTime.Now in Queries"
+---
+
 # Spec: LC016 - Avoid DateTime.Now in Queries
 
 ## Goal

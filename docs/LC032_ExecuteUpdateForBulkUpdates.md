@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates"
+---
+
 # Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates
 
 ## Goal

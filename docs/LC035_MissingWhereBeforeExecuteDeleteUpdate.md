@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC035: Missing Where Before ExecuteDelete or ExecuteUpdate"
+---
+
 # LC035: Missing Where Before ExecuteDelete or ExecuteUpdate
 
 ## What it flags

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC007: Database Execution Inside Loop"
+---
+
 # LC007: Database Execution Inside Loop
 
 ## Goal

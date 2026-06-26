@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC023 - Use Find/FindAsync for Primary Key Lookups"
+---
+
 # LC023 - Use Find/FindAsync for Primary Key Lookups
 
 ## Goal

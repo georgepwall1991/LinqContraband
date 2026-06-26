@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC013 - Disposed Context Query Leak"
+---
+
 # Spec: LC013 - Disposed Context Query Leak
 
 ## Goal

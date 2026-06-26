@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC001: Local Method Usage in IQueryable"
+---
+
 # LC001: Local Method Usage in IQueryable
 
 ## What It Flags
