@@ -53,13 +53,7 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
             if (!ReferenceEquals(localReference.FindOwningExecutableRoot(), executableRoot))
                 return false;
 
-            if (localReference.Parent is not IPropertyReferenceOperation propertyReference)
-                return false;
-
-            if (!ReferenceEquals(propertyReference.Instance?.UnwrapConversions(), localReference))
-                return false;
-
-            if (!IsReadOnlyPropertyReference(propertyReference))
+            if (!TryGetConsumedProperty(localReference, out var propertyReference))
                 return false;
 
             if (!IsScalarLikeType(propertyReference.Property.Type))
@@ -73,6 +67,98 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
 
         property = properties.First();
         return true;
+    }
+
+    internal static bool HasNullConditionalPropertyUsage(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        IPropertySymbol property)
+    {
+        foreach (var descendant in executableRoot.Descendants())
+        {
+            if (descendant is not ILocalReferenceOperation localReference ||
+                !SymbolEqualityComparer.Default.Equals(localReference.Local, local))
+            {
+                continue;
+            }
+
+            if (!TryGetConsumedProperty(localReference, out var propertyReference))
+                continue;
+
+            if (!SymbolEqualityComparer.Default.Equals(propertyReference.Property, property))
+                continue;
+
+            if (localReference.Parent is IConditionalAccessOperation)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetConsumedProperty(
+        ILocalReferenceOperation localReference,
+        out IPropertyReferenceOperation propertyReference)
+    {
+        propertyReference = null!;
+
+        if (localReference.Parent is IPropertyReferenceOperation directPropertyReference)
+        {
+            if (!ReferenceEquals(directPropertyReference.Instance?.UnwrapConversions(), localReference))
+                return false;
+
+            if (!IsReadOnlyPropertyReference(directPropertyReference))
+                return false;
+
+            propertyReference = directPropertyReference;
+            return true;
+        }
+
+        if (localReference.Parent is IConditionalAccessOperation conditionalAccess)
+        {
+            if (!ReferenceEquals(conditionalAccess.Operation?.UnwrapConversions(), localReference))
+                return false;
+
+            if (!TryGetConditionalAccessProperty(conditionalAccess.WhenNotNull, out var conditionalPropertyReference))
+                return false;
+
+            if (!IsReadOnlyPropertyReference(conditionalPropertyReference))
+                return false;
+
+            propertyReference = conditionalPropertyReference;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetConditionalAccessProperty(
+        IOperation whenNotNull,
+        out IPropertyReferenceOperation propertyReference)
+    {
+        propertyReference = null!;
+        var current = whenNotNull.UnwrapConversions();
+
+        while (current != null)
+        {
+            if (current is IInvocationOperation invocation)
+            {
+                current = invocation.GetInvocationReceiver()?.UnwrapConversions();
+                continue;
+            }
+
+            if (current is not IPropertyReferenceOperation candidate)
+                return false;
+
+            if (candidate.Instance?.UnwrapConversions() is IConditionalAccessInstanceOperation)
+            {
+                propertyReference = candidate;
+                return true;
+            }
+
+            current = candidate.Instance?.UnwrapConversions();
+        }
+
+        return false;
     }
 
     private static bool IsReadOnlyPropertyReference(IPropertyReferenceOperation propertyReference)

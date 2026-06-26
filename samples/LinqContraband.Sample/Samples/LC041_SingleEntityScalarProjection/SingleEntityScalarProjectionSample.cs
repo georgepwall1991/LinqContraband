@@ -11,6 +11,6 @@ public static class SingleEntityScalarProjectionSample
 
         // ADVISORY: Only Name is consumed, but the full entity is materialized.
         var user = db.Users.AsNoTracking().FirstOrDefault(candidate => candidate.Age >= 18);
-        Console.WriteLine(user.Name);
+        Console.WriteLine(user?.Name);
     }
 }

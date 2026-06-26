@@ -184,6 +184,9 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
         if (!SingleEntityScalarProjectionAnalyzer.TryAnalyzeLocalUsage(executableRoot, assignedLocal, out var property))
             return false;
 
+        if (SingleEntityScalarProjectionAnalyzer.HasNullConditionalPropertyUsage(executableRoot, assignedLocal, property))
+            return false;
+
         fixContext = new FixContext(assignedLocal, property.Name, true);
         return true;
     }
