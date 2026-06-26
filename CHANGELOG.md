@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.25] - 2026-06-26
+
+### Fixed
+- `LC027` now recognises `HasForeignKey(...)` calls made through a single-assignment relationship-builder local, such as `var relationship = builder.HasOne(...).WithMany(...); relationship.HasForeignKey("CustomerShadowId");` and split `HasOne(...).WithOne(...).HasForeignKey(...)` continuations, so explicit shadow-FK configurations no longer receive a missing-FK false positive. Reassigned relationship-builder locals stay conservative and continue to require an explicit property or direct configuration proof.
+
 ## [5.6.24] - 2026-06-26
 
 ### Fixed
