@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.23</Version>
+        <Version>5.6.24</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reports full nested paths for parenthesized null-conditional regrouping, including inline materializer and inherited-navigation forms, without appending conditional method-call results to the queried receiver path.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC005 now detects resetting OrderBy calls after single-assignment sorted locals, preserves safe ThenBy fixes for ordered/static syntax, and keeps reassigned, deconstruction-written, or out/ref-written locals quiet.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

@@ -1,3 +1,8 @@
+using Microsoft.CodeAnalysis;
+using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByAnalyzer,
+    LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
     LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByAnalyzer,
     LinqContraband.Analyzers.LC005_MultipleOrderBy.MultipleOrderByFixer>;
@@ -122,6 +127,197 @@ class Test
     }
 }";
         await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task Diagnostic_SingleAssignmentSortedLocalThenOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var sorted = list.OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var sorted = list.OrderBy(x => x);
+        var q = sorted.ThenBy(x => x);
+    }
+}";
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task Diagnostic_ParenthesizedSingleAssignmentSortedLocalThenOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var sorted = (list.OrderBy(x => x));
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var sorted = (list.OrderBy(x => x));
+        var q = sorted.ThenBy(x => x);
+    }
+}";
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task Diagnostic_ExplicitEnumerableSortedLocalThenOrderByReports()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_ReassignedSortedLocalBeforeOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list, bool flag)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        if (flag)
+        {
+            sorted = list;
+        }
+
+        var q = sorted.OrderBy(x => x);
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_TopLevelReassignedSortedLocalBeforeOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+List<int> list = new();
+IEnumerable<int> sorted = list.OrderBy(x => x);
+sorted = list;
+
+var q = sorted.OrderBy(x => x);
+";
+        var verifier = new CodeFixTest { TestCode = test };
+        verifier.TestState.OutputKind = OutputKind.ConsoleApplication;
+
+        await verifier.RunAsync();
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_DeconstructionAssignedSortedLocalBeforeOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        int count;
+        (sorted, count) = (list, 0);
+
+        var q = sorted.OrderBy(x => x);
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_OutAssignedSortedLocalBeforeOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        Reset(out sorted);
+
+        var q = sorted.OrderBy(x => x);
+    }
+
+    void Reset(out IEnumerable<int> value)
+    {
+        value = Enumerable.Empty<int>();
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoDiagnostic_RefAssignedSortedLocalBeforeOrderBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        Reset(ref sorted);
+
+        var q = sorted.OrderBy(x => x);
+    }
+
+    void Reset(ref IEnumerable<int> value)
+    {
+        value = Enumerable.Empty<int>();
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

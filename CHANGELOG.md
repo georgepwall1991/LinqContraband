@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.24] - 2026-06-26
+
+### Fixed
+- `LC005` now detects a resetting `OrderBy` after a single-assignment sorted local, such as `var sorted = q.OrderBy(...); sorted.OrderBy(...)`. The existing `ThenBy` fixer is offered when the receiver still has an ordered type, including static `Enumerable`/`Queryable` syntax; widened locals report as manual fixes, and reassigned, deconstruction-written, or `out`/`ref`-written locals stay quiet so ambiguous local state does not produce path-sensitive false positives.
+
 ## [5.6.23] - 2026-06-26
 
 ### Fixed

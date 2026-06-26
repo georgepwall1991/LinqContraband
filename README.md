@@ -211,6 +211,10 @@ first sort for nothing because you changed the rules.
 ```csharp
 // Sorts by Name, then immediately discards it to sort by Age.
 var query = db.Users.OrderBy(u => u.Name).OrderBy(u => u.Age);
+
+// Same reset after a simple local hop.
+var sorted = db.Users.OrderBy(u => u.Name);
+var query2 = sorted.OrderBy(u => u.Age);
 ```
 
 **✅ The Fix:**
@@ -218,7 +222,17 @@ Chain them properly.
 
 ```csharp
 var query = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age);
+
+var sorted = db.Users.OrderBy(u => u.Name);
+var query2 = sorted.ThenBy(u => u.Age);
 ```
+
+**🛡️ Reliability Notes:**
+- LC005 follows direct fluent chains and single-assignment sorted locals.
+- Static `Enumerable`/`Queryable` syntax is covered; the `ThenBy` fix is offered only when the receiver still has an ordered type.
+- Locals widened to `IEnumerable<T>` or `IQueryable<T>` report as manual fixes.
+- Reassigned locals, deconstruction writes, `out`/`ref` writes, fields, properties, and helper-method returns stay quiet unless the reset is visible in the current chain.
+- Query-syntax double `orderby` clauses report, but the automatic `ThenBy` fix is offered only for fluent syntax.
 
 ---
 

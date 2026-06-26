@@ -10,6 +10,10 @@ In LINQ, each `OrderBy` call completely resets the sort order. If you want to so
 ```csharp
 // Error: The first sort by Name is discarded and ignored.
 var users = db.Users.OrderBy(u => u.Name).OrderBy(u => u.Age).ToList();
+
+// Same reset after a simple local hop.
+var sorted = db.Users.OrderBy(u => u.Name);
+var users = sorted.OrderBy(u => u.Age).ToList();
 ```
 
 ### The Fix
@@ -21,6 +25,17 @@ var users = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age).ToList();
 ```
 
 The code fix rewrites only the later resetting sort call, preserving the selector and any explicit generic type arguments.
+The same fix is offered when the resetting sort is called on a single-assignment local that still has an ordered type:
+
+```csharp
+var sorted = db.Users.OrderBy(u => u.Name);
+var users = sorted.ThenBy(u => u.Age).ToList();
+```
+
+If the local is explicitly widened to `IEnumerable<T>` or `IQueryable<T>`, LC005 still reports the reset, but the fix is
+manual because `ThenBy` is not available on the widened receiver type. LC005 stays quiet when the local is reassigned
+before the later `OrderBy` directly, through deconstruction, or through `out`/`ref`, because the analyzer cannot prove which ordering state
+reaches the reset.
 
 ## Query-comprehension syntax
 
@@ -48,6 +63,12 @@ The diagnostic is **report-only** for query syntax — there is no method-call n
 `ThenBy`, so the automatic fix is withheld there. Collapse the two clauses into one comma-separated
 `orderby` to resolve it by hand. The `ThenBy` fix is still offered for the fluent
 `OrderBy(...).OrderBy(...)` form.
+
+## Boundaries
+
+LC005 follows direct fluent chains, static `Enumerable`/`Queryable` syntax, and single-assignment sorted locals. It does
+not chase fields, properties, multi-assignment locals, or arbitrary helper methods, because those shapes need broader
+dataflow proof to avoid noisy warnings.
 
 ## Analyzer Logic
 
