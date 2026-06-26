@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.27] - 2026-06-26
+
+### Changed
+- `LC022` docs, README guidance, and executable sample now describe the rule as an advisory query-shape review for modern EF Core correlated collection projections, including the direct-projection, split-query, DTO-contract, and narrow safe-fixer boundaries.
+
 ## [5.6.26] - 2026-06-26
 
 ### Fixed

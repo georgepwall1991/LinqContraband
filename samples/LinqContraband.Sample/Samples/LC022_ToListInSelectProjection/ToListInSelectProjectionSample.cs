@@ -11,12 +11,13 @@ namespace LinqContraband.Sample.Samples.LC022_ToListInSelectProjection;
 ///         inside a <c>Select()</c> projection on an IQueryable.
 ///     </para>
 ///     <para>
-///         <strong>Why it's bad:</strong> EF Core cannot translate a materializer inside a projection to SQL.
-///         This forces client-side evaluation or throws in EF Core 3+. EF Core handles collection projections
-///         natively without needing explicit materialization.
+///         <strong>Why review it:</strong> Nested materialization can add avoidable buffering, and provider/version
+///         behaviour differs. Modern EF Core can translate some correlated collection projections, so treat LC022 as
+///         an advisory query-shape review rather than a blanket correctness error.
 ///     </para>
 ///     <para>
-///         <strong>The Fix:</strong> Remove the <c>ToList()</c>/<c>ToArray()</c> call from the projection.
+///         <strong>The Fix:</strong> Project directly, use split queries where appropriate, or keep the materializer
+///         when a DTO contract requires a concrete collection.
 ///     </para>
 /// </remarks>
 public class ToListInSelectProjectionSample
@@ -28,10 +29,10 @@ public class ToListInSelectProjectionSample
     {
         Console.WriteLine("Testing LC022...");
 
-        // VIOLATION: ToList() inside Select forces client-side evaluation
+        // VIOLATION: ToList() inside Select can add avoidable nested buffering
         var result = users.Select(u => u.Orders.ToList()).ToList();
 
-        // CORRECT: EF Core handles collection projection natively
+        // CORRECT: project directly when a concrete nested List is not required
         var correctResult = users.Select(u => u.Orders).ToList();
     }
 }
