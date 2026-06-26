@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC003: Prefer Any() Over Count() Existence Checks"
+---
+
 # LC003: Prefer Any() Over Count() Existence Checks
 
 ## What It Flags

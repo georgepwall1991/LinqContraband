@@ -13,13 +13,13 @@
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
-        <Description>Stop smuggling bad queries into production. LinqContraband is a Roslyn Analyzer that catches EF Core performance killers (client-side evaluation, N+1 queries) at compile time.</Description>
+        <Description>LinqContraband is an EF Core LINQ performance analyzer and Roslyn analyzer that catches N+1 queries, client-side evaluation, sync-over-async calls, raw SQL risks, and other query issues at compile time.</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
         <PackageReleaseNotes>LC016 docs, README guidance, and sample comments now clarify deterministic clock boundaries, injected-clock testability, UTC timestamp preference, provider-specific server-clock alternatives, and the narrow local-variable fixer contract.</PackageReleaseNotes>
-        <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
+        <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>

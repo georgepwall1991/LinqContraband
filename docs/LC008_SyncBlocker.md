@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC008 - Sync-over-Async Blocker"
+---
+
 # Spec: LC008 - Sync-over-Async Blocker
 
 ## Goal

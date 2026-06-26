@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC028: Deep ThenInclude Chain"
+---
+
 # LC028: Deep ThenInclude Chain
 
 ## What it flags

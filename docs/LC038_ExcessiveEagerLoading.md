@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC038: Excessive Eager Loading"
+---
+
 # LC038: Excessive Eager Loading
 
 ## What it flags

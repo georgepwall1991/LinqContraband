@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC042 - Missing Query Tags"
+---
+
 # Spec: LC042 - Missing Query Tags
 
 ## Goal

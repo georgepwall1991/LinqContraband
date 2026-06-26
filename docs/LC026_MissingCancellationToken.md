@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC026: Missing CancellationToken in Async Call"
+---
+
 # LC026: Missing CancellationToken in Async Call
 
 ## What It Flags

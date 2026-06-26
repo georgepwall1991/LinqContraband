@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC021 - Avoid IgnoreQueryFilters"
+---
+
 # Spec: LC021 - Avoid IgnoreQueryFilters
 
 ## Goal

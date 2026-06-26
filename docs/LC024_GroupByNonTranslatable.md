@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC024: GroupBy with Non-Translatable Projection"
+---
+
 # LC024: GroupBy with Non-Translatable Projection
 
 ## What it flags

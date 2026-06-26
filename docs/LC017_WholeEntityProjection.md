@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC017: Whole Entity Projection"
+---
+
 # LC017: Whole Entity Projection
 
 ## Overview

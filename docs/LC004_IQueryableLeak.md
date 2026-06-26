@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC004 - IQueryable to IEnumerable Leak"
+---
+
 # Spec: LC004 - IQueryable to IEnumerable Leak
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC010 - SaveChanges inside Loop"
+---
+
 # Spec: LC010 - SaveChanges inside Loop
 
 ## Goal

@@ -1,0 +1,15 @@
+# LinqContraband
+
+LinqContraband is an EF Core LINQ performance analyzer and Roslyn analyzer for .NET. It catches query performance,
+reliability, and security issues at compile time.
+
+Official links:
+
+- Source: https://github.com/georgepwall1991/LinqContraband
+- Package: https://www.nuget.org/packages/LinqContraband
+- Maintainer: https://www.georgewall.uk/
+- Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
+- Authenticity: https://georgepwall1991.github.io/LinqContraband/security-and-authenticity/
+
+Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, query performance, N+1
+queries, raw SQL safety, .NET.

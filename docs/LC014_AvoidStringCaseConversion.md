@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC014 - Avoid String Case Conversion in Queries"
+---
+
 # Spec: LC014 - Avoid String Case Conversion in Queries
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss"
+---
+
 # Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss
 
 ## Goal

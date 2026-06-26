@@ -52,6 +52,13 @@ static string FindRepoRoot()
 static string GenerateMarkdown()
 {
     var builder = new StringBuilder();
+    builder.AppendLine("---");
+    builder.AppendLine("layout: default");
+    builder.AppendLine("title: LinqContraband Rule Catalog");
+    builder.AppendLine("description: Full LinqContraband EF Core analyzer rule catalog grouped by query, materialization, loading, async, tracking, raw SQL, and schema design.");
+    builder.AppendLine("permalink: /rule-catalog.html");
+    builder.AppendLine("---");
+    builder.AppendLine();
     builder.AppendLine("# Rule Catalog");
     builder.AppendLine();
     builder.AppendLine("The source of truth for rule metadata lives in `src/LinqContraband/Catalog/RuleCatalog.cs`.");
@@ -72,7 +79,8 @@ static string GenerateMarkdown()
         foreach (var rule in group)
         {
             var fixText = rule.HasCodeFix ? "Code fix" : "Manual only";
-            var docsLink = $"[`{rule.Slug}`](./{Path.GetFileName(rule.DocumentationPath)})";
+            var docsFileName = Path.ChangeExtension(Path.GetFileName(rule.DocumentationPath), ".html");
+            var docsLink = $"[`{rule.Slug}`](./{docsFileName})";
             var sampleDirectory = Path.GetDirectoryName(rule.SamplePath)?.Replace('\\', '/');
             var shortSampleDirectory = sampleDirectory is null
                 ? rule.SamplePath.Replace('\\', '/')

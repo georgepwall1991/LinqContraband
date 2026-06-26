@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://georgepwall1991.github.io/LinqContraband/sitemap.xml

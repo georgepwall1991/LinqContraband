@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC043 - Async Enumerable Buffering"
+---
+
 # Spec: LC043 - Async Enumerable Buffering
 
 ## Goal

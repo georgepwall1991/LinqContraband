@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC002: Premature Materialization"
+---
+
 # LC002: Premature Materialization
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC011 - Entity Missing Primary Key"
+---
+
 # Spec: LC011 - Entity Missing Primary Key
 
 ## Goal

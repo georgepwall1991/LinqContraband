@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation"
+---
+
 # Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation
 
 ## Goal

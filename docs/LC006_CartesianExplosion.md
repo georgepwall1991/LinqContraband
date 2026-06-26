@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC006 - Cartesian Explosion Risk"
+---
+
 # Spec: LC006 - Cartesian Explosion Risk
 
 ## Goal

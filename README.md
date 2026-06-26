@@ -19,6 +19,19 @@
 **LinqContraband** is the TSA for your Entity Framework Core queries. It scans your code as you type and confiscates
 performance killers—like client-side evaluation, N+1 risks, and sync-over-async—before they ever reach production.
 
+## Official Project and Safe Install
+
+LinqContraband is an EF Core LINQ performance analyzer for .NET, distributed as a NuGet analyzer package and maintained
+by [George Wall](https://www.georgewall.uk/).
+
+- **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
+- **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
+- **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
+- **Link kit:** [georgepwall1991.github.io/LinqContraband/backlink-kit](https://georgepwall1991.github.io/LinqContraband/backlink-kit/)
+
+Install only from NuGet or from this repository. LinqContraband is not distributed as a standalone ZIP installer or
+executable; treat third-party ZIP downloads as untrusted.
+
 ### ⚡ Why use LinqContraband?
 
 * **Zero Runtime Overhead:** It runs entirely at compile-time. No performance cost to your app.

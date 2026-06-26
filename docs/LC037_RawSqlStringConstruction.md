@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC037 - Raw SQL String Construction"
+---
+
 # Spec: LC037 - Raw SQL String Construction
 
 ## Goal

@@ -1,3 +1,8 @@
+---
+layout: default
+title: "LC022: Nested Collection Materialization Inside Projection"
+---
+
 # LC022: Nested Collection Materialization Inside Projection
 
 ## What it flags

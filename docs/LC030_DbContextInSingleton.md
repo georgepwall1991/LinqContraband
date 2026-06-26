@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC030 - Review DbContext Lifetime Mismatches"
+---
+
 # Spec: LC030 - Review DbContext Lifetime Mismatches
 
 ## Goal

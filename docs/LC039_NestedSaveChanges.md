@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Spec: LC039 - Nested SaveChanges"
+---
+
 # Spec: LC039 - Nested SaveChanges
 
 ## Goal
