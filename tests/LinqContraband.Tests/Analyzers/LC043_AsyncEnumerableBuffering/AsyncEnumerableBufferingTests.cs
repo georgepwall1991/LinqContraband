@@ -213,6 +213,69 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task BufferedAsyncEnumerable_CapturedByNestedLambda_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users)
+        {
+            var items = await users.ToListAsync();
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+
+            Action later = () => System.Console.WriteLine(items.Count);
+            later();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BufferedAsyncEnumerable_CapturedByLocalFunction_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users)
+        {
+            var items = await users.ToArrayAsync();
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+
+            void Later()
+            {
+                System.Console.WriteLine(items.Length);
+            }
+
+            Later();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CustomToListAsync_OnNonAsyncEnumerable_ShouldNotTrigger()
     {
         var test = @"using System.Collections.Generic;

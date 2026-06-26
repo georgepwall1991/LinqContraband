@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.26] - 2026-06-26
+
+### Fixed
+- `LC043` now treats buffered locals captured by nested lambdas or local functions as additional uses, so the `await foreach` fixer is not offered when removing the buffer would break captured code.
+
 ## [5.6.25] - 2026-06-26
 
 ### Fixed

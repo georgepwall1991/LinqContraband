@@ -1608,6 +1608,7 @@ await foreach (var user in stream)
 **🛡️ Reliability Notes:**
 - LC043 intentionally targets a narrow, analyzer-proven v1 pattern: immediate buffering followed by one linear loop in the same method.
 - The buffered call must come from a proven `IAsyncEnumerable<T>` source; custom non-stream `ToListAsync`/`ToArrayAsync` helpers stay quiet.
+- Buffers captured by nested lambdas or local functions stay quiet because the fixer would otherwise remove a local that later code still needs.
 - The fixer rewrites only those safe cases and does not try to transform broader async-stream usage.
 
 ---

@@ -145,9 +145,6 @@ public sealed class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyzer
                 continue;
             }
 
-            if (!ReferenceEquals(localReference.FindOwningExecutableRoot(), root))
-                continue;
-
             localUseCount++;
             if (localUseCount > 1)
                 return false;
