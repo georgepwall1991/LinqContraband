@@ -79,6 +79,9 @@ team feedback at the pull-request stage, before the query has production traffic
 LinqContraband runs as an analyzer package only. It adds no runtime dependency to your application and works with
 Visual Studio, Rider, VS Code, and CI builds.
 
+To make N+1 diagnostics visible on every pull request, see the
+[EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/).
+
 ## Official Links
 
 - Canonical repository: [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)

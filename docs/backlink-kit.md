@@ -20,6 +20,7 @@ repository or the GitHub Pages documentation hub.
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
+- CI guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/)
 - Maintainer: [https://www.georgewall.uk/](https://www.georgewall.uk/)
 
 ## Suggested Anchor Text
@@ -30,6 +31,8 @@ repository or the GitHub Pages documentation hub.
 - EF Core N+1 query detector for .NET
 - EF Core raw SQL injection analyzer
 - EF Core raw SQL safety analyzer
+- EF Core query analyzer for CI
+- EF Core analyzer for pull requests
 - LINQ query performance analyzer for .NET
 - LinqContraband Roslyn analyzer
 
@@ -83,6 +86,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core raw SQL injection analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/) explains how LinqContraband flags interpolated raw SQL, constructed SQL strings, and risky query-filter bypasses at compile time.
+```
+
+## CI Guide Link
+
+```markdown
+[EF Core query analyzer for CI](https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/) shows how to run LinqContraband in pull-request builds and promote selected EF Core diagnostics to build-breaking errors.
 ```
 
 ## HTML Link
