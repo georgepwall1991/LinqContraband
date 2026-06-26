@@ -1195,16 +1195,22 @@ var querySyntaxUsers =
 ```
 
 **✅ The Fix:**
-Add a bound to the query.
+Add a real row bound to the query, usually `Take()` or ordered `Skip()`/`Take()` pagination.
 
 ```csharp
 // Loads at most 1000 rows
-var users = db.Users.Where(u => u.IsActive).Take(1000).ToList();
+var users = db.Users
+    .Where(u => u.IsActive)
+    .OrderBy(u => u.Id)
+    .Take(1000)
+    .ToList();
 ```
 
 **🛡️ Reliability Notes:**
 - LC031 follows method-syntax chains, `DbContext.Set<TEntity>()`, query-syntax expressions, and simple single-assignment aliases when the DbSet origin is provable.
 - Bounded query-syntax results such as `.Take(100).ToList()` stay quiet, and LINQ-to-Objects query syntax is ignored.
+- `Where`, `OrderBy`, `Skip` without `Take`, `TakeLast`, `Chunk`, and query options such as `AsNoTracking` do not prove a capped result set.
+- LC031 has no automatic fixer because the right answer may be pagination, keyset/cursor paging, a background export, streaming/batching, or a narrow reviewed suppression for an intentional full scan.
 
 ---
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.30] - 2026-06-26
+
+### Changed
+- `LC031` docs, README guidance, and executable sample now explain the manual-only remediation contract for unbounded materialization, including intentional full scans, exports, streaming/batching, reviewed suppressions, and non-bounds such as `Where`, `Skip` without `Take`, `TakeLast`, `Chunk`, and transparent query options. Test coverage now locks query-syntax `DbContext.Set`, bounded query-syntax aliases, `Skip`-only, `TakeLast`, and `AsNoTracking` chains.
+
 ## [5.6.29] - 2026-06-26
 
 ### Fixed

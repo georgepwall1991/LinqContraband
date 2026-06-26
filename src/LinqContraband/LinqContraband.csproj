@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.29</Version>
+        <Version>5.6.30</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://github.com/georgepwall1991/LinqContraband</PackageProjectUrl>
-        <PackageReleaseNotes>LC029 now reports statement-bodied enumerable identity projections, preserves wrapped fluent receivers, and keeps unsafe awaited-task, explicit-cast, static, concrete, and type-changing projection shapes out of the safe fixer path.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC031 docs, README guidance, sample comments, and tests now clarify manual-only remediation for unbounded materialization, including intentional full scans and non-bounding query operators.</PackageReleaseNotes>
         <PackageTags>EFCore;Linq;Analyzer;Performance;Roslyn;CodeAnalysis;SQL;EntityFramework;DotNet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
