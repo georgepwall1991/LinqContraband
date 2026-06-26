@@ -6,31 +6,6 @@ namespace LinqContraband.Extensions;
 
 public static partial class AnalysisExtensions
 {
-    public static bool IsInsideLoop(this IOperation operation)
-    {
-        var current = operation.Parent;
-        while (current != null)
-        {
-            if (current is ILoopOperation) return true;
-            current = current.Parent;
-        }
-
-        return false;
-    }
-
-    public static bool IsInsideAsyncForEach(this IOperation operation)
-    {
-        var current = operation.Parent;
-        while (current != null)
-        {
-            if (current is IForEachLoopOperation forEach && forEach.IsAsynchronous)
-                return true;
-            current = current.Parent;
-        }
-
-        return false;
-    }
-
     public static ILoopOperation? FindEnclosingLoop(this IOperation operation)
     {
         var current = operation.Parent;

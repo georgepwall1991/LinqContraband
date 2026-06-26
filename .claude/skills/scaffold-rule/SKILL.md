@@ -14,7 +14,7 @@ Creates a complete, contract-compliant LCxxx rule. The repo enforces a strict
 
 Parse from the user's invocation (ask only if missing):
 
-- **Rule id** — `LCxxx` (next free sequential number; current max is LC044, so default to the next one)
+- **Rule id** — `LCxxx` (next free sequential number after the highest `LC` id in `RuleCatalog`)
 - **Name** — PascalCase descriptive name, e.g. `NoTrackingForReads`
 - **Domain** — one of the 8 neighborhoods (folder name ↔ catalog `domain` string):
 

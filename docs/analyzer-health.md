@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-10 (full per-rule re-verification; previous overnight rerun 2026-06-04, deep rescan 2026-05-29)
+Reviewed: 2026-06-26 (current repo hygiene pass; full per-rule re-verification 2026-06-10, previous overnight rerun 2026-06-04, deep rescan 2026-05-29)
 
 This is a deliberately harsh health audit for the **45 analyzers** in `RuleCatalog`. The catalog currently declares 30 rules with code fixes and 15 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
@@ -30,7 +30,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
-> Rows below are the **2026-06-10 re-verified state** — the 2026-06-04 rerun deltas (5.5.1–5.5.13) and the 5.6.0/5.6.1 LC045 releases are folded into the rows. Every row was independently re-checked against current source, tests, and docs by a six-probe parallel audit; the full suite passes at **1006 tests** on net10.0.
+> Rows below are the **2026-06-10 re-verified state** — the 2026-06-04 rerun deltas (5.5.1–5.5.13) and the 5.6.0/5.6.1 LC045 releases are folded into the rows. Every row was independently re-checked against current source, tests, and docs by a six-probe parallel audit; subsequent hardening has raised the local net10.0 suite to **1159 tests**.
 
 | Rule | Title | Domain | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
