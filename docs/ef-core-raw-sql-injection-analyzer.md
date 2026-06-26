@@ -61,6 +61,9 @@ var users = db.Users.FromSqlRaw(
 LinqContraband does not try to replace a secure code review or threat model. It catches the common raw SQL footguns early
 so reviewers can focus on the cases that genuinely need human judgement.
 
+To make raw SQL diagnostics block or warn in pull requests, see the
+[EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/).
+
 ## Where It Fits
 
 - Pull request checks for APIs, admin tools, and reporting code that use EF Core.
