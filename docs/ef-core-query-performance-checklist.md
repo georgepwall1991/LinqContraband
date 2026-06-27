@@ -31,6 +31,7 @@ dotnet add package LinqContraband
 | Keep eager loading bounded. | Overusing `Include` can create cartesian explosion or very wide result graphs. | [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [LC038: excessive eager loading](/LinqContraband/LC038_ExcessiveEagerLoading.html) |
 | Prefer async EF Core APIs in async methods. | Synchronous EF Core calls in async paths block request threads. | [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html) |
 | Pass cancellation tokens through async query APIs. | Long-running queries should respect request cancellation and shutdown paths. | [LC026: missing cancellation token](/LinqContraband/LC026_MissingCancellationToken.html) |
+| Keep DbContext lifetimes scoped and single-threaded. | Long-lived or cross-thread contexts can leak tracked state, cross request boundaries, or throw at runtime. | [LC030: DbContext lifetime mismatch](/LinqContraband/LC030_DbContextInSingleton.html), [LC036: DbContext captured across threads](/LinqContraband/LC036_DbContextCapturedAcrossThreads.html), [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) |
 | Use read-only tracking intentionally. | Tracking every read increases memory and can create confusing mixed-mode behaviour. | [LC009: missing AsNoTracking](/LinqContraband/LC009_MissingAsNoTracking.html), [LC040: mixed tracking modes](/LinqContraband/LC040_MixedTrackingAndNoTracking.html) |
 | Keep raw SQL parameterized. | Interpolation and string construction can turn EF Core raw SQL into injection risk. | [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html), [LC034: interpolated command SQL](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html), [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html) |
 | Review global filter bypasses. | `IgnoreQueryFilters` can skip tenant, soft-delete, or security boundaries. | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
@@ -50,6 +51,7 @@ dotnet_diagnostic.LC002.severity = warning
 dotnet_diagnostic.LC015.severity = warning
 dotnet_diagnostic.LC007.severity = error
 dotnet_diagnostic.LC045.severity = warning
+dotnet_diagnostic.LC036.severity = warning
 
 # Raw SQL and security-sensitive paths
 dotnet_diagnostic.LC018.severity = error
@@ -70,6 +72,9 @@ attributes only when a reviewer has accepted a specific exception.
   checklist items become automated build feedback.
 - Use the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/) when
   unordered `Skip`, `Take`, `Last`, `ElementAt`, `Chunk`, or misplaced `OrderBy` calls need focused guidance.
+- Use the [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) when
+  singleton contexts, background work, cross-thread capture, disposed queries, or tracking-mode surprises need focused
+  guidance.
 - Use the [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/)
   when early `ToList`, `AsEnumerable`, unbounded materialization, or projection waste need focused guidance.
 - Send focused topics to the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/), the

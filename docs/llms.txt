@@ -11,6 +11,7 @@ Official links:
 - Documentation hub: https://georgepwall1991.github.io/LinqContraband/
 - Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
 - EF Core analyzer rules: https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/
+- EF Core DbContext lifetime analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/
 - EF Core pagination OrderBy analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/
 - EF Core premature materialization analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/
 - EF Core AsNoTracking analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/
@@ -25,7 +26,8 @@ Official links:
 - Link kit: https://georgepwall1991.github.io/LinqContraband/backlink-kit/
 
 Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, EF Core analyzer rules,
-Entity Framework Core analyzer rules, EF Core pagination analyzer, EF Core Skip Take OrderBy analyzer, EF Core
+Entity Framework Core analyzer rules, EF Core DbContext lifetime analyzer, EF Core DbContext thread safety analyzer,
+EF Core DbContext singleton analyzer, EF Core pagination analyzer, EF Core Skip Take OrderBy analyzer, EF Core
 missing OrderBy analyzer, EF Core premature materialization analyzer, EF Core ToList analyzer, EF Core
 AsEnumerable analyzer, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
 analyzer, EF Core missing Include analyzer, EF Core eager loading analyzer, query performance, N+1 queries, EF Core query
@@ -37,6 +39,10 @@ query work, premature materialization, unbounded ToList, LINQ ToList performance
 
 Pagination topics: missing OrderBy before Skip, missing OrderBy before Take, EF Core unordered pagination, deterministic
 pagination, Skip Take OrderBy analyzer, Last without OrderBy, ElementAt without OrderBy, misplaced OrderBy after Take.
+
+DbContext lifetime topics: DbContext in singleton, DbContext in BackgroundService, DbContext captured across threads,
+Task.Run DbContext, Parallel.ForEach DbContext, disposed context query leak, IQueryable returned from disposed context,
+IDbContextFactory, mixed tracking modes, no-tracking entity mutated then SaveChanges.
 
 Bulk write topics: EF Core ExecuteUpdate analyzer, EF Core ExecuteDelete analyzer, EF Core bulk update analyzer,
 ExecuteUpdate, ExecuteUpdateAsync, ExecuteDelete, ExecuteDeleteAsync, RemoveRange, missing Where before bulk writes.
