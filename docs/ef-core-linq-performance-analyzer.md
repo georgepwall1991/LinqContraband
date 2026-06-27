@@ -26,6 +26,8 @@ dotnet add package LinqContraband
 - Premature materialization with `ToList()`, `ToArray()`, `AsEnumerable()`, and related operators
 - Client-side evaluation risk from local methods and untranslatable query expressions
 - Sync-over-async EF Core calls inside async methods
+- Missing cancellation tokens on async EF Core queries and saves
+- Async stream buffering before a single `await foreach`
 - DbContext lifetime mismatches, disposed query leaks, and cross-thread context capture
 - `SaveChanges` or `SaveChangesAsync` inside loops
 - Missing `AsNoTracking()` in read-only paths
@@ -37,6 +39,8 @@ For Include and eager-loading review, see the [EF Core Include analyzer guide](/
 For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
 For DbContext lifetime, threading, and disposed-query review, see the
 [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/).
+For sync-over-async, `ToListAsync`, `SaveChangesAsync`, cancellation tokens, and async streams, see the
+[EF Core async query analyzer guide](/LinqContraband/ef-core-async-query-analyzer/).
 For deterministic pagination, see the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For early `ToList`, `ToArray`, and `AsEnumerable` review, see the
 [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/).
@@ -62,6 +66,7 @@ The full catalog contains 45 rules grouped by domain:
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
+- [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/)
 - [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/)
