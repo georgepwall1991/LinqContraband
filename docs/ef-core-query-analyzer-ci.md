@@ -96,7 +96,8 @@ can remain a warning until the team agrees on the policy.
 5. Expand the enforced rule set once the warning backlog is under control.
 
 For deeper rule detail, browse the [full rule catalog](/LinqContraband/rule-catalog.html), the
-[EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), and the
+[EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), the
+[EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/), and the
 [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 
 ## Official Links

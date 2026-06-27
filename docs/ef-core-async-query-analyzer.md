@@ -12,6 +12,9 @@ LinqContraband helps teams review async EF Core query paths before they reach pr
 database calls inside async methods, missing cancellation tokens on async EF APIs, `SaveChangesAsync` inside loops, and
 async stream buffering that should stay streaming.
 
+For the focused missing-token workflow, use the
+[EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/).
+
 Install the official NuGet package:
 
 ```bash
@@ -48,7 +51,7 @@ public async Task<List<User>> ActiveUsers(CancellationToken cancellationToken)
 | Rule | What it catches | Why it matters |
 | --- | --- | --- |
 | [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html) | Synchronous EF Core query, save, find, and bulk APIs inside async contexts. | Blocking database I/O ties up request or worker threads that could be serving other work. |
-| [LC026: missing CancellationToken](/LinqContraband/LC026_MissingCancellationToken.html) | Async EF Core calls that omit a token, pass `default`, or pass `CancellationToken.None` while a usable token is in scope. | Cancelled requests and stopping workers should not leave database queries running unnecessarily. |
+| [LC026: missing CancellationToken](/LinqContraband/LC026_MissingCancellationToken.html) | Async EF Core calls that omit a token, pass `default`, or pass `CancellationToken.None` while a usable token is in scope. | Cancelled requests and stopping workers should not leave database queries running unnecessarily. See the [EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/) for the focused rollout path. |
 | [LC043: async stream buffering](/LinqContraband/LC043_AsyncEnumerableBuffering.html) | Immediate `ToListAsync` or `ToArrayAsync` buffering of an `IAsyncEnumerable<T>` before a single loop. | Buffering loses the memory and latency benefits of streaming. |
 | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) | `SaveChanges` or `SaveChangesAsync` inside `for`, `foreach`, `while`, and related loop shapes. | Per-item commits create repeated transactions and partial-progress states. |
 
@@ -158,6 +161,7 @@ from local warnings to pull-request checks.
 
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
 - [EF Core analyzer rules](/LinqContraband/ef-core-analyzer-rules/)
+- [EF Core CancellationToken analyzer](/LinqContraband/ef-core-cancellation-token-analyzer/)
 - [EF Core SaveChanges in loop analyzer](/LinqContraband/ef-core-savechanges-in-loop-analyzer/)
 - [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - [EF Core query analyzer for CI](/LinqContraband/ef-core-query-analyzer-ci/)

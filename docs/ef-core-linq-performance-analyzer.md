@@ -44,6 +44,8 @@ For DbContext lifetime, threading, and disposed-query review, see the
 [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/).
 For sync-over-async, `ToListAsync`, `SaveChangesAsync`, cancellation tokens, and async streams, see the
 [EF Core async query analyzer guide](/LinqContraband/ef-core-async-query-analyzer/).
+For missing tokens on `ToListAsync`, `FirstOrDefaultAsync`, and `SaveChangesAsync`, see the
+[EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/).
 For deterministic pagination, see the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For early `ToList`, `ToArray`, and `AsEnumerable` review, see the
 [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/).
@@ -71,6 +73,7 @@ The full catalog contains 45 rules grouped by domain:
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
 - [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/)
+- [EF Core CancellationToken analyzer](/LinqContraband/ef-core-cancellation-token-analyzer/)
 - [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/)
