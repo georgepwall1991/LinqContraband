@@ -9,7 +9,7 @@ permalink: /sitemap.xml
   {% assign priority = "0.6" -%}
   {% if item.url == "/" -%}
     {% assign priority = "1.0" -%}
-  {% elsif item.url contains "ef-core-linq-performance-analyzer" or item.url contains "ef-core-n-plus-one-query-detector" or item.url contains "ef-core-raw-sql-injection-analyzer" or item.url contains "ef-core-query-analyzer-ci" or item.url contains "security-and-authenticity" -%}
+  {% elsif item.url contains "ef-core-linq-performance-analyzer" or item.url contains "ef-core-query-performance-checklist" or item.url contains "ef-core-n-plus-one-query-detector" or item.url contains "ef-core-raw-sql-injection-analyzer" or item.url contains "ef-core-query-analyzer-ci" or item.url contains "security-and-authenticity" -%}
     {% assign priority = "0.9" -%}
   {% elsif item.url contains "backlink-kit" or item.url contains "rule-catalog" -%}
     {% assign priority = "0.8" -%}

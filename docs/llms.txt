@@ -10,6 +10,7 @@ Official links:
 - Maintainer: https://www.georgewall.uk/
 - Documentation hub: https://georgepwall1991.github.io/LinqContraband/
 - Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
+- EF Core query performance checklist: https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/
 - EF Core N+1 query detector: https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/
 - EF Core raw SQL injection analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/
 - EF Core query analyzer for CI: https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/
@@ -17,8 +18,8 @@ Official links:
 - Link kit: https://georgepwall1991.github.io/LinqContraband/backlink-kit/
 
 Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, query performance, N+1
-queries, EF Core N+1 query detector, missing includes, eager loading, raw SQL safety, EF Core raw SQL injection analyzer,
-EF Core query analyzer for CI, pull request diagnostics, .NET.
+queries, EF Core query performance checklist, EF Core N+1 query detector, missing includes, eager loading, raw SQL safety,
+EF Core raw SQL injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NET.
 
 Canonical description: LinqContraband is an open-source EF Core LINQ performance analyzer for .NET. It runs as a
 compile-time Roslyn analyzer and helps catch query performance, reliability, and security issues before code reaches

@@ -12,6 +12,9 @@ LinqContraband is an EF Core query analyzer for CI pipelines, pull requests, and
 analyzer package, so ordinary `dotnet build` output can surface risky LINQ and Entity Framework Core query patterns
 before they merge.
 
+For the review questions that this CI gate can automate, use the
+[EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/).
+
 Install the official NuGet package in the project that contains your EF Core code:
 
 ```bash
