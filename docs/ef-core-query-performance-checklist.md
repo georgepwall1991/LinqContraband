@@ -23,6 +23,7 @@ dotnet add package LinqContraband
 | Check | Why it matters | LinqContraband signal |
 | --- | --- | --- |
 | Avoid database calls inside loops. | Loop execution can turn one request into many database roundtrips. | [LC007: database execution inside loop](/LinqContraband/LC007_NPlusOneLooper.html) |
+| Batch `SaveChanges` outside loops unless each item needs its own commit boundary. | Repeated saves can turn one unit of work into many transactions and partial-progress states. | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) |
 | Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html) |
 | Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html) |
 | Make related data loading explicit. | Missing includes can produce null navigation data, lazy-loading churn, or hidden N+1 behaviour. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html) |
@@ -73,6 +74,8 @@ attributes only when a reviewer has accepted a specific exception.
   tracking, mixed tracking modes, or silent no-tracking writes need focused guidance.
 - Use the [EF Core ExecuteUpdate analyzer guide](/LinqContraband/ef-core-executeupdate-analyzer/) when bulk update,
   bulk delete, or missing `Where` before set-based writes need focused guidance.
+- Use the [EF Core SaveChanges in loop analyzer guide](/LinqContraband/ef-core-savechanges-in-loop-analyzer/) when
+  repeated saves, N+1 writes, or batched write policy need focused guidance.
 - Use the [full rule catalog](/LinqContraband/rule-catalog.html) to tune the exact severity policy for your application.
 
 ## Official Links

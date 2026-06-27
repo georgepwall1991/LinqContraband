@@ -14,6 +14,7 @@ Official links:
 - EF Core AsNoTracking analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/
 - EF Core Include analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/
 - EF Core ExecuteUpdate analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/
+- EF Core SaveChanges in loop analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-savechanges-in-loop-analyzer/
 - EF Core query performance checklist: https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/
 - EF Core N+1 query detector: https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/
 - EF Core raw SQL injection analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/
@@ -29,6 +30,9 @@ injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NE
 
 Bulk write topics: EF Core ExecuteUpdate analyzer, EF Core ExecuteDelete analyzer, EF Core bulk update analyzer,
 ExecuteUpdate, ExecuteUpdateAsync, ExecuteDelete, ExecuteDeleteAsync, RemoveRange, missing Where before bulk writes.
+
+Write batching topics: EF Core SaveChanges in loop analyzer, EF Core SaveChanges analyzer, EF Core batch SaveChanges
+analyzer, SaveChanges inside foreach, SaveChangesAsync inside loop, N+1 writes, repeated database writes.
 
 Canonical description: LinqContraband is an open-source EF Core LINQ performance analyzer for .NET. It runs as a
 compile-time Roslyn analyzer and helps catch query performance, reliability, and security issues before code reaches

@@ -26,6 +26,7 @@ dotnet add package LinqContraband
 - Premature materialization with `ToList()`, `ToArray()`, `AsEnumerable()`, and related operators
 - Client-side evaluation risk from local methods and untranslatable query expressions
 - Sync-over-async EF Core calls inside async methods
+- `SaveChanges` or `SaveChangesAsync` inside loops
 - Missing `AsNoTracking()` in read-only paths
 - Unsafe raw SQL interpolation and constructed SQL strings
 - Silent no-tracking writes and mixed tracking modes
@@ -36,6 +37,7 @@ For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContr
 For security-sensitive SQL usage, see the [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 For tracking-mode mistakes, see the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/).
 For set-based write review, see the [EF Core ExecuteUpdate analyzer guide](/LinqContraband/ef-core-executeupdate-analyzer/).
+For repeated write review, see the [EF Core SaveChanges in loop analyzer guide](/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
 For pull-request enforcement, see the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/).
 
 ## Why Compile-Time Analysis Helps
@@ -59,6 +61,7 @@ The full catalog contains 45 rules grouped by domain:
 - [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - [EF Core AsNoTracking analyzer](/LinqContraband/ef-core-asnotracking-analyzer/)
 - [EF Core ExecuteUpdate analyzer](/LinqContraband/ef-core-executeupdate-analyzer/)
+- [EF Core SaveChanges in loop analyzer](/LinqContraband/ef-core-savechanges-in-loop-analyzer/)
 - [EF Core query analyzer for CI](/LinqContraband/ef-core-query-analyzer-ci/)
 - [LC007: N+1 query loops](/LinqContraband/LC007_NPlusOneLooper.html)
 - [LC045: missing include](/LinqContraband/LC045_MissingInclude.html)
