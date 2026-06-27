@@ -135,6 +135,18 @@ unsafe raw SQL interpolation, and tracking mistakes.
 [LinqContraband](https://github.com/georgepwall1991/LinqContraband) is an EF Core LINQ performance analyzer for catching query issues at compile time.
 ```
 
+## Maintainer Link
+
+```markdown
+[George Wall](https://www.georgewall.uk/) maintains LinqContraband, an open-source EF Core LINQ performance analyzer for .NET.
+```
+
+## Author Profile Link
+
+```markdown
+LinqContraband is maintained by [George Wall](https://www.georgewall.uk/) and published from the canonical repository at [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband).
+```
+
 ## Documentation Link
 
 ```markdown

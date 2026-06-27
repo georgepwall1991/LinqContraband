@@ -26,6 +26,7 @@ by [George Wall](https://www.georgewall.uk/).
 
 - **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
+- **Maintainer site:** [georgewall.uk](https://www.georgewall.uk/)
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **Async query guide:** [georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
