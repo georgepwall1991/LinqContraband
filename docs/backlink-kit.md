@@ -19,6 +19,7 @@ repository or the GitHub Pages documentation hub.
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
+- Pagination OrderBy guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - Premature materialization guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
 - AsNoTracking guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - Include guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
@@ -35,6 +36,11 @@ repository or the GitHub Pages documentation hub.
 - EF Core LINQ performance analyzer
 - EF Core analyzer rules
 - Entity Framework Core analyzer rules
+- EF Core pagination analyzer
+- EF Core Skip Take OrderBy analyzer
+- EF Core missing OrderBy analyzer
+- EF Core unordered pagination analyzer
+- EF Core deterministic pagination analyzer
 - EF Core premature materialization analyzer
 - EF Core ToList analyzer
 - EF Core AsEnumerable analyzer
@@ -106,6 +112,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core analyzer rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/) groups LinqContraband's 45 diagnostics by query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
+## Pagination OrderBy Guide Link
+
+```markdown
+[EF Core pagination OrderBy analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/) explains how LinqContraband flags missing OrderBy before Skip, Take, Last, ElementAt, Chunk, and misplaced OrderBy calls.
 ```
 
 ## Premature Materialization Guide Link
