@@ -30,7 +30,7 @@ catalog.
 | Loading and includes | Missing includes, cartesian explosion, excessive eager loading, deep include chains, and untagged complex queries. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html), [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/) |
 | Execution and async | Database work inside loops, synchronous EF Core calls in async paths, missing cancellation tokens, and async-stream buffering. | [LC007: database execution inside loop](/LinqContraband/LC007_NPlusOneLooper.html), [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html), [LC026: missing cancellation token](/LinqContraband/LC026_MissingCancellationToken.html) |
 | Tracking and context lifetime | Missing `AsNoTracking`, no-tracking writes, mixed tracking modes, repeated `SaveChanges`, and DbContext lifetime mistakes. | [LC009: missing AsNoTracking](/LinqContraband/LC009_MissingAsNoTracking.html), [LC044: no-tracking modification](/LinqContraband/LC044_AsNoTrackingThenModifySilentWrite.html), [EF Core AsNoTracking analyzer](/LinqContraband/ef-core-asnotracking-analyzer/) |
-| Bulk operations and modeling | Set-based write opportunities, unbounded bulk updates or deletes, missing keys, and missing explicit foreign keys. | [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html), [LC011: missing primary key](/LinqContraband/LC011_EntityMissingPrimaryKey.html) |
+| Bulk operations and modeling | Set-based write opportunities, unbounded bulk updates or deletes, missing keys, and missing explicit foreign keys. | [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html), [EF Core ExecuteUpdate analyzer](/LinqContraband/ef-core-executeupdate-analyzer/) |
 | Raw SQL and security | Interpolated raw SQL, constructed SQL strings, unsafe command SQL, and query-filter bypasses. | [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html), [LC034: interpolated command SQL](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html), [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
 
 ## Rules To Enable First
@@ -70,6 +70,8 @@ when it represents project policy and developers have a documented exception pat
   command SQL, or query-filter bypasses need stronger review.
 - Use the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/) when read-only query
   tracking, mixed tracking modes, or no-tracking write paths are the main concern.
+- Use the [EF Core ExecuteUpdate analyzer guide](/LinqContraband/ef-core-executeupdate-analyzer/) when tracked bulk
+  loops, `RemoveRange` deletes, or unfiltered set-based writes are the main concern.
 - Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) when selected rules should warn
   or fail pull requests.
 - Use the [full rule catalog](/LinqContraband/rule-catalog.html) for every rule's severity, category, sample folder, and
