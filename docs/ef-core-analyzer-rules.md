@@ -26,7 +26,7 @@ catalog.
 | Rule family | Use it when you want to catch | Starting rules |
 | --- | --- | --- |
 | Query shape and translation | Local methods, unstable ordering, non-translatable overloads, and query shapes that can fall out of SQL translation. | [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/), [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
-| Materialization and projection | Early `ToList`, whole-entity fetches, unbounded result sets, and scalar reads that should project in SQL. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
+| Materialization and projection | Early `ToList`, whole-entity fetches, unbounded result sets, nested collection materializers, and scalar reads that should project in SQL. | [EF Core projection analyzer](/LinqContraband/ef-core-projection-analyzer/), [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
 | Loading and includes | Missing includes, cartesian explosion, excessive eager loading, deep include chains, and untagged complex queries. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html), [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/) |
 | Execution and async | Database work inside loops, synchronous EF Core calls in async paths, repeated saves, missing cancellation tokens, and async-stream buffering. | [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/), [EF Core CancellationToken analyzer](/LinqContraband/ef-core-cancellation-token-analyzer/), [LC026: missing cancellation token](/LinqContraband/LC026_MissingCancellationToken.html) |
 | Tracking and context lifetime | Missing `AsNoTracking`, no-tracking writes, mixed tracking modes, repeated `SaveChanges`, and DbContext lifetime mistakes. | [LC030: DbContext lifetime](/LinqContraband/LC030_DbContextInSingleton.html), [LC036: context captured across threads](/LinqContraband/LC036_DbContextCapturedAcrossThreads.html), [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) |
@@ -87,6 +87,8 @@ when it represents project policy and developers have a documented exception pat
   operation token.
 - Use the [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/)
   when early `ToList`, `AsEnumerable`, unbounded materialization, or projection waste are the main concern.
+- Use the [EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/) when whole-entity loads,
+  scalar projection, nested `ToList` inside `Select`, or redundant identity `Select` calls are the main concern.
 - Use the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/) when missing related data,
   cartesian explosion, or over-eager loading are the main concern.
 - Use the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/) when repeated database

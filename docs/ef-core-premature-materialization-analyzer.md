@@ -12,6 +12,9 @@ LinqContraband is an EF Core premature materialization analyzer for .NET project
 `AsEnumerable`, and projection mistakes to show up during development and CI. It helps reviewers catch query work that
 accidentally moves from SQL into memory before production row counts make the cost obvious.
 
+For the focused over-fetching and `Select` workflow, use the
+[EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/).
+
 Install the official analyzer package:
 
 ```bash
@@ -120,7 +123,9 @@ Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer
 on every pull request. Use the [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
 when reviewers need the broader query-performance context. Use the
 [EF Core client-side evaluation analyzer guide](/LinqContraband/ef-core-client-side-evaluation-analyzer/) when the
-main concern is query translation, local methods in `IQueryable`, or provider-sensitive string overloads.
+main concern is query translation, local methods in `IQueryable`, or provider-sensitive string overloads. Use the
+[EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/) when the main concern is
+whole-entity over-fetching, scalar projection, nested materializers, or identity `Select` calls.
 
 ## Official Links
 

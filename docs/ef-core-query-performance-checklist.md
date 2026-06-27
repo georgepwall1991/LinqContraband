@@ -27,7 +27,7 @@ dotnet add package LinqContraband
 | Keep query logic translatable to SQL. | Local helpers, provider-sensitive string overloads, and complex grouping can fail translation or push work into memory. | [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/) |
 | Order before pagination or positional access. | Unordered `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk` queries can return unstable rows. | [LC015: missing OrderBy](/LinqContraband/LC015_MissingOrderBy.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
 | Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
-| Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html) |
+| Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html), [EF Core projection analyzer](/LinqContraband/ef-core-projection-analyzer/) |
 | Make related data loading explicit. | Missing includes can produce null navigation data, lazy-loading churn, or hidden N+1 behaviour. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html) |
 | Keep eager loading bounded. | Overusing `Include` can create cartesian explosion or very wide result graphs. | [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [LC038: excessive eager loading](/LinqContraband/LC038_ExcessiveEagerLoading.html) |
 | Prefer async EF Core APIs in async methods. | Synchronous EF Core calls in async paths block request threads. | [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html), [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/) |
@@ -96,6 +96,8 @@ attributes only when a reviewer has accepted a specific exception.
   focused rollout page.
 - Use the [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/)
   when early `ToList`, `AsEnumerable`, unbounded materialization, or projection waste need focused guidance.
+- Use the [EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/) when whole-entity loads,
+  scalar reads, nested collection materializers, or redundant identity `Select` calls need focused guidance.
 - Send focused topics to the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/), the
   [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), and the
   [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/) when reviewers need
