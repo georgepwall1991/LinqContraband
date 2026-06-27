@@ -12,6 +12,7 @@ Official links:
 - Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
 - EF Core analyzer rules: https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/
 - EF Core AsNoTracking analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/
+- EF Core Include analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/
 - EF Core query performance checklist: https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/
 - EF Core N+1 query detector: https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/
 - EF Core raw SQL injection analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/
@@ -20,9 +21,10 @@ Official links:
 - Link kit: https://georgepwall1991.github.io/LinqContraband/backlink-kit/
 
 Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, EF Core analyzer rules,
-Entity Framework Core analyzer rules, EF Core AsNoTracking analyzer, EF Core tracking analyzer, query performance, N+1
-queries, EF Core query performance checklist, EF Core N+1 query detector, missing includes, eager loading, raw SQL
-safety, EF Core raw SQL injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NET.
+Entity Framework Core analyzer rules, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
+analyzer, EF Core missing Include analyzer, EF Core eager loading analyzer, query performance, N+1 queries, EF Core query
+performance checklist, EF Core N+1 query detector, missing includes, eager loading, raw SQL safety, EF Core raw SQL
+injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NET.
 
 Canonical description: LinqContraband is an open-source EF Core LINQ performance analyzer for .NET. It runs as a
 compile-time Roslyn analyzer and helps catch query performance, reliability, and security issues before code reaches

@@ -20,6 +20,7 @@ repository or the GitHub Pages documentation hub.
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - AsNoTracking guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
+- Include guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
 - Checklist: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
@@ -33,6 +34,9 @@ repository or the GitHub Pages documentation hub.
 - Entity Framework Core analyzer rules
 - EF Core AsNoTracking analyzer
 - EF Core tracking analyzer
+- EF Core Include analyzer
+- EF Core missing Include analyzer
+- EF Core eager loading analyzer
 - EF Core query performance checklist
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
@@ -94,6 +98,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core AsNoTracking analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/) explains how LinqContraband flags missing no-tracking reads, unsafe no-tracking writes, mixed tracking modes, and silent SaveChanges failures.
+```
+
+## Include Guide Link
+
+```markdown
+[EF Core Include analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/) explains how LinqContraband flags missing includes, cartesian explosion, conditional Include paths, deep ThenInclude chains, excessive eager loading, and missing query tags.
 ```
 
 ## Checklist Link

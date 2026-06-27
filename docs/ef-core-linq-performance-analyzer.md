@@ -31,6 +31,7 @@ dotnet add package LinqContraband
 - Silent no-tracking writes and mixed tracking modes
 - Bulk update/delete operations without an explicit filter
 
+For Include and eager-loading review, see the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/).
 For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
 For security-sensitive SQL usage, see the [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 For tracking-mode mistakes, see the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/).
@@ -52,6 +53,7 @@ The full catalog contains 45 rules grouped by domain:
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
+- [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
 - [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - [EF Core AsNoTracking analyzer](/LinqContraband/ef-core-asnotracking-analyzer/)

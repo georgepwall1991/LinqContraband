@@ -64,7 +64,8 @@ attributes only when a reviewer has accepted a specific exception.
   broader diagnostic map before choosing severities.
 - Pair it with the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) so the highest-risk
   checklist items become automated build feedback.
-- Send focused topics to the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/) and
+- Send focused topics to the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/), the
+  [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), and the
   [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/) when reviewers need
   deeper examples.
 - Use the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/) when read-only query
