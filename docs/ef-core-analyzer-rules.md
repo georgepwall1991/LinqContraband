@@ -25,7 +25,7 @@ catalog.
 
 | Rule family | Use it when you want to catch | Starting rules |
 | --- | --- | --- |
-| Query shape and translation | Local methods, unstable ordering, non-translatable overloads, and query shapes that can fall out of SQL translation. | [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [LC015: missing OrderBy](/LinqContraband/LC015_MissingOrderBy.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
+| Query shape and translation | Local methods, unstable ordering, non-translatable overloads, and query shapes that can fall out of SQL translation. | [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/), [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
 | Materialization and projection | Early `ToList`, whole-entity fetches, unbounded result sets, and scalar reads that should project in SQL. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
 | Loading and includes | Missing includes, cartesian explosion, excessive eager loading, deep include chains, and untagged complex queries. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html), [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/) |
 | Execution and async | Database work inside loops, synchronous EF Core calls in async paths, repeated saves, missing cancellation tokens, and async-stream buffering. | [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/), [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html), [LC026: missing cancellation token](/LinqContraband/LC026_MissingCancellationToken.html) |
@@ -51,8 +51,12 @@ dotnet_diagnostic.LC037.severity = error
 dotnet_diagnostic.LC021.severity = warning
 
 # Expensive query shapes
+dotnet_diagnostic.LC001.severity = warning
 dotnet_diagnostic.LC002.severity = warning
+dotnet_diagnostic.LC014.severity = warning
 dotnet_diagnostic.LC015.severity = warning
+dotnet_diagnostic.LC020.severity = warning
+dotnet_diagnostic.LC024.severity = warning
 dotnet_diagnostic.LC031.severity = warning
 dotnet_diagnostic.LC036.severity = warning
 
@@ -69,6 +73,9 @@ when it represents project policy and developers have a documented exception pat
 
 - Use the [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/) when you need a
   reviewer-friendly pull-request aid.
+- Use the [EF Core client-side evaluation analyzer guide](/LinqContraband/ef-core-client-side-evaluation-analyzer/)
+  when local methods in `IQueryable`, early client boundaries, string comparison overloads, or non-translatable
+  `GroupBy` projections are the main concern.
 - Use the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/) when missing
   `OrderBy` before `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk` is the main concern.
 - Use the [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) when scoped

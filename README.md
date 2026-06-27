@@ -29,6 +29,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **Async query guide:** [georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
+- **Client-side evaluation guide:** [georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - **DbContext lifetime guide:** [georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - **Pagination OrderBy guide:** [georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - **Premature materialization guide:** [georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
@@ -82,6 +83,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 For a human-readable guide to the rule groups, see the
 [EF Core analyzer rules page](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/). For loading
 guidance, see the [EF Core Include analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/).
+For local methods in `IQueryable`, `StringComparison` overloads, and query translation boundaries, see the [EF Core client-side evaluation analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/).
 For early `ToList` and `AsEnumerable` guidance, see the [EF Core premature materialization analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/).
 For missing `OrderBy` before `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk`, use the [EF Core pagination OrderBy analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For scoped service and background-worker safety, use the [EF Core DbContext lifetime analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/).
