@@ -48,6 +48,9 @@ db.Users.ExecuteDelete();
 
 The first query may waste time and memory. The second can affect the whole table.
 
+If the immediate problem is repeated `SaveChanges` calls rather than a set-based update opportunity, use the
+[EF Core SaveChanges in loop analyzer guide](/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
+
 ## LinqContraband Rules That Help
 
 | Rule | What it detects | Review direction |

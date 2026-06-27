@@ -34,6 +34,9 @@ foreach (var user in users)
 This can turn one request into dozens, hundreds, or thousands of database roundtrips. It often looks harmless in code
 review because each individual query is small.
 
+The same scaling problem can happen on the write side. For repeated commits and N+1 writes, see the
+[EF Core SaveChanges in loop analyzer guide](/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
+
 ## LinqContraband Rules That Help
 
 | Rule | What it detects | Why it matters |
