@@ -18,6 +18,7 @@ repository or the GitHub Pages documentation hub.
 - Package: [https://www.nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
+- Checklist: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - CI guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/)
@@ -26,6 +27,7 @@ repository or the GitHub Pages documentation hub.
 ## Suggested Anchor Text
 
 - EF Core LINQ performance analyzer
+- EF Core query performance checklist
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
 - EF Core N+1 query detector for .NET
@@ -74,6 +76,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents 45 EF Core analyzer rules covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
+## Checklist Link
+
+```markdown
+[EF Core query performance checklist](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/) maps common pull-request review questions to LinqContraband analyzer rules for N+1 queries, projection, tracking, raw SQL, and CI severity policy.
 ```
 
 ## N+1 Guide Link

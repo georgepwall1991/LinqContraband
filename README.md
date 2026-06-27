@@ -27,6 +27,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
+- **Query performance checklist:** [georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - **Link kit:** [georgepwall1991.github.io/LinqContraband/backlink-kit](https://georgepwall1991.github.io/LinqContraband/backlink-kit/)
 
 Install only from NuGet or from this repository. LinqContraband is not distributed as a standalone ZIP installer or

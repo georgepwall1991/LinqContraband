@@ -11,6 +11,8 @@ LinqContraband is a Roslyn analyzer for teams that want Entity Framework Core qu
 of after a slow production endpoint appears. It runs at compile time and reviews LINQ query shapes for performance,
 reliability, and security issues.
 
+For a reviewer-friendly summary, use the [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/).
+
 Install the official NuGet package:
 
 ```bash
@@ -46,6 +48,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 The full catalog contains 45 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
+- [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
 - [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)
 - [EF Core query analyzer for CI](/LinqContraband/ef-core-query-analyzer-ci/)
