@@ -33,6 +33,7 @@ dotnet add package LinqContraband
 | Keep raw SQL parameterized. | Interpolation and string construction can turn EF Core raw SQL into injection risk. | [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html), [LC034: interpolated command SQL](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html), [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html) |
 | Review global filter bypasses. | `IgnoreQueryFilters` can skip tenant, soft-delete, or security boundaries. | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
 | Bound destructive set-based writes. | Bulk delete/update without a filter can affect more rows than intended. | [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html) |
+| Prefer reviewed set-based writes for large batches. | Tracked loops and `RemoveRange` can load rows that EF Core can update or delete directly in SQL. | [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC012: ExecuteDelete over RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) |
 | Tag complex queries before they reach production. | Query tags make expensive SQL easier to trace in database telemetry. | [LC042: missing query tags](/LinqContraband/LC042_MissingQueryTags.html) |
 
 ## Quick Severity Policy
@@ -70,6 +71,8 @@ attributes only when a reviewer has accepted a specific exception.
   deeper examples.
 - Use the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/) when read-only query
   tracking, mixed tracking modes, or silent no-tracking writes need focused guidance.
+- Use the [EF Core ExecuteUpdate analyzer guide](/LinqContraband/ef-core-executeupdate-analyzer/) when bulk update,
+  bulk delete, or missing `Where` before set-based writes need focused guidance.
 - Use the [full rule catalog](/LinqContraband/rule-catalog.html) to tune the exact severity policy for your application.
 
 ## Official Links

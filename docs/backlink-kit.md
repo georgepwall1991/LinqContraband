@@ -21,6 +21,7 @@ repository or the GitHub Pages documentation hub.
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - AsNoTracking guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - Include guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
+- ExecuteUpdate guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
 - Checklist: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
@@ -37,6 +38,9 @@ repository or the GitHub Pages documentation hub.
 - EF Core Include analyzer
 - EF Core missing Include analyzer
 - EF Core eager loading analyzer
+- EF Core ExecuteUpdate analyzer
+- EF Core ExecuteDelete analyzer
+- EF Core bulk update analyzer
 - EF Core query performance checklist
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
@@ -104,6 +108,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core Include analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/) explains how LinqContraband flags missing includes, cartesian explosion, conditional Include paths, deep ThenInclude chains, excessive eager loading, and missing query tags.
+```
+
+## ExecuteUpdate Guide Link
+
+```markdown
+[EF Core ExecuteUpdate analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/) explains how LinqContraband flags tracked bulk update loops, RemoveRange delete opportunities, and missing Where filters before ExecuteUpdate or ExecuteDelete.
 ```
 
 ## Checklist Link

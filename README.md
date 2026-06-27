@@ -30,6 +30,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **AsNoTracking analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - **Include analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
+- **ExecuteUpdate analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
 - **Query performance checklist:** [georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - **Link kit:** [georgepwall1991.github.io/LinqContraband/backlink-kit](https://georgepwall1991.github.io/LinqContraband/backlink-kit/)
 
@@ -77,6 +78,7 @@ For a human-readable guide to the rule groups, see the
 [EF Core analyzer rules page](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/). For loading
 guidance, see the [EF Core Include analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/).
 For tracking mode guidance, see the [EF Core AsNoTracking analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/).
+For set-based writes, see the [EF Core ExecuteUpdate analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/).
 For the full matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
 
 
