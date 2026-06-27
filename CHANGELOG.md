@@ -552,9 +552,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.0.4] - 2026-04-01
 
-### Added
-- Added `docs/analyzer-layout-decision.md` to record the trade-offs, migration strategy, and long-term contract for the analyzer source layout
-
 ### Changed
 - Grouped analyzer source folders by domain under `src/LinqContraband/Analyzers/` while preserving analyzer ids, namespaces, tests, samples, and docs layout
 - Extended `RuleCatalog` metadata with analyzer source paths so architecture tests validate the grouped source layout through the catalog
