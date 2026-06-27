@@ -25,6 +25,7 @@ repository or the GitHub Pages documentation hub.
 - DbContext lifetime guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - Pagination OrderBy guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - Premature materialization guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
+- Projection guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/)
 - AsNoTracking guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - Include guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
 - ExecuteUpdate guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
@@ -71,6 +72,13 @@ repository or the GitHub Pages documentation hub.
 - EF Core AsEnumerable analyzer
 - LINQ ToList performance analyzer
 - EF Core client-side evaluation analyzer
+- EF Core projection analyzer
+- EF Core Select projection analyzer
+- EF Core whole entity projection analyzer
+- EF Core scalar projection analyzer
+- EF Core DTO projection analyzer
+- EF Core redundant Select analyzer
+- EF Core nested ToList in Select analyzer
 - EF Core AsNoTracking analyzer
 - EF Core tracking analyzer
 - EF Core Include analyzer
@@ -173,6 +181,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core premature materialization analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/) explains how LinqContraband flags ToList before Where, AsEnumerable client-side query work, unbounded materialization, and projection waste.
+```
+
+## Projection Guide Link
+
+```markdown
+[EF Core projection analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/) explains how LinqContraband flags whole-entity loads, scalar projection opportunities, nested ToList calls inside Select, and redundant identity Select chains.
 ```
 
 ## AsNoTracking Guide Link

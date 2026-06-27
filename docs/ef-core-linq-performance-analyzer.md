@@ -24,6 +24,7 @@ dotnet add package LinqContraband
 
 - N+1 query loops and missing includes
 - Premature materialization with `ToList()`, `ToArray()`, `AsEnumerable()`, and related operators
+- Projection waste from whole-entity loads, scalar over-fetching, and redundant `Select(x => x)` calls
 - Client-side evaluation risk from local methods and untranslatable query expressions
 - Query translation failures from `StringComparison`, column case conversion, and non-translatable `GroupBy` projections
 - Sync-over-async EF Core calls inside async methods
@@ -49,6 +50,8 @@ For missing tokens on `ToListAsync`, `FirstOrDefaultAsync`, and `SaveChangesAsyn
 For deterministic pagination, see the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For early `ToList`, `ToArray`, and `AsEnumerable` review, see the
 [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/).
+For whole-entity loads, scalar projection, nested collection materializers, and identity `Select` calls, see the
+[EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/).
 For security-sensitive SQL usage, see the [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 For tracking-mode mistakes, see the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/).
 For set-based write review, see the [EF Core ExecuteUpdate analyzer guide](/LinqContraband/ef-core-executeupdate-analyzer/).
@@ -77,6 +80,7 @@ The full catalog contains 45 rules grouped by domain:
 - [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/)
+- [EF Core projection analyzer](/LinqContraband/ef-core-projection-analyzer/)
 - [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
 - [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)

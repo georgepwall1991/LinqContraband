@@ -97,7 +97,8 @@ can remain a warning until the team agrees on the policy.
 
 For deeper rule detail, browse the [full rule catalog](/LinqContraband/rule-catalog.html), the
 [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), the
-[EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/), and the
+[EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/), the
+[EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/), and the
 [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 
 ## Official Links

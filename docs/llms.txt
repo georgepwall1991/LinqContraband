@@ -17,6 +17,7 @@ Official links:
 - EF Core DbContext lifetime analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/
 - EF Core pagination OrderBy analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/
 - EF Core premature materialization analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/
+- EF Core projection analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/
 - EF Core AsNoTracking analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/
 - EF Core Include analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/
 - EF Core ExecuteUpdate analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/
@@ -37,13 +38,18 @@ EF Core query translation analyzer, EF Core StringComparison analyzer, EF Core G
 EF Core DbContext lifetime analyzer, EF Core DbContext thread safety analyzer,
 EF Core DbContext singleton analyzer, EF Core pagination analyzer, EF Core Skip Take OrderBy analyzer, EF Core
 missing OrderBy analyzer, EF Core premature materialization analyzer, EF Core ToList analyzer, EF Core
-AsEnumerable analyzer, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
+AsEnumerable analyzer, EF Core projection analyzer, EF Core Select projection analyzer,
+EF Core whole entity projection analyzer, EF Core scalar projection analyzer, EF Core DTO projection analyzer,
+EF Core redundant Select analyzer, EF Core nested ToList in Select analyzer, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
 analyzer, EF Core missing Include analyzer, EF Core eager loading analyzer, query performance, N+1 queries, EF Core query
 performance checklist, EF Core N+1 query detector, missing includes, eager loading, raw SQL safety, EF Core raw SQL
 injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NET.
 
 Materialization topics: ToList before Where, ToList before Select, ToArray before OrderBy, AsEnumerable client-side
 query work, premature materialization, unbounded ToList, LINQ ToList performance analyzer, client-side evaluation.
+
+Projection topics: EF Core projection analyzer, Select projection analyzer, whole entity projection, scalar projection,
+DTO projection, nested ToList in Select, identity Select, Select(x => x), redundant Select.
 
 Client-side evaluation topics: EF Core client-side evaluation analyzer, local method in IQueryable, local method in
 query analyzer, query translation failure, StringComparison in EF Core query, ToLower in EF Core query, ToUpper in EF

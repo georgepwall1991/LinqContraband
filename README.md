@@ -34,6 +34,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **DbContext lifetime guide:** [georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - **Pagination OrderBy guide:** [georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - **Premature materialization guide:** [georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
+- **Projection analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/)
 - **AsNoTracking analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - **Include analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
 - **ExecuteUpdate analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
@@ -89,6 +90,7 @@ For early `ToList` and `AsEnumerable` guidance, see the [EF Core premature mater
 For missing `OrderBy` before `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk`, use the [EF Core pagination OrderBy analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For scoped service and background-worker safety, use the [EF Core DbContext lifetime analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/).
 For `ToListAsync`, sync-over-async, cancellation tokens, and async stream buffering, use the [EF Core async query analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/).
+For whole-entity loads, scalar projection, nested `ToList` in `Select`, and identity `Select` calls, use the [EF Core projection analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-projection-analyzer/).
 For tracking mode guidance, see the [EF Core AsNoTracking analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/).
 For set-based writes, see the [EF Core ExecuteUpdate analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/).
 For repeated writes, see the [EF Core SaveChanges in loop analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
