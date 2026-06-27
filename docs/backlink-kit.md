@@ -19,6 +19,7 @@ repository or the GitHub Pages documentation hub.
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
+- Premature materialization guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
 - AsNoTracking guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - Include guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
 - ExecuteUpdate guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
@@ -34,6 +35,11 @@ repository or the GitHub Pages documentation hub.
 - EF Core LINQ performance analyzer
 - EF Core analyzer rules
 - Entity Framework Core analyzer rules
+- EF Core premature materialization analyzer
+- EF Core ToList analyzer
+- EF Core AsEnumerable analyzer
+- LINQ ToList performance analyzer
+- EF Core client-side evaluation analyzer
 - EF Core AsNoTracking analyzer
 - EF Core tracking analyzer
 - EF Core Include analyzer
@@ -100,6 +106,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core analyzer rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/) groups LinqContraband's 45 diagnostics by query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
+## Premature Materialization Guide Link
+
+```markdown
+[EF Core premature materialization analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/) explains how LinqContraband flags ToList before Where, AsEnumerable client-side query work, unbounded materialization, and projection waste.
 ```
 
 ## AsNoTracking Guide Link

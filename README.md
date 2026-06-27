@@ -28,6 +28,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
+- **Premature materialization guide:** [georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
 - **AsNoTracking analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/)
 - **Include analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/)
 - **ExecuteUpdate analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/)
@@ -78,6 +79,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 For a human-readable guide to the rule groups, see the
 [EF Core analyzer rules page](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/). For loading
 guidance, see the [EF Core Include analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/).
+For early `ToList` and `AsEnumerable` guidance, see the [EF Core premature materialization analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/).
 For tracking mode guidance, see the [EF Core AsNoTracking analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/).
 For set-based writes, see the [EF Core ExecuteUpdate analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/).
 For repeated writes, see the [EF Core SaveChanges in loop analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-savechanges-in-loop-analyzer/).

@@ -24,7 +24,7 @@ dotnet add package LinqContraband
 | --- | --- | --- |
 | Avoid database calls inside loops. | Loop execution can turn one request into many database roundtrips. | [LC007: database execution inside loop](/LinqContraband/LC007_NPlusOneLooper.html) |
 | Batch `SaveChanges` outside loops unless each item needs its own commit boundary. | Repeated saves can turn one unit of work into many transactions and partial-progress states. | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) |
-| Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html) |
+| Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
 | Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html) |
 | Make related data loading explicit. | Missing includes can produce null navigation data, lazy-loading churn, or hidden N+1 behaviour. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html) |
 | Keep eager loading bounded. | Overusing `Include` can create cartesian explosion or very wide result graphs. | [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [LC038: excessive eager loading](/LinqContraband/LC038_ExcessiveEagerLoading.html) |
@@ -66,6 +66,8 @@ attributes only when a reviewer has accepted a specific exception.
   broader diagnostic map before choosing severities.
 - Pair it with the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) so the highest-risk
   checklist items become automated build feedback.
+- Use the [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/)
+  when early `ToList`, `AsEnumerable`, unbounded materialization, or projection waste need focused guidance.
 - Send focused topics to the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/), the
   [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/), and the
   [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/) when reviewers need
