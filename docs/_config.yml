@@ -11,3 +11,5 @@ defaults:
       layout: default
 exclude:
   - .jekyll-cache
+  - adding_new_analyzer.md
+  - analyzer-health.md
