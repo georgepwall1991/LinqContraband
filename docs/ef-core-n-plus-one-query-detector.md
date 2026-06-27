@@ -69,7 +69,8 @@ var users = await db.Users
 
 LinqContraband does not blindly demand `Include()` everywhere. It pairs N+1 detection with rules for cartesian
 explosion, deep include chains, excessive eager loading, and whole-entity projection so the fix remains appropriate for
-the query.
+the query. For the loading-specific rule set, see the
+[EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/).
 
 ## Why Compile-Time Detection Helps
 
