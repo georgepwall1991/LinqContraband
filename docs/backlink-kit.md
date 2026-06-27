@@ -20,6 +20,7 @@ repository or the GitHub Pages documentation hub.
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - Async query guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
+- CancellationToken guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/)
 - Client-side evaluation guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - DbContext lifetime guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - Pagination OrderBy guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
@@ -44,6 +45,9 @@ repository or the GitHub Pages documentation hub.
 - EF Core ToListAsync analyzer
 - EF Core missing CancellationToken analyzer
 - ToListAsync cancellation token analyzer
+- FirstOrDefaultAsync cancellation token analyzer
+- SaveChangesAsync cancellation token analyzer
+- EF Core CancellationToken analyzer
 - EF Core async stream buffering analyzer
 - await foreach analyzer
 - EF Core client-side evaluation analyzer
@@ -139,6 +143,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core async query analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/) explains how LinqContraband flags sync-over-async EF Core calls, missing CancellationToken arguments, SaveChangesAsync loops, and async stream buffering.
+```
+
+## CancellationToken Guide Link
+
+```markdown
+[EF Core CancellationToken analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/) explains how LinqContraband flags ToListAsync, FirstOrDefaultAsync, SaveChangesAsync, and other EF Core async calls that ignore an available CancellationToken.
 ```
 
 ## Client-Side Evaluation Guide Link

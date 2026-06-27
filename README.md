@@ -29,6 +29,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **Async query guide:** [georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
+- **CancellationToken analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/)
 - **Client-side evaluation guide:** [georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - **DbContext lifetime guide:** [georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - **Pagination OrderBy guide:** [georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
@@ -91,6 +92,7 @@ For `ToListAsync`, sync-over-async, cancellation tokens, and async stream buffer
 For tracking mode guidance, see the [EF Core AsNoTracking analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/).
 For set-based writes, see the [EF Core ExecuteUpdate analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/).
 For repeated writes, see the [EF Core SaveChanges in loop analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
+For missing `CancellationToken` arguments on async EF Core calls, see the [EF Core CancellationToken analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/).
 For the full matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
 
 
