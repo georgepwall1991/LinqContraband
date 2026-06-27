@@ -11,6 +11,7 @@ Official links:
 - Documentation hub: https://georgepwall1991.github.io/LinqContraband/
 - Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
 - EF Core analyzer rules: https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/
+- EF Core pagination OrderBy analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/
 - EF Core premature materialization analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/
 - EF Core AsNoTracking analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-asnotracking-analyzer/
 - EF Core Include analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-include-analyzer/
@@ -24,7 +25,8 @@ Official links:
 - Link kit: https://georgepwall1991.github.io/LinqContraband/backlink-kit/
 
 Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, EF Core analyzer rules,
-Entity Framework Core analyzer rules, EF Core premature materialization analyzer, EF Core ToList analyzer, EF Core
+Entity Framework Core analyzer rules, EF Core pagination analyzer, EF Core Skip Take OrderBy analyzer, EF Core
+missing OrderBy analyzer, EF Core premature materialization analyzer, EF Core ToList analyzer, EF Core
 AsEnumerable analyzer, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
 analyzer, EF Core missing Include analyzer, EF Core eager loading analyzer, query performance, N+1 queries, EF Core query
 performance checklist, EF Core N+1 query detector, missing includes, eager loading, raw SQL safety, EF Core raw SQL
@@ -32,6 +34,9 @@ injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NE
 
 Materialization topics: ToList before Where, ToList before Select, ToArray before OrderBy, AsEnumerable client-side
 query work, premature materialization, unbounded ToList, LINQ ToList performance analyzer, client-side evaluation.
+
+Pagination topics: missing OrderBy before Skip, missing OrderBy before Take, EF Core unordered pagination, deterministic
+pagination, Skip Take OrderBy analyzer, Last without OrderBy, ElementAt without OrderBy, misplaced OrderBy after Take.
 
 Bulk write topics: EF Core ExecuteUpdate analyzer, EF Core ExecuteDelete analyzer, EF Core bulk update analyzer,
 ExecuteUpdate, ExecuteUpdateAsync, ExecuteDelete, ExecuteDeleteAsync, RemoveRange, missing Where before bulk writes.

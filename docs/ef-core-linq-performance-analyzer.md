@@ -34,6 +34,7 @@ dotnet add package LinqContraband
 
 For Include and eager-loading review, see the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/).
 For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
+For deterministic pagination, see the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/).
 For early `ToList`, `ToArray`, and `AsEnumerable` review, see the
 [EF Core premature materialization analyzer guide](/LinqContraband/ef-core-premature-materialization-analyzer/).
 For security-sensitive SQL usage, see the [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
@@ -58,6 +59,7 @@ The full catalog contains 45 rules grouped by domain:
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
+- [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/)
 - [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
