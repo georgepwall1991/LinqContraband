@@ -25,6 +25,7 @@ dotnet add package LinqContraband
 - N+1 query loops and missing includes
 - Premature materialization with `ToList()`, `ToArray()`, `AsEnumerable()`, and related operators
 - Client-side evaluation risk from local methods and untranslatable query expressions
+- Query translation failures from `StringComparison`, column case conversion, and non-translatable `GroupBy` projections
 - Sync-over-async EF Core calls inside async methods
 - Missing cancellation tokens on async EF Core queries and saves
 - Async stream buffering before a single `await foreach`
@@ -37,6 +38,8 @@ dotnet add package LinqContraband
 
 For Include and eager-loading review, see the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/).
 For a focused walkthrough, see the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/).
+For local methods, `AsEnumerable` boundaries, string comparison overloads, and `GroupBy` translation issues, see the
+[EF Core client-side evaluation analyzer guide](/LinqContraband/ef-core-client-side-evaluation-analyzer/).
 For DbContext lifetime, threading, and disposed-query review, see the
 [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/).
 For sync-over-async, `ToListAsync`, `SaveChangesAsync`, cancellation tokens, and async streams, see the
@@ -66,6 +69,7 @@ The full catalog contains 45 rules grouped by domain:
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
+- [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/)
 - [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/)

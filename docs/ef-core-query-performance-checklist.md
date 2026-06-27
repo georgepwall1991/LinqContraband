@@ -24,6 +24,7 @@ dotnet add package LinqContraband
 | --- | --- | --- |
 | Avoid database calls inside loops. | Loop execution can turn one request into many database roundtrips. | [LC007: database execution inside loop](/LinqContraband/LC007_NPlusOneLooper.html) |
 | Batch `SaveChanges` outside loops unless each item needs its own commit boundary. | Repeated saves can turn one unit of work into many transactions and partial-progress states. | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) |
+| Keep query logic translatable to SQL. | Local helpers, provider-sensitive string overloads, and complex grouping can fail translation or push work into memory. | [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/) |
 | Order before pagination or positional access. | Unordered `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk` queries can return unstable rows. | [LC015: missing OrderBy](/LinqContraband/LC015_MissingOrderBy.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
 | Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
 | Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html) |
@@ -47,8 +48,12 @@ Start with analyzer warnings, then promote a focused rule set to errors once the
 [*.cs]
 
 # Expensive or risky query shapes
+dotnet_diagnostic.LC001.severity = warning
 dotnet_diagnostic.LC002.severity = warning
+dotnet_diagnostic.LC014.severity = warning
 dotnet_diagnostic.LC015.severity = warning
+dotnet_diagnostic.LC020.severity = warning
+dotnet_diagnostic.LC024.severity = warning
 dotnet_diagnostic.LC007.severity = error
 dotnet_diagnostic.LC045.severity = warning
 dotnet_diagnostic.LC036.severity = warning
@@ -75,6 +80,9 @@ attributes only when a reviewer has accepted a specific exception.
   broader diagnostic map before choosing severities.
 - Pair it with the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) so the highest-risk
   checklist items become automated build feedback.
+- Use the [EF Core client-side evaluation analyzer guide](/LinqContraband/ef-core-client-side-evaluation-analyzer/) when
+  local methods, `AsEnumerable` boundaries, `StringComparison` overloads, or non-translatable `GroupBy` projections need
+  focused guidance.
 - Use the [EF Core pagination OrderBy analyzer guide](/LinqContraband/ef-core-pagination-orderby-analyzer/) when
   unordered `Skip`, `Take`, `Last`, `ElementAt`, `Chunk`, or misplaced `OrderBy` calls need focused guidance.
 - Use the [EF Core DbContext lifetime analyzer guide](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) when

@@ -118,7 +118,9 @@ dotnet_diagnostic.LC041.severity = suggestion
 
 Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) when these diagnostics should run
 on every pull request. Use the [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
-when reviewers need the broader query-performance context.
+when reviewers need the broader query-performance context. Use the
+[EF Core client-side evaluation analyzer guide](/LinqContraband/ef-core-client-side-evaluation-analyzer/) when the
+main concern is query translation, local methods in `IQueryable`, or provider-sensitive string overloads.
 
 ## Official Links
 

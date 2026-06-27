@@ -20,6 +20,7 @@ repository or the GitHub Pages documentation hub.
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
 - Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - Async query guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
+- Client-side evaluation guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/)
 - DbContext lifetime guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/)
 - Pagination OrderBy guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/)
 - Premature materialization guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/)
@@ -45,6 +46,12 @@ repository or the GitHub Pages documentation hub.
 - ToListAsync cancellation token analyzer
 - EF Core async stream buffering analyzer
 - await foreach analyzer
+- EF Core client-side evaluation analyzer
+- EF Core local method in query analyzer
+- EF Core IQueryable local method analyzer
+- EF Core query translation analyzer
+- EF Core StringComparison analyzer
+- EF Core GroupBy translation analyzer
 - EF Core DbContext lifetime analyzer
 - EF Core DbContext thread safety analyzer
 - EF Core DbContext singleton analyzer
@@ -132,6 +139,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [EF Core async query analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/) explains how LinqContraband flags sync-over-async EF Core calls, missing CancellationToken arguments, SaveChangesAsync loops, and async stream buffering.
+```
+
+## Client-Side Evaluation Guide Link
+
+```markdown
+[EF Core client-side evaluation analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/) explains how LinqContraband flags local methods in IQueryable, early AsEnumerable or ToList boundaries, StringComparison overloads, column case conversion, and non-translatable GroupBy projections.
 ```
 
 ## DbContext Lifetime Guide Link

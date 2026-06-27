@@ -12,6 +12,7 @@ Official links:
 - Rule catalog: https://georgepwall1991.github.io/LinqContraband/rule-catalog.html
 - EF Core analyzer rules: https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/
 - EF Core async query analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/
+- EF Core client-side evaluation analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-client-side-evaluation-analyzer/
 - EF Core DbContext lifetime analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-dbcontext-lifetime-analyzer/
 - EF Core pagination OrderBy analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-pagination-orderby-analyzer/
 - EF Core premature materialization analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-premature-materialization-analyzer/
@@ -29,7 +30,9 @@ Official links:
 Key topics: Entity Framework Core, EF Core, LINQ, IQueryable, Roslyn analyzer, static analysis, EF Core analyzer rules,
 Entity Framework Core analyzer rules, EF Core async query analyzer, EF Core sync-over-async analyzer, EF Core
 ToListAsync analyzer, EF Core missing CancellationToken analyzer, EF Core async stream buffering analyzer,
-Entity Framework Core async analyzer, EF Core DbContext lifetime analyzer, EF Core DbContext thread safety analyzer,
+Entity Framework Core async analyzer, EF Core client-side evaluation analyzer, EF Core local method in query analyzer,
+EF Core query translation analyzer, EF Core StringComparison analyzer, EF Core GroupBy translation analyzer,
+EF Core DbContext lifetime analyzer, EF Core DbContext thread safety analyzer,
 EF Core DbContext singleton analyzer, EF Core pagination analyzer, EF Core Skip Take OrderBy analyzer, EF Core
 missing OrderBy analyzer, EF Core premature materialization analyzer, EF Core ToList analyzer, EF Core
 AsEnumerable analyzer, EF Core AsNoTracking analyzer, EF Core tracking analyzer, EF Core Include
@@ -39,6 +42,10 @@ injection analyzer, EF Core query analyzer for CI, pull request diagnostics, .NE
 
 Materialization topics: ToList before Where, ToList before Select, ToArray before OrderBy, AsEnumerable client-side
 query work, premature materialization, unbounded ToList, LINQ ToList performance analyzer, client-side evaluation.
+
+Client-side evaluation topics: EF Core client-side evaluation analyzer, local method in IQueryable, local method in
+query analyzer, query translation failure, StringComparison in EF Core query, ToLower in EF Core query, ToUpper in EF
+Core query, non-translatable GroupBy projection, AsEnumerable before Where.
 
 Pagination topics: missing OrderBy before Skip, missing OrderBy before Take, EF Core unordered pagination, deterministic
 pagination, Skip Take OrderBy analyzer, Last without OrderBy, ElementAt without OrderBy, misplaced OrderBy after Take.
