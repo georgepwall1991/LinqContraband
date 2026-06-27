@@ -67,6 +67,8 @@ attributes only when a reviewer has accepted a specific exception.
 - Send focused topics to the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/) and
   [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/) when reviewers need
   deeper examples.
+- Use the [EF Core AsNoTracking analyzer guide](/LinqContraband/ef-core-asnotracking-analyzer/) when read-only query
+  tracking, mixed tracking modes, or silent no-tracking writes need focused guidance.
 - Use the [full rule catalog](/LinqContraband/rule-catalog.html) to tune the exact severity policy for your application.
 
 ## Official Links
