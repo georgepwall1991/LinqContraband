@@ -18,6 +18,7 @@ repository or the GitHub Pages documentation hub.
 - Package: [https://www.nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - Documentation: [https://georgepwall1991.github.io/LinqContraband/](https://georgepwall1991.github.io/LinqContraband/)
 - Rule catalog: [https://georgepwall1991.github.io/LinqContraband/rule-catalog.html](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html)
+- Rule guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - Checklist: [https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - N+1 guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/](https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/)
 - Raw SQL guide: [https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/](https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/)
@@ -27,6 +28,8 @@ repository or the GitHub Pages documentation hub.
 ## Suggested Anchor Text
 
 - EF Core LINQ performance analyzer
+- EF Core analyzer rules
+- Entity Framework Core analyzer rules
 - EF Core query performance checklist
 - Entity Framework Core Roslyn analyzer
 - EF Core N+1 query detector
@@ -76,6 +79,12 @@ unsafe raw SQL interpolation, and tracking mistakes.
 
 ```markdown
 [LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents 45 EF Core analyzer rules covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+```
+
+## Rule Guide Link
+
+```markdown
+[EF Core analyzer rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/) groups LinqContraband's 45 diagnostics by query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
 ```
 
 ## Checklist Link

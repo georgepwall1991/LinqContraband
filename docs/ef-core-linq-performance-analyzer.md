@@ -12,6 +12,7 @@ of after a slow production endpoint appears. It runs at compile time and reviews
 reliability, and security issues.
 
 For a reviewer-friendly summary, use the [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/).
+For a rules-by-domain view, see the [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/).
 
 Install the official NuGet package:
 
@@ -48,6 +49,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 The full catalog contains 45 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
+- [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
 - [EF Core query performance checklist](/LinqContraband/ef-core-query-performance-checklist/)
 - [EF Core N+1 query detector](/LinqContraband/ef-core-n-plus-one-query-detector/)
 - [EF Core raw SQL injection analyzer](/LinqContraband/ef-core-raw-sql-injection-analyzer/)

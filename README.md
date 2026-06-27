@@ -27,6 +27,7 @@ by [George Wall](https://www.georgewall.uk/).
 - **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
+- **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **Query performance checklist:** [georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - **Link kit:** [georgepwall1991.github.io/LinqContraband/backlink-kit](https://georgepwall1991.github.io/LinqContraband/backlink-kit/)
 
@@ -70,7 +71,9 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | Schema & Modeling | LC011, LC027 |
 | Raw SQL & Security | LC018, LC021, LC034, LC037 |
 
-For the full matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
+For a human-readable guide to the rule groups, see the
+[EF Core analyzer rules page](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/). For the full
+matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
 
 
 ### LC001: The Local Method Smuggler

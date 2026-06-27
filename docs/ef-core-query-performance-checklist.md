@@ -60,6 +60,8 @@ attributes only when a reviewer has accepted a specific exception.
 ## How To Use This Checklist
 
 - Link it from pull request templates, engineering handbooks, and onboarding docs.
+- Pair it with the [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/) when a team needs the
+  broader diagnostic map before choosing severities.
 - Pair it with the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) so the highest-risk
   checklist items become automated build feedback.
 - Send focused topics to the [EF Core N+1 query detector guide](/LinqContraband/ef-core-n-plus-one-query-detector/) and
