@@ -59,6 +59,15 @@ public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         "Join", "GroupJoin"
     };
 
+    private static readonly HashSet<string> TargetEfAsyncPredicateMethods = new()
+    {
+        "CountAsync", "LongCountAsync",
+        "AnyAsync", "AllAsync",
+        "FirstAsync", "FirstOrDefaultAsync",
+        "SingleAsync", "SingleOrDefaultAsync",
+        "LastAsync", "LastOrDefaultAsync"
+    };
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
@@ -121,9 +130,16 @@ public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
 
     private static bool IsTargetQueryableMethod(IMethodSymbol method)
     {
-        return TargetLinqMethods.Contains(method.Name) &&
-               method.ContainingType.Name == "Queryable" &&
-               method.ContainingNamespace?.ToString() == "System.Linq";
+        if (TargetLinqMethods.Contains(method.Name) &&
+            method.ContainingType.Name == "Queryable" &&
+            method.ContainingNamespace?.ToString() == "System.Linq")
+        {
+            return true;
+        }
+
+        return TargetEfAsyncPredicateMethods.Contains(method.Name) &&
+               method.ContainingType.Name == "EntityFrameworkQueryableExtensions" &&
+               method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
     }
 
     private static bool IsLambdaScopedToEntityFrameworkSource(

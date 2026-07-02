@@ -32,7 +32,7 @@ var user = db.Users.FirstOrDefault(u => u.Email == email);
 ### Severity: `Warning`
 
 ### Notes
-LC014 reports only when the query is rooted in an EF `DbSet<T>` or `DbContext.Set<T>()` chain, including simple local aliases assigned from those sources before the query operator. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()`, where database index usage is irrelevant.
+LC014 reports only when the query is rooted in an EF `DbSet<T>` or `DbContext.Set<T>()` chain, including simple local aliases assigned from those sources before the query operator. It covers both synchronous `Queryable` predicates (`Where`, `Any`, `Count`, `FirstOrDefault`, and similar terminals) and EF Core async predicate terminals such as `AnyAsync`, `CountAsync`, and `FirstOrDefaultAsync`. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()`, where database index usage is irrelevant.
 
 The case-converted value counts as column-derived when it depends on the lambda parameter either through the **receiver** (`u.Name.ToLower()`, `u.Name.Substring(0, 3).ToUpper()`) or through a method's **string-carrying arguments** (`string.Concat(u.First, u.Last).ToLower()`, `string.Join("-", u.Tags).ToUpper()`, and even on a constant receiver such as `"prefix".Replace("x", u.Name).ToLower()`). A case conversion whose value derives only from constants or non-parameter locals (`string.Concat("a", "b").ToLower()`) stays quiet because it is computed client-side and never touches a column.
 

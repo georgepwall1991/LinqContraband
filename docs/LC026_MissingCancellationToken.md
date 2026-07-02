@@ -104,4 +104,10 @@ It also only targets EF Core async methods that expose a `CancellationToken` par
 
 The code fix appends the selected token when the token argument is omitted. When the call already supplies `default`, `cancellationToken: default`, or `CancellationToken.None`, the fixer replaces that argument instead of appending a duplicate.
 
+For query chains, the fixer updates the EF async terminal that owns the diagnostic rather than inner LINQ operators:
+
+```csharp
+await db.Users.Where(user => user.Active).ToListAsync(cancellationToken);
+```
+
 No rewrite is offered when no usable token exists, because creating a fresh token source would not connect the database operation to the caller's cancellation boundary.

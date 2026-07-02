@@ -29,6 +29,9 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
     private const string WarningComment =
         "// Warning: ExecuteUpdate runs immediately and bypasses change tracking and entity callbacks.";
 
+    private static readonly ImmutableHashSet<string> UnsupportedExecuteUpdateReceiverSteps =
+        ImmutableHashSet.Create(StringComparer.Ordinal, "Skip", "Take", "Distinct");
+
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(ExecuteUpdateForBulkUpdatesAnalyzer.DiagnosticId);
 
@@ -133,6 +136,9 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
         if (receiver is IdentifierNameSyntax)
             return false;
 
+        if (HasUnsupportedExecuteUpdateReceiverStep(receiver))
+            return false;
+
         var receiverType = semanticModel.GetTypeInfo(receiver).Type;
         if (receiverType is null || (!receiverType.IsIQueryable() && !receiverType.IsDbSet()))
             return false;
@@ -187,6 +193,47 @@ public sealed class ExecuteUpdateForBulkUpdatesFixer : CodeFixProvider
 
     private static bool IsCollectionMaterializer(string methodName) =>
         methodName is "ToList" or "ToListAsync" or "ToArray" or "ToArrayAsync";
+
+    private static bool HasUnsupportedExecuteUpdateReceiverStep(ExpressionSyntax expression)
+    {
+        while (true)
+        {
+            expression = expression switch
+            {
+                ParenthesizedExpressionSyntax parenthesized => parenthesized.Expression,
+                AwaitExpressionSyntax awaitExpression => awaitExpression.Expression,
+                _ => expression
+            };
+
+            if (expression is not InvocationExpressionSyntax invocation ||
+                invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            {
+                return false;
+            }
+
+            if (UnsupportedExecuteUpdateReceiverSteps.Contains(memberAccess.Name.Identifier.Text))
+                return true;
+
+            if (IsStaticLinqTypeExpression(memberAccess.Expression) &&
+                invocation.ArgumentList.Arguments.Count > 0 &&
+                HasUnsupportedExecuteUpdateReceiverStep(invocation.ArgumentList.Arguments[0].Expression))
+            {
+                return true;
+            }
+
+            expression = memberAccess.Expression;
+        }
+    }
+
+    private static bool IsStaticLinqTypeExpression(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            IdentifierNameSyntax identifier => identifier.Identifier.Text is "Queryable" or "Enumerable",
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text is "Queryable" or "Enumerable",
+            _ => false
+        };
+    }
 
     private static bool TryGetSetters(ForEachStatementSyntax forEach, string iterationName, out ImmutableArray<(string Left, string Right)> setters)
     {

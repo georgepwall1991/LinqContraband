@@ -153,6 +153,44 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task CountEqualsConstZero_ShouldBeReplacedWithNotAny()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        private const int Empty = 0;
+
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if ({|LC003:query.Count() == Empty|})
+            {
+            }
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        private const int Empty = 0;
+
+        public void TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            if (!(query.Any()))
+            {
+            }
+        }
+    }
+}";
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
     public async Task CountEqualsZero_InReturnExpression_ShouldBeReplacedWithNotAny()
     {
         var test = Usings + @"

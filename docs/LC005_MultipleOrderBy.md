@@ -78,5 +78,5 @@ dataflow proof to avoid noisy warnings.
 ## Analyzer Logic
 
 ### ID: `LC005`
-### Category: `Correctness`
+### Category: `Performance`
 ### Severity: `Warning`

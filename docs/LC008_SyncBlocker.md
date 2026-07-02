@@ -125,6 +125,7 @@ The fixer is intentionally narrow. It replaces the method name with the mapped a
 
 - `db.Users.ToList()` becomes `await db.Users.ToListAsync()`.
 - `db.SaveChanges()` becomes `await db.SaveChangesAsync()`.
+- When the sync call feeds a following member, element, invocation, or null-conditional access, the fixer parenthesizes the awaited result: `db.Users.ToList().Count` becomes `(await db.Users.ToListAsync()).Count`, and `db.Users.FirstOrDefault()?.Name` becomes `(await db.Users.FirstOrDefaultAsync())?.Name`.
 - Query-expression subqueries that are part of the provider expression do not report and therefore do not offer a fix.
 - Diagnostics inside non-async lambdas or non-async local functions can report, but the fixer stays quiet because inserting `await` there would not compile without refactoring the delegate/local-function shape.
 - The fixer does not add cancellation tokens or choose overloads; pass tokens explicitly after the rewrite when the surrounding code has one.

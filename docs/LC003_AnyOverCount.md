@@ -115,7 +115,7 @@ It recognises the LINQ `Queryable.Count`/`LongCount` methods and EF Core `CountA
 The fixer rewrites the comparison expression:
 
 - `Count() > 0`, `Count() >= 1`, and `Count() != 0` become `Any()`.
-- `Count() == 0` becomes `!Any()`.
+- `Count() == 0` becomes `!Any()`, including named constants that fold to zero.
 - Async count methods become `await AnyAsync()`.
 - Predicate counts keep their predicate: `Count(x => x.Active) > 0` becomes `Any(x => x.Active)`.
 

@@ -538,6 +538,27 @@ namespace TestNamespace
     }
 
     [Fact]
+    public async Task TestCrime_SelfReferentialBuilderLocal_ShouldNotCrashAnalyzer()
+    {
+        var test = Usings + SemanticMockAttributes + @"
+        public DbSet<SelfReferentialBuilderEntity> {|LC011:SelfReferentialBuilderEntities|} { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            var entity = {|CS0841:entity|}.HasKey(""Id"");
+        }
+    }
+
+    public class SelfReferentialBuilderEntity
+    {
+        public string Name { get; set; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AppliedConfigurationChainedBuilderHasKey_ShouldNotTrigger()
     {
         var test = Usings + SemanticMockAttributes + @"

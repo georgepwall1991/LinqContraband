@@ -115,6 +115,46 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task Fixer_AddsTokenToOuterAsyncInvocation_WhenReceiverIsQueryChain()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken cancellationToken)
+        {
+            var users = await {|LC026:query.Where(user => user.Id > 0).ToListAsync()|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken cancellationToken)
+        {
+            var users = await query.Where(user => user.Id > 0).ToListAsync(cancellationToken);
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
     public async Task ReadablePropertyToken_IsUsedWhenNoParameterTokenExists()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

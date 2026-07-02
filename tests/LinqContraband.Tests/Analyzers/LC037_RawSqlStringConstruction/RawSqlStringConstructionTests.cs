@@ -491,6 +491,26 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteSqlRaw_WithSelfReferentialConcatAssignment_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var sql = ""UPDATE Users SET Name = "";
+            sql = sql + id;
+            var result = db.Database.ExecuteSqlRaw({|LC037:sql|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteSqlRaw_WithConstructedInitialValueConditionallyOverwrittenByConstant_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

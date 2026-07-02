@@ -117,11 +117,26 @@ public sealed class SyncBlockerFixer : CodeFixProvider
         // Re-attach to await
         awaitExpression = awaitExpression.WithExpression(newInvocation);
 
-        // 3. Add Formatting annotation
-        var formattedAwait = awaitExpression.WithAdditionalAnnotations(Formatter.Annotation);
+        ExpressionSyntax replacement = awaitExpression;
+        if (NeedsParenthesizedAwait(invocation))
+            replacement = SyntaxFactory.ParenthesizedExpression(awaitExpression.WithoutTrivia())
+                .WithTriviaFrom(awaitExpression);
 
-        editor.ReplaceNode(invocation, formattedAwait);
+        // 3. Add Formatting annotation
+        editor.ReplaceNode(invocation, replacement.WithAdditionalAnnotations(Formatter.Annotation));
 
         return editor.GetChangedDocument();
+    }
+
+    private static bool NeedsParenthesizedAwait(InvocationExpressionSyntax invocation)
+    {
+        return invocation.Parent switch
+        {
+            MemberAccessExpressionSyntax memberAccess when memberAccess.Expression == invocation => true,
+            ElementAccessExpressionSyntax elementAccess when elementAccess.Expression == invocation => true,
+            InvocationExpressionSyntax outerInvocation when outerInvocation.Expression == invocation => true,
+            ConditionalAccessExpressionSyntax conditionalAccess when conditionalAccess.Expression == invocation => true,
+            _ => false
+        };
     }
 }

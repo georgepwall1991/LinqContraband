@@ -37,7 +37,7 @@ Task.Run(() =>
 ## Analyzer Logic
 
 ### ID: `LC036`
-### Category: `Reliability`
+### Category: `Safety`
 ### Severity: `Warning`
 
 ### Notes

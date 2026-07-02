@@ -56,6 +56,7 @@ public sealed class AnyOverCountFixer : CodeFixProvider
         CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
         if (!TryExtractCountInvocation(binaryExpr.Left, out var leftInvocation, out var leftAwaited))
             leftInvocation = null;
@@ -78,7 +79,7 @@ public sealed class AnyOverCountFixer : CodeFixProvider
         if (isAwaited)
             replacement = SyntaxFactory.AwaitExpression(replacement);
 
-        if (binaryExpr.IsKind(SyntaxKind.EqualsExpression) && HasZeroConstant(binaryExpr))
+        if (binaryExpr.IsKind(SyntaxKind.EqualsExpression) && HasZeroConstant(binaryExpr, semanticModel, cancellationToken))
             replacement = SyntaxFactory.PrefixUnaryExpression(
                 SyntaxKind.LogicalNotExpression,
                 SyntaxFactory.ParenthesizedExpression(replacement.WithoutTrivia()))
@@ -133,19 +134,43 @@ public sealed class AnyOverCountFixer : CodeFixProvider
         };
     }
 
-    private static bool HasZeroConstant(BinaryExpressionSyntax binaryExpression)
+    private static bool HasZeroConstant(
+        BinaryExpressionSyntax binaryExpression,
+        SemanticModel? semanticModel,
+        CancellationToken cancellationToken)
     {
-        return IsZeroLiteral(binaryExpression.Left) || IsZeroLiteral(binaryExpression.Right);
+        return IsZeroConstant(binaryExpression.Left, semanticModel, cancellationToken) ||
+               IsZeroConstant(binaryExpression.Right, semanticModel, cancellationToken);
     }
 
-    private static bool IsZeroLiteral(ExpressionSyntax expression)
+    private static bool IsZeroConstant(
+        ExpressionSyntax expression,
+        SemanticModel? semanticModel,
+        CancellationToken cancellationToken)
     {
-        expression = expression is ParenthesizedExpressionSyntax parenthesized
-            ? parenthesized.Expression
-            : expression;
+        if (semanticModel != null)
+        {
+            var constantValue = semanticModel.GetConstantValue(expression, cancellationToken);
+            if (constantValue.HasValue)
+                return IsZeroValue(constantValue.Value);
+        }
+
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
 
         return expression is LiteralExpressionSyntax literal &&
                literal.IsKind(SyntaxKind.NumericLiteralExpression) &&
                literal.Token.ValueText == "0";
+    }
+
+    private static bool IsZeroValue(object? value)
+    {
+        if (value is int intValue)
+            return intValue == 0;
+
+        if (value is long longValue)
+            return longValue == 0L;
+
+        return false;
     }
 }
