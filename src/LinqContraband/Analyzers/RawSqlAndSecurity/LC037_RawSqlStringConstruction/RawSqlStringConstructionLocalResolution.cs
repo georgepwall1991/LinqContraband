@@ -28,10 +28,10 @@ public sealed partial class RawSqlStringConstructionAnalyzer
                     if (!SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) || declarator.Initializer == null)
                         continue;
 
-                    var writeStart = declarator.Syntax.SpanStart;
-                    if (writeStart >= referenceStart)
+                    if (!IsWriteBeforeReference(declarator, referenceStart))
                         continue;
 
+                    var writeStart = declarator.Syntax.SpanStart;
                     TrackWrite(declarator, declarator.Initializer.Value, writeStart);
                 }
             }
@@ -40,10 +40,10 @@ public sealed partial class RawSqlStringConstructionAnalyzer
                 assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
                 SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
             {
-                var writeStart = assignment.Syntax.SpanStart;
-                if (writeStart >= referenceStart)
+                if (!IsWriteBeforeReference(assignment, referenceStart))
                     continue;
 
+                var writeStart = assignment.Syntax.SpanStart;
                 TrackWrite(assignment, assignment.Value, writeStart);
             }
         }
@@ -104,6 +104,11 @@ public sealed partial class RawSqlStringConstructionAnalyzer
         }
 
         return current != null;
+    }
+
+    private static bool IsWriteBeforeReference(IOperation writeOperation, int referenceStart)
+    {
+        return writeOperation.Syntax.Span.End <= referenceStart;
     }
 
     private static bool IsPotentiallyConstructed(IOperation operation)

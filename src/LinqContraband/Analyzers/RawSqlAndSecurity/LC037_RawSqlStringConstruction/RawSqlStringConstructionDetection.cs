@@ -8,6 +8,8 @@ namespace LinqContraband.Analyzers.LC037_RawSqlStringConstruction;
 
 public sealed partial class RawSqlStringConstructionAnalyzer
 {
+    private const int MaxLocalResolutionDepth = 32;
+
     private static bool IsOwnedBySpecificRawSqlAnalyzer(IOperation operation, IOperation? executableRoot)
     {
         var current = operation.UnwrapConversions();
@@ -17,11 +19,16 @@ public sealed partial class RawSqlStringConstructionAnalyzer
 
         return current is IBinaryOperation binary &&
                binary.OperatorKind == BinaryOperatorKind.Add &&
-               IsConcatWithNonConstant(binary, executableRoot);
+               IsConcatWithNonConstant(binary, executableRoot, depth: 0);
     }
 
     private static bool IsConstructedRawSql(IOperation operation, IOperation? executableRoot)
     {
+        return IsConstructedRawSql(operation, executableRoot, depth: 0);
+    }
+
+    private static bool IsConstructedRawSql(IOperation operation, IOperation? executableRoot, int depth)
+    {
         var current = operation.UnwrapConversions();
 
         if (current.ConstantValue.HasValue)
@@ -30,20 +37,22 @@ public sealed partial class RawSqlStringConstructionAnalyzer
         return current switch
         {
             IInterpolatedStringOperation => true,
-            IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot),
-            IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot),
+            IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot, depth + 1),
+            IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot, depth + 1),
             ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
-                                                        IsConstructedRawSql(resolvedValue, executableRoot),
+                                                        depth < MaxLocalResolutionDepth &&
+                                                        IsConstructedRawSql(resolvedValue, executableRoot, depth + 1),
             _ => false
         };
     }
 
-    private static bool IsConcatWithNonConstant(IBinaryOperation binary, IOperation? executableRoot)
+    private static bool IsConcatWithNonConstant(IBinaryOperation binary, IOperation? executableRoot, int depth)
     {
-        return IsNonConstant(binary.LeftOperand, executableRoot) || IsNonConstant(binary.RightOperand, executableRoot);
+        return IsNonConstant(binary.LeftOperand, executableRoot, depth + 1) ||
+               IsNonConstant(binary.RightOperand, executableRoot, depth + 1);
     }
 
-    private static bool IsNonConstant(IOperation operation, IOperation? executableRoot)
+    private static bool IsNonConstant(IOperation operation, IOperation? executableRoot, int depth)
     {
         var current = operation.UnwrapConversions();
         if (current.ConstantValue.HasValue)
@@ -52,17 +61,18 @@ public sealed partial class RawSqlStringConstructionAnalyzer
         return current switch
         {
             IInterpolatedStringOperation => true,
-            IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot),
-            IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot),
+            IBinaryOperation binary when binary.OperatorKind == BinaryOperatorKind.Add => IsConcatWithNonConstant(binary, executableRoot, depth + 1),
+            IInvocationOperation invocation => IsSuspiciousInvocation(invocation, executableRoot, depth + 1),
             ILocalReferenceOperation localReference => TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
-                                                        IsConstructedRawSql(resolvedValue, executableRoot),
+                                                        depth < MaxLocalResolutionDepth &&
+                                                        IsConstructedRawSql(resolvedValue, executableRoot, depth + 1),
             IFieldReferenceOperation => true,
             IPropertyReferenceOperation => true,
             _ => true
         };
     }
 
-    private static bool IsSuspiciousInvocation(IInvocationOperation invocation, IOperation? executableRoot)
+    private static bool IsSuspiciousInvocation(IInvocationOperation invocation, IOperation? executableRoot, int depth)
     {
         var method = invocation.TargetMethod;
 
@@ -70,10 +80,10 @@ public sealed partial class RawSqlStringConstructionAnalyzer
             return invocation.Arguments.Any(arg => !arg.Value.UnwrapConversions().ConstantValue.HasValue);
 
         if (IsStringConcat(method))
-            return invocation.Arguments.Any(arg => IsNonConstant(arg.Value, executableRoot));
+            return invocation.Arguments.Any(arg => IsNonConstant(arg.Value, executableRoot, depth + 1));
 
         if (IsStringBuilderToString(invocation))
-            return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot);
+            return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot, depth + 1);
 
         return false;
     }
@@ -100,7 +110,7 @@ public sealed partial class RawSqlStringConstructionAnalyzer
                receiverType.ContainingNamespace?.ToString() == "System.Text";
     }
 
-    private static bool ContainsSuspiciousStringBuilderAppend(IOperation? receiver, IOperation? executableRoot)
+    private static bool ContainsSuspiciousStringBuilderAppend(IOperation? receiver, IOperation? executableRoot, int depth)
     {
         if (receiver == null)
             return false;
@@ -111,19 +121,20 @@ public sealed partial class RawSqlStringConstructionAnalyzer
         {
             if (IsStringBuilderAppend(invocation.TargetMethod))
             {
-                if (invocation.Arguments.Any(arg => IsNonConstant(arg.Value, executableRoot)))
+                if (invocation.Arguments.Any(arg => IsNonConstant(arg.Value, executableRoot, depth + 1)))
                     return true;
 
-                return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot);
+                return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot, depth + 1);
             }
 
-            return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot);
+            return ContainsSuspiciousStringBuilderAppend(invocation.GetInvocationReceiver(), executableRoot, depth + 1);
         }
 
         if (current is ILocalReferenceOperation localReference)
         {
             return TryResolveLocalValue(localReference.Local, localReference, executableRoot, out var resolvedValue) &&
-                   ContainsSuspiciousStringBuilderAppend(resolvedValue, executableRoot);
+                   depth < MaxLocalResolutionDepth &&
+                   ContainsSuspiciousStringBuilderAppend(resolvedValue, executableRoot, depth + 1);
         }
 
         return false;
