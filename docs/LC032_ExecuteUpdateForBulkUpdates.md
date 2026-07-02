@@ -103,6 +103,10 @@ db.SaveChanges();
   row, so collapsing the sequential writes would change the result.
 - **Async context without an `ExecuteUpdateAsync` overload** (or `SaveChangesAsync(token)` with no
   token-accepting `ExecuteUpdateAsync` overload), to avoid a blocking call or a dropped token.
+- **Query receiver chains that contain `Skip`, `Take`, or `Distinct`**, including static
+  `Queryable` spellings such as `Queryable.Take(db.Users, 100)`. EF Core cannot translate those
+  operators as part of an `ExecuteUpdate` receiver, so the diagnostic remains a manual review prompt
+  instead of offering a code fix that would turn working tracked-loop code into a runtime exception.
 
 ### Safety contract
 

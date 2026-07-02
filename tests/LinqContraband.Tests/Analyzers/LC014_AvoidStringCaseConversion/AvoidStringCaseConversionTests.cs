@@ -29,6 +29,13 @@ namespace Microsoft.EntityFrameworkCore
         public IEnumerator<T> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
+
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static System.Threading.Tasks.Task<bool> AnyAsync<TSource>(
+            this IQueryable<TSource> source,
+            System.Linq.Expressions.Expression<Func<TSource, bool>> predicate) => null;
+    }
 }
 
 namespace LinqContraband.Test
@@ -105,6 +112,24 @@ namespace LinqContraband.Test
             using var db = new AppDbContext();
             var query = db.Users;
             var result = query.Where(u => {|LC014:u.Name.ToUpper()|} == ""test"");
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToLower_InEfAnyAsyncPredicate_ShouldTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public async System.Threading.Tasks.Task TestMethod()
+        {
+            using var db = new AppDbContext();
+            var exists = await db.Users.AnyAsync(u => {|LC014:u.Name.ToLower()|} == ""test"");
         }
     }
 }";

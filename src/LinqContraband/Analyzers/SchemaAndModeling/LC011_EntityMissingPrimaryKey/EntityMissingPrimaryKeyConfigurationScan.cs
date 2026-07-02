@@ -372,8 +372,28 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         CancellationToken cancellationToken,
         out INamedTypeSymbol entityType)
     {
+        return TryResolveEntityTypeFromBuilderExpression(
+            expression,
+            builderVariables,
+            compilationModel,
+            cancellationToken,
+            new HashSet<ExpressionSyntax>(),
+            out entityType);
+    }
+
+    private static bool TryResolveEntityTypeFromBuilderExpression(
+        ExpressionSyntax expression,
+        Dictionary<string, INamedTypeSymbol> builderVariables,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
+        HashSet<ExpressionSyntax> visitedExpressions,
+        out INamedTypeSymbol entityType)
+    {
         entityType = null!;
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (!visitedExpressions.Add(expression))
+            return false;
 
         if (ExtractEntityTypeNameFromChain(expression) is { } entityTypeName)
         {
@@ -387,14 +407,14 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         if (expression is InvocationExpressionSyntax invocation &&
             invocation.Expression is MemberAccessExpressionSyntax chainedMemberAccess &&
-            TryResolveEntityTypeFromBuilderExpression(chainedMemberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var chainedEntityType))
+            TryResolveEntityTypeFromBuilderExpression(chainedMemberAccess.Expression, builderVariables, compilationModel, cancellationToken, visitedExpressions, out var chainedEntityType))
         {
             entityType = chainedEntityType;
             return true;
         }
 
         if (expression is ParenthesizedExpressionSyntax parenthesized &&
-            TryResolveEntityTypeFromBuilderExpression(parenthesized.Expression, builderVariables, compilationModel, cancellationToken, out var parenthesizedEntityType))
+            TryResolveEntityTypeFromBuilderExpression(parenthesized.Expression, builderVariables, compilationModel, cancellationToken, visitedExpressions, out var parenthesizedEntityType))
         {
             entityType = parenthesizedEntityType;
             return true;
@@ -402,7 +422,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         if (expression is IdentifierNameSyntax identifier)
         {
-            if (TryResolveLocalBuilder(identifier, builderVariables, compilationModel, cancellationToken, out var localEntityType))
+            if (TryResolveLocalBuilder(identifier, builderVariables, compilationModel, cancellationToken, visitedExpressions, out var localEntityType))
             {
                 entityType = localEntityType;
                 return true;
@@ -423,6 +443,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         Dictionary<string, INamedTypeSymbol> builderVariables,
         CompilationModel compilationModel,
         CancellationToken cancellationToken,
+        HashSet<ExpressionSyntax> visitedExpressions,
         out INamedTypeSymbol entityType)
     {
         entityType = null!;
@@ -448,7 +469,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     if (variable.Identifier.ValueText != identifierName || variable.Initializer?.Value == null)
                         continue;
 
-                    if (TryResolveEntityTypeFromBuilderExpression(variable.Initializer.Value, builderVariables, compilationModel, cancellationToken, out var localEntityType))
+                    if (TryResolveEntityTypeFromBuilderExpression(variable.Initializer.Value, builderVariables, compilationModel, cancellationToken, visitedExpressions, out var localEntityType))
                     {
                         entityType = localEntityType;
                         return true;

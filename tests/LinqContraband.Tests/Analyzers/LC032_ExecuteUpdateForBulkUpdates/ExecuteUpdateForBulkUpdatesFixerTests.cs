@@ -338,6 +338,46 @@ class Program
     }
 
     [Fact]
+    public async Task Fixer_QueryChainWithTake_DoesNotRegister()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in db.Users.Where(u => u.IsActive).Take(100))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_StaticQueryChainWithTake_DoesNotRegister()
+    {
+        var test = WithExecuteUpdate(@"
+class Program
+{
+    void Run()
+    {
+        using var db = new AppDbContext();
+        {|LC032:foreach (var user in Queryable.Where(Queryable.Take(db.Users, 100), u => u.IsActive))
+        {
+            user.Name = ""Archived"";
+        }|}
+        db.SaveChanges();
+    }
+}");
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_InlineToList_StripsMaterializer()
     {
         var test = WithExecuteUpdate(@"

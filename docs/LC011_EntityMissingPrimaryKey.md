@@ -78,3 +78,5 @@ The code fix offers `public int Id { get; set; }` only when the entity is source
 ### Severity: `Warning`
 
 LC011 starts from `DbSet<TEntity>` members on source `DbContext` types, checks the entity's inheritance chain for valid mapped key properties, then folds in keyless/owned/fluent configuration discovered from the analyzed context. Standalone `IEntityTypeConfiguration<TEntity>` classes are not trusted unless the context applies them, preventing one context's configuration from suppressing diagnostics in another context.
+
+Malformed self-referential builder locals in `OnModelCreating` are treated as unresolved builder expressions rather than followed recursively. This keeps live IDE analysis from crashing on incomplete edits such as a local variable that accidentally refers to itself before it has been declared.

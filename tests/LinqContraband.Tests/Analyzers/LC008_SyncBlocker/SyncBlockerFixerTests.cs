@@ -46,12 +46,17 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => Task.FromResult(new List<T>());
         public static Task<int> CountAsync<T>(this IQueryable<T> source) => Task.FromResult(0);
         public static Task<T> FirstAsync<T>(this IQueryable<T> source) => Task.FromResult<T>(default);
+        public static Task<T> FirstOrDefaultAsync<T>(this IQueryable<T> source) => Task.FromResult<T>(default);
     }
 }
 
 namespace TestNamespace
 {
-    public class User { public int Id { get; set; } }
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
     
     public class MyDbContext : DbContext
     {
@@ -96,6 +101,82 @@ class Program
         testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
             .WithSpan(15, 21, 15, 38)
             .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_ToListReceiverOfMemberAccess_ParenthesizesAwait()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var count = db.Users.ToList().Count;
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var count = (await db.Users.ToListAsync()).Count;
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(14, 21, 14, 38)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_FirstOrDefaultReceiverOfConditionalAccess_ParenthesizesAwait()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var name = db.Users.FirstOrDefault()?.Name;
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        var name = (await db.Users.FirstOrDefaultAsync())?.Name;
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(14, 20, 14, 45)
+            .WithArguments("FirstOrDefault", "FirstOrDefaultAsync"));
 
         await testObj.RunAsync();
     }
