@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.34] - 2026-07-02
+
+### Fixed
+- `LC037` now guards raw-SQL local and `StringBuilder` resolution against self-referential assignments that previously caused analyzer StackOverflow failures while preserving the constructed-SQL diagnostic.
+- `LC011` now guards malformed self-referential builder locals so incomplete `OnModelCreating` edits no longer crash analyzer execution.
+- `LC003`, `LC008`, `LC026`, and `LC032` fixers now preserve semantics for constant-zero count comparisons, awaited receiver continuations, chained async invocations, and unsupported `ExecuteUpdate` receivers.
+- `LC014` now reports string case-conversion predicates on EF Core async query terminals such as `AnyAsync` and `FirstOrDefaultAsync`.
+
 ## [5.6.33] - 2026-06-26
 
 ### Changed
