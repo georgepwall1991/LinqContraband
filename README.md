@@ -1459,8 +1459,9 @@ var users = db.Users
 ```
 
 **🛡️ Reliability Notes:**
-- LC037 catches `string.Concat(...)`, `string.Format(...)`, `StringBuilder`, and local alias hops when the raw SQL flow is provable.
+- LC037 catches `string.Concat(...)`, `string.Format(...)`, fluent or statement-based `StringBuilder.Append(...)`, and local alias hops when the raw SQL flow is provable.
 - For simple local variables, LC037 uses the latest guaranteed declaration or assignment before the raw SQL call; conditional constructed writes remain suspicious unless a later guaranteed assignment overwrites them.
+- Statement-based `StringBuilder` construction reports when a non-constant append can still flow into `ToString()`, including null-conditional appends, local dynamic append values, loop-carried and compound-assigned append locals, caught-throw continuations with exact, alias, ordinary base, user-defined base, and framework base exception catches, constructor copies from tainted builders, and conditional builder aliases; constant-only builders, variable-capacity constructors, per-iteration constant append-local resets, path-dominated constant append-local overwrites, constant compound assignments, terminating-branch local writes, safe alias clears, short-circuit reset attempts, only-surviving-branch clears, same-loop branch exits, try/catch-contained branch clears, catch-exiting throws, guaranteed `finally` clears, and guaranteed fluent or direct `Clear()` resets are handled deliberately.
 - Direct interpolated-string and direct non-constant `+` call-site patterns are intentionally owned by `LC018` (`FromSqlRaw`) and `LC034` (`ExecuteSqlRaw*`).
 
 ---
