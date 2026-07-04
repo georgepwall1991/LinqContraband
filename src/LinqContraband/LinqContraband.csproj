@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.36</Version>
+        <Version>5.6.37</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC002 no longer offers the move-before-materialization fixer for ordering-sensitive Last and LastOrDefault continuations after inline materializers, while preserving the diagnostic and safe fixer paths.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC021 now handles EF Core named-filter IgnoreQueryFilters calls safely, including extension syntax and reordered named static arguments.</PackageReleaseNotes>
         <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
