@@ -336,6 +336,30 @@ public class PrematureMaterializationFixerTests
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
     }
 
+    [Theory]
+    [InlineData("Last")]
+    [InlineData("LastOrDefault")]
+    public async Task DoesNotOfferFix_ForLastTerminalAfterInlineMaterializer(string terminal)
+    {
+        var test = CommonUsings + $$"""
+
+            class Program
+            {
+                void Main()
+                {
+                    var db = new DbContext();
+                    var user = {|#0:db.Users.ToList().{{terminal}}()|};
+                }
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments(terminal);
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
     [Fact]
     public async Task DoesNotOfferFix_ForConstructorMaterialization()
     {

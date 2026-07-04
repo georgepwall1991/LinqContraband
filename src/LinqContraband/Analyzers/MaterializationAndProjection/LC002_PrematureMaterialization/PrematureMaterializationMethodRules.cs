@@ -56,6 +56,7 @@ public sealed partial class PrematureMaterializationAnalyzer
     {
         if (origin.OriginKind != InlineInvocationOriginKind) return false;
         if (!IsApprovedContinuationMethod(continuationMethod, out _)) return false;
+        if (continuationMethod.Name is "Last" or "LastOrDefault") return false;
 
         return origin.MaterializerName is
             "ToList" or

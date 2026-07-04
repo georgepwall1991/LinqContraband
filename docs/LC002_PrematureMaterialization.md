@@ -96,7 +96,8 @@ The fixer is intentionally conservative.
 
 - It offers `Move query operator before materialization` only for analyzer-proven inline chains where the rewrite is explicit.
 - For sequence continuations, it keeps the final materializer when needed: `ToList().Where(...)` becomes `Where(...).ToList()`, while an outer materializer such as `.ToArray()` remains the final shape.
-- For terminal continuations, it removes the early materializer entirely: `ToList().Count()` becomes `Count()`.
+- For most terminal continuations, it removes the early materializer entirely: `ToList().Count()` becomes `Count()`.
+- It does not offer a fix for `Last` or `LastOrDefault` after an inline materializer. LC002 still reports the early boundary, but moving `Last*` back to `IQueryable` can change runtime behaviour when the provider query is unordered.
 - It offers `Remove redundant materialization` only for direct redundant materializer pairs whose collapse preserves the result; it never collapses a de-duplicating set away (`ToHashSet().ToList()` is left untouched).
 - It does not offer a fix for local-hop, constructor, ambiguous, or shape-changing cases such as `ToDictionary(...).Where(...)`.
 - It does not offer a fix for client-only lambda bodies because LC002 suppresses those diagnostics entirely.
