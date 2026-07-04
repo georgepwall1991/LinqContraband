@@ -39,6 +39,17 @@ var sql = new StringBuilder()
 var names = db.Database.SqlQueryRaw<string>(sql);
 ```
 
+Statement-based builders are in scope too:
+
+```csharp
+var builder = new StringBuilder();
+builder.Append("DELETE FROM Users WHERE Name = '");
+builder.Append(name);
+builder.Append("'");
+
+db.Database.ExecuteSqlRaw(builder.ToString());
+```
+
 ### Safer Shape
 Keep dynamic values out of the SQL string and pass them as parameters.
 
@@ -68,8 +79,9 @@ The rule reports where the constructed string reaches the raw SQL API. The fix d
 - LC018 owns direct interpolated strings and direct non-constant `+` concatenation passed to query APIs (`FromSqlRaw(...)` and `SqlQueryRaw<T>(...)`).
 - LC034 owns direct interpolated strings and direct non-constant `+` concatenation passed to raw execution APIs (`ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`).
 - LC037 intentionally yields for those direct call-site patterns so a single raw SQL expression is not double-reported.
-- LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and local alias / variable flow into all three raw SQL sink families: `FromSqlRaw(...)`, `ExecuteSqlRaw(...)` / `ExecuteSqlRawAsync(...)`, and `SqlQueryRaw<T>(...)`.
+- LC037 still reports broader constructed-SQL shapes such as `string.Format(...)`, `string.Concat(...)`, fluent or statement-based `StringBuilder.Append(...)`, and local alias / variable flow into all three raw SQL sink families: `FromSqlRaw(...)`, `ExecuteSqlRaw(...)` / `ExecuteSqlRawAsync(...)`, and `SqlQueryRaw<T>(...)`.
 - `SqlQueryRaw<T>` is split deliberately: direct interpolation and direct `+` concatenation are LC018's territory, while `string.Format(...)`, `string.Concat(...)`, `StringBuilder`, and aliased local construction are LC037's.
 - For simple local variables, LC037 resolves the latest guaranteed declaration or assignment before the raw SQL call, so an earlier constructed value overwritten unconditionally by a constant is ignored while later constructed overwrites are still reported.
+- For statement-based `StringBuilder` locals, LC037 follows append statements before `ToString()` and reports when a non-constant appended value can still flow into the raw SQL string, including null-conditional appends, local dynamic values, method-call values, loop-carried and compound-assigned append locals, caught-throw continuations with exact, alias, ordinary base, user-defined base, and framework base exception catches, constructor copies from tainted builders, and conditional builder aliases. Constant-only appends, variable-capacity constructors, per-iteration constant append-local resets, path-dominated constant append-local overwrites, constant compound assignments, terminating-branch local writes, safe alias clears, short-circuit reset attempts, only-surviving-branch clears, same-loop branch exits, try/catch-contained branch clears, catch-exiting throws, guaranteed `finally` clears, and guaranteed fluent or direct `Clear()` resets are handled deliberately.
 - Self-referential construction such as `sql = sql + id` remains in scope: LC037 reports the raw SQL sink, but local resolution only follows writes that completed before the value currently being inspected so recursive aliases cannot abort compiler analysis.
 - Conditional overwrites are treated conservatively: a branch-only constant assignment does not suppress an earlier constructed SQL value, and a branch-only constructed assignment remains suspicious unless a later guaranteed assignment overwrites it.
