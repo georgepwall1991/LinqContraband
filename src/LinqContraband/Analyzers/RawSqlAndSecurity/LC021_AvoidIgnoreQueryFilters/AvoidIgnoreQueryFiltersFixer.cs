@@ -52,14 +52,32 @@ public sealed class AvoidIgnoreQueryFiltersFixer : CodeFixProvider
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
 
-        var receiver = invocation.ArgumentList.Arguments.Count > 0
-            ? invocation.ArgumentList.Arguments[0].Expression
-            : memberAccess.Expression;
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var invokedMethod = semanticModel?.GetSymbolInfo(invocation, cancellationToken).Symbol as IMethodSymbol;
+        var isExtensionSyntax = invokedMethod?.ReducedFrom is not null;
+
+        var receiver = isExtensionSyntax
+            ? memberAccess.Expression
+            : GetStaticCallSource(invocation, memberAccess);
 
         editor.ReplaceNode(invocation, receiver
             .WithLeadingTrivia(invocation.GetLeadingTrivia())
             .WithTrailingTrivia(invocation.GetTrailingTrivia()));
 
         return editor.GetChangedDocument();
+    }
+
+    private static ExpressionSyntax GetStaticCallSource(InvocationExpressionSyntax invocation,
+        MemberAccessExpressionSyntax memberAccess)
+    {
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            if (argument.NameColon?.Name.Identifier.ValueText == "source")
+                return argument.Expression;
+        }
+
+        return invocation.ArgumentList.Arguments.Count > 0
+            ? invocation.ArgumentList.Arguments[0].Expression
+            : memberAccess.Expression;
     }
 }

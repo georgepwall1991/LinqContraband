@@ -41,9 +41,25 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
         if (!IsEfCoreIgnoreQueryFiltersMethod(method)) return;
 
-        if (!invocation.GetInvocationReceiverType().IsIQueryable()) return;
+        if (!GetQuerySourceType(invocation).IsIQueryable()) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
+    }
+
+    private static ITypeSymbol? GetQuerySourceType(IInvocationOperation invocation)
+    {
+        if (invocation.Instance is not null)
+            return invocation.Instance.UnwrapConversions().Type;
+
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Name == "source")
+                return argument.Value.UnwrapConversions().Type;
+        }
+
+        return invocation.Arguments.Length > 0
+            ? invocation.Arguments[0].Value.UnwrapConversions().Type
+            : null;
     }
 
     private static bool IsEfCoreIgnoreQueryFiltersMethod(IMethodSymbol method)
