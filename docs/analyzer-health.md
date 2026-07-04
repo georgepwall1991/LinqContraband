@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **45 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.6.37
-- Base audited commit: 51ac011d7062dfb889ed81449ebae776fbb97c96
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.37`
+- Package version: 5.6.38
+- Base audited commit: 17c91ccb40f7c5bce8bbabe2a21b00e1792ab9ba
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.38`
 
 ## Rubric
 
@@ -546,17 +546,17 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.37**
+Package version: **5.6.38**
 
-Base audited commit: master at `51ac011` (5.6.37 release candidate state). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, and the July 2026 raw-SQL/fixer hardening through 5.6.37.
+Base audited commit: master at `17c91cc` (5.6.38 release candidate state). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, and the July 2026 raw-SQL/fixer hardening through 5.6.38.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
-Current verification (2026-07-04, LC012 later-save/query-source fixer branch after the 5.6.37 release):
+Current verification (2026-07-04, 5.6.38 release candidate):
 
 - Focused red/green regressions confirmed that the LC012 fixer was withheld for `RemoveRange(query)` when a later `SaveChanges()` appeared in a mutually exclusive `else` branch or on a different freshly-created context local, then passed after the fixer reused the analyzer's branch-exclusivity and fresh-local context proof. Independent review then confirmed cross-context query-source hazards (`query` from the later-save context, from an arbitrary helper that could return it, or from a multi-source composition such as `Concat`); red no-fix regressions now pass after the fixer requires transparent single-source query ownership proof before dismissing the save. The LC012 net10.0 slice passes 35 tests.
 - Focused red/green regression confirmed `query.IgnoreQueryFilters(filters)` received the `Remove IgnoreQueryFilters()` code action before the fix and rewrote to `filters.ToList()` instead of `query.ToList()`, then passed after the fixer distinguished extension syntax from static extension wrappers.
-- The LC021 net10.0 slice passes 23 tests, including named-filter analyzer coverage plus extension, static, and reordered named-static fixer coverage. Full local net10.0 suite passes 1231 tests on the LC021 fix branch; `RuleCatalogDocGenerator --check`, `dotnet build LinqContraband.sln --no-restore --configuration Release`, and `SampleDiagnosticsVerifier` across net8.0/net9.0/net10.0 all passed there. The broader LC012 verification gate is pending this branch's full run below.
+- Full local net10.0 suite passes 1236 tests on the LC012 fix branch; `RuleCatalogDocGenerator --check`, `dotnet build LinqContraband.sln --no-restore --configuration Release`, and `SampleDiagnosticsVerifier` across net8.0/net9.0/net10.0 all passed there.
 - Local broad multi-target analyzer-verifier tests remain limited on this Mac by the same pre-existing Roslyn test reference issue reproduced on clean `origin/master` (`CS0518`/missing `System.Object`, `DateTime`, and `IQueryable<>` inside verifier compilations). Local arm64 net8.0/net9.0 testhost runs are also unavailable because only arm64 `Microsoft.NETCore.App 10.0.9` is installed.
 - Full analyzer test coverage for the release remains delegated to GitHub CI's Ubuntu `dotnet test --no-build --verbosity normal` matrix after PR creation, matching the repository workflow.
 
