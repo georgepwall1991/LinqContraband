@@ -12,6 +12,7 @@ public class AvoidIgnoreQueryFiltersFixerTests
 {
     private const string EFCoreMock = @"
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Microsoft.EntityFrameworkCore
@@ -19,6 +20,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source) => source;
+        public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source, IReadOnlyCollection<string> filterKeys) => source;
     }
 }
 ";
@@ -170,6 +172,105 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var query = new int[0].AsQueryable();
+            var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterExtensionCall_ShouldRemoveBypassCall()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = {|LC021:query.IgnoreQueryFilters(filters)|}.ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterStaticExtensionCall_ShouldBeRemoved()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query, filters)|}.ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = query.ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterStaticExtensionCallWithReorderedArguments_ShouldBeRemoved()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(filterKeys: filters, source: query)|}.ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
             var result = query.ToList();
         }
     }

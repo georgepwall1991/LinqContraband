@@ -37,6 +37,8 @@ Ensure that bypassing global filters is intentional and documented. If possible,
 ```csharp
 db.Users.IgnoreQueryFilters().Where(x => x.Active);
 
+db.Users.IgnoreQueryFilters(new[] { "TenantFilter" }).ToList();
+
 EntityFrameworkQueryableExtensions.IgnoreQueryFilters(db.Users).ToList();
 ```
 
@@ -58,7 +60,7 @@ values.IgnoreQueryFilters();
 
 ## Shipped Behavior
 
-LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. The fixer removes the call when the bypass is accidental, including static extension-method syntax such as `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)`; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
+LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. That includes EF Core's named-filter overload, because `IgnoreQueryFilters(filterKeys)` still disables the named filters passed to it. The fixer removes the call when the bypass is accidental, including static extension-method syntax such as `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)` and named-filter syntax such as `query.IgnoreQueryFilters(filterKeys)`; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
 
 Intentional bypasses should be local and auditable:
 
@@ -89,4 +91,4 @@ public List<User> GetAllTenantsForAdminReview()
 
 Method-level and type-level `SuppressMessage` suppressions are supported for reviewed bypass services. Repository-wide analyzer config such as `dotnet_diagnostic.LC021.severity = none` is also honored by Roslyn, but treat it as a project policy decision rather than a local exception. Generated code is excluded from LC021 analysis.
 
-The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call, or the equivalent static extension wrapper, and preserves the rest of the query chain. Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.
+The fixer is intentionally narrow: it removes only the `.IgnoreQueryFilters()` call, or the equivalent static extension wrapper, and preserves the rest of the query chain. For named-filter overloads, extension syntax keeps the original query receiver (`query.IgnoreQueryFilters(filterKeys)` becomes `query`) while static syntax keeps the explicit source query argument (`EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query, filterKeys)` and `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(filterKeys: filters, source: query)` both become `query`). Do not apply the fixer when the bypass is part of an approved administrative, tenant-review, soft-delete restore, or security-audit workflow.

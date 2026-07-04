@@ -7,6 +7,7 @@ public class AvoidIgnoreQueryFiltersTests
 {
     private const string EFCoreMock = @"
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Microsoft.EntityFrameworkCore
@@ -14,6 +15,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source) => source;
+        public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source, IReadOnlyCollection<string> filterKeys) => source;
     }
 }
 ";
@@ -79,6 +81,46 @@ namespace LinqContraband.Test
         {
             var query = new int[0].AsQueryable();
             var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)|}.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterOverload_ShouldTriggerLC021()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = {|LC021:query.IgnoreQueryFilters(filters)|}.ToList();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterStaticCallWithReorderedArguments_ShouldTriggerLC021()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var filters = new[] { ""TenantFilter"" };
+            var result = {|LC021:EntityFrameworkQueryableExtensions.IgnoreQueryFilters(filterKeys: filters, source: query)|}.ToList();
         }
     }
 }";

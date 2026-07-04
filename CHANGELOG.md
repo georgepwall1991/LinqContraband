@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC021` now handles EF Core named-filter `IgnoreQueryFilters(filterKeys)` calls safely: extension syntax rewrites back to the query receiver instead of the filter-key argument, while static extension syntax reports and rewrites to the explicit `source` query argument even when named arguments are reordered.
+
 ## [5.6.36] - 2026-07-04
 
 ### Fixed

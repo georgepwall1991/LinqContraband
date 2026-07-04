@@ -866,8 +866,9 @@ Ensure that bypassing global filters is intentional and necessary for the specif
 
 **🛡️ Reliability Notes:**
 - LC021 reports only EF Core's real `IgnoreQueryFilters()` extension on `IQueryable<T>`; instance methods, `IEnumerable<T>` helpers, and non-EF queryable helpers stay quiet.
+- Named-filter calls such as `query.IgnoreQueryFilters(filterKeys)` still report because they bypass the named global filters passed to EF Core.
 - Intentional bypasses should be local and reviewed. Use a narrow `#pragma warning disable LC021` block or a targeted `SuppressMessage` with a concrete justification.
-- The fixer removes only `.IgnoreQueryFilters()`, including static extension-method wrappers, from the query chain; do not apply it to approved tenant-admin, soft-delete restore, or audit workflows.
+- The fixer removes only `.IgnoreQueryFilters()`, including named-filter and static extension-method wrappers with named or positional arguments, from the query chain; do not apply it to approved tenant-admin, soft-delete restore, or audit workflows.
 
 ---
 
