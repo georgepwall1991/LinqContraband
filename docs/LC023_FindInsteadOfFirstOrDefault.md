@@ -53,6 +53,8 @@ The code fix rewrites simple synchronous lookups to `Find(key)` and awaited asyn
 
 When the awaited async lookup passes an explicit cancellation token, the fixer rewrites to `FindAsync(new object[] { key }, cancellationToken)` so the token is preserved. The fixer does not rewrite non-awaited async calls because EF Core `FindAsync` returns `ValueTask<TEntity?>`, which can be incompatible with a call site expecting `Task<TEntity?>`.
 
+The fixer also requires the key value to be independent of the predicate parameter. LC023 may still report a column-to-column predicate such as `users.FirstOrDefault(x => x.Id == x.OtherId)`, but it stays manual because rewriting to `users.Find(x.OtherId)` would reference `x` outside the lambda and break the build.
+
 ## Non-Goals
 
-`LC023` does not rewrite partial composite-key lookups, non-lambda Fluent API key expressions, fake key attributes, or provider-specific behavior beyond visible `HasKey(...)`, real `[Key]`, and convention metadata. Those shapes should be handled manually unless future analyzer metadata can prove the rewrite is safe.
+`LC023` does not rewrite partial composite-key lookups, non-lambda Fluent API key expressions, column-to-column key predicates, fake key attributes, or provider-specific behavior beyond visible `HasKey(...)`, real `[Key]`, and convention metadata. Those shapes should be handled manually unless future analyzer metadata can prove the rewrite is safe.

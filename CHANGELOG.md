@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC023` still reports self-referential primary-key predicates such as `x.Id == x.OtherId`, but no longer offers a `Find(...)` fixer that would lift the lambda parameter outside the predicate and generate non-compiling code.
+
 ## [5.6.38] - 2026-07-04
 
 ### Fixed
