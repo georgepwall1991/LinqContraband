@@ -549,7 +549,8 @@ call; if only the synchronous overload is available in an async context, no fix 
 - LC012 reports only when one `RemoveRange(...)` argument is still query-shaped and EF-style `ExecuteDelete()` is available.
 - The `ExecuteDelete()` availability check is bound to the real `Microsoft.EntityFrameworkCore` namespace, so project-local or lookalike helpers do not enable the rule.
 - Mixed or multiple `RemoveRange(query, entity)` arguments stay quiet because no single `ExecuteDelete()` replacement preserves that call shape.
-- LC012 stays quiet when a later `SaveChanges()` appears in the same executable body, including outside the immediate block, because that rewrite would change unit-of-work timing.
+- LC012 stays quiet when a later `SaveChanges()` can commit the pending removals, including outside the immediate block, because that rewrite would change unit-of-work timing. Saves in mutually exclusive branches or on provably different freshly-created context locals do not suppress the analyzer or fixer.
+- The fixer is only offered when the query source can be rewritten without crossing context ownership; if a later save belongs to the query's context, the query flows through an arbitrary helper, or multiple query sources are combined, the diagnostic remains manual.
 
 ---
 
