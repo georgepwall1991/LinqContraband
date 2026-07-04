@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC012` now offers its `RemoveRange(query)` to `ExecuteDelete()` fixer when a later `SaveChanges()` is provably irrelevant because it is in a mutually exclusive branch or belongs to a different freshly-created context instance, while still withholding the fixer if the query source belongs to that later-save context, flows through an arbitrary helper, or combines multiple query sources.
+
 ## [5.6.37] - 2026-07-04
 
 ### Fixed
