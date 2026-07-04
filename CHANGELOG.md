@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.35] - 2026-07-04
+
 ### Fixed
 - `LC037` now detects `StringBuilder` SQL assembled through separate `Append(...)` statements before `ToString()` reaches a raw SQL sink, including null-conditional appends, local dynamic and method-call append values, loop-carried and compound-assigned append locals, caught-throw continuations with exact, alias, ordinary base, user-defined base, and framework base exception catches, copied builder expressions, constructor copies from tainted builders, and conditional builder aliases, while keeping constant-only, branch-selected literal, path-dominated constant append-local overwrite, per-iteration constant reset, variable-capacity constructor, constant compound-assignment, terminating-branch local, fluent `Clear()` reset, try/catch-contained branch clear, catch-exiting throw, guaranteed `finally` clear, short-circuit reset, terminating guard, and definitely cleared builder flows precise.
 

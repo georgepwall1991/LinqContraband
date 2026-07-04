@@ -4,6 +4,12 @@ Reviewed: 2026-07-04 (45-rule current-state audit — one read-only reviewer per
 
 This is a deliberately harsh health audit for the **45 analyzers** in `RuleCatalog`. The catalog currently declares 30 rules with code fixes and 15 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
+Release metadata:
+
+- Package version: 5.6.35
+- Base audited commit: 0cafc5f024a4485f4561b1b9fdaa4998c64ee130
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.35`
+
 ## Rubric
 
 | Metric | Meaning |

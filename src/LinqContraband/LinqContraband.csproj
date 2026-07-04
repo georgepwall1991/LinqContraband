@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.34</Version>
+        <Version>5.6.35</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Hardens analyzer crash and fixer edge cases across LC003, LC008, LC011, LC014, LC026, LC032, and LC037, with regression coverage and refreshed analyzer-health documentation.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC037 now detects StringBuilder SQL assembled through separate Append statements before ToString reaches raw SQL sinks, with regression coverage and refreshed analyzer-health planning metadata.</PackageReleaseNotes>
         <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
