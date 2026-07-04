@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you reference LinqContraband in an article, talk, list, or internal engineering guide, please cite the canonical repository or documentation hub."
 type: software
 title: "LinqContraband"
-version: "5.6.35"
+version: "5.6.36"
 date-released: "2026-07-04"
 abstract: "LinqContraband is an EF Core LINQ performance analyzer and Roslyn analyzer for catching query performance, reliability, and raw SQL safety issues at compile time."
 authors:

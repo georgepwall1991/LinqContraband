@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.36] - 2026-07-04
+
 ### Fixed
 - `LC002` still reports `Last`/`LastOrDefault` after inline `ToList`/`ToArray`/`AsEnumerable` boundaries, but no longer offers the move-before-materialization fixer for those ordering-sensitive terminals because rewriting them onto `IQueryable` can change runtime behaviour on unordered EF queries.
 

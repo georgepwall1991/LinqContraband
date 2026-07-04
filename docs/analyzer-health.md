@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **45 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.6.35
-- Base audited commit: 0cafc5f024a4485f4561b1b9fdaa4998c64ee130
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.35`
+- Package version: 5.6.36
+- Base audited commit: 80f4478d036cd8497e1cc561135d662380c2b205
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.36`
 
 ## Rubric
 
@@ -536,16 +536,16 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.6.35**
+Package version: **5.6.36**
 
-Base audited commit: master at `c39db24` (5.6.35 release state). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, and the July 2026 raw-SQL/fixer hardening through 5.6.35.
+Base audited commit: master at `80f4478` (5.6.36 release candidate state). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, and the July 2026 raw-SQL/fixer hardening through 5.6.36.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
 Current verification (2026-07-04, LC002 `Last*` fixer guard branch after the 5.6.35 release):
 
 - Focused red/green regression confirmed `db.Users.ToList().Last()` and `LastOrDefault()` were receiving the `Move query operator before materialization` code action before the fix (rewriting to `db.Users.Last*()`), then passed after the fixer gate withheld that unsafe code action while preserving the LC002 diagnostic.
-- The LC002 net10.0 slice passes 47 tests, including 16 fixer tests. Full-suite verification for this branch is pending at PR/release gate; the preceding 5.6.35 release passed local net10.0 full suite (1224 tests), master CI Build/Test, CodeQL, docs deploy, publish workflow, and NuGet package visibility.
+- The LC002 net10.0 slice passes 47 tests, including 16 fixer tests. Full local net10.0 suite passes 1226 tests on the fix branch; release-prep contract tests pass 6 tests and `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.36` creates `LinqContraband.5.6.36.nupkg`.
 - Local broad multi-target analyzer-verifier tests remain limited on this Mac by the same pre-existing Roslyn test reference issue reproduced on clean `origin/master` (`CS0518`/missing `System.Object`, `DateTime`, and `IQueryable<>` inside verifier compilations). Local arm64 net8.0/net9.0 testhost runs are also unavailable because only arm64 `Microsoft.NETCore.App 10.0.9` is installed.
 - Full analyzer test coverage for the release remains delegated to GitHub CI's Ubuntu `dotnet test --no-build --verbosity normal` matrix after PR creation, matching the repository workflow.
 
