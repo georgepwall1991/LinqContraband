@@ -1086,7 +1086,7 @@ public class Order
 **Reliability Notes:**
 - LC027 ignores collection navigations, owned types, `[ForeignKey]` annotations, and relationships configured with `HasForeignKey(...)`.
 - `HasForeignKey(...)` is recognised on direct Fluent chains and on single-assignment relationship-builder locals, including split `WithMany(...)` and `WithOne(...)` continuations; reassigned builder locals stay conservative.
-- The fixer preserves the principal key type and emits nullable FK properties for optional nullable navigations.
+- The fixer preserves the principal key type from conventions, real key attributes, or visible single-property Fluent `HasKey(...)` configuration, and emits nullable FK properties for optional nullable navigations.
 
 ---
 

@@ -266,6 +266,90 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldUseFluentConfiguredPrimaryKeyType()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer {|LC027:Customer|} { get; set; }
+    }
+
+    public class Customer { public string Code { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+
+        protected void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Customer>().HasKey(x => x.Code);
+        }
+    }
+}
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public class ModelBuilder
+    {
+        public EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => null;
+    }
+
+    public class EntityTypeBuilder<TEntity> where TEntity : class
+    {
+        public void HasKey<TProperty>(Expression<Func<TEntity, TProperty>> keyExpression) { }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+namespace TestApp
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public string CustomerId { get; set; }
+        public Customer Customer { get; set; }
+    }
+
+    public class Customer { public string Code { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+
+        protected void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Customer>().HasKey(x => x.Code);
+        }
+    }
+}
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public class ModelBuilder
+    {
+        public EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => null;
+    }
+
+    public class EntityTypeBuilder<TEntity> where TEntity : class
+    {
+        public void HasKey<TProperty>(Expression<Func<TEntity, TProperty>> keyExpression) { }
+    }
+}";
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        }.RunAsync();
+    }
+
+    [Fact]
     public async Task Fixer_ShouldPreserveOptionalNavigationWithNullableForeignKey()
     {
         var test = EFCoreMock + @"
