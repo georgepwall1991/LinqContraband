@@ -1396,9 +1396,9 @@ await (from user in db.Users
 missing predicate for you.
 
 **🛡️ Reliability Notes:**
-- LC035 treats fluent `.Where(...)`, query-syntax `where`, simple filtered local query variables, and straight-line filtered local reassignments as explicit filters.
+- LC035 treats fluent `.Where(...)`, query-syntax `where`, simple filtered local query variables, straight-line filtered local reassignments, definitely assigned filtered `if`/`else` locals, and all-filtered ternary/switch-expression receivers as explicit filters.
 - The `.Where(...)` proof is semantic: project-local methods that merely use the same name do not hide a full-table operation.
-- Conditional local reassignments stay conservative because one execution path can still target the full entity set.
+- Conditional local reassignments and conditional receivers stay conservative whenever one execution path can still target the full entity set.
 - Query syntax without a `where` clause still reports because it can target the full entity set.
 - LC035 binds to EF Core namespaces exactly, so same-named bulk helpers in lookalike namespaces stay quiet.
 
