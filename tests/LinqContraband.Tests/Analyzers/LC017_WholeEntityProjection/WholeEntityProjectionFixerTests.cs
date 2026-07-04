@@ -144,6 +144,93 @@ class Program
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
+    [Fact]
+    public async Task ConditionalAccessedProperty_IsIncludedInProjection()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities.ToList();
+        foreach (var e in entities)
+        {
+            Console.WriteLine(e.Id);
+            Console.WriteLine(e?.Name);
+        }
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities.Select(e => new { e.Id, e.Name }).ToList();
+        foreach (var e in entities)
+        {
+            Console.WriteLine(e.Id);
+            Console.WriteLine(e?.Name);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 24).WithArguments("LargeEntity", "2", "12");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task IndexedAccessedProperty_IsIncludedInProjection()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities.ToList();
+        Console.WriteLine(entities[0].Name);
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities.Select(e => new { e.Name }).ToList();
+        Console.WriteLine(entities[0].Name);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 24).WithArguments("LargeEntity", "1", "12");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task IndexedEntityEscape_HasNoFix()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities.ToList();
+        Console.WriteLine(entities[0].Name);
+        ProcessEntity(entities[0]);
+    }
+
+    private void ProcessEntity(LargeEntity entity) { }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 24).WithArguments("LargeEntity", "1", "12");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
     /// <summary>
     /// Tests that the fixer works with ToArray() as well.
     /// </summary>

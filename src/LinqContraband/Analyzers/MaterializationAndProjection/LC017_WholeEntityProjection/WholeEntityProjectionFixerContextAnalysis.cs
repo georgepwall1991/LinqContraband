@@ -25,7 +25,7 @@ public sealed partial class WholeEntityProjectionFixer
         if (entityType == null)
             return false;
 
-        var accessedProperties = FindAccessedProperties(root, variableSymbol!, entityType, semanticModel);
+        var accessedProperties = FindAccessedProperties(root, variableSymbol!, entityType, semanticModel, cancellationToken);
         if (accessedProperties.Count == 0)
             return false;
 
@@ -96,7 +96,8 @@ public sealed partial class WholeEntityProjectionFixer
         SyntaxNode root,
         ILocalSymbol variableSymbol,
         ITypeSymbol entityType,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
         var properties = new HashSet<string>();
         var containingMethod = root.DescendantNodes()
@@ -112,23 +113,103 @@ public sealed partial class WholeEntityProjectionFixer
         if (containingMethod == null)
             return properties;
 
+        if (HasUnsafeIndexedEntityAccess(containingMethod, variableSymbol, entityType, semanticModel, cancellationToken))
+            return properties;
+
+        var trackedEntityLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
         foreach (var forEach in containingMethod.DescendantNodes().OfType<ForEachStatementSyntax>())
         {
-            if (forEach.Expression is not IdentifierNameSyntax id || id.Identifier.Text != variableSymbol.Name)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (semanticModel.GetSymbolInfo(forEach.Expression, cancellationToken).Symbol is not ILocalSymbol collectionSymbol ||
+                !SymbolEqualityComparer.Default.Equals(collectionSymbol, variableSymbol))
                 continue;
 
-            var iterationVarName = forEach.Identifier.Text;
-            foreach (var memberAccess in forEach.Statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
-            {
-                if (memberAccess.Expression is not IdentifierNameSyntax varRef || varRef.Identifier.Text != iterationVarName)
-                    continue;
+            if (semanticModel.GetDeclaredSymbol(forEach, cancellationToken) is ILocalSymbol iterationSymbol)
+                trackedEntityLocals.Add(iterationSymbol);
+        }
 
-                if (semanticModel.GetSymbolInfo(memberAccess).Symbol is IPropertySymbol prop && IsPropertyOfType(prop, entityType))
-                    properties.Add(prop.Name);
+        foreach (var node in containingMethod.DescendantNodes())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            switch (node)
+            {
+                case MemberAccessExpressionSyntax memberAccess
+                    when IsTrackedEntityExpression(memberAccess.Expression, variableSymbol, trackedEntityLocals, semanticModel, cancellationToken) &&
+                         semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol is IPropertySymbol directProperty &&
+                         IsPropertyOfType(directProperty, entityType):
+                    properties.Add(directProperty.Name);
+                    break;
+
+                case ConditionalAccessExpressionSyntax conditionalAccess
+                    when IsTrackedEntityExpression(conditionalAccess.Expression, variableSymbol, trackedEntityLocals, semanticModel, cancellationToken) &&
+                         conditionalAccess.WhenNotNull is MemberBindingExpressionSyntax memberBinding &&
+                         semanticModel.GetSymbolInfo(memberBinding, cancellationToken).Symbol is IPropertySymbol conditionalProperty &&
+                         IsPropertyOfType(conditionalProperty, entityType):
+                    properties.Add(conditionalProperty.Name);
+                    break;
             }
         }
 
         return properties;
+    }
+
+    private static bool IsTrackedEntityExpression(
+        ExpressionSyntax expression,
+        ILocalSymbol collectionVariable,
+        HashSet<ILocalSymbol> trackedEntityLocals,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (expression is ElementAccessExpressionSyntax elementAccess)
+        {
+            return semanticModel.GetSymbolInfo(elementAccess.Expression, cancellationToken).Symbol is ILocalSymbol collectionSymbol &&
+                   SymbolEqualityComparer.Default.Equals(collectionSymbol, collectionVariable);
+        }
+
+        return semanticModel.GetSymbolInfo(expression, cancellationToken).Symbol is ILocalSymbol localSymbol &&
+               trackedEntityLocals.Contains(localSymbol);
+    }
+
+    private static bool HasUnsafeIndexedEntityAccess(
+        SyntaxNode containingMethod,
+        ILocalSymbol collectionVariable,
+        ITypeSymbol entityType,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        foreach (var elementAccess in containingMethod.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (semanticModel.GetSymbolInfo(elementAccess.Expression, cancellationToken).Symbol is not ILocalSymbol collectionSymbol ||
+                !SymbolEqualityComparer.Default.Equals(collectionSymbol, collectionVariable))
+            {
+                continue;
+            }
+
+            if (elementAccess.Parent is MemberAccessExpressionSyntax memberAccess &&
+                ReferenceEquals(memberAccess.Expression, elementAccess) &&
+                semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol is IPropertySymbol directProperty &&
+                IsPropertyOfType(directProperty, entityType))
+            {
+                continue;
+            }
+
+            if (elementAccess.Parent is ConditionalAccessExpressionSyntax conditionalAccess &&
+                ReferenceEquals(conditionalAccess.Expression, elementAccess) &&
+                conditionalAccess.WhenNotNull is MemberBindingExpressionSyntax memberBinding &&
+                semanticModel.GetSymbolInfo(memberBinding, cancellationToken).Symbol is IPropertySymbol conditionalProperty &&
+                IsPropertyOfType(conditionalProperty, entityType))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsPropertyOfType(IPropertySymbol property, ITypeSymbol entityType)

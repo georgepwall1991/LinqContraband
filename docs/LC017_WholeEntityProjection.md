@@ -134,7 +134,8 @@ LC017 provides an automatic code fix that adds a `.Select()` projection before t
 
 1. **Analyzes property accesses**: Determines which properties of the entity are actually used in subsequent code
 2. **Generates anonymous type projection**: Creates a `.Select(e => new { e.Prop1, e.Prop2 })` with only the accessed properties
-3. **Sorts properties alphabetically**: Ensures consistent, predictable output
+3. **Preserves supported access shapes**: Includes properties used through direct foreach access, null-conditional access, and indexed collection access
+4. **Sorts properties alphabetically**: Ensures consistent, predictable output
 
 ### Before Fix
 
