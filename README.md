@@ -1761,6 +1761,8 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   (returned, passed to a method, captured by a lambda) makes the rule stay quiet.
 - Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
   and are not flagged.
+- The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
+  to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
 - Null-guarded reads still fire deliberately: under proxies the null check itself triggers the N+1, and without
   proxies the guard is dead code hiding the missing `Include`. Regrouped conditional paths such as
   `(order?.Customer)?.Address?.City` report the full `Customer.Address` navigation, including inline materializer

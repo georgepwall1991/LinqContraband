@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC045` no longer offers its `.Include(...)` fixer when the materialized source is statically typed as `IEnumerable<T>` rather than `IQueryable<T>`, so widened query aliases still report the missing include without producing non-compiling `source.Include(...)` output.
 - `LC015` now still reports the missing upstream ordering for `Skip(...)` when the only downstream sort is misplaced and further pagination follows, including through simple query and sorted-query aliases, so `Skip(...).OrderBy(...).Take(...)` surfaces both the unordered page boundary and the misplaced sort.
 - `LC016` now expands expression-bodied query methods and local functions before extracting `DateTime.Now`/`UtcNow` to a local, so the code action no longer appears to succeed while leaving arrow-bodied queries unchanged; static query lambdas stay diagnostic-only because extracting a local would create an invalid capture.
 - `LC035` no longer reports bulk `ExecuteDelete*`/`ExecuteUpdate*` receivers when every ternary or switch-expression arm is filtered, or when a local query is definitely assigned through filtered `if`/`else` branches before the bulk call; any unfiltered arm still reports.
