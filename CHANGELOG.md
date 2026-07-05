@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC009` now treats nested member-state writes rooted in a materialized entity, such as `user.Profile.DisplayName = name`, as write paths, so it no longer suggests `AsNoTracking()` when a helper later commits that tracked graph mutation.
 - `LC017` now withholds its anonymous-projection fixer when downstream usage includes cast, interface, or conversion-based entity property access such as `((IHasName)e).Name` or `((IHasName)e)?.Name`, preventing partial projections that leave code depending on the original entity shape.
 - `LC041` now offers its scalar-projection fixer for non-key chained materializers such as `users.Where(x => x.IsActive).First()` and withholds the fixer for hoisted terminal predicates such as `users.First(active)`, preventing non-compiling rewrites that leave an entity predicate on a scalar projection.
 - `LC030` no longer reports computed `DbContext` properties on proven long-lived types when the getter directly creates a fresh context through `IDbContextFactory<TContext>.CreateDbContext()` or `new TContext()`, while stored auto-properties, initialized get-only properties, and root-service-provider lookups still report.

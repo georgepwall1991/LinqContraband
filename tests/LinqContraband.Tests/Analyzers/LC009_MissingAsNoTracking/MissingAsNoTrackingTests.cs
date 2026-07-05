@@ -118,6 +118,43 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_NestedMaterializedEntityMemberMutated_SavedElsewhere_NoDiagnostic()
+    {
+        var test = Usings + @"
+class ProfiledUser
+{
+    public int Id { get; set; }
+    public Profile Profile { get; set; }
+}
+
+class Profile
+{
+    public string DisplayName { get; set; }
+}
+
+class ProfileDbContext : DbContext
+{
+    public DbSet<ProfiledUser> Users { get; set; }
+}
+
+class Program
+{
+    public void RenameProfile(string name)
+    {
+        var db = new ProfileDbContext();
+        var user = db.Users.First(u => u.Id == 1);
+        user.Profile.DisplayName = name;
+        Commit(db);
+    }
+
+    void Commit(ProfileDbContext db) { }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_ForeachEntityMutated_NoDiagnostic()
     {
         var test = Usings + @"
