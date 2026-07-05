@@ -37,6 +37,9 @@ internal sealed class AsNoTrackingThenModifyRootScan
         = new(SymbolEqualityComparer.Default);
     public Dictionary<ILocalSymbol, List<ReattachEntry>> ReattachesByLocal { get; }
         = new(SymbolEqualityComparer.Default);
+    public Dictionary<ILocalSymbol, List<DetachEntry>> DetachesByLocal { get; }
+        = new(SymbolEqualityComparer.Default);
+    public List<TrackerClearEntry> TrackerClears { get; } = new();
     public List<SaveChangesEntry> SaveChangesCalls { get; private set; } = EmptySaveChanges;
 
     public static AsNoTrackingThenModifyRootScan GetOrBuild(IOperation root, CancellationToken cancellationToken)
@@ -123,12 +126,22 @@ internal sealed class AsNoTrackingThenModifyRootScan
     {
         HandlePropertyMutation(scan, assignment, assignment.Target);
 
-        if (TryParseEntryStateReattach(assignment, out var entryLocal, out var entryContext))
+        if (TryParseEntryStateAssignment(assignment, out var entryLocal, out var entryContext, out var stateName))
         {
-            AddReattach(
-                scan,
-                entryLocal,
-                new ReattachEntry(entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+            if (TrackingStates.Contains(stateName))
+            {
+                AddReattach(
+                    scan,
+                    entryLocal,
+                    new ReattachEntry(assignment, entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+            }
+            else if (stateName == "Detached")
+            {
+                AddDetach(
+                    scan,
+                    entryLocal,
+                    new DetachEntry(assignment, entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+            }
         }
     }
 
@@ -170,7 +183,12 @@ internal sealed class AsNoTrackingThenModifyRootScan
             AddReattach(
                 scan,
                 reattachLocal,
-                new ReattachEntry(reattachContext, invocation.Syntax.SpanStart, invocation.Syntax.Span));
+                new ReattachEntry(invocation, reattachContext, invocation.Syntax.SpanStart, invocation.Syntax.Span));
+        }
+
+        if (TryParseTrackerClear(invocation, out var clearContext))
+        {
+            scan.TrackerClears.Add(new TrackerClearEntry(invocation, clearContext, invocation.Syntax.SpanStart));
         }
     }
 
@@ -197,13 +215,15 @@ internal sealed class AsNoTrackingThenModifyRootScan
         return true;
     }
 
-    private static bool TryParseEntryStateReattach(
+    private static bool TryParseEntryStateAssignment(
         ISimpleAssignmentOperation assignment,
         out ILocalSymbol local,
-        out ISymbol? contextSymbol)
+        out ISymbol? contextSymbol,
+        out string stateName)
     {
         local = null!;
         contextSymbol = null;
+        stateName = "";
 
         if (assignment.Target is not IPropertyReferenceOperation targetProp) return false;
         if (targetProp.Property.Name != "State") return false;
@@ -221,10 +241,24 @@ internal sealed class AsNoTrackingThenModifyRootScan
         var value = assignment.Value.UnwrapConversions();
         if (value is not IFieldReferenceOperation fieldRef) return false;
         if (fieldRef.Field.ContainingType?.Name != "EntityState") return false;
-        if (!TrackingStates.Contains(fieldRef.Field.Name)) return false;
+        if (!TrackingStates.Contains(fieldRef.Field.Name) && fieldRef.Field.Name != "Detached") return false;
 
         local = argLocal.Local;
+        stateName = fieldRef.Field.Name;
         return true;
+    }
+
+    private static bool TryParseTrackerClear(IInvocationOperation invocation, out ISymbol? contextSymbol)
+    {
+        contextSymbol = null;
+
+        if (invocation.TargetMethod.Name != "Clear") return false;
+        if (invocation.TargetMethod.ContainingType?.Name != "ChangeTracker") return false;
+
+        if (invocation.Instance?.UnwrapConversions() is not IPropertyReferenceOperation propRef) return false;
+        if (propRef.Property.Name != "ChangeTracker") return false;
+
+        return TryGetSymbol(propRef.Instance, out contextSymbol);
     }
 
     private static bool TryResolveInvocationContext(IInvocationOperation invocation, out ISymbol? contextSymbol)
@@ -300,6 +334,17 @@ internal sealed class AsNoTrackingThenModifyRootScan
 
         list.Add(entry);
     }
+
+    private static void AddDetach(AsNoTrackingThenModifyRootScan scan, ILocalSymbol local, DetachEntry entry)
+    {
+        if (!scan.DetachesByLocal.TryGetValue(local, out var list))
+        {
+            list = new List<DetachEntry>();
+            scan.DetachesByLocal[local] = list;
+        }
+
+        list.Add(entry);
+    }
 }
 
 internal readonly struct MutationEntry
@@ -320,16 +365,48 @@ internal readonly struct MutationEntry
 
 internal readonly struct ReattachEntry
 {
-    public ReattachEntry(ISymbol? contextSymbol, int spanStart, TextSpan span)
+    public ReattachEntry(IOperation operation, ISymbol? contextSymbol, int spanStart, TextSpan span)
     {
+        Operation = operation;
         ContextSymbol = contextSymbol;
         SpanStart = spanStart;
         Span = span;
     }
 
+    public IOperation Operation { get; }
     public ISymbol? ContextSymbol { get; }
     public int SpanStart { get; }
     public TextSpan Span { get; }
+}
+
+internal readonly struct DetachEntry
+{
+    public DetachEntry(IOperation operation, ISymbol? contextSymbol, int spanStart, TextSpan span)
+    {
+        Operation = operation;
+        ContextSymbol = contextSymbol;
+        SpanStart = spanStart;
+        Span = span;
+    }
+
+    public IOperation Operation { get; }
+    public ISymbol? ContextSymbol { get; }
+    public int SpanStart { get; }
+    public TextSpan Span { get; }
+}
+
+internal readonly struct TrackerClearEntry
+{
+    public TrackerClearEntry(IOperation operation, ISymbol? contextSymbol, int spanStart)
+    {
+        Operation = operation;
+        ContextSymbol = contextSymbol;
+        SpanStart = spanStart;
+    }
+
+    public IOperation Operation { get; }
+    public ISymbol? ContextSymbol { get; }
+    public int SpanStart { get; }
 }
 
 internal readonly struct SaveChangesEntry
