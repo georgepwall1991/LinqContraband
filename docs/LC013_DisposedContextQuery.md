@@ -40,6 +40,7 @@ public List<User> GetUsers()
 - Tracks the returned query back through single-assignment local aliases in the same executable root.
 - Handles conditional, coalesce, and switch-expression returns branch by branch.
 - Only reports when the origin is a disposed local `DbContext`.
+- Continues through known LINQ/EF query-chain operators, but treats arbitrary project extension methods as boundaries because they may materialize before returning `IQueryable`.
 - Ignores nested local-function and lambda returns to avoid false positives when the outer method materializes the query before exiting.
 - No automatic code fix is offered for LC013 in this pass.
 

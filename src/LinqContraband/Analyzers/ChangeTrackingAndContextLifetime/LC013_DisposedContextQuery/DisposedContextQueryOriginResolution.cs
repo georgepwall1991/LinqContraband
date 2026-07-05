@@ -120,13 +120,39 @@ public sealed partial class DisposedContextQueryAnalyzer
             return true;
         }
 
-        if (invocation.TargetMethod.IsExtensionMethod && invocation.Arguments.Length > 0)
+        if (invocation.Arguments.Length > 0 && IsKnownTransparentQueryExtension(invocation.TargetMethod))
         {
             receiver = invocation.Arguments[0].Value;
             return true;
         }
 
         return false;
+    }
+
+    private static bool IsKnownTransparentQueryExtension(IMethodSymbol method)
+    {
+        var definition = method.ReducedFrom ?? method;
+        var containingType = definition.ContainingType;
+        var containingNamespace = containingType?.ContainingNamespace?.ToDisplayString();
+
+        if (containingNamespace == "System.Linq" &&
+            containingType?.Name is "Queryable" or "Enumerable")
+        {
+            return !IsMaterializingLinqOperator(definition.Name);
+        }
+
+        return containingNamespace == "Microsoft.EntityFrameworkCore" &&
+               containingType?.Name == "EntityFrameworkQueryableExtensions";
+    }
+
+    private static bool IsMaterializingLinqOperator(string methodName)
+    {
+        return methodName is
+            "ToArray" or
+            "ToDictionary" or
+            "ToHashSet" or
+            "ToList" or
+            "ToLookup";
     }
 
     private static bool TryGetSingleAssignedValue(
