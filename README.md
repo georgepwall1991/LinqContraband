@@ -734,7 +734,8 @@ foreach (var p in products)
 
 **✅ The Fix:**
 Use `.Select()` to project only what you need. The built-in fixer takes the safe route and inserts an anonymous-type
-projection so existing downstream property access still compiles.
+projection so existing downstream property access still compiles, including supported null-conditional and indexed
+entity-property access shapes.
 
 ```csharp
 // Safe fixer output: projects only the needed property but preserves p.Name usage
