@@ -18,6 +18,7 @@ Task.Factory.StartNew(() => db.SaveChanges());
 Parallel.For(0, ids.Count, _ => db.Users.Count());
 Parallel.ForEach(ids, _ => db.Users.Count());
 Parallel.Invoke(() => db.SaveChanges());
+Task.Run(new Action(() => db.SaveChanges()));
 new Thread(() => db.SaveChanges()).Start();
 new Timer(_ => db.SaveChanges(), null, 0, 1000);
 

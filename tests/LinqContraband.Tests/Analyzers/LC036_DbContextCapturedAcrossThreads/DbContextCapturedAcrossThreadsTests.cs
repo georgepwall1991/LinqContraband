@@ -232,6 +232,26 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskRun_DelegateWrappedLambdaCapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public Task Run(DbContext db)
+        {
+            return {|LC036:Task.Run(new Action(() => db.SaveChanges()))|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskRun_CapturingDbContextMember_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
@@ -293,6 +313,25 @@ namespace TestApp
             }
 
             {|LC036:ThreadPool.QueueUserWorkItem(SaveOnBackgroundThread)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThreadPool_DelegateWrappedLambdaCapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            {|LC036:ThreadPool.QueueUserWorkItem(new WaitCallback(_ => db.SaveChanges()))|};
         }
     }
 }";
