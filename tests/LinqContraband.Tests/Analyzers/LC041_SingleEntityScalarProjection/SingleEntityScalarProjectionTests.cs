@@ -228,6 +228,86 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldProjectSingleConsumedProperty_AfterWhereStep()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = {|LC041:users.Where(x => x.IsActive).First()|};
+            Use(user.Name);
+        }
+
+        private static void Use(string value) { }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users)
+        {
+            var user = users.Where(x => x.IsActive).Select(x => x.Name).First();
+            Use(user);
+        }
+
+        private static void Use(string value) { }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task First_WithHoistedPredicate_ShouldNotOfferFix()
+    {
+        var test = @"using System;
+using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<User> users, Expression<Func<User, bool>> active)
+        {
+            var user = {|LC041:users.First(active)|};
+            Use(user.Name);
+        }
+
+        private static void Use(string value) { }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldProjectSingleConsumedProperty_OnAsyncCall()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
