@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC006` now treats reference-only prefixes before collection includes as row-preserving, so sibling collections such as `Address.Orders` and `Profile.Tags` report as a cartesian-explosion risk instead of being split into separate parent groups.
 - `LC007` now reports EF query execution used as the source of a nested `foreach` when that inner loop is inside an outer loop, so per-outer-iteration materialization no longer slips past the nearest-loop check.
 - `LC040` now treats `DbContext.Set<TEntity>()` as tracked query evidence when comparing mixed tracking modes, so methods that combine tracked `Set<TEntity>()` materialization with no-tracking queries on the same context report consistently.
 - `LC031` now treats `ToLookup()` as a collection materializer, so unbounded EF queries that fully group rows client-side are reported like `ToList()`, `ToArray()`, `ToDictionary()`, and `ToHashSet()`.

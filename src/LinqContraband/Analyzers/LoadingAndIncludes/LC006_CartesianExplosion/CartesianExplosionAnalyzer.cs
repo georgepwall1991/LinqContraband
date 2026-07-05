@@ -108,12 +108,14 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
                 if (!seenIncludePaths.Add(path.Key))
                     continue;
 
-                var parent = new System.Collections.Generic.List<string>();
+                var collectionParent = new System.Collections.Generic.List<string>();
+                var referencePrefix = new System.Collections.Generic.List<string>();
+
                 foreach (var segment in path.Segments)
                 {
                     if (segment.IsCollection)
                     {
-                        var parentKey = string.Join(".", parent);
+                        var parentKey = string.Join(".", collectionParent);
                         if (!groups.TryGetValue(parentKey, out var group))
                         {
                             group = new System.Collections.Generic.List<string>();
@@ -121,11 +123,20 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
                             groupSets[parentKey] = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                         }
 
-                        if (groupSets[parentKey].Add(segment.Name))
-                            group.Add(segment.Name);
-                    }
+                        var siblingName = referencePrefix.Count == 0
+                            ? segment.Name
+                            : string.Join(".", referencePrefix.Concat(new[] { segment.Name }));
 
-                    parent.Add(segment.Name);
+                        if (groupSets[parentKey].Add(siblingName))
+                            group.Add(siblingName);
+
+                        collectionParent.Add(segment.Name);
+                        referencePrefix.Clear();
+                    }
+                    else
+                    {
+                        referencePrefix.Add(segment.Name);
+                    }
                 }
             }
 

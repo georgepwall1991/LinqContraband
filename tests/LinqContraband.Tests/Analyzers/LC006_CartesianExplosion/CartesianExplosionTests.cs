@@ -72,8 +72,16 @@ namespace TestNamespace
     }
 
     public class Role { }
-    public class Address { }
-    public class Profile { }
+    public class Address
+    {
+        public List<Order> Orders { get; set; }
+    }
+
+    public class Profile
+    {
+        public List<Tag> Tags { get; set; }
+    }
+
     public class Item { }
     public class Comment { }
     public class Tag { }
@@ -324,6 +332,30 @@ class Program
         var expected = VerifyCS.Diagnostic("LC006")
             .WithSpan(14, 21, 18, 42)
             .WithArguments("Comments', 'Tags");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_ReferencePrefixedSiblingCollections_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Include(u => u.Address.Orders)
+            .Include(u => u.Profile.Tags)
+            .ToList();
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC006")
+            .WithSpan(14, 21, 16, 42)
+            .WithArguments("Address.Orders', 'Profile.Tags");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
