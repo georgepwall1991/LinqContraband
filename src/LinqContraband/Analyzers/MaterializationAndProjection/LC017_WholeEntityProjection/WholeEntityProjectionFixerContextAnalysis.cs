@@ -3,7 +3,9 @@ using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC017_WholeEntityProjection;
 
@@ -129,6 +131,9 @@ public sealed partial class WholeEntityProjectionFixer
                 trackedEntityLocals.Add(iterationSymbol);
         }
 
+        if (HasUnsupportedEntityPropertyAccess(containingMethod, variableSymbol, trackedEntityLocals, entityType, semanticModel, cancellationToken))
+            return properties;
+
         foreach (var node in containingMethod.DescendantNodes())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -153,6 +158,82 @@ public sealed partial class WholeEntityProjectionFixer
         }
 
         return properties;
+    }
+
+    private static bool HasUnsupportedEntityPropertyAccess(
+        SyntaxNode containingMethod,
+        ILocalSymbol collectionVariable,
+        HashSet<ILocalSymbol> trackedEntityLocals,
+        ITypeSymbol entityType,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        foreach (var memberAccess in containingMethod.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (semanticModel.GetOperation(memberAccess, cancellationToken) is not IPropertyReferenceOperation propertyReference ||
+                !IsPropertyOfType(propertyReference.Property, entityType))
+            {
+                continue;
+            }
+
+            if (IsTrackedEntityExpression(memberAccess.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken))
+            {
+                continue;
+            }
+
+            if (propertyReference.Instance?.UnwrapConversions() is ILocalReferenceOperation localReference &&
+                trackedEntityLocals.Contains(localReference.Local))
+            {
+                return true;
+            }
+        }
+
+        foreach (var conditionalAccess in containingMethod.DescendantNodes().OfType<ConditionalAccessExpressionSyntax>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (conditionalAccess.WhenNotNull is not MemberBindingExpressionSyntax memberBinding ||
+                semanticModel.GetSymbolInfo(memberBinding, cancellationToken).Symbol is not IPropertySymbol conditionalProperty ||
+                !IsPropertyOfType(conditionalProperty, entityType))
+            {
+                continue;
+            }
+
+            if (IsTrackedEntityExpression(conditionalAccess.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken))
+            {
+                continue;
+            }
+
+            if (IsTrackedEntityConversionExpression(conditionalAccess.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsTrackedEntityConversionExpression(
+        ExpressionSyntax expression,
+        ILocalSymbol collectionVariable,
+        HashSet<ILocalSymbol> trackedEntityLocals,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        return expression switch
+        {
+            ParenthesizedExpressionSyntax parenthesized =>
+                IsTrackedEntityConversionExpression(parenthesized.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken),
+            CastExpressionSyntax cast =>
+                IsTrackedEntityExpression(cast.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken) ||
+                IsTrackedEntityConversionExpression(cast.Expression, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken),
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.AsExpression) =>
+                IsTrackedEntityExpression(binary.Left, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken) ||
+                IsTrackedEntityConversionExpression(binary.Left, collectionVariable, trackedEntityLocals, semanticModel, cancellationToken),
+            _ => false
+        };
     }
 
     private static bool IsTrackedEntityExpression(
@@ -219,6 +300,9 @@ public sealed partial class WholeEntityProjectionFixer
             return false;
 
         if (SymbolEqualityComparer.Default.Equals(propContainingType, entityType))
+            return true;
+
+        if (entityType.AllInterfaces.Contains(propContainingType, SymbolEqualityComparer.Default))
             return true;
 
         var current = entityType;
