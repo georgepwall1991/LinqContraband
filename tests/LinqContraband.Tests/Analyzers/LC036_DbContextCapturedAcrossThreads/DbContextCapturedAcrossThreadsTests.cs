@@ -99,6 +99,44 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ParallelFor_CapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            {|LC036:Parallel.For(0, 10, _ => db.SaveChanges())|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ParallelInvoke_CapturingDbContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            {|LC036:Parallel.Invoke(() => db.SaveChanges())|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ThreadPoolQueueUserWorkItem_CapturingDbContext_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
@@ -277,6 +315,29 @@ namespace TestApp
             {
                 var db = new DbContext();
                 return db.SaveChanges();
+            });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CreatingContextInsideParallelFor_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run()
+        {
+            Parallel.For(0, 10, _ =>
+            {
+                var db = new DbContext();
+                db.SaveChanges();
             });
         }
     }
