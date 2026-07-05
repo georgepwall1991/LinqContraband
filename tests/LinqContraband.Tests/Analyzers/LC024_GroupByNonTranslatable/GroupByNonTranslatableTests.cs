@@ -34,6 +34,27 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task GroupBy_ResultSelector_ToList_ShouldTriggerLC024()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Order> orders)
+        {
+            var result = orders
+                .GroupBy(o => o.CustomerId, (key, group) => new { Key = key, Items = {|LC024:group.ToList()|} });
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GroupBy_Select_Where_ShouldTriggerLC024()
     {
         var test = Usings + @"
