@@ -15,7 +15,7 @@ Shadow foreign keys make it harder to set or inspect relationships without loadi
 
 ## Typical fix
 
-Add the concrete foreign-key property and align the relationship configuration so the model exposes the key directly. The code fix inserts `<NavigationName>Id` above the navigation, uses the principal entity's primary-key type when it can be found, and keeps optional nullable navigations nullable for value-type keys.
+Add the concrete foreign-key property and align the relationship configuration so the model exposes the key directly. The code fix inserts `<NavigationName>Id` above the navigation, uses the principal entity's primary-key type when it can be found from conventions, real key attributes, or visible single-property Fluent `HasKey(...)` configuration, and keeps optional nullable navigations nullable for value-type keys.
 
 ## Safe shapes
 
