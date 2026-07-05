@@ -401,6 +401,70 @@ class Program
     }
 
     [Fact]
+    public async Task SwitchExpressionSaveChangesArms_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    int Run(int state)
+    {
+        var db = new TestApp.AppDbContext();
+        return state switch
+        {
+            1 => db.SaveChanges(),
+            2 => db.SaveChanges(),
+            _ => 0
+        };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SameSwitchExpressionArmRepeatedSaveChanges_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    int Run(int state)
+    {
+        var db = new TestApp.AppDbContext();
+        return state switch
+        {
+            1 => db.SaveChanges() + {|LC039:db.SaveChanges()|},
+            _ => 0
+        };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SwitchExpressionGuardSaveCanTriggerWithLaterArm()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    int Run(int state)
+    {
+        var db = new TestApp.AppDbContext();
+        return state switch
+        {
+            1 when db.SaveChanges() == 0 && false => 0,
+            _ => {|LC039:db.SaveChanges()|}
+        };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task IndependentIfStatements_CanTrigger()
     {
         var test = EFCoreMock + Types + @"
