@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC018` no longer offers its safe-API fixer when an interpolation hole is in a SQL identifier position such as `FROM {tableName}`, preventing rewrites that would parameterize SQL structure instead of preserving a manually reviewed raw-SQL fragment.
 - `LC006` now treats reference-only prefixes before collection includes as row-preserving, so sibling collections such as `Address.Orders` and `Profile.Tags` report as a cartesian-explosion risk instead of being split into separate parent groups.
 - `LC007` now reports EF query execution used as the source of a nested `foreach` when that inner loop is inside an outer loop, so per-outer-iteration materialization no longer slips past the nearest-loop check.
 - `LC040` now treats `DbContext.Set<TEntity>()` as tracked query evidence when comparing mixed tracking modes, so methods that combine tracked `Set<TEntity>()` materialization with no-tracking queries on the same context report consistently.

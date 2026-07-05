@@ -49,7 +49,8 @@ public sealed class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
         if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax interpolatedSql)
             return;
 
-        if (HasInterpolationInsideSqlStringLiteral(interpolatedSql))
+        if (HasInterpolationInsideSqlStringLiteral(interpolatedSql) ||
+            HasInterpolationOutsideLikelySqlValuePosition(interpolatedSql))
             return;
 
         if (invocation.ArgumentList.Arguments.Count != 1)
@@ -123,6 +124,73 @@ public sealed class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvider
         }
 
         return false;
+    }
+
+    private static bool HasInterpolationOutsideLikelySqlValuePosition(InterpolatedStringExpressionSyntax interpolatedSql)
+    {
+        var insideSqlStringLiteral = false;
+        var sqlBeforeInterpolation = string.Empty;
+
+        foreach (var content in interpolatedSql.Contents)
+        {
+            switch (content)
+            {
+                case InterpolatedStringTextSyntax text:
+                    var textValue = text.TextToken.ValueText;
+                    insideSqlStringLiteral = ToggleSqlStringLiteralState(textValue, insideSqlStringLiteral);
+                    sqlBeforeInterpolation += textValue;
+                    break;
+                case InterpolationSyntax:
+                    if (!insideSqlStringLiteral && !IsLikelySqlValuePosition(sqlBeforeInterpolation))
+                        return true;
+
+                    sqlBeforeInterpolation += " ";
+                    break;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLikelySqlValuePosition(string sqlBeforeInterpolation)
+    {
+        var trimmed = sqlBeforeInterpolation.TrimEnd();
+        if (trimmed.Length == 0 || trimmed.EndsWith(".", System.StringComparison.Ordinal))
+            return false;
+
+        if (EndsWithSqlValueOperator(trimmed))
+            return true;
+
+        var words = trimmed.Split(
+            new[] { ' ', '\t', '\r', '\n', '(', ')', ',', ';', '=' },
+            System.StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+            return false;
+
+        var lastWord = NormalizeSqlWord(words[words.Length - 1]);
+        if (lastWord is "LIKE" or "ILIKE")
+            return true;
+
+        if (trimmed.EndsWith("(", System.StringComparison.Ordinal) && lastWord == "IN")
+            return true;
+
+        return false;
+    }
+
+    private static bool EndsWithSqlValueOperator(string text)
+    {
+        return text.EndsWith("=", System.StringComparison.Ordinal) ||
+               text.EndsWith("<", System.StringComparison.Ordinal) ||
+               text.EndsWith(">", System.StringComparison.Ordinal) ||
+               text.EndsWith("<=", System.StringComparison.Ordinal) ||
+               text.EndsWith(">=", System.StringComparison.Ordinal) ||
+               text.EndsWith("<>", System.StringComparison.Ordinal) ||
+               text.EndsWith("!=", System.StringComparison.Ordinal);
+    }
+
+    private static string NormalizeSqlWord(string word)
+    {
+        return word.Trim('[', ']', '"', '`').ToUpperInvariant();
     }
 
     private static bool ToggleSqlStringLiteralState(string text, bool insideSqlStringLiteral)
