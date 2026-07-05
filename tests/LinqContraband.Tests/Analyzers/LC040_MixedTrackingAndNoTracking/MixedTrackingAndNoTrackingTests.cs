@@ -154,6 +154,23 @@ class Program
     }
 
     [Fact]
+    public async Task DbContextSetTrackedQueryAndNoTrackingPropertyQuery_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var first = db.Set<TestApp.User>().ToList();
+        var second = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExplicitTransaction_DoesNotHideMixedTrackingModes()
     {
         var test = EFCoreMock + Types + @"

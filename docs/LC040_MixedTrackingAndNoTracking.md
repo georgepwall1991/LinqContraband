@@ -34,6 +34,8 @@ Mutually exclusive `if`/`else` branches, `switch` sections, and ternary (`cond ?
 
 Transparent EF query options such as `AsSplitQuery()` and `TagWith(...)` do not change the tracking mode. LC040 follows through those calls and still reports when the same context materializes one tracked result and one no-tracking result.
 
+`DbContext.Set<TEntity>()` is treated as tracked query evidence in the same way as a `DbSet<TEntity>` property, so mixing `db.Set<User>().ToList()` with `db.Users.AsNoTracking().ToList()` in the same method reports when both calls resolve to the same context.
+
 An explicit transaction does not make mixed tracking modes safer by itself. Transactions coordinate database writes; they do not change whether EF tracks the materialized entities. If a transactional workflow needs both read-only and write paths, split the workflow into clearly named scopes or contexts, or document why the mixed mode is intentional.
 
 ## No automatic fixer
