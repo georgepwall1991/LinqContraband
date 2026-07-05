@@ -93,7 +93,7 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
                (method.Name == "StartNew" &&
                 method.ContainingType.Name == "TaskFactory" &&
                 method.ContainingNamespace?.ToString() == "System.Threading.Tasks") ||
-               (method.Name == "ForEach" &&
+               (method.Name is "For" or "ForEach" or "Invoke" &&
                 method.ContainingType.Name == "Parallel" &&
                 method.ContainingNamespace?.ToString() == "System.Threading.Tasks") ||
                (method.Name == "QueueUserWorkItem" &&
@@ -115,11 +115,35 @@ public sealed class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticAnalyzer
         var lambdaSyntax = syntax.AncestorsAndSelf().FirstOrDefault(node =>
             node is ParenthesizedLambdaExpressionSyntax or SimpleLambdaExpressionSyntax or AnonymousMethodExpressionSyntax);
 
-        if (lambdaSyntax is null)
+        if (lambdaSyntax is not null)
         {
-            return TryFindCapturedDbContextInLocalFunctionCallback(syntax, semanticModel, out capturedSymbol);
+            return TryFindCapturedDbContextInLambda(lambdaSyntax, semanticModel, out capturedSymbol);
         }
 
+        foreach (var descendant in syntax.DescendantNodesAndSelf())
+        {
+            if (descendant is ParenthesizedLambdaExpressionSyntax or SimpleLambdaExpressionSyntax or AnonymousMethodExpressionSyntax)
+            {
+                if (TryFindCapturedDbContextInLambda(descendant, semanticModel, out capturedSymbol))
+                    return true;
+            }
+        }
+
+        foreach (var descendant in syntax.DescendantNodesAndSelf())
+        {
+            if (TryFindCapturedDbContextInLocalFunctionCallback(descendant, semanticModel, out capturedSymbol))
+                return true;
+        }
+
+        capturedSymbol = null!;
+        return false;
+    }
+
+    private static bool TryFindCapturedDbContextInLambda(
+        SyntaxNode lambdaSyntax,
+        SemanticModel semanticModel,
+        out ISymbol capturedSymbol)
+    {
         var body = lambdaSyntax switch
         {
             ParenthesizedLambdaExpressionSyntax parenthesized => parenthesized.Body,

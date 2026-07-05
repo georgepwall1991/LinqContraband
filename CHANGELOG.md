@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC036` now reports `DbContext` captures in `Parallel.For(...)`, `Parallel.Invoke(...)`, and delegate-wrapped callbacks, matching the existing threading guards while keeping callbacks that create their own context quiet.
 - `LC007` now reports terminal execution after a deferred `AsEnumerable()` boundary when the upstream query is provably EF-backed, while keeping LINQ-to-Objects `AsEnumerable()` aggregates quiet.
 - `LC044` no longer reports AsNoTracking silent-write diagnostics when the entity is re-attached on a guaranteed path before the mutation; conditional pre-attach branches, explicit detach, and `ChangeTracker.Clear()` still report because the write can still reach `SaveChanges()` untracked.
 - `LC045` no longer offers its `.Include(...)` fixer when the materialized source is statically typed as `IEnumerable<T>` rather than `IQueryable<T>`, so widened query aliases still report the missing include without producing non-compiling `source.Include(...)` output.

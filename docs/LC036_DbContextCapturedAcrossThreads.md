@@ -9,13 +9,16 @@ title: "Spec: LC036 - DbContext Captured Across Threads"
 Detect a single `DbContext` captured into multi-threaded delegates.
 
 ## The Problem
-`DbContext` is not thread-safe. Capturing the same instance into `Task.Run(...)`, `Task.Factory.StartNew(...)`, `Parallel.ForEach(...)`, thread-pool work, `Thread`, or timer callbacks can lead to race conditions and undefined behavior.
+`DbContext` is not thread-safe. Capturing the same instance into `Task.Run(...)`, `Task.Factory.StartNew(...)`, `Parallel.For(...)`, `Parallel.ForEach(...)`, `Parallel.Invoke(...)`, thread-pool work, `Thread`, or timer callbacks can lead to race conditions and undefined behavior.
 
 ### Example Violation
 ```csharp
 Task.Run(() => db.Users.ToList());
 Task.Factory.StartNew(() => db.SaveChanges());
+Parallel.For(0, ids.Count, _ => db.Users.Count());
 Parallel.ForEach(ids, _ => db.Users.Count());
+Parallel.Invoke(() => db.SaveChanges());
+Task.Run(new Action(() => db.SaveChanges()));
 new Thread(() => db.SaveChanges()).Start();
 new Timer(_ => db.SaveChanges(), null, 0, 1000);
 
