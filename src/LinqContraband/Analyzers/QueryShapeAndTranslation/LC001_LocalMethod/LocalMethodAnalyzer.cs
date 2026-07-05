@@ -106,29 +106,17 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
         if (IsTrustedTranslatableMethod(methodSymbol, dbFunctionAttribute, projectableAttribute))
             return;
 
-        // Constraint 1: Inside a Lambda
         var parent = invocation.Parent;
-        IAnonymousFunctionOperation? lambda = null;
+        var lambdas = new List<IAnonymousFunctionOperation>();
 
         while (parent != null)
         {
             if (parent is IAnonymousFunctionOperation anonymousFunction)
             {
-                lambda = anonymousFunction;
-                break;
+                lambdas.Add(anonymousFunction);
             }
 
-            parent = parent.Parent;
-        }
-
-        if (lambda == null) return;
-        if (!InvocationDependsOnLambdaParameter(invocation, lambda)) return;
-
-        // Constraint 2: Lambda is argument to IQueryable extension method
-        var current = lambda.Parent;
-        while (current != null)
-        {
-            if (current is IInvocationOperation queryInvocation)
+            if (parent is IInvocationOperation queryInvocation)
             {
                 // Handle extension syntax (Instance populated) and static syntax (source is a bound argument).
                 var type = queryInvocation.Instance?.Type;
@@ -137,16 +125,18 @@ public sealed class LocalMethodAnalyzer : DiagnosticAnalyzer
 
                 if (type.IsIQueryable())
                 {
-                    if (!TranslationCriticalQueryMethods.Contains(queryInvocation.TargetMethod.Name))
+                    if (TranslationCriticalQueryMethods.Contains(queryInvocation.TargetMethod.Name) &&
+                        lambdas.Count > 0 &&
+                        InvocationDependsOnLambdaParameter(invocation, lambdas[lambdas.Count - 1]))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
                         return;
-
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
-                    return;
+                    }
                 }
             }
 
-            current = current.Parent;
+            parent = parent.Parent;
         }
     }
 

@@ -85,6 +85,139 @@ class Program
     }
 
     [Fact]
+    public async Task FixCrime_NestedCorrelatedLocalMethod_HasNoFix()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Where(u => db.Users
+                .Any(inner => {|#0:IsMatch(inner.Age, u.Age)|}));
+    }
+
+    bool IsMatch(int a, int b) => a == b;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Where(u => db.Users
+                .Any(inner => IsMatch(inner.Age, u.Age)));
+    }
+
+    bool IsMatch(int a, int b) => a == b;
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("IsMatch"));
+        testObj.FixedState.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithSpan(15, 31, 15, 56)
+            .WithArguments("IsMatch"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_QueryBuiltInsideLambda_StillOffersFix()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        Func<IEnumerable<User>> build = () => db.Users.Where(u => {|#0:IsAdult(u.Age)|});
+    }
+
+    bool IsAdult(int age) => age >= 18;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        Func<IEnumerable<User>> build = () => db.Users.AsEnumerable().Where(u => IsAdult(u.Age));
+    }
+
+    bool IsAdult(int age) => age >= 18;
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("IsAdult"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_EnumerableLambdaInsideQuery_FixesOuterQuery()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(List<string> names)
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => names.Any(name => {|#0:IsAllowed(u.Age, name)|}));
+    }
+
+    bool IsAllowed(int age, string name) => age > 0 && name.Length > 0;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main(List<string> names)
+    {
+        var db = new DbContext();
+        var query = db.Users.AsEnumerable().Where(u => names.Any(name => IsAllowed(u.Age, name)));
+    }
+
+    bool IsAllowed(int age, string name) => age > 0 && name.Length > 0;
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("IsAllowed"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_SwitchesAllLocalMethodCallsToClientSide()
     {
         var test = Usings + @"

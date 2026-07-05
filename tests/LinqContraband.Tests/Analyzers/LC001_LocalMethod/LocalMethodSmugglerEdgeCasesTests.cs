@@ -82,6 +82,27 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_NestedLambda_LocalMethodUsingOnlyOuterLambda_ShouldTriggerLC001()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Where(u => db.Users
+                .Any(inner => {|LC001:IsAdult(u.Age)|}));
+    }
+
+    bool IsAdult(int age) => age >= 18;
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_NestedLambda_LocalMethodInOuterLambda_ShouldTriggerLC001()
     {
         var test = Usings + @"
@@ -215,6 +236,25 @@ class Program
     }
 
     string Normalize(string value) => value.Trim();
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_NestedEnumerableLocalMethodWithoutQueryRowDependency_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(List<string> names)
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => names.Any(name => IsAllowed(name)));
+    }
+
+    bool IsAllowed(string name) => name.Length > 0;
 }
 " + MockNamespace;
 

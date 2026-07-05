@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -41,8 +42,10 @@ public sealed class LocalMethodFixer : CodeFixProvider
         if (invocation == null) return;
 
         var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
-        var queryInvocation = FindQueryInvocation(invocation);
-        if (queryInvocation == null || !CanRewriteQueryInvocation(semanticModel, queryInvocation, context.CancellationToken))
+        var queryInvocation = FindQueryInvocation(invocation, semanticModel, context.CancellationToken);
+        if (queryInvocation == null ||
+            IsNestedQueryInvocation(semanticModel, queryInvocation, context.CancellationToken) ||
+            !CanRewriteQueryInvocation(semanticModel, queryInvocation, context.CancellationToken))
             return;
 
         context.RegisterCodeFix(
@@ -61,7 +64,7 @@ public sealed class LocalMethodFixer : CodeFixProvider
 
         editor.EnsureUsing("System.Linq");
 
-        var queryInvocation = FindQueryInvocation(invocation);
+        var queryInvocation = FindQueryInvocation(invocation, semanticModel, cancellationToken);
         if (queryInvocation == null) return document;
 
         if (queryInvocation.Expression is not MemberAccessExpressionSyntax memberAccess) return document;
@@ -128,10 +131,107 @@ public sealed class LocalMethodFixer : CodeFixProvider
         return true;
     }
 
-    private static InvocationExpressionSyntax? FindQueryInvocation(InvocationExpressionSyntax invocation)
+    private static InvocationExpressionSyntax? FindQueryInvocation(
+        InvocationExpressionSyntax invocation,
+        SemanticModel? semanticModel,
+        CancellationToken cancellationToken)
     {
-        var lambda = invocation.FirstAncestorOrSelf<LambdaExpressionSyntax>();
-        return lambda?.Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+        if (semanticModel?.GetOperation(invocation, cancellationToken) is not IInvocationOperation invocationOperation)
+            return null;
+
+        var parent = invocation.Parent;
+        var lambdas = new List<IAnonymousFunctionOperation>();
+
+        while (parent != null)
+        {
+            if (parent is LambdaExpressionSyntax lambda &&
+                semanticModel.GetOperation(lambda, cancellationToken) is IAnonymousFunctionOperation lambdaOperation)
+            {
+                lambdas.Add(lambdaOperation);
+            }
+
+            if (parent is InvocationExpressionSyntax queryInvocation &&
+                IsQueryableInvocation(semanticModel, queryInvocation, cancellationToken) &&
+                lambdas.Count > 0 &&
+                InvocationDependsOnLambdaParameter(invocationOperation, lambdas[lambdas.Count - 1]))
+            {
+                return queryInvocation;
+            }
+
+            parent = parent.Parent;
+        }
+
+        return null;
+    }
+
+    private static bool IsNestedQueryInvocation(
+        SemanticModel? semanticModel,
+        InvocationExpressionSyntax queryInvocation,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel == null) return false;
+
+        foreach (var lambda in queryInvocation.Ancestors().OfType<LambdaExpressionSyntax>())
+        {
+            var enclosingInvocation = lambda.Parent?.AncestorsAndSelf()
+                .OfType<InvocationExpressionSyntax>()
+                .FirstOrDefault();
+
+            if (enclosingInvocation != null &&
+                IsQueryableInvocation(semanticModel, enclosingInvocation, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsQueryableInvocation(
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return false;
+
+        var type = operation.Instance?.Type;
+        if (type == null)
+            type = GetInputSequenceArgument(operation)?.Value.Type;
+
+        return type.IsIQueryable();
+    }
+
+    private static IArgumentOperation? GetInputSequenceArgument(IInvocationOperation invocation)
+    {
+        IArgumentOperation? firstArgument = null;
+        IArgumentOperation? namedSequenceArgument = null;
+
+        foreach (var argument in invocation.Arguments)
+        {
+            firstArgument ??= argument;
+
+            if (argument.Parameter?.Type.IsIQueryable() == true)
+                return argument;
+
+            if (argument.Parameter?.Name is "source" or "outer")
+                namedSequenceArgument ??= argument;
+        }
+
+        return namedSequenceArgument ?? firstArgument;
+    }
+
+    private static bool InvocationDependsOnLambdaParameter(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation lambda)
+    {
+        foreach (var parameter in lambda.Symbol.Parameters)
+        {
+            if (invocation.ReferencesParameter(parameter))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool CanRewriteQueryInvocation(
