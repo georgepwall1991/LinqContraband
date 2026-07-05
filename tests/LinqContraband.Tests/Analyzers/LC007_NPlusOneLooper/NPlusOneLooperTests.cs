@@ -307,6 +307,31 @@ class Program
     }
 
     [Fact]
+    public async Task MaterializerInInnerForeachSourceInsideOuterLoop_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+
+        foreach (var id in new[] { 1, 2, 3 })
+        {
+            foreach (var user in {|#0:db.Users.Where(u => u.Id == id).ToList()|})
+            {
+                _ = user;
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007").WithLocation(0).WithArguments("ToList");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_InWhileLoop_TriggersDiagnostic()
     {
         var test = Usings + @"

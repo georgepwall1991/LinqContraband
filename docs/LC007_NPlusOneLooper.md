@@ -47,6 +47,7 @@ while (hasWork)
 
 The analyzer follows direct EF roots such as `DbSet<T>`, `DbContext.Set<T>()`, navigation `Query()` calls, and single-assignment query local hops when the origin stays provable.
 Deferred `AsEnumerable()` boundaries before terminal execution still report when the upstream source is provably EF-backed.
+When a query materializer is used as the source of an inner `foreach`, LC007 still reports if that inner loop sits inside another loop and the source is re-executed once per outer iteration.
 
 ## What LC007 Intentionally Ignores
 - Plain LINQ-to-Objects or `AsQueryable()` sources
