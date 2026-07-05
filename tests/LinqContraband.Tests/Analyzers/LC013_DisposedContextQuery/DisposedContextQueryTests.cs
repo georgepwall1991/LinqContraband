@@ -30,6 +30,7 @@ namespace TestNamespace
     public static class QueryHelpers
     {
         public static IQueryable<User> Materialize(IQueryable<User> query) => query.ToList().AsQueryable();
+        public static IQueryable<User> MaterializeExtension(this IQueryable<User> query) => query.ToList().AsQueryable();
     }
 }
 
@@ -213,6 +214,36 @@ class Program
     }
 
     [Fact]
+    public async Task MaterializedThenAsQueryable_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers()
+    {
+        using var db = new DbContext();
+        return db.Set<User>().Where(u => u.Id > 1).ToList().AsQueryable();
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DeferredAsEnumerableThenAsQueryable_ShouldTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers()
+    {
+        using var db = new DbContext();
+        return {|LC013:db.Set<User>().Where(u => u.Id > 1).AsEnumerable().AsQueryable()|};
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task DisposedNonDbContextOrigin_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -237,6 +268,21 @@ class Program
     {
         using var db = new DbContext();
         return QueryHelpers.Materialize(db.Set<User>());
+    }
+}" + MockNamespace;
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExtensionHelperMaterializes_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    public IQueryable<User> GetUsers()
+    {
+        using var db = new DbContext();
+        return db.Set<User>().Where(u => u.Id > 1).MaterializeExtension();
     }
 }" + MockNamespace;
         await VerifyCS.VerifyAnalyzerAsync(test);

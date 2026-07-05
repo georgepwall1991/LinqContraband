@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC013` now treats arbitrary project extension methods as query-origin boundaries, so helpers that materialize and return `IQueryable<T>` no longer receive disposed-context warnings while known LINQ/EF deferred query chains still report.
 - `LC030` now reports static `DbContext` fields and properties on proven long-lived types such as hosted/background services, while still requiring long-lived-type evidence before flagging static storage.
 - `LC001` now reports local helper calls inside nested query lambdas when the helper depends on an outer query range variable, and it withholds the `AsEnumerable()` fixer for nested correlated subqueries where converting only the inner query boundary would be misleading.
 - `LC018` no longer offers its safe-API fixer when an interpolation hole is in a SQL identifier position such as `FROM {tableName}`, preventing rewrites that would parameterize SQL structure instead of preserving a manually reviewed raw-SQL fragment.
