@@ -45,6 +45,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
+        public static IQueryable<TSource> AsNoTrackingWithIdentityResolution<TSource>(this IQueryable<TSource> source) => source;
     }
 }
 ";
@@ -212,6 +213,72 @@ namespace LinqContraband.Test
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTrackingWithIdentityResolution_ThenUpdate_ShouldTriggerLC025()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = users.AsNoTrackingWithIdentityResolution().FirstOrDefault(x => x.Id == 1);
+            if (user != null)
+            {
+                users.Update({|LC025:user|});
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRemoveAsNoTrackingWithIdentityResolution()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = users.AsNoTrackingWithIdentityResolution().FirstOrDefault(x => x.Id == 1);
+            if (user != null)
+            {
+                users.Update({|LC025:user|});
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var user = users.FirstOrDefault(x => x.Id == 1);
+            if (user != null)
+            {
+                users.Update(user);
+            }
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
     }
 
     [Fact]
