@@ -367,6 +367,26 @@ class Program
     }
 
     [Fact]
+    public async Task SaveChangesInDoWhile_ContextDeclaredInsideLoop_HasNoFix()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        do
+        {
+            using var db = new MyDbContext();
+            {|LC010:db.SaveChanges()|};
+        }
+        while (false);
+    }
+}" + MockNamespace;
+
+        await VerifyFix(test, test);
+    }
+
+    [Fact]
     public async Task SaveChangesAsOnlyStatementInDoWhile_ShouldMoveAfterLoop()
     {
         // Edge case: when the save is the only statement in the do-while
