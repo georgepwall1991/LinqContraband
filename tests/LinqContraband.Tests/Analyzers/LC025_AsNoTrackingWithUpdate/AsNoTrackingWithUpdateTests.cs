@@ -646,6 +646,57 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task ConditionalReassignmentBothNoTracking_HasNoFix()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users, bool flag)
+        {
+            var user = users.AsNoTracking().FirstOrDefault(x => x.Id == 1);
+            if (flag)
+            {
+                user = users.AsNoTracking().FirstOrDefault(x => x.Id == 2);
+            }
+            users.Update({|LC025:user|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task ConditionalReassignmentWithNoTrackingQueryAliasFallback_HasNoFix()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users, bool flag)
+        {
+            var query = users.AsNoTracking();
+            var user = query.FirstOrDefault(x => x.Id == 1);
+            if (flag)
+            {
+                user = users.AsNoTracking().FirstOrDefault(x => x.Id == 2);
+            }
+            users.Update({|LC025:user|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task SupersededOriginBeforeConditionalReassignment_ShouldStillTrigger()
     {
         // The initial null origin is dead — overwritten by the unconditional untracked
