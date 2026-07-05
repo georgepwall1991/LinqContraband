@@ -146,7 +146,7 @@ public sealed class AsNoTrackingWithUpdateFixer : CodeFixProvider
             .OfType<InvocationExpressionSyntax>()
             .FirstOrDefault(invocation =>
                 invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-                memberAccess.Name.Identifier.ValueText == "AsNoTracking" &&
+                memberAccess.Name.Identifier.ValueText is "AsNoTracking" or "AsNoTrackingWithIdentityResolution" &&
                 invocation.ArgumentList.Arguments.Count == 0);
     }
 }

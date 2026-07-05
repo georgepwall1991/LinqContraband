@@ -312,7 +312,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
 
         if (current is IInvocationOperation invocation)
         {
-            if (IsEfCoreAsNoTracking(invocation.TargetMethod)) return true;
+            if (IsEfCoreNoTrackingDirective(invocation.TargetMethod)) return true;
 
             return HasAsNoTrackingInChain(invocation);
         }
@@ -346,7 +346,7 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
             // encountered is the one applied last, so it decides the effective mode:
             // AsNoTracking().AsTracking() is tracked (AsTracking overrides) and must NOT fire, while
             // AsTracking().AsNoTracking() is untracked and still fires.
-            if (IsEfCoreAsNoTracking(inv.TargetMethod))
+            if (IsEfCoreNoTrackingDirective(inv.TargetMethod))
                 return true;
             if (IsEfCoreAsTracking(inv.TargetMethod))
                 return false;
@@ -394,9 +394,9 @@ public sealed class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
         return null;
     }
 
-    private static bool IsEfCoreAsNoTracking(IMethodSymbol method)
+    private static bool IsEfCoreNoTrackingDirective(IMethodSymbol method)
     {
-        if (method.Name != "AsNoTracking")
+        if (method.Name is not ("AsNoTracking" or "AsNoTrackingWithIdentityResolution"))
             return false;
 
         var namespaceName = method.ContainingNamespace?.ToString();
