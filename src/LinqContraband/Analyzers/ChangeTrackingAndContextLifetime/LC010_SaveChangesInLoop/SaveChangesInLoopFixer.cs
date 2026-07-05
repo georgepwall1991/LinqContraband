@@ -38,7 +38,14 @@ public sealed class SaveChangesInLoopFixer : CodeFixProvider
                          ?? node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 
         if (invocation == null) return;
-        if (!TryGetMovableSaveStatement(invocation, out _, out _)) return;
+        if (!TryGetMovableSaveStatement(invocation, out _, out var loop)) return;
+
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel == null ||
+            IsSaveReceiverDeclaredInsideLoop(invocation, loop, semanticModel, context.CancellationToken))
+        {
+            return;
+        }
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -53,8 +60,14 @@ public sealed class SaveChangesInLoopFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        // Find the expression statement containing SaveChanges
         if (!TryGetMovableSaveStatement(invocation, out var expressionStatement, out var loop)) return document;
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel == null ||
+            IsSaveReceiverDeclaredInsideLoop(invocation, loop, semanticModel, cancellationToken))
+        {
+            return document;
+        }
 
         // Create the new statement to insert after the loop (preserve the full statement including await if present).
         // Terminate it with the document's own line ending so a CRLF file does not gain a lone LF line.
@@ -161,5 +174,28 @@ public sealed class SaveChangesInLoopFixer : CodeFixProvider
             .Count(invocation =>
                 invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Name.Identifier.Text is "SaveChanges" or "SaveChangesAsync");
+    }
+
+    private static bool IsSaveReceiverDeclaredInsideLoop(
+        InvocationExpressionSyntax invocation,
+        StatementSyntax loop,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return false;
+
+        var receiverSymbol = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol;
+        if (receiverSymbol == null)
+            return true;
+
+        foreach (var syntaxReference in receiverSymbol.DeclaringSyntaxReferences)
+        {
+            var syntax = syntaxReference.GetSyntax(cancellationToken);
+            if (loop.Span.Contains(syntax.SpanStart) && syntax.Span.End <= loop.Span.End)
+                return true;
+        }
+
+        return false;
     }
 }
