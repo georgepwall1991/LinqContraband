@@ -59,6 +59,8 @@ In these cases either suppress the diagnostic with `#pragma warning disable LC00
 
 LC006 resolves lambda, filtered, and literal string include paths when the navigation symbols are provable. It deduplicates repeated include paths and reports once for each risky query chain. A final or chain-prefix explicit `AsSplitQuery()` suppresses the diagnostic; a final explicit `AsSingleQuery()` keeps it active.
 
+Reference-only prefixes before a collection navigation are row-preserving, so they do not split the sibling group. For example, `Include(u => u.Address.Orders)` and `Include(u => u.Profile.Tags)` are still two collection joins under the same root query and LC006 reports them unless the query is split.
+
 The receiver-chain walk follows a **single-assignment local** back to its assigned value, so a chain split across a variable is analysed as one query. A prior-statement `AsSplitQuery()` is honoured (`var q = db.Users.AsSplitQuery(); q.Include(a).Include(b)` stays quiet) and sibling collection Includes split across the local are still detected (`var q = db.Users.Include(a); q.Include(b)` reports). Locals that are reassigned, or whose source is ambiguous, are left conservative (the walk stops at the local).
 
 ### ID: `LC006`
@@ -81,6 +83,7 @@ LC006 fires only when **two or more sibling collection navigations** are loaded 
 ```csharp
 db.Users.Include(u => u.Orders).Include(u => u.Roles);                 // two sibling collections
 db.Users.Include(u => u.Orders).Include(u => u.Roles).Include(u => u.Tags); // three reported once
+db.Users.Include(u => u.Address.Orders).Include(u => u.Profile.Tags);   // reference prefixes stay row-preserving
 db.Users.AsSingleQuery().Include(u => u.Orders).Include(u => u.Roles);  // explicit single-query opt-in
 db.Users
     .Include(u => u.Orders).ThenInclude(o => o.Comments)
