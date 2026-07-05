@@ -266,6 +266,96 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Skip_WithOnlyDownstreamOrderBy_ShouldTriggerMissingOrderAndMisplacedOrder()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+
+            var result = db.Users.{|#0:Skip|}(10).{|#1:OrderBy|}(u => u.Name).Take(5);
+        }
+    }
+}" + MockNamespace;
+
+        var missingOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Skip");
+        var misplacedOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(1)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, missingOrder, misplacedOrder);
+    }
+
+    [Fact]
+    public async Task SkipAlias_WithOnlyDownstreamOrderBy_ShouldTriggerMissingOrderAndMisplacedOrder()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+
+            var page = db.Users.{|#0:Skip|}(10);
+            var result = page.{|#1:OrderBy|}(u => u.Name).Take(5);
+        }
+    }
+}" + MockNamespace;
+
+        var missingOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Skip");
+        var misplacedOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(1)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, missingOrder, misplacedOrder);
+    }
+
+    [Fact]
+    public async Task SkipAlias_WithSortedAliasLaterPaginated_ShouldTriggerMissingOrderAndMisplacedOrder()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+
+            var page = db.Users.{|#0:Skip|}(10);
+            var sorted = page.{|#1:OrderBy|}(u => u.Name);
+            var result = sorted.Take(5);
+        }
+    }
+}" + MockNamespace;
+
+        var missingOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Skip");
+        var misplacedOrder = VerifyCS.Diagnostic(MissingOrderByAnalyzer.MisplacedRule)
+            .WithLocation(1)
+            .WithArguments("OrderBy");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, missingOrder, misplacedOrder);
+    }
+
+    [Fact]
     public async Task OrderBy_AfterTake_ShouldTrigger()
     {
         var test = Usings + @"

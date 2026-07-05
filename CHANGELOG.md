@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC015` now still reports the missing upstream ordering for `Skip(...)` when the only downstream sort is misplaced and further pagination follows, including through simple query and sorted-query aliases, so `Skip(...).OrderBy(...).Take(...)` surfaces both the unordered page boundary and the misplaced sort.
 - `LC016` now expands expression-bodied query methods and local functions before extracting `DateTime.Now`/`UtcNow` to a local, so the code action no longer appears to succeed while leaving arrow-bodied queries unchanged; static query lambdas stay diagnostic-only because extracting a local would create an invalid capture.
 - `LC035` no longer reports bulk `ExecuteDelete*`/`ExecuteUpdate*` receivers when every ternary or switch-expression arm is filtered, or when a local query is definitely assigned through filtered `if`/`else` branches before the bulk call; any unfiltered arm still reports.
 - `LC017` now includes supported null-conditional and indexed entity-property access shapes when its fixer builds an anonymous projection, so mixed downstream usage such as `e.Id` plus `e?.Name` does not leave post-fix code referencing an omitted property.
