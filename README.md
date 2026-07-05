@@ -702,6 +702,7 @@ var query = db.Users.Where(u => u.Dob < DateTime.Now);
 **✅ The Fix:**
 Store the date in a variable before the query.
 The fixer uses a unique local name if `now` is already in scope.
+For expression-bodied methods and local functions, the fixer converts the arrow body to a block and captures the clock value before the rewritten query expression. Static query lambdas remain diagnostic-only because extracting a local would create an invalid capture.
 Use an injected or otherwise controlled clock when the value must be deterministic in tests, and prefer `UtcNow` for persisted timestamps unless the model intentionally stores local time. If the business rule needs the database server's clock, choose an explicit provider-supported function instead of relying on a direct `DateTime.Now` member inside the LINQ expression.
 
 ```csharp
