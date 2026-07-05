@@ -90,4 +90,6 @@ LC025 honours the **last** tracking directive in a chain, because each `AsTracki
 ## Code Fix
 The fixer removes the `AsNoTracking()` or `AsNoTrackingWithIdentityResolution()` call from direct local declarations, simple assignments, and foreach collection expressions when that is the origin of the diagnostic.
 
+The fixer is conservative for path-dependent origins. When the diagnostic is justified because every path yields a no-tracking entity, but the latest no-tracking origin is a branch-conditional reassignment over an earlier direct or query-alias no-tracking fallback, LC025 reports without a code fix. Removing only the branch origin would leave another no-tracking path behind and make the rewrite misleading.
+
 It intentionally does not rewrite broader architecture choices. If the query was intentionally read-only, change the write path instead of applying the fix blindly.

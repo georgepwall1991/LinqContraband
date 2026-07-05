@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -95,15 +96,14 @@ public sealed class AsNoTrackingWithUpdateFixer : CodeFixProvider
         int boundary,
         CancellationToken cancellationToken)
     {
-        var bestPosition = -1;
-        InvocationExpressionSyntax? bestInvocation = null;
+        var origins = new List<AsNoTrackingOrigin>();
 
         foreach (var declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
         {
             if (declarator.Initializer == null || declarator.SpanStart >= boundary) continue;
             if (!SymbolEqualityComparer.Default.Equals(semanticModel.GetDeclaredSymbol(declarator, cancellationToken), local)) continue;
 
-            UpdateBest(declarator.Initializer.Value, declarator.SpanStart);
+            AddOrigin(declarator.Initializer.Value, declarator.SpanStart);
         }
 
         foreach (var assignment in root.DescendantNodes().OfType<AssignmentExpressionSyntax>())
@@ -117,7 +117,7 @@ public sealed class AsNoTrackingWithUpdateFixer : CodeFixProvider
                 continue;
             }
 
-            UpdateBest(assignment.Right, assignment.SpanStart);
+            AddOrigin(assignment.Right, assignment.SpanStart);
         }
 
         foreach (var forEach in root.DescendantNodes().OfType<ForEachStatementSyntax>())
@@ -125,19 +125,178 @@ public sealed class AsNoTrackingWithUpdateFixer : CodeFixProvider
             if (!forEach.Span.Contains(boundary) || forEach.Expression.SpanStart >= boundary) continue;
             if (!SymbolEqualityComparer.Default.Equals(semanticModel.GetDeclaredSymbol(forEach, cancellationToken), local)) continue;
 
-            UpdateBest(forEach.Expression, forEach.Expression.SpanStart);
+            AddOrigin(forEach.Expression, forEach.Expression.SpanStart);
         }
 
-        return bestInvocation;
+        if (origins.Count == 0) return null;
 
-        void UpdateBest(ExpressionSyntax expression, int position)
+        var best = origins[0];
+        for (var i = 1; i < origins.Count; i++)
         {
-            if (position < bestPosition) return;
+            if (origins[i].Position >= best.Position)
+                best = origins[i];
+        }
+
+        if (IsConditionalRelativeTo(best.Syntax, boundary, root) &&
+            origins.Any(origin => origin.Position < best.Position))
+        {
+            return null;
+        }
+
+        return best.Invocation;
+
+        void AddOrigin(ExpressionSyntax expression, int position)
+        {
+            if (!IsNoTrackingSource(root, semanticModel, expression, position, cancellationToken, new HashSet<ISymbol>(SymbolEqualityComparer.Default)))
+                return;
 
             var invocation = FindAsNoTrackingInvocation(expression);
-            bestPosition = position;
-            bestInvocation = invocation;
+            origins.Add(new AsNoTrackingOrigin(position, invocation, expression));
         }
+    }
+
+    private readonly struct AsNoTrackingOrigin
+    {
+        public AsNoTrackingOrigin(int position, InvocationExpressionSyntax? invocation, SyntaxNode syntax)
+        {
+            Position = position;
+            Invocation = invocation;
+            Syntax = syntax;
+        }
+
+        public int Position { get; }
+        public InvocationExpressionSyntax? Invocation { get; }
+        public SyntaxNode Syntax { get; }
+    }
+
+    private static bool IsNoTrackingSource(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        ExpressionSyntax expression,
+        int boundary,
+        CancellationToken cancellationToken,
+        ISet<ISymbol> visited)
+    {
+        var operation = semanticModel.GetOperation(expression, cancellationToken)?.UnwrapConversions();
+        if (operation == null)
+            return false;
+
+        if (operation is IInvocationOperation invocation)
+        {
+            if (HasAsNoTrackingInChain(invocation))
+                return true;
+
+            if (invocation.TargetMethod.Name.IsMaterializerMethod() &&
+                invocation.GetInvocationReceiver() is ILocalReferenceOperation receiverLocal)
+            {
+                return IsLocalFromNoTracking(root, semanticModel, receiverLocal.Local, boundary, cancellationToken, visited);
+            }
+        }
+
+        return operation is ILocalReferenceOperation localReference &&
+               IsLocalFromNoTracking(root, semanticModel, localReference.Local, boundary, cancellationToken, visited);
+    }
+
+    private static bool IsLocalFromNoTracking(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        ILocalSymbol local,
+        int boundary,
+        CancellationToken cancellationToken,
+        ISet<ISymbol> visited)
+    {
+        if (!visited.Add(local)) return false;
+
+        AsNoTrackingOrigin? bestOrigin = null;
+
+        foreach (var declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        {
+            if (declarator.Initializer == null || declarator.SpanStart >= boundary) continue;
+            if (!SymbolEqualityComparer.Default.Equals(semanticModel.GetDeclaredSymbol(declarator, cancellationToken), local)) continue;
+
+            if (bestOrigin == null || declarator.SpanStart >= bestOrigin.Value.Position)
+                bestOrigin = new AsNoTrackingOrigin(declarator.SpanStart, null, declarator.Initializer.Value);
+        }
+
+        foreach (var assignment in root.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+        {
+            if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || assignment.SpanStart >= boundary) continue;
+
+            var target = semanticModel.GetOperation(assignment.Left, cancellationToken)?.UnwrapConversions();
+            if (target is not ILocalReferenceOperation localReference ||
+                !SymbolEqualityComparer.Default.Equals(localReference.Local, local))
+            {
+                continue;
+            }
+
+            if (bestOrigin == null || assignment.SpanStart >= bestOrigin.Value.Position)
+                bestOrigin = new AsNoTrackingOrigin(assignment.SpanStart, null, assignment.Right);
+        }
+
+        return bestOrigin != null &&
+               bestOrigin.Value.Syntax is ExpressionSyntax expression &&
+               IsNoTrackingSource(root, semanticModel, expression, bestOrigin.Value.Position, cancellationToken, visited);
+    }
+
+    private static bool HasAsNoTrackingInChain(IInvocationOperation invocation)
+    {
+        IOperation current = invocation;
+        while (current.UnwrapConversions() is IInvocationOperation currentInvocation)
+        {
+            if (IsEfCoreNoTrackingDirective(currentInvocation.TargetMethod))
+                return true;
+
+            if (IsEfCoreAsTracking(currentInvocation.TargetMethod))
+                return false;
+
+            var receiver = currentInvocation.GetInvocationReceiver();
+            if (receiver == null)
+                return false;
+
+            current = receiver;
+        }
+
+        return false;
+    }
+
+    private static bool IsEfCoreNoTrackingDirective(IMethodSymbol method)
+    {
+        if (method.Name is not ("AsNoTracking" or "AsNoTrackingWithIdentityResolution"))
+            return false;
+
+        var namespaceName = method.ContainingNamespace?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
+    }
+
+    private static bool IsEfCoreAsTracking(IMethodSymbol method)
+    {
+        if (method.Name != "AsTracking")
+            return false;
+
+        var namespaceName = method.ContainingNamespace?.ToString();
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
+    }
+
+    private static bool IsConditionalRelativeTo(SyntaxNode originSyntax, int usePosition, SyntaxNode rootSyntax)
+    {
+        for (var node = originSyntax.Parent; node != null && node != rootSyntax; node = node.Parent)
+        {
+            var isBranching = node is IfStatementSyntax
+                or SwitchStatementSyntax
+                or SwitchExpressionSyntax
+                or ConditionalExpressionSyntax
+                or CatchClauseSyntax
+                or WhileStatementSyntax
+                or ForStatementSyntax
+                or CommonForEachStatementSyntax;
+
+            if (isBranching && !node.Span.Contains(usePosition))
+                return true;
+        }
+
+        return false;
     }
 
     private static InvocationExpressionSyntax? FindAsNoTrackingInvocation(ExpressionSyntax expression)
