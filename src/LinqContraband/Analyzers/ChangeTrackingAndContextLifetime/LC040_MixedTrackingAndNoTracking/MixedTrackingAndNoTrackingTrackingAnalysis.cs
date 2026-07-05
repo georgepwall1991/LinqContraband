@@ -37,6 +37,10 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                         if (nestedInvocation.TargetMethod.Name == "Select")
                             return false;
 
+                        if (nestedInvocation.TargetMethod.Name == "Set" &&
+                            nestedInvocation.TargetMethod.ContainingType.IsDbContext())
+                            return true;
+
                         current = nestedInvocation.GetInvocationReceiver();
                         continue;
 
