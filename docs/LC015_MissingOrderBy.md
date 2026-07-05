@@ -26,6 +26,9 @@ var page2 = db.Users.Skip(10).Take(10).ToList();
 // 2. Misplaced sort: takes an arbitrary 10 rows, then sorts that page.
 var page3 = db.Users.Take(10).OrderBy(u => u.Name).ToList();
 
+// 2b. Still unordered: the misplaced sort does not make the earlier Skip deterministic.
+var page4 = db.Users.Skip(10).OrderBy(u => u.Name).Take(5).ToList();
+
 // 3. Non-deterministic "last".
 var newest = db.Events.LastOrDefault();
 
@@ -82,7 +85,7 @@ For shapes where ordering genuinely does not matter (a one-shot bulk export, a `
 ### Notes
 LC015 evaluates EF-backed `IQueryable<T>` chains where pagination or "last row" operators depend on a deterministic order, including simple local aliases assigned from `DbSet<T>` or `DbContext.Set<T>()` before pagination. It also follows aliases that already contain `OrderBy(...)`, `Skip(...)`, or `Take(...)`, so ordered locals do not warn and misplaced sorting after a paged local is still diagnosed. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()` because database row ordering is not involved.
 
-The order must be established upstream of the reported operator; an `OrderBy` after `Skip` or `Take` still leaves the page selection non-deterministic.
+The order must be established upstream of the reported operator; an `OrderBy` after `Skip` or `Take` still leaves the page selection non-deterministic, and it does not suppress the missing-order warning when later pagination continues from that already-arbitrary page boundary, including through simple query or sorted-query aliases.
 
 ## Rule Boundary
 
@@ -104,6 +107,7 @@ db.Users.ElementAt(5);                               // positional access (OFFSE
 db.Users.ElementAtOrDefault(5);
 db.Users.Select(x => x.Name).Chunk(10);
 db.Users.Take(10).OrderBy(u => u.Name);              // misplaced OrderBy
+db.Users.Skip(10).OrderBy(u => u.Name).Take(5);      // missing upstream order and misplaced OrderBy
 ```
 
 ### Valid

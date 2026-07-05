@@ -19,7 +19,12 @@ public sealed partial class MissingOrderByAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
 
             if (SortingMethods.Contains(downstream.TargetMethod.Name))
-                return true;
+            {
+                return !HasPaginationAfterDownstreamSort(
+                    downstream,
+                    localValueCache,
+                    cancellationToken);
+            }
 
             current = downstream;
         }
@@ -66,8 +71,102 @@ public sealed partial class MissingOrderByAnalyzer
                     out var resolvedValue) &&
                 IsSameOperation(resolvedValue, invocation))
             {
+                return !HasPaginationAfterDownstreamSort(
+                    downstream,
+                    localValueCache,
+                    cancellationToken);
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasPaginationAfterDownstreamSort(
+        IInvocationOperation sortingInvocation,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken)
+    {
+        IOperation current = sortingInvocation;
+
+        while (TryGetDownstreamInvocation(current) is { } downstream)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (PaginationMethods.Contains(downstream.TargetMethod.Name))
+                return true;
+
+            current = downstream;
+        }
+
+        var executableRoot = sortingInvocation.FindOwningExecutableRoot();
+        if (executableRoot == null)
+            return false;
+
+        foreach (var descendant in executableRoot.Descendants())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (descendant.Syntax.SpanStart <= sortingInvocation.Syntax.SpanStart ||
+                descendant is not IInvocationOperation downstream ||
+                !PaginationMethods.Contains(downstream.TargetMethod.Name))
+            {
+                continue;
+            }
+
+            var receiver = downstream.GetInvocationReceiver();
+            if (receiver != null &&
+                ReceivesFromOperation(
+                    receiver,
+                    sortingInvocation,
+                    executableRoot,
+                    localValueCache,
+                    cancellationToken))
+            {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private bool ReceivesFromOperation(
+        IOperation operation,
+        IOperation target,
+        IOperation executableRoot,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken)
+    {
+        var current = operation;
+
+        while (current != null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            current = current.UnwrapConversions();
+
+            if (IsSameOperation(current, target))
+                return true;
+
+            if (current is IInvocationOperation invocation)
+            {
+                current = invocation.GetInvocationReceiver();
+                continue;
+            }
+
+            if (current is ILocalReferenceOperation localReference &&
+                TryResolveLocalValue(
+                    localReference.Local,
+                    localReference,
+                    executableRoot,
+                    localValueCache,
+                    cancellationToken,
+                    out var resolvedValue))
+            {
+                current = resolvedValue;
+                continue;
+            }
+
+            return false;
         }
 
         return false;

@@ -644,7 +644,8 @@ When a single query chain contains both `Skip(...)` and `Take(...)`, LinqContrab
 unordered chain instead of duplicating the same root-cause message on both calls.
 LC015 also follows simple query aliases, so an ordered `IQueryable<T>` local does not produce a false warning and a
 later `OrderBy(...)` on a paged local still reports the misplaced sort. It is scoped to EF-backed query chains and stays
-quiet for explicit LINQ-to-Objects `AsQueryable()` sources.
+quiet for explicit LINQ-to-Objects `AsQueryable()` sources. A misplaced downstream sort does not make later pagination
+deterministic, so `Skip(...).OrderBy(...).Take(...)` reports both the missing upstream order and the misplaced sort.
 
 **👶 Explain it like I'm a ten year old:** Imagine a teacher asks you to "Skip the first 5 students and pick the next
 one." If the students are standing in a line, you know who to pick. But if they are running around the playground
