@@ -367,7 +367,7 @@ class Program
     }
 
     [Fact]
-    public async Task SaveChangesInDoWhile_ContextDeclaredInsideLoop_HasNoFix()
+    public async Task SaveChangesInDoWhile_ContextDeclaredInsideLoop_HasNoDiagnostic()
     {
         var test = Usings + @"
 class Program
@@ -377,7 +377,7 @@ class Program
         do
         {
             using var db = new MyDbContext();
-            {|LC010:db.SaveChanges()|};
+            db.SaveChanges();
         }
         while (false);
     }

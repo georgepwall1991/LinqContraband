@@ -66,6 +66,9 @@ public sealed class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         var loop = invocation.FindEnclosingLoop();
         if (loop != null && invocation.SharesOwningExecutableRoot(loop))
         {
+            if (IsSaveReceiverFreshContextDeclaredInsideLoopBody(invocation, loop))
+                return;
+
             if (IsSaveInsideCatchGuardedRetryAttempt(invocation, loop))
                 return;
 
@@ -79,6 +82,43 @@ public sealed class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
+    }
+
+    private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody(IInvocationOperation invocation, ILoopOperation loop)
+    {
+        var receiver = invocation.GetInvocationReceiver();
+        if (receiver is not ILocalReferenceOperation localReference)
+            return false;
+
+        var declaration = loop.Body
+            .Descendants()
+            .OfType<IVariableDeclaratorOperation>()
+            .FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(candidate.Symbol, localReference.Local));
+
+        return declaration?.Initializer?.Value is IObjectCreationOperation objectCreation &&
+               objectCreation.Type?.IsDbContext() == true &&
+               !IsLocalWrittenBeforeInvocation(loop.Body, invocation, localReference.Local);
+    }
+
+    private static bool IsLocalWrittenBeforeInvocation(IOperation scope, IInvocationOperation invocation, ILocalSymbol local)
+    {
+        var invocationStart = invocation.Syntax.SpanStart;
+
+        return scope.Descendants()
+                   .OfType<ISimpleAssignmentOperation>()
+                   .Any(assignment => assignment.Syntax.SpanStart < invocationStart &&
+                                      IsLocalReference(assignment.Target, local)) ||
+               scope.Descendants()
+                   .OfType<IArgumentOperation>()
+                   .Any(argument => argument.Syntax.SpanStart < invocationStart &&
+                                    argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                                    IsLocalReference(argument.Value, local));
+    }
+
+    private static bool IsLocalReference(IOperation operation, ILocalSymbol local)
+    {
+        return operation.UnwrapConversions() is ILocalReferenceOperation localReference &&
+               SymbolEqualityComparer.Default.Equals(localReference.Local, local);
     }
 
     private static bool IsInsideLocalFunctionCalledFromLoop(IInvocationOperation invocation)
