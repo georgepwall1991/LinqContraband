@@ -4,6 +4,7 @@ using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
@@ -110,7 +111,10 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         if (HasEarlierSaveChangesOnSameContext(scan, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
             return;
 
-        if (HasReattach(scan, local, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
+        if (HasDominatingPriorReattach(scan, local, saveContext, declSpan, mutation.Operation, save))
+            return;
+
+        if (HasReattach(scan, local, saveContext, mutation.Operation.Syntax.SpanStart, save))
             return;
 
         reported.Add(local);
@@ -148,7 +152,7 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
             if (mutationNullable == null) continue;
             var mutation = mutationNullable.Value;
 
-            if (HasReattachInRange(scan, loopLocal, saveContext, forEachSpan)) continue;
+            if (HasReattachInRange(scan, loopLocal, saveContext, forEachSpan, save)) continue;
             if (!BlockReaches(forEach, save)) continue;
 
             if (HasEarlierSaveChangesOnSameContext(scan, saveContext, forEach.Syntax.SpanStart, saveSpan))
@@ -210,17 +214,19 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         ILocalSymbol local,
         ISymbol saveContext,
         int afterSpan,
-        int beforeSpan)
+        IOperation save)
     {
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
 
+        var saveSpan = save.Syntax.SpanStart;
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
-            if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
 
             if (entry.ContextSymbol != null &&
-                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
             {
                 return true;
             }
@@ -229,11 +235,206 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
+    private static bool HasDominatingPriorReattach(
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        int afterSpan,
+        IOperation mutation,
+        IOperation save)
+    {
+        if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
+
+        var mutationSpan = mutation.Syntax.SpanStart;
+        for (var i = 0; i < reattaches.Count; i++)
+        {
+            var entry = reattaches[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= mutationSpan) continue;
+
+            if (entry.ContextSymbol != null &&
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                Dominates(entry.Operation, mutation) &&
+                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasInterveningDetach(
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        int afterSpan,
+        IOperation save)
+    {
+        var saveSpan = save.Syntax.SpanStart;
+        if (scan.DetachesByLocal.TryGetValue(local, out var detaches))
+        {
+            for (var i = 0; i < detaches.Count; i++)
+            {
+                var entry = detaches[i];
+                if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
+
+                if (entry.ContextSymbol != null &&
+                    SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                    BlockReaches(entry.Operation, save))
+                {
+                    return true;
+                }
+            }
+        }
+
+        var clears = scan.TrackerClears;
+        for (var i = 0; i < clears.Count; i++)
+        {
+            var entry = clears[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
+
+            if (entry.ContextSymbol != null &&
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                BlockReaches(entry.Operation, save))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Dominates(IOperation earlier, IOperation later)
+    {
+        if (!earlier.SharesOwningExecutableRoot(later)) return false;
+        if (earlier.Syntax.SpanStart >= later.Syntax.SpanStart) return false;
+
+        var earlierBlock = FindEnclosingBlock(earlier);
+        var laterBlock = FindEnclosingBlock(later);
+        if (earlierBlock == null || laterBlock == null) return true;
+
+        if (ReferenceEquals(earlierBlock, laterBlock))
+        {
+            if (IsNestedUnderOptionalControlFlow(earlier, earlierBlock, later))
+                return false;
+
+            return !HasTerminatorBetween(earlierBlock.Operations, earlier.Syntax.SpanStart, later.Syntax.SpanStart, later.Syntax);
+        }
+
+        if (IsBlockAncestor(laterBlock, earlierBlock))
+        {
+            if (IsNestedUnderOptionalControlFlow(earlier, laterBlock, later))
+                return false;
+
+            return BlockReaches(earlier, later);
+        }
+
+        if (!IsBlockAncestor(earlierBlock, laterBlock)) return false;
+
+        var childInEarlierBlock = FindDirectChildOperationContainingSpan(earlierBlock.Operations, laterBlock.Syntax.Span);
+        if (childInEarlierBlock == null) return false;
+        if (earlier.Syntax.SpanStart >= childInEarlierBlock.Syntax.SpanStart) return false;
+
+        return !HasTerminatorBetween(earlierBlock.Operations, earlier.Syntax.SpanStart, childInEarlierBlock.Syntax.SpanStart, later.Syntax);
+    }
+
+    private static bool IsNestedUnderOptionalControlFlow(IOperation operation, IBlockOperation enclosingBlock, IOperation later)
+    {
+        for (var ancestor = operation.Syntax.Parent; ancestor != null && !ReferenceEquals(ancestor, enclosingBlock.Syntax); ancestor = ancestor.Parent)
+        {
+            if (ancestor is IfStatementSyntax ifStatement)
+            {
+                if (IfStatementMakesBranchMandatory(ifStatement, operation.Syntax, later.Syntax))
+                    continue;
+
+                return true;
+            }
+
+            if (ancestor.IsKind(SyntaxKind.ElseClause))
+                continue;
+
+            if (
+                ancestor.IsKind(SyntaxKind.SwitchStatement) ||
+                ancestor.IsKind(SyntaxKind.SwitchSection) ||
+                ancestor.IsKind(SyntaxKind.WhileStatement) ||
+                ancestor.IsKind(SyntaxKind.DoStatement) ||
+                ancestor.IsKind(SyntaxKind.ForStatement) ||
+                ancestor.IsKind(SyntaxKind.ForEachStatement) ||
+                ancestor.IsKind(SyntaxKind.ForEachVariableStatement) ||
+                ancestor.IsKind(SyntaxKind.ConditionalExpression))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IfStatementMakesBranchMandatory(
+        IfStatementSyntax ifStatement,
+        SyntaxNode operationSyntax,
+        SyntaxNode laterSyntax)
+    {
+        if (laterSyntax.SpanStart <= ifStatement.Span.End) return false;
+
+        var operationStart = operationSyntax.SpanStart;
+        if (ifStatement.Statement.Span.Contains(operationStart))
+            return ifStatement.Else?.Statement is { } elseStatement && StatementSkipsLater(elseStatement, laterSyntax);
+
+        if (ifStatement.Else?.Statement.Span.Contains(operationStart) == true)
+            return StatementSkipsLater(ifStatement.Statement, laterSyntax);
+
+        return false;
+    }
+
+    private static bool StatementSkipsLater(StatementSyntax statement, SyntaxNode laterSyntax)
+    {
+        switch (statement)
+        {
+            case ReturnStatementSyntax:
+            case ThrowStatementSyntax:
+                return true;
+
+            case BlockSyntax block:
+                return block.Statements.Count > 0 && StatementSkipsLater(block.Statements[block.Statements.Count - 1], laterSyntax);
+
+            case IfStatementSyntax ifStatement:
+                return ifStatement.Else?.Statement is { } elseStatement &&
+                       StatementSkipsLater(ifStatement.Statement, laterSyntax) &&
+                       StatementSkipsLater(elseStatement, laterSyntax);
+
+            case BreakStatementSyntax breakStatement:
+                return BranchSkipsLater(breakStatement, laterSyntax, includeSwitch: true);
+
+            case ContinueStatementSyntax continueStatement:
+                return BranchSkipsLater(continueStatement, laterSyntax, includeSwitch: false);
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool BranchSkipsLater(StatementSyntax branchStatement, SyntaxNode laterSyntax, bool includeSwitch)
+    {
+        var enclosingConstruct = branchStatement.Ancestors().FirstOrDefault(a =>
+            a.IsKind(SyntaxKind.WhileStatement) ||
+            a.IsKind(SyntaxKind.DoStatement) ||
+            a.IsKind(SyntaxKind.ForStatement) ||
+            a.IsKind(SyntaxKind.ForEachStatement) ||
+            a.IsKind(SyntaxKind.ForEachVariableStatement) ||
+            (includeSwitch && a.IsKind(SyntaxKind.SwitchStatement)));
+
+        return enclosingConstruct != null &&
+               laterSyntax.AncestorsAndSelf().Contains(enclosingConstruct) &&
+               laterSyntax.SpanStart > branchStatement.SpanStart;
+    }
+
     private static bool HasReattachInRange(
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        TextSpan range)
+        TextSpan range,
+        IOperation save)
     {
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
 
@@ -243,7 +444,8 @@ public sealed class AsNoTrackingThenModifyAnalyzer : DiagnosticAnalyzer
             if (!range.Contains(entry.Span)) continue;
 
             if (entry.ContextSymbol != null &&
-                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
             {
                 return true;
             }

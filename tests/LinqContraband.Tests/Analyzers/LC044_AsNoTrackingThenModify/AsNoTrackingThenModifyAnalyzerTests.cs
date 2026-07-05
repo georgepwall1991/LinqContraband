@@ -22,8 +22,14 @@ namespace Microsoft.EntityFrameworkCore
         public EntityState State { get; set; }
     }
 
+    public class ChangeTracker
+    {
+        public void Clear() { }
+    }
+
     public class DbContext
     {
+        public ChangeTracker ChangeTracker { get; } = new ChangeTracker();
         public int SaveChanges() => 0;
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
         public void Update(object entity) { }

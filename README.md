@@ -1718,6 +1718,9 @@ db.SaveChanges();
 **🛡️ Reliability Notes:**
 - LC044 only fires when the chain `AsNoTracking origin → property mutation → SaveChanges on the same context` is
   provable inside one method and no re-attach (`Update`, `Attach`, `Entry(entity).State = Modified|Added`) intervenes.
+- A guaranteed re-attach before the property mutation is treated as safe because EF is tracking the later write; an
+  optional branch re-attach still reports because another path can mutate and save the entity while it remains untracked.
+  Explicit detach (`Entry(entity).State = Detached`) or `ChangeTracker.Clear()` before `SaveChanges` also keeps LC044 live.
 - Ambiguous dataflow, mutations in branches that never reach `SaveChanges`, and entities that arrive as parameters are
   intentionally skipped to keep false positives at zero.
 
