@@ -49,6 +49,9 @@ public sealed class MissingIncludeFixer : CodeFixProvider
             if (materializer == null)
                 continue;
 
+            if (await GetQuerySourceAsync(context.Document, materializer, context.CancellationToken).ConfigureAwait(false) == null)
+                continue;
+
             context.RegisterCodeFix(
                 CodeAction.Create(
                     $"Add .Include() for '{navigationPath}'",
@@ -66,11 +69,12 @@ public sealed class MissingIncludeFixer : CodeFixProvider
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        editor.EnsureUsing("Microsoft.EntityFrameworkCore");
-
         var source = await GetQuerySourceAsync(document, materializer, cancellationToken).ConfigureAwait(false);
         if (source == null)
             return document;
+
+        editor.EnsureUsing("Microsoft.EntityFrameworkCore");
+
         ExpressionSyntax current = source;
         var first = true;
 
@@ -113,12 +117,22 @@ public sealed class MissingIncludeFixer : CodeFixProvider
         if (semanticModel?.GetSymbolInfo(materializer, cancellationToken).Symbol is not IMethodSymbol method)
             return null;
 
+        ExpressionSyntax? source = null;
+
         if (method.MethodKind == MethodKind.ReducedExtension)
-            return (materializer.Expression as MemberAccessExpressionSyntax)?.Expression;
+        {
+            source = (materializer.Expression as MemberAccessExpressionSyntax)?.Expression;
+        }
+        else if (method.IsStatic && materializer.ArgumentList.Arguments.Count > 0)
+        {
+            source = materializer.ArgumentList.Arguments[0].Expression;
+        }
 
-        if (method.IsStatic && materializer.ArgumentList.Arguments.Count > 0)
-            return materializer.ArgumentList.Arguments[0].Expression;
+        if (source == null)
+            return null;
 
-        return null;
+        return semanticModel.GetTypeInfo(source, cancellationToken).Type?.IsIQueryable() == true
+            ? source
+            : null;
     }
 }

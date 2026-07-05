@@ -399,6 +399,61 @@ class Program
     }
 
     [Fact]
+    public async Task FixCrime_WidenedEnumerableAlias_DiagnosticOnly()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        IEnumerable<Order> source = db.Orders;
+        var orders = source.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        IEnumerable<Order> source = db.Orders;
+        var orders = source.ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC045", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Customer", "Order")
+                .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
+        testObj.FixedState.ExpectedDiagnostics.Add(
+            new DiagnosticResult("LC045", DiagnosticSeverity.Warning)
+                .WithSpan(19, 31, 19, 41)
+                .WithArguments("Customer", "Order")
+                .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixCrime_KeywordNamedNavigation_EscapesTheIdentifier()
     {
         var test = Usings + @"

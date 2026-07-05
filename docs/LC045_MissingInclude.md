@@ -37,6 +37,8 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 ## Code Fix
 The code fix inserts the missing eager load immediately before the materializer — `recv.ToList()` becomes `recv.Include(x => x.Nav).ToList()`. Nested paths become `Include`/`ThenInclude` chains: a flagged `Customer.Address` produces `.Include(x => x.Customer).ThenInclude(x => x.Address)`. FixAll applies the same navigation across the document/project.
 
+The fix only registers when the source expression it would wrap is statically `IQueryable<T>`. If the query has already been widened to `IEnumerable<T>` (for example `IEnumerable<Order> source = db.Orders; source.ToList()`), LC045 still reports the missing eager load, but the remediation is manual: add `Include` before widening or keep the local typed as `IQueryable<T>`.
+
 ## Analyzer Logic
 
 ### ID: `LC045`
@@ -64,6 +66,7 @@ The code fix inserts the missing eager load immediately before the materializer 
 ## Deliberate Decisions & Known Limits
 - **Null-guarded access still fires.** `if (o.Customer != null)` and `order?.Customer` are flagged on purpose: with proxies the null check itself triggers the N+1 load, and without proxies the navigation is always null, so the guard is dead code hiding the bug. Suppress with `#pragma warning disable LC045` if the guard is intentional. This holds for every null-conditional spelling: chained inline access on the materializer (`FirstOrDefault()?.Customer?.Name`, `FirstOrDefault()?.Customer.Address?.City`), parenthesized regrouping (`(order?.Customer)?.Address?.City`, reported as `Customer.Address`, including inline materializer and inherited-navigation forms), conditional element access on the result (`orders?[0].Customer`), and locals initialized from a conditional indexer (`var o = orders?[0];`). Conditional method-call results such as `(order?.Customer.GetDetached())?.Address` are treated as call results, not as a continuation of the queried navigation path.
 - Model-level `AutoInclude()` configuration is invisible to the analyzer; if you rely on it, suppress LC045 at the access site or project instead.
+- Widened `IEnumerable<T>` aliases are diagnostic-only: the analyzer can still prove the DbSet root, but the fixer will not emit `Include` against a non-queryable source expression.
 - v1 scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): second-level access through collection navigations (`foreach (var i in o.Items) i.Product`), accesses inside lambdas over the result, property patterns (`order is { Customer: null }`), `Entry(...).Reference/Collection(...).Load()` recognition, `db.Set<T>()` / `IQueryable` parameters / repository-returned queries as roots, and `foreach` directly over an inline materializer.
 
 ## Test Cases
