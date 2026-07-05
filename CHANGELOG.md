@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC030` no longer reports computed `DbContext` properties on proven long-lived types when the getter directly creates a fresh context through `IDbContextFactory<TContext>.CreateDbContext()` or `new TContext()`, while stored auto-properties, initialized get-only properties, and root-service-provider lookups still report.
 - `LC011` now treats `ApplyConfigurationsFromAssembly(System.Reflection.Assembly.GetExecutingAssembly())`, `global::System.Reflection.Assembly.GetExecutingAssembly()`, `using Assembly = System.Reflection.Assembly`, and local or inherited immutable member aliases of that current assembly like `typeof(LocalType).Assembly`, so visible `IEntityTypeConfiguration<TEntity>` key configuration no longer produces missing-key false positives while shadowed, non-System aliased, or mutable `Assembly` identifiers stay conservative.
 - `LC039` now treats different switch-expression arms as mutually exclusive save paths, so repeated `SaveChanges()` calls in separate arms no longer report as if both could run in one invocation.
 - `LC013` now treats arbitrary project extension methods as query-origin boundaries, so helpers that materialize and return `IQueryable<T>` no longer receive disposed-context warnings while known LINQ/EF deferred query chains still report.

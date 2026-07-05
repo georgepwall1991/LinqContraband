@@ -548,6 +548,96 @@ public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
     }
 
     [Fact]
+    public async Task ComputedFactoryDbContextProperty_InHostedService_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + HostingMock + @"
+public sealed class AppDbContext : Microsoft.EntityFrameworkCore.DbContext { }
+
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    private readonly Microsoft.EntityFrameworkCore.IDbContextFactory<AppDbContext> _factory;
+    private AppDbContext Db => _factory.CreateDbContext();
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BlockBodiedComputedFactoryDbContextProperty_InHostedService_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + HostingMock + @"
+public sealed class AppDbContext : Microsoft.EntityFrameworkCore.DbContext { }
+
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    private readonly Microsoft.EntityFrameworkCore.IDbContextFactory<AppDbContext> _factory;
+
+    private AppDbContext Db
+    {
+        get
+        {
+            return _factory.CreateDbContext();
+        }
+    }
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GetOnlyInitializedDbContextProperty_InHostedService_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + HostingMock + @"
+public sealed class AppDbContext : Microsoft.EntityFrameworkCore.DbContext { }
+
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    public AppDbContext {|LC030:Db|} { get; } = new AppDbContext();
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ComputedRootServiceProviderDbContextProperty_InHostedService_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + HostingMock + @"
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public static class ServiceProviderServiceExtensions
+    {
+        public static T GetRequiredService<T>(this System.IServiceProvider provider) => default;
+    }
+}
+
+public sealed class AppDbContext : Microsoft.EntityFrameworkCore.DbContext { }
+
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    private readonly System.IServiceProvider _services;
+    private AppDbContext {|LC030:Db|} => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<AppDbContext>(_services);
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task HostedService_WithScopeFactoryOnly_ShouldNotTrigger()
     {
         var test = EFCoreMock + HostingMock + DependencyInjectionMock + @"
