@@ -124,6 +124,38 @@ public sealed class Worker : Microsoft.Extensions.Hosting.BackgroundService
     }
 
     [Fact]
+    public async Task StaticDbContextField_InHostedService_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + HostingMock + @"
+public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
+{
+    private static readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_db|};
+
+    public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+    public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken cancellationToken) => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StaticDbContextProperty_InBackgroundService_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + HostingMock + @"
+public sealed class Worker : Microsoft.Extensions.Hosting.BackgroundService
+{
+    public static Microsoft.EntityFrameworkCore.DbContext {|LC030:Db|} { get; set; }
+
+    protected override System.Threading.Tasks.Task ExecuteAsync(System.Threading.CancellationToken stoppingToken)
+        => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task DbContextProperty_InConventionalMiddleware_ShouldTriggerLC030()
     {
         var test = EFCoreMock + HttpMock + @"
@@ -438,6 +470,20 @@ public sealed class ScopedAuditMiddleware : Microsoft.AspNetCore.Http.IMiddlewar
 
     public System.Threading.Tasks.Task InvokeAsync(Microsoft.AspNetCore.Http.HttpContext context, Microsoft.AspNetCore.Http.RequestDelegate next)
         => System.Threading.Tasks.Task.CompletedTask;
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StaticDbContextMember_WithoutLongLivedProof_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+public sealed class Worker
+{
+    private static readonly Microsoft.EntityFrameworkCore.DbContext _field;
+    public static Microsoft.EntityFrameworkCore.DbContext Property { get; set; }
 }
 ";
 
