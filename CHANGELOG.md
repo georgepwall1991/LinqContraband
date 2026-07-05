@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC035` no longer reports bulk `ExecuteDelete*`/`ExecuteUpdate*` receivers when every ternary or switch-expression arm is filtered, or when a local query is definitely assigned through filtered `if`/`else` branches before the bulk call; any unfiltered arm still reports.
 - `LC017` now includes supported null-conditional and indexed entity-property access shapes when its fixer builds an anonymous projection, so mixed downstream usage such as `e.Id` plus `e?.Name` does not leave post-fix code referencing an omitted property.
 - `LC027` now uses visible Fluent `HasKey(...)` metadata when its fixer inserts a foreign-key property, so non-conventional principal keys such as `Customer.Code` produce the correct FK type instead of falling back to `int`.
 - `LC023` still reports self-referential primary-key predicates such as `x.Id == x.OtherId`, but no longer offers a `Find(...)` fixer that would lift the lambda parameter outside the predicate and generate non-compiling code.

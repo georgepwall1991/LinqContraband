@@ -83,6 +83,8 @@ q.ExecuteUpdate();
 
 Earlier conditional assignments do not matter once a later unconditional filtered assignment overwrites the local before the bulk call.
 
+If a local has no unconditional base assignment, LC035 still stays quiet for a complete `if`/`else` where both branches definitely assign filtered queries before the bulk call. The same every-path rule applies to conditional receivers: ternary and switch-expression receivers are considered filtered only when every arm contains a real `Where(...)`.
+
 ## What counts as a filter
 
 LC035 recognises:
@@ -92,6 +94,7 @@ LC035 recognises:
 - Filtered local query initializers.
 - Straight-line filtered local reassignments.
 - Optional filtered narrowings after a filtered base local.
+- Complete filtered `if`/`else` assignments and all-filtered ternary or switch-expression receivers.
 
 Project-local methods merely named `Where` do not count as proven filters.
 

@@ -106,6 +106,19 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
                 continue;
             }
 
+            if (current is IConditionalOperation conditional)
+            {
+                return HasWhereInChain(conditional.WhenTrue, cancellationToken, ForkVisitedLocals(visitedLocals)) &&
+                       HasWhereInChain(conditional.WhenFalse, cancellationToken, ForkVisitedLocals(visitedLocals));
+            }
+
+            if (current is ISwitchExpressionOperation switchExpression)
+            {
+                return switchExpression.Arms.Length > 0 &&
+                       switchExpression.Arms.All(arm =>
+                           HasWhereInChain(arm.Value, cancellationToken, ForkVisitedLocals(visitedLocals)));
+            }
+
             if (current is ILocalReferenceOperation localReference)
                 return HasWhereInLocalInitializer(localReference, cancellationToken, visitedLocals);
 
@@ -143,7 +156,9 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         LocalAssignment? latestUnconditional = null;
         var conditionalReassignments = new List<LocalAssignment>();
 
-        foreach (var assignment in LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken))
+        var assignments = LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken);
+
+        foreach (var assignment in assignments)
         {
             if (assignment.SpanStart >= localReference.Syntax.SpanStart)
                 continue;
@@ -155,9 +170,16 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
         }
 
         if (latestUnconditional == null)
-            return false;
+            return HasWhereInExhaustiveIfElseAssignments(
+                assignments,
+                localReference.Syntax.SpanStart,
+                cancellationToken,
+                visitedLocals);
 
-        if (!HasWhereInChain(latestUnconditional.Value.Value.UnwrapConversions(), cancellationToken, visitedLocals))
+        if (!HasWhereInChain(
+                latestUnconditional.Value.Value.UnwrapConversions(),
+                cancellationToken,
+                ForkVisitedLocals(visitedLocals)))
             return false;
 
         foreach (var conditional in conditionalReassignments)
@@ -167,11 +189,79 @@ public sealed class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : DiagnosticAn
             if (conditional.SpanStart <= latestUnconditional.Value.SpanStart)
                 continue;
 
-            if (!HasWhereInChain(conditional.Value.UnwrapConversions(), cancellationToken, visitedLocals))
+            if (!HasWhereInChain(
+                    conditional.Value.UnwrapConversions(),
+                    cancellationToken,
+                    ForkVisitedLocals(visitedLocals)))
                 return false;
         }
 
         return true;
+    }
+
+    private static bool HasWhereInExhaustiveIfElseAssignments(
+        IReadOnlyList<LocalAssignment> assignments,
+        int beforePosition,
+        CancellationToken cancellationToken,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        var earlierAssignments = assignments
+            .Where(assignment => assignment.SpanStart < beforePosition)
+            .ToArray();
+        if (earlierAssignments.Length == 0)
+            return false;
+
+        foreach (var ifStatement in earlierAssignments
+                     .Select(assignment => assignment.Value.Syntax.FirstAncestorOrSelf<IfStatementSyntax>())
+                     .Where(ifStatement => ifStatement?.Else != null)
+                     .Distinct())
+        {
+            if (ifStatement == null)
+                continue;
+
+            var assignmentsFromCandidate = earlierAssignments
+                .Where(assignment => assignment.SpanStart >= ifStatement.SpanStart)
+                .ToArray();
+
+            var thenAssignments = earlierAssignments
+                .Where(assignment => ifStatement.Statement.Span.Contains(assignment.Value.Syntax.Span))
+                .ToArray();
+            var elseAssignments = earlierAssignments
+                .Where(assignment => ifStatement.Else!.Statement.Span.Contains(assignment.Value.Syntax.Span))
+                .ToArray();
+            var laterAssignments = assignmentsFromCandidate
+                .Where(assignment => !ifStatement.Span.Contains(assignment.Value.Syntax.Span))
+                .ToArray();
+
+            if (thenAssignments.Length == 0 || elseAssignments.Length == 0)
+                continue;
+
+            if (thenAssignments.All(assignment =>
+                    HasWhereInChain(
+                        assignment.Value.UnwrapConversions(),
+                        cancellationToken,
+                        ForkVisitedLocals(visitedLocals))) &&
+                elseAssignments.All(assignment =>
+                    HasWhereInChain(
+                        assignment.Value.UnwrapConversions(),
+                        cancellationToken,
+                        ForkVisitedLocals(visitedLocals))) &&
+                laterAssignments.All(assignment =>
+                    HasWhereInChain(
+                        assignment.Value.UnwrapConversions(),
+                        cancellationToken,
+                        ForkVisitedLocals(visitedLocals))))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static HashSet<ILocalSymbol> ForkVisitedLocals(ISet<ILocalSymbol> visitedLocals)
+    {
+        return new HashSet<ILocalSymbol>(visitedLocals, SymbolEqualityComparer.Default);
     }
 
     private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax)
