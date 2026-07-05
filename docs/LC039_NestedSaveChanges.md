@@ -48,7 +48,7 @@ The transaction is not a performance trick; it documents that the two saves are 
 ### Severity: `Info`
 
 ### Notes
-The rule suppresses obvious EF Core transaction-boundary cases, repeated saves inside the same explicit transaction `using` block, repeated saves inside a C# 8+ `using`/`await using` local declaration of an EF Core transaction, mutually exclusive `if`/`else` branches, mutually exclusive `switch` sections, and a `try` block versus a `catch` clause (a `catch` save is a compensating/retry save, not a batchable repeat — but a `finally` save still counts because it always runs), then reports on a per-context basis within the same executable root.
+The rule suppresses obvious EF Core transaction-boundary cases, repeated saves inside the same explicit transaction `using` block, repeated saves inside a C# 8+ `using`/`await using` local declaration of an EF Core transaction, mutually exclusive `if`/`else` branches, mutually exclusive `switch` sections and switch-expression result arms, and a `try` block versus a `catch` clause (a `catch` save is a compensating/retry save, not a batchable repeat — but a `finally` save still counts because it always runs), then reports on a per-context basis within the same executable root.
 
 Only EF Core transaction APIs on `DatabaseFacade` or `IDbContextTransaction`-style receivers count as boundaries. Unrelated helper methods named `Commit`, `Rollback`, or similar do not suppress the diagnostic. A `using` declaration of an unrelated disposable (for example a `MemoryStream`) does not suppress the diagnostic, and a transaction `using` declaration introduced after the first save does not retroactively cover saves that preceded it.
 
@@ -56,7 +56,7 @@ Only EF Core transaction APIs on `DatabaseFacade` or `IDbContextTransaction`-sty
 - LC039 is scoped to repeated `SaveChanges()` / `SaveChangesAsync()` calls on the same provable `DbContext` receiver inside one executable root.
 - Separate context instances do not report; saving `db1` and `db2` is treated as two different units of work.
 - Nested local functions, lambdas, and other executable roots are analysed independently. A save in the outer method and a save in an inner local function are not treated as one repeated-save sequence.
-- Independent `if` statements can still report because both branches may execute in one call. Mutually exclusive `if`/`else`, `else if`, and `switch` sections stay quiet.
+- Independent `if` statements can still report because both branches may execute in one call. Mutually exclusive `if`/`else`, `else if`, `switch` sections, and switch-expression result arms stay quiet. A save in a switch-expression pattern or `when` guard can still report with a later arm because guards may run before matching continues.
 - `try` versus `catch` saves stay quiet because the catch save is a retry/compensation path after the try save failed. `finally` saves still report because the finally block runs after the try path.
 - Transaction boundaries are recognised only when the invocation is on EF Core's `DatabaseFacade` or an EF Core transaction type. Lookalike methods on application services are intentionally ignored.
 - This rule has no code fix. Whether to batch, split the method, introduce an explicit transaction, or keep the repeated save depends on the business invariant protected by the earlier commit.

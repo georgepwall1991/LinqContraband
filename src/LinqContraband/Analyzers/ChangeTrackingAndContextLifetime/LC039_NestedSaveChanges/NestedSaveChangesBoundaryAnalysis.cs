@@ -56,6 +56,22 @@ public sealed partial class NestedSaveChangesAnalyzer
                 }
             }
 
+            foreach (var switchExpression in left.AncestorsAndSelf().OfType<SwitchExpressionSyntax>())
+            {
+                if (!switchExpression.Span.Contains(right.SpanStart))
+                    continue;
+
+                var leftArm = GetContainingSwitchExpressionArm(switchExpression, left);
+                var rightArm = GetContainingSwitchExpressionArm(switchExpression, right);
+
+                if (leftArm != null &&
+                    rightArm != null &&
+                    leftArm != rightArm)
+                {
+                    return true;
+                }
+            }
+
             // A SaveChanges in a try block and one in a catch clause are mutually exclusive: the
             // catch body only runs if the try threw, in which case the try's SaveChanges never
             // completed — this is a compensating/retry save, not a batchable repeat. Two different
@@ -156,6 +172,11 @@ public sealed partial class NestedSaveChangesAnalyzer
         private static SwitchSectionSyntax? GetContainingSwitchSection(SwitchStatementSyntax switchStatement, SyntaxNode node)
         {
             return switchStatement.Sections.FirstOrDefault(section => section.Span.Contains(node.SpanStart));
+        }
+
+        private static SwitchExpressionArmSyntax? GetContainingSwitchExpressionArm(SwitchExpressionSyntax switchExpression, SyntaxNode node)
+        {
+            return switchExpression.Arms.FirstOrDefault(arm => arm.Expression.Span.Contains(node.SpanStart));
         }
 
         private static void Report(CompilationAnalysisContext context, InvocationRecord record, ISymbol contextSymbol, string methodName)
