@@ -77,7 +77,6 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes)
     {
         var field = (IFieldSymbol)context.Symbol;
-        if (field.IsStatic) return;
 
         if (field.Type.IsDbContext())
         {
@@ -91,7 +90,6 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes)
     {
         var property = (IPropertySymbol)context.Symbol;
-        if (property.IsStatic) return;
 
         if (property.Type.IsDbContext())
         {
