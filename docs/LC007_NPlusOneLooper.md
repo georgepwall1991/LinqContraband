@@ -46,9 +46,11 @@ while (hasWork)
 ```
 
 The analyzer follows direct EF roots such as `DbSet<T>`, `DbContext.Set<T>()`, navigation `Query()` calls, and single-assignment query local hops when the origin stays provable.
+Deferred `AsEnumerable()` boundaries before terminal execution still report when the upstream source is provably EF-backed.
 
 ## What LC007 Intentionally Ignores
 - Plain LINQ-to-Objects or `AsQueryable()` sources
+- `AsEnumerable()` aggregates over already in-memory collections
 - Aggregates, lookups, or filters over already materialized `List<T>`/array/local DTO collections inside loops
 - Ambiguous `IQueryable` provenance through parameters, fields, properties, or multi-assignment locals
 - Query construction inside loops when no execution method is invoked

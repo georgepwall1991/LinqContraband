@@ -285,6 +285,28 @@ class Program
     }
 
     [Fact]
+    public async Task AsEnumerableImmediatelyBeforeAggregate_InLoop_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+
+        foreach (var id in new[] { 1, 2, 3 })
+        {
+            var count = {|#0:db.Users.Where(u => u.Id == id).AsEnumerable().Count()|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic("LC007").WithLocation(0).WithArguments("Count");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_InWhileLoop_TriggersDiagnostic()
     {
         var test = Usings + @"
@@ -341,6 +363,27 @@ class Program
         foreach (var id in new[] { 1, 2, 3 })
         {
             var count = users.Count(u => u.Id == id);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InMemoryAsEnumerableAggregate_IsIgnored()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var users = new List<User>();
+
+        foreach (var id in new[] { 1, 2, 3 })
+        {
+            var count = users.AsEnumerable().Count(u => u.Id == id);
         }
     }
 }
