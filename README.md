@@ -933,6 +933,8 @@ var user = db.Users.Find(userId);
 LC023 honors visible Fluent API `HasKey(...)` configuration before falling back to `Id`/`{EntityName}Id` conventions or
 the real `System.ComponentModel.DataAnnotations.KeyAttribute`. It ignores same-name fake attributes and stays silent for
 partial composite-key lookups because `Find(...)` needs the complete configured key value set.
+The fixer is only offered when the key value is independent of the predicate parameter; column-to-column predicates such
+as `x.Id == x.OtherId` remain diagnostic-only because `Find(x.OtherId)` would reference `x` outside the lambda.
 
 ---
 

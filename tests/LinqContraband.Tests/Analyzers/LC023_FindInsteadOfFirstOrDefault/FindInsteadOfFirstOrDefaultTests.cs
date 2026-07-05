@@ -217,6 +217,26 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task Fixer_ShouldNotRewriteWhenKeyValueReferencesLambdaParameter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } public int OtherId { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(DbSet<User> users)
+        {
+            var result = {|LC023:users.FirstOrDefault(x => x.Id == x.OtherId)|};
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldNotRewriteAsyncLookupWhenCallIsNotAwaited()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

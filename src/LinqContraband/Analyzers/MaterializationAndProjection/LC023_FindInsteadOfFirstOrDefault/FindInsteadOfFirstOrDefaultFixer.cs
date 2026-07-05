@@ -82,8 +82,12 @@ public sealed class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
 
         var predicateArgument = operation.Arguments
             .FirstOrDefault(argument => argument.Value.UnwrapConversions() is IAnonymousFunctionOperation);
-        if (predicateArgument == null || predicateArgument.Syntax is not ArgumentSyntax predicateSyntax)
+        if (predicateArgument == null ||
+            predicateArgument.Value.UnwrapConversions() is not IAnonymousFunctionOperation lambdaOperation ||
+            predicateArgument.Syntax is not ArgumentSyntax predicateSyntax)
+        {
             return false;
+        }
 
         if (predicateSyntax.Expression is not LambdaExpressionSyntax lambda ||
             lambda.Body is not BinaryExpressionSyntax binary ||
@@ -92,7 +96,7 @@ public sealed class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
             return false;
         }
 
-        if (!TryGetKeyValueExpression(binary, semanticModel, cancellationToken, out var valueExpression))
+        if (!TryGetKeyValueExpression(binary, lambdaOperation, semanticModel, cancellationToken, out var valueExpression))
             return false;
 
         var cancellationTokenArgument = operation.Arguments
@@ -127,24 +131,53 @@ public sealed class FindInsteadOfFirstOrDefaultFixer : CodeFixProvider
 
     private static bool TryGetKeyValueExpression(
         BinaryExpressionSyntax binary,
+        IAnonymousFunctionOperation lambda,
         SemanticModel semanticModel,
         CancellationToken cancellationToken,
         out ExpressionSyntax valueExpression)
     {
         if (IsPrimaryKeyAccess(binary.Left, semanticModel, cancellationToken))
         {
+            if (ReferencesLambdaParameter(binary.Right, lambda, semanticModel, cancellationToken))
+            {
+                valueExpression = null!;
+                return false;
+            }
+
             valueExpression = binary.Right.WithoutTrivia();
             return true;
         }
 
         if (IsPrimaryKeyAccess(binary.Right, semanticModel, cancellationToken))
         {
+            if (ReferencesLambdaParameter(binary.Left, lambda, semanticModel, cancellationToken))
+            {
+                valueExpression = null!;
+                return false;
+            }
+
             valueExpression = binary.Left.WithoutTrivia();
             return true;
         }
 
         valueExpression = null!;
         return false;
+    }
+
+    private static bool ReferencesLambdaParameter(
+        ExpressionSyntax expression,
+        IAnonymousFunctionOperation lambda,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var parameter = lambda.Symbol.Parameters.FirstOrDefault();
+        if (parameter == null)
+            return false;
+
+        var operation = semanticModel.GetOperation(expression, cancellationToken)?.UnwrapConversions();
+        return operation?.DescendantsAndSelf()
+            .OfType<IParameterReferenceOperation>()
+            .Any(reference => SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter)) == true;
     }
 
     private static bool IsPrimaryKeyAccess(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken cancellationToken)
