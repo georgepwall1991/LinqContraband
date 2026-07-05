@@ -32,11 +32,10 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
-        var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?
+        var invocation = root.FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true)
             .AncestorsAndSelf()
             .OfType<InvocationExpressionSyntax>()
-            .FirstOrDefault();
+            .FirstOrDefault(candidate => candidate.Span == diagnostic.Location.SourceSpan);
 
         if (invocation == null)
             return;
@@ -49,6 +48,9 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
             return;
 
         if (!IsSafeFixMaterializer(invocation))
+            return;
+
+        if (HasUnsupportedPredicateArgument(invocation, semanticModel, context.CancellationToken))
             return;
 
         if (!fixContext.IsVarDeclaration)
@@ -69,6 +71,51 @@ public sealed class SingleEntityScalarProjectionFixer : CodeFixProvider
 
         var methodName = memberAccess.Name.Identifier.Text;
         return methodName is "First" or "FirstAsync" or "Single" or "SingleAsync";
+    }
+
+    private static bool HasUnsupportedPredicateArgument(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return true;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter?.Type is { } parameterType &&
+                IsPredicateType(parameterType) &&
+                !IsInlineLambdaArgument(argument.Syntax))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsInlineLambdaArgument(SyntaxNode syntax)
+    {
+        var expression = syntax is ArgumentSyntax argumentSyntax
+            ? argumentSyntax.Expression
+            : syntax;
+
+        return expression is SimpleLambdaExpressionSyntax or ParenthesizedLambdaExpressionSyntax;
+    }
+
+    private static bool IsPredicateType(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol namedType)
+            return false;
+
+        if (namedType.Name == "Expression" &&
+            namedType.TypeArguments.Length == 1)
+        {
+            return IsPredicateType(namedType.TypeArguments[0]);
+        }
+
+        return namedType.Name == "Func" &&
+               namedType.DelegateInvokeMethod?.ReturnType.SpecialType == SpecialType.System_Boolean;
     }
 
     private static async Task<Document> ApplyFixAsync(
