@@ -48,8 +48,20 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        if (method.Name != "Select") return;
+        if (method.Name == "Select")
+        {
+            AnalyzeSelectProjection(invocation, context);
+            return;
+        }
 
+        if (method.Name == "GroupBy")
+        {
+            AnalyzeGroupByResultSelector(invocation, context);
+        }
+    }
+
+    private void AnalyzeSelectProjection(IInvocationOperation invocation, OperationAnalysisContext context)
+    {
         // Check if receiver type is IQueryable
         var receiverType = invocation.GetInvocationReceiverType();
         if (!receiverType.IsIQueryable()) return;
@@ -57,21 +69,42 @@ public sealed class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
         // Check if the IQueryable's element type is IGrouping<,>
         if (!IsGroupingQueryable(receiverType)) return;
 
-        // Find the lambda argument
+        foreach (var lambda in GetAnonymousFunctionArguments(invocation))
+        {
+            // The lambda parameter represents the grouping (g)
+            if (lambda.Symbol.Parameters.Length == 0) continue;
+            var groupParam = lambda.Symbol.Parameters[0];
+
+            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, context, invocation);
+        }
+    }
+
+    private void AnalyzeGroupByResultSelector(IInvocationOperation invocation, OperationAnalysisContext context)
+    {
+        var receiverType = invocation.GetInvocationReceiverType();
+        if (!receiverType.IsIQueryable()) return;
+
+        foreach (var lambda in GetAnonymousFunctionArguments(invocation))
+        {
+            // Queryable.GroupBy result selectors have (key, group) parameters.
+            if (lambda.Symbol.Parameters.Length < 2) continue;
+            var groupParam = lambda.Symbol.Parameters[1];
+
+            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, context, invocation);
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<IAnonymousFunctionOperation> GetAnonymousFunctionArguments(
+        IInvocationOperation invocation)
+    {
         foreach (var arg in invocation.Arguments)
         {
             var value = arg.Value;
             while (value is IConversionOperation conv) value = conv.Operand;
             while (value is IDelegateCreationOperation del) value = del.Target;
 
-            if (value is not IAnonymousFunctionOperation lambda) continue;
-
-            // The lambda parameter represents the grouping (g)
-            if (lambda.Symbol.Parameters.Length == 0) continue;
-            var groupParam = lambda.Symbol.Parameters[0];
-
-            // Walk the lambda body and check all references to the grouping parameter
-            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, context, invocation);
+            if (value is IAnonymousFunctionOperation lambda)
+                yield return lambda;
         }
     }
 

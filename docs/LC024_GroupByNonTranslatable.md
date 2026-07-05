@@ -50,7 +50,7 @@ var query = db.Orders
     });
 ```
 
-LC024 applies to fluent `GroupBy(...).Select(...)` and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`, `Any`, `All`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
+LC024 applies to fluent `GroupBy(...).Select(...)`, fluent `GroupBy(..., (key, group) => ...)` result selectors, and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`, `Any`, `All`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
 
 ### Translatable aggregate chains
 
