@@ -79,18 +79,39 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                 _ => null
             };
 
-            // Indexers are excluded: users[0] = new User() replaces a collection element,
-            // it does not modify a materialized entity's state.
+            // Indexer write targets are excluded: users[0] = new User() replaces a
+            // collection element, it does not modify a materialized entity's state.
             if (target?.UnwrapConversions() is IPropertyReferenceOperation propertyReference &&
-                !propertyReference.Property.IsIndexer &&
-                propertyReference.Instance?.UnwrapConversions() is ILocalReferenceOperation instanceLocal &&
-                entityLocals.Contains(instanceLocal.Local))
+                IsMaterializedEntityPropertyWrite(propertyReference, entityLocals))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsMaterializedEntityPropertyWrite(
+        IPropertyReferenceOperation propertyReference,
+        HashSet<ILocalSymbol> entityLocals)
+    {
+        return !propertyReference.Property.IsIndexer &&
+               IsRootedInMaterializedEntityLocal(propertyReference.Instance, entityLocals);
+    }
+
+    private static bool IsRootedInMaterializedEntityLocal(
+        IOperation? operation,
+        HashSet<ILocalSymbol> entityLocals)
+    {
+        var unwrapped = operation?.UnwrapConversions();
+
+        return unwrapped switch
+        {
+            ILocalReferenceOperation localReference => entityLocals.Contains(localReference.Local),
+            IPropertyReferenceOperation propertyReference when !propertyReference.Property.IsIndexer =>
+                IsRootedInMaterializedEntityLocal(propertyReference.Instance, entityLocals),
+            _ => false
+        };
     }
 
     private static bool IsPropertyWriteTarget(IPropertyReferenceOperation propertyReference)
