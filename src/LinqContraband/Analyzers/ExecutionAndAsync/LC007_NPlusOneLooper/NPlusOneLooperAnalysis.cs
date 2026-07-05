@@ -398,8 +398,7 @@ internal static class NPlusOneLooperAnalysis
 
     private static bool IsClientBoundaryInvocation(IInvocationOperation invocation)
     {
-        return invocation.TargetMethod.Name == "AsEnumerable" ||
-               ImmediateQueryExecutionMethods.Contains(invocation.TargetMethod.Name) ||
+        return ImmediateQueryExecutionMethods.Contains(invocation.TargetMethod.Name) ||
                SetBasedExecutorMethods.Contains(invocation.TargetMethod.Name);
     }
 
