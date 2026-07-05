@@ -49,7 +49,8 @@ public sealed class UnboundedQueryMaterializationAnalyzer : DiagnosticAnalyzer
             "ToList" or "ToListAsync" or
             "ToArray" or "ToArrayAsync" or
             "ToDictionary" or "ToDictionaryAsync" or
-            "ToHashSet" or "ToHashSetAsync";
+            "ToHashSet" or "ToHashSetAsync" or
+            "ToLookup";
     }
 
     private static bool IsBoundingMethod(string methodName)

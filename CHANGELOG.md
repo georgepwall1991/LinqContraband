@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC031` now treats `ToLookup()` as a collection materializer, so unbounded EF queries that fully group rows client-side are reported like `ToList()`, `ToArray()`, `ToDictionary()`, and `ToHashSet()`.
 - `LC024` now analyzes `Queryable.GroupBy(..., (key, group) => ...)` result selectors, so non-translatable grouped projections such as `group.ToList()` report even when they are written without a separate `.Select(...)` call.
 - `LC025` now treats EF Core `AsNoTrackingWithIdentityResolution()` as a no-tracking query source, so entities materialized with identity resolution still report when passed back to `Update`/`Remove` or explicit modified/deleted `Entry.State` writes.
 - `LC010` no longer offers its `do`-loop move fixer when the saved `DbContext` is declared inside the loop body, preventing non-compiling output that references the context after it goes out of scope.
