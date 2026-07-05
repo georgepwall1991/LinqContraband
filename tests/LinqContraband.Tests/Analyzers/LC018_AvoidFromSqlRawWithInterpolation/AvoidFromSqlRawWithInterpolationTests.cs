@@ -616,6 +616,87 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsSqlIdentifier()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var tableName = ""Users"";
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:$""SELECT * FROM {tableName} WHERE IsActive = 1""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsSelectListIdentifier()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var columnName = ""Id"";
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:$""SELECT {columnName} FROM Users""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsPredicateIdentifier()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var columnName = ""IsActive"";
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:$""SELECT * FROM Users WHERE {columnName} = 1""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsStoredProcedureIdentifier()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var procedureName = ""dbo.GetUsers"";
+            var id = 1;
+            var query = new int[0].AsQueryable();
+            var result = query.FromSqlRaw({|LC018:$""EXEC {procedureName} {id}""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldNotRegister_ForConcatenation()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
