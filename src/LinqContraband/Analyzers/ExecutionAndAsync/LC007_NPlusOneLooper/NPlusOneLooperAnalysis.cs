@@ -98,17 +98,32 @@ internal static class NPlusOneLooperAnalysis
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var loop = invocation.FindEnclosingLoop();
-        if (loop == null || !invocation.SharesOwningExecutableRoot(loop))
-            return null;
-
-        if (!IsPerIterationInvocation(invocation, loop))
+        var loop = FindPerIterationLoop(invocation);
+        if (loop == null)
             return null;
 
         if (!TryMatchDatabaseExecution(invocation, cancellationToken, out var match))
             return null;
 
         return new NPlusOneLoopMatch(match.PatternKind, match.MethodName, loop.GetLoopKind(), match.FixerEligible);
+    }
+
+    private static ILoopOperation? FindPerIterationLoop(IInvocationOperation invocation)
+    {
+        var current = invocation.Parent;
+        while (current != null)
+        {
+            if (current is ILoopOperation loop &&
+                invocation.SharesOwningExecutableRoot(loop) &&
+                IsPerIterationInvocation(invocation, loop))
+            {
+                return loop;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     private static bool IsPerIterationInvocation(IInvocationOperation invocation, ILoopOperation loop)
