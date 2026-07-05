@@ -82,6 +82,24 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ToLookup_FromDbSet_WithoutBounding_ShouldTriggerLC031()
+    {
+        var test = Usings + EFCoreMock + Entities + @"
+namespace TestApp
+{
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC031:db.Users.ToLookup(u => u.IsActive)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToList_FromLocalQueryAlias_ShouldTriggerLC031()
     {
         var test = Usings + EFCoreMock + Entities + @"

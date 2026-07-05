@@ -9,6 +9,8 @@ title: "LC031: Unbounded Query Materialization"
 
 Flags materialization of an apparently unbounded query because loading an entire table or broad result set usually indicates missing filters, missing pagination, or an accidental scan.
 
+Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToHashSet()`, `ToLookup()`, and the async EF variants where EF provides one.
+
 ## Why it matters
 
 LinqContraband reports this rule when the query shape suggests a risky or non-translatable pattern that is better made explicit before it reaches production.
