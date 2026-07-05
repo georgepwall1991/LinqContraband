@@ -35,7 +35,7 @@ LC011 treats these as valid primary-key or intentional opt-out patterns:
 - Data annotations: public mapped properties with `System.ComponentModel.DataAnnotations.KeyAttribute`.
 - EF Core composite keys: class-level `Microsoft.EntityFrameworkCore.PrimaryKeyAttribute` where all referenced properties exist, are public, mapped, and key-compatible.
 - Fluent API keys in `OnModelCreating`: `modelBuilder.Entity<TEntity>().HasKey(...)`, scoped local builder variables, and chained builder calls such as `entity.ToTable("Products").HasKey(...)`.
-- Applied configurations: inline or local `modelBuilder.ApplyConfiguration(...)` calls, and `ApplyConfigurationsFromAssembly(typeof(LocalType).Assembly)` when the marker type belongs to the current source assembly and the configuration's `Configure` method calls `HasKey(...)` or `HasNoKey()` for its own `EntityTypeBuilder<TEntity>`.
+- Applied configurations: inline or local `modelBuilder.ApplyConfiguration(...)` calls, and `ApplyConfigurationsFromAssembly(...)` when the assembly argument is proven to be the current source assembly (`typeof(LocalType).Assembly`, `System.Reflection.Assembly.GetExecutingAssembly()`, `global::System.Reflection.Assembly.GetExecutingAssembly()`, a `using Assembly = System.Reflection.Assembly` alias, or an unshadowed local/readonly-member alias of those expressions) and the configuration's `Configure` method calls `HasKey(...)` or `HasNoKey()` for its own `EntityTypeBuilder<TEntity>`.
 - Intentional keyless types: `Microsoft.EntityFrameworkCore.KeylessAttribute` or `HasNoKey()`.
 - Owned types: `Microsoft.EntityFrameworkCore.OwnedAttribute`, generic ownership such as `OwnsOne<Address>(...)`, and inferred ownership such as `OwnsOne(e => e.Address)` / `OwnsMany(e => e.Items)`.
 
