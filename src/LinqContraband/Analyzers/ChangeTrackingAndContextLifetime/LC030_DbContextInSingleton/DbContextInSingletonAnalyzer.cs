@@ -3,8 +3,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -54,9 +57,9 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
                 context => AnalyzeField(context, candidates, longLivedTypes),
                 SymbolKind.Field);
 
-            compilationContext.RegisterSymbolAction(
+            compilationContext.RegisterSyntaxNodeAction(
                 context => AnalyzeProperty(context, candidates, longLivedTypes),
-                SymbolKind.Property);
+                SyntaxKind.PropertyDeclaration);
 
             compilationContext.RegisterSymbolAction(
                 context => AnalyzeConstructor(context, candidates, longLivedTypes),
@@ -85,16 +88,102 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
     }
 
     private static void AnalyzeProperty(
-        SymbolAnalysisContext context,
+        SyntaxNodeAnalysisContext context,
         ConcurrentBag<DbContextCandidate> candidates,
         ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes)
     {
-        var property = (IPropertySymbol)context.Symbol;
+        var propertyDeclaration = (PropertyDeclarationSyntax)context.Node;
+        var property = context.SemanticModel.GetDeclaredSymbol(propertyDeclaration, context.CancellationToken);
 
-        if (property.Type.IsDbContext())
+        if (property?.Type.IsDbContext() == true &&
+            !IsFreshComputedProperty(property, propertyDeclaration, context.SemanticModel, context.CancellationToken))
         {
-            AddCandidate(context, candidates, longLivedTypes, property.ContainingType, property.Name, CandidateKind.Property, GetLocation(property));
+            AddCandidate(
+                context,
+                candidates,
+                longLivedTypes,
+                property.ContainingType,
+                property.Name,
+                CandidateKind.Property,
+                GetLocation(property));
         }
+    }
+
+    private static bool IsFreshComputedProperty(
+        IPropertySymbol property,
+        PropertyDeclarationSyntax propertyDeclaration,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (property.SetMethod != null)
+        {
+            return false;
+        }
+
+        if (propertyDeclaration.Initializer != null)
+        {
+            return false;
+        }
+
+        if (propertyDeclaration.ExpressionBody != null)
+        {
+            return IsFreshContextExpression(propertyDeclaration.ExpressionBody.Expression, semanticModel, cancellationToken);
+        }
+
+        var getter = propertyDeclaration.AccessorList?.Accessors
+            .FirstOrDefault(accessor => accessor.Kind() == SyntaxKind.GetAccessorDeclaration);
+        if (getter?.ExpressionBody != null)
+        {
+            return IsFreshContextExpression(getter.ExpressionBody.Expression, semanticModel, cancellationToken);
+        }
+
+        if (getter?.Body != null)
+        {
+            var returnStatements = getter.Body.Statements.OfType<ReturnStatementSyntax>().ToArray();
+            if (returnStatements.Length == 1 &&
+                getter.Body.Statements.Count == 1 &&
+                returnStatements[0].Expression is { } returnExpression)
+            {
+                return IsFreshContextExpression(returnExpression, semanticModel, cancellationToken);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsFreshContextExpression(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken cancellationToken)
+    {
+        var operation = semanticModel.GetOperation(expression, cancellationToken);
+        return operation switch
+        {
+            IObjectCreationOperation creation when creation.Type?.IsDbContext() == true => true,
+            IInvocationOperation invocation when IsDbContextFactoryCreate(invocation) => true,
+            _ => false
+        };
+    }
+
+    private static bool IsDbContextFactoryCreate(IInvocationOperation invocation)
+    {
+        return invocation.TargetMethod.Name == "CreateDbContext" &&
+               invocation.TargetMethod.ReturnType.IsDbContext() &&
+               IsDbContextFactory(invocation.TargetMethod.ContainingType);
+    }
+
+    private static bool IsDbContextFactory(ITypeSymbol? type)
+    {
+        if (type is not INamedTypeSymbol namedType)
+        {
+            return false;
+        }
+
+        return IsDbContextFactoryDefinition(namedType) ||
+               namedType.AllInterfaces.Any(IsDbContextFactoryDefinition);
+    }
+
+    private static bool IsDbContextFactoryDefinition(INamedTypeSymbol type)
+    {
+        return type.Name == "IDbContextFactory" &&
+               type.ContainingNamespace?.ToDisplayString() == "Microsoft.EntityFrameworkCore";
     }
 
     private static void AnalyzeConstructor(
@@ -132,14 +221,55 @@ public sealed class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         CandidateKind kind,
         Location location)
     {
+        AddCandidate(
+            candidates,
+            longLivedTypes,
+            containingType,
+            name,
+            kind,
+            location,
+            context.Compilation,
+            context.Options.AnalyzerConfigOptionsProvider);
+    }
+
+    private static void AddCandidate(
+        SyntaxNodeAnalysisContext context,
+        ConcurrentBag<DbContextCandidate> candidates,
+        ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes,
+        INamedTypeSymbol containingType,
+        string name,
+        CandidateKind kind,
+        Location location)
+    {
+        AddCandidate(
+            candidates,
+            longLivedTypes,
+            containingType,
+            name,
+            kind,
+            location,
+            context.SemanticModel.Compilation,
+            context.Options.AnalyzerConfigOptionsProvider);
+    }
+
+    private static void AddCandidate(
+        ConcurrentBag<DbContextCandidate> candidates,
+        ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes,
+        INamedTypeSymbol containingType,
+        string name,
+        CandidateKind kind,
+        Location location,
+        Compilation compilation,
+        AnalyzerConfigOptionsProvider optionsProvider)
+    {
         if (containingType.TypeKind != TypeKind.Class) return;
         if (containingType.IsDbContext()) return;
 
         candidates.Add(new DbContextCandidate(containingType, name, kind, location));
         AddIntrinsicLongLivedEvidence(
             containingType,
-            context.Compilation,
-            context.Options.AnalyzerConfigOptionsProvider,
+            compilation,
+            optionsProvider,
             location.SourceTree,
             longLivedTypes);
     }

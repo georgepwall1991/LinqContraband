@@ -53,7 +53,7 @@ public class MyService
 
 ### Algorithm
 1.  **Targets**:
-    -   Fields and properties whose type derives from `Microsoft.EntityFrameworkCore.DbContext`, including static members on proven long-lived types.
+    -   Fields and stored properties whose type derives from `Microsoft.EntityFrameworkCore.DbContext`, including static members on proven long-lived types. Computed getter properties are ignored only when the getter directly creates a fresh context with `IDbContextFactory<TContext>.CreateDbContext()` or `new TContext()`.
     -   Constructor parameters whose type derives from `DbContext`, when the type has no stored `DbContext` member to report.
     -   DI calls that register a `DbContext` itself as singleton.
 2.  **Strict long-lived proof**:
@@ -73,6 +73,8 @@ LC030 is intentionally manual-only. It does not provide a code fix because the c
 ```csharp
 public sealed class Worker : BackgroundService { private readonly AppDbContext _db; ... }
 public sealed class Worker : BackgroundService { private static AppDbContext _db; ... }
+public sealed class Worker : BackgroundService { public AppDbContext Db { get; } = new AppDbContext(); ... }
+public sealed class Worker : BackgroundService { private AppDbContext Db => _services.GetRequiredService<AppDbContext>(); ... }
 public sealed class AuditMiddleware { private readonly AppDbContext _db; public Task InvokeAsync(HttpContext ctx) => Task.CompletedTask; }
 services.AddSingleton<AppDbContext>(); // DbContext registered as singleton
 services.AddDbContext<AppDbContext>(contextLifetime: ServiceLifetime.Singleton);
@@ -84,5 +86,6 @@ public class MyController { public MyController(AppDbContext db) { ... } } // Co
 public sealed class ScopedAuditMiddleware : IMiddleware { public ScopedAuditMiddleware(AppDbContext db) { ... } } // IMiddleware can be scoped
 services.AddScoped<MyService>();
 private readonly IDbContextFactory<AppDbContext> _factory;
+private AppDbContext Db => _factory.CreateDbContext(); // Fresh context per access
 public sealed class PlainType { private static AppDbContext _db; } // No long-lived-type proof
 ```
