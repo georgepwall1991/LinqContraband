@@ -170,6 +170,92 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_FreshContextCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            using var db = new MyDbContext();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ContextAliasDeclaredInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var sharedDb = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            var current = sharedDb;
+            {|LC010:current.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ContextDeclaredInForInitializer_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        bool keepGoing = true;
+
+        for (var db = new MyDbContext(); keepGoing; keepGoing = false)
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_FreshContextReassignedToSharedContextInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var sharedDb = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            var db = new MyDbContext();
+            db = sharedDb;
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_LocalFunctionDeclaredInsideLoop_ShouldNotTrigger()
     {
         var test = Usings + @"
