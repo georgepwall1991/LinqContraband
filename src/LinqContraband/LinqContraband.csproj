@@ -41,7 +41,7 @@
         <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
         <!-- Include analyzer DLL in correct path for Roslyn -->
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0">
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
