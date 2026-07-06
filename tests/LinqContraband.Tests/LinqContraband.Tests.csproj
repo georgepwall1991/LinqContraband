@@ -12,7 +12,7 @@
         <PackageReference Include="coverlet.collector" Version="10.0.1"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" Version="1.1.2"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0"/>
 
         <!-- Force usage of Roslyn 4.3.0 to match the Analyzer project and resolve conflicts -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0" />
