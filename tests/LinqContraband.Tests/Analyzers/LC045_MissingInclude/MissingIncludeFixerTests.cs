@@ -50,6 +50,7 @@ namespace Microsoft.EntityFrameworkCore
     {
         public void Dispose() { }
         public int SaveChanges() => 0;
+        public DbSet<T> Set<T>() where T : class => null;
     }
 
     public class DbSet<T> : IQueryable<T> where T : class
@@ -123,6 +124,13 @@ namespace TestNamespace
     public class MyDbContext : DbContext
     {
         public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+        public DbSet<Address> Addresses { get; set; }
+        public DbSet<OrderItem> OrderItems { get; set; }
+    }
+
+    public class SetOnlyDbContext : DbContext
+    {
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
@@ -282,6 +290,90 @@ class Program
     {
         var db = new MyDbContext();
         var orders = db.Orders.Include(x => x.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_DbContextSetRoot_AddsIncludeBeforeMaterializer()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Set<Order>().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Set<Order>().Include(x => x.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_DbContextSetRootWithoutDbSetProperty_AddsIncludeBeforeMaterializer()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new SetOnlyDbContext();
+        var orders = db.Set<Order>().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new SetOnlyDbContext();
+        var orders = db.Set<Order>().Include(x => x.Customer).ToList();
         foreach (var o in orders)
         {
             Console.WriteLine(o.Customer.Name);
