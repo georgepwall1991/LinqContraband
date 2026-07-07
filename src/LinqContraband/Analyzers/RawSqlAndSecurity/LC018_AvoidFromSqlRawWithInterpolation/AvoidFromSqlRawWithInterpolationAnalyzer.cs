@@ -11,7 +11,7 @@ namespace LinqContraband.Analyzers.LC018_AvoidFromSqlRawWithInterpolation;
 /// Analyzes FromSqlRaw usage to detect potential SQL injection vulnerabilities from interpolated strings or non-constant concatenations. Diagnostic ID: LC018
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyzer
+public sealed partial class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC018";
     private const string Category = "Security";
@@ -77,60 +77,4 @@ public sealed class AvoidFromSqlRawWithInterpolationAnalyzer : DiagnosticAnalyze
                namespaceName?.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal) == true;
     }
 
-    private bool IsPotentiallyUnsafe(IOperation operation)
-    {
-        var current = operation;
-
-        // Handle conversion to RawSqlString or other string-like types
-        if (current is IConversionOperation conversion)
-        {
-            current = conversion.Operand;
-        }
-
-        current = current.UnwrapConversions();
-
-        if (current is IInterpolatedStringOperation interpolatedString)
-        {
-            return HasNonConstantInterpolation(interpolatedString);
-        }
-
-        if (current is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Add)
-        {
-            return IsUnsafeConcatenation(binary);
-        }
-
-        return false;
-    }
-
-    private bool IsUnsafeConcatenation(IBinaryOperation binary)
-    {
-        // Check left and right sides
-        if (IsUnsafeSide(binary.LeftOperand)) return true;
-        if (IsUnsafeSide(binary.RightOperand)) return true;
-        return false;
-    }
-
-    private bool IsUnsafeSide(IOperation operation)
-    {
-        var current = operation.UnwrapConversions();
-
-        // If it's a constant, it's safe
-        if (current.ConstantValue.HasValue) return false;
-
-        // If it's another concatenation, recurse
-        if (current is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Add)
-        {
-            return IsUnsafeConcatenation(binary);
-        }
-
-        // If it's a variable, parameter, or method call that is NOT a constant, it's unsafe for FromSqlRaw
-        return true;
-    }
-
-    private static bool HasNonConstantInterpolation(IInterpolatedStringOperation interpolatedString)
-    {
-        return interpolatedString.Parts
-            .OfType<IInterpolationOperation>()
-            .Any(interpolation => !interpolation.Expression.UnwrapConversions().ConstantValue.HasValue);
-    }
 }

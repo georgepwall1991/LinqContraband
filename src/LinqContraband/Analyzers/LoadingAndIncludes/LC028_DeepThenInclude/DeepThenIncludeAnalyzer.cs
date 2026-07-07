@@ -2,10 +2,8 @@ using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC028_DeepThenInclude;
 
@@ -14,7 +12,7 @@ namespace LinqContraband.Analyzers.LC028_DeepThenInclude;
 /// and generate complex SQL with many LEFT JOINs. Diagnostic ID: LC028
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
+public sealed partial class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC028";
     internal const string MaxDepthOptionKey = "dotnet_code_quality.LC028.max_depth";
@@ -63,38 +61,12 @@ public sealed class DeepThenIncludeAnalyzer : DiagnosticAnalyzer
         if (method.Name != "ThenInclude") return;
         if (!IsEfCoreMethod(method)) return;
 
-        // Count ThenInclude depth by walking backward
-        var depth = 1; // Current ThenInclude counts as 1
-        var current = invocation.GetInvocationReceiver();
-
-        while (current is IInvocationOperation prevInvocation)
-        {
-            var prevMethod = prevInvocation.TargetMethod;
-            if (prevMethod.Name == "ThenInclude" && IsEfCoreMethod(prevMethod))
-            {
-                depth++;
-                current = prevInvocation.GetInvocationReceiver();
-            }
-            else
-            {
-                break;
-            }
-        }
+        var depth = CountThenIncludeDepth(invocation);
 
         var maxDepth = GetMaxDepth(context, maxDepthCache);
         if (depth == maxDepth + 1)
         {
-            // Narrow the diagnostic to just the ".ThenInclude(...)" portion, excluding the receiver
-            var location = invocation.Syntax.GetLocation();
-            if (invocation.Syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
-            {
-                // Span from the dot before ThenInclude through the closing paren
-                var start = memberAccess.OperatorToken.SpanStart;
-                var end = invocation.Syntax.Span.End;
-                var textSpan = TextSpan.FromBounds(start, end);
-                location = Location.Create(invocation.Syntax.SyntaxTree, textSpan);
-            }
-
+            var location = GetDiagnosticLocation(invocation);
             context.ReportDiagnostic(Diagnostic.Create(Rule, location, depth, maxDepth));
         }
     }

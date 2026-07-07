@@ -11,7 +11,7 @@ namespace LinqContraband.Analyzers.LC019_ConditionalInclude;
 /// which always throw InvalidOperationException at runtime. Diagnostic ID: LC019
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
+public sealed partial class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC019";
     private const string Category = "Correctness";
@@ -86,25 +86,4 @@ public sealed class ConditionalIncludeAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool HasConditionalIncludePath(IOperation operation)
-    {
-        var current = operation.UnwrapConversions();
-
-        return current switch
-        {
-            IConditionalOperation or ICoalesceOperation => true,
-            IPropertyReferenceOperation property => property.Instance != null &&
-                                                    HasConditionalIncludePath(property.Instance),
-            IFieldReferenceOperation field => field.Instance != null &&
-                                              HasConditionalIncludePath(field.Instance),
-            IInvocationOperation invocation => HasConditionalIncludeInvocationSource(invocation),
-            _ => false
-        };
-    }
-
-    private static bool HasConditionalIncludeInvocationSource(IInvocationOperation invocation)
-    {
-        var receiver = invocation.GetInvocationReceiver();
-        return receiver != null && HasConditionalIncludePath(receiver);
-    }
 }

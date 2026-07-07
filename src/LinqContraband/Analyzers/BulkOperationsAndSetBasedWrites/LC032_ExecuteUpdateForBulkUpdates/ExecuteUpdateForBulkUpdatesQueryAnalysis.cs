@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -9,35 +7,6 @@ namespace LinqContraband.Analyzers.LC032_ExecuteUpdateForBulkUpdates;
 
 public sealed partial class ExecuteUpdateForBulkUpdatesAnalyzer
 {
-    private static readonly ImmutableHashSet<string> AllowedQuerySteps = ImmutableHashSet.Create(
-        StringComparer.Ordinal,
-        "Where",
-        "OrderBy",
-        "OrderByDescending",
-        "ThenBy",
-        "ThenByDescending",
-        "Skip",
-        "Take",
-        "Distinct",
-        "Include",
-        "ThenInclude",
-        "IgnoreQueryFilters",
-        "AsSplitQuery",
-        "AsSingleQuery",
-        "AsTracking",
-        "IgnoreAutoIncludes",
-        "TagWith",
-        "TagWithCallSite"
-    );
-
-    private static readonly ImmutableHashSet<string> MaterializerSteps = ImmutableHashSet.Create(
-        StringComparer.Ordinal,
-        "ToList",
-        "ToListAsync",
-        "ToArray",
-        "ToArrayAsync"
-    );
-
     private static bool TryAnalyzeLoop(
         IForEachLoopOperation loop,
         ILocalSymbol dbContextLocal,

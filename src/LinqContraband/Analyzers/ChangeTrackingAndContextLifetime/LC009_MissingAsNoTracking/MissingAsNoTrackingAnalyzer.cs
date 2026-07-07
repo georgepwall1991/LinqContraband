@@ -90,22 +90,6 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
     }
 
-    private static bool IsEntityMaterializer(IMethodSymbol method)
-    {
-        return method.Name is
-            "ToList" or "ToListAsync" or
-            "ToArray" or "ToArrayAsync" or
-            "ToDictionary" or "ToDictionaryAsync" or
-            "ToHashSet" or "ToHashSetAsync" or
-            "AsEnumerable" or
-            "First" or "FirstOrDefault" or
-            "FirstAsync" or "FirstOrDefaultAsync" or
-            "Single" or "SingleOrDefault" or
-            "SingleAsync" or "SingleOrDefaultAsync" or
-            "Last" or "LastOrDefault" or
-            "LastAsync" or "LastOrDefaultAsync";
-    }
-
     private static string GetContainingMethodName(IOperation operation)
     {
         var sym = operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart);

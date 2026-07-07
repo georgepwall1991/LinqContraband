@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Text;
 using System.Threading;
 using LinqContraband.Extensions;
@@ -10,32 +9,6 @@ namespace LinqContraband.Analyzers.LC045_MissingInclude;
 
 public sealed partial class MissingIncludeAnalyzer
 {
-    /// <summary>
-    /// Operators that keep the query shaped as "a stream of the root entity". Anything else
-    /// (Select, Join, GroupBy, custom extensions, …) reshapes the result or may add its own
-    /// loading behaviour, so the whole query is conservatively out of scope.
-    /// </summary>
-    private static readonly ImmutableHashSet<string> ShapePreservingOperators = ImmutableHashSet.Create(
-        System.StringComparer.Ordinal,
-        "Where",
-        "OrderBy",
-        "OrderByDescending",
-        "ThenBy",
-        "ThenByDescending",
-        "Skip",
-        "Take",
-        "Distinct",
-        "AsNoTracking",
-        "AsNoTrackingWithIdentityResolution",
-        "AsTracking",
-        "AsSplitQuery",
-        "AsSingleQuery",
-        "TagWith",
-        "TagWithCallSite",
-        "IgnoreQueryFilters",
-        "Include",
-        "ThenInclude");
-
     private sealed class QueryChainInfo
     {
         public QueryChainInfo(INamedTypeSymbol entityType, INamedTypeSymbol contextType, HashSet<string> includedPrefixes)
@@ -48,40 +21,6 @@ public sealed partial class MissingIncludeAnalyzer
         public INamedTypeSymbol EntityType { get; }
         public INamedTypeSymbol ContextType { get; }
         public HashSet<string> IncludedPrefixes { get; }
-    }
-
-    private static bool IsEntityMaterializer(IMethodSymbol method, out bool returnsCollection)
-    {
-        returnsCollection = false;
-
-        switch (method.Name)
-        {
-            case "ToList":
-            case "ToListAsync":
-            case "ToArray":
-            case "ToArrayAsync":
-                returnsCollection = true;
-                break;
-
-            case "First":
-            case "FirstAsync":
-            case "FirstOrDefault":
-            case "FirstOrDefaultAsync":
-            case "Single":
-            case "SingleAsync":
-            case "SingleOrDefault":
-            case "SingleOrDefaultAsync":
-            case "Last":
-            case "LastAsync":
-            case "LastOrDefault":
-            case "LastOrDefaultAsync":
-                break;
-
-            default:
-                return false;
-        }
-
-        return method.IsFrameworkMethod();
     }
 
     private static bool TryAnalyzeQueryChain(
@@ -167,40 +106,6 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         queryInfo = new QueryChainInfo(entityType, contextType, includedPrefixes);
-        return true;
-    }
-
-    private static bool TryGetDbSetRoot(
-        IOperation? operation,
-        out INamedTypeSymbol entityType,
-        out INamedTypeSymbol contextType)
-    {
-        entityType = null!;
-        contextType = null!;
-
-        if (operation is not IMemberReferenceOperation memberReference)
-            return false;
-        if (operation is not (IPropertyReferenceOperation or IFieldReferenceOperation))
-            return false;
-
-        var rootType = memberReference.Type;
-        if (rootType == null || !rootType.IsDbSet())
-            return false;
-
-        var contextCandidate = memberReference.Instance?.Type as INamedTypeSymbol ??
-                               memberReference.Member.ContainingType;
-        if (contextCandidate == null || !contextCandidate.IsDbContext())
-            return false;
-
-        if (rootType is not INamedTypeSymbol namedRoot ||
-            namedRoot.TypeArguments.Length != 1 ||
-            namedRoot.TypeArguments[0] is not INamedTypeSymbol element)
-        {
-            return false;
-        }
-
-        entityType = element;
-        contextType = contextCandidate;
         return true;
     }
 

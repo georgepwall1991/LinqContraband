@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC024_GroupByNonTranslatable;
 
-public class GroupByNonTranslatableTests
+public partial class GroupByNonTranslatableTests
 {
     private const string Usings = @"
 using System;
@@ -217,52 +217,6 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task QuerySyntaxGroupBy_Select_ToList_ShouldTriggerLC024()
-    {
-        var test = Usings + @"
-namespace TestApp
-{
-    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
-
-    public class TestClass
-    {
-        public void TestMethod(IQueryable<Order> orders)
-        {
-            var result =
-                from order in orders
-                group order by order.CustomerId into g
-                select new { Key = g.Key, Items = {|LC024:g.ToList()|} };
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task QuerySyntaxGroupBy_Select_First_ShouldTriggerLC024()
-    {
-        var test = Usings + @"
-namespace TestApp
-{
-    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
-
-    public class TestClass
-    {
-        public void TestMethod(IQueryable<Order> orders)
-        {
-            var result =
-                from order in orders
-                group order by order.CustomerId into g
-                select {|LC024:g.First()|};
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task GroupBy_Select_Any_ShouldNotTrigger()
     {
         // EF Core translates g.Any() in a grouping projection (EXISTS / COUNT(*) > 0).
@@ -325,29 +279,6 @@ namespace TestApp
             var result = orders
                 .GroupBy(o => o.CustomerId)
                 .Select(g => new { Key = g.Key, Total = g.Select(o => o.Amount).Sum() });
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task QuerySyntaxGroupBy_Select_SelectThenSum_ShouldNotTrigger()
-    {
-        var test = Usings + @"
-namespace TestApp
-{
-    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
-
-    public class TestClass
-    {
-        public void TestMethod(IQueryable<Order> orders)
-        {
-            var result =
-                from order in orders
-                group order by order.CustomerId into g
-                select new { Key = g.Key, Total = g.Select(o => o.Amount).Sum() };
         }
     }
 }";
@@ -525,52 +456,6 @@ namespace TestApp
                     Count = Enumerable.Count(g),
                     Total = Enumerable.Sum(g, o => o.Amount)
                 });
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task QuerySyntaxGroupBy_Select_KeyAndAggregates_ShouldNotTrigger()
-    {
-        var test = Usings + @"
-namespace TestApp
-{
-    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
-
-    public class TestClass
-    {
-        public void TestMethod(IQueryable<Order> orders)
-        {
-            var result =
-                from order in orders
-                group order by order.CustomerId into g
-                select new { Key = g.Key, Count = g.Count(), Total = g.Sum(o => o.Amount) };
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task EnumerableQuerySyntaxGroupBy_Select_ClientProjection_ShouldNotTrigger()
-    {
-        var test = Usings + @"
-namespace TestApp
-{
-    public class Order { public int CustomerId { get; set; } public decimal Amount { get; set; } }
-
-    public class TestClass
-    {
-        public void TestMethod(IEnumerable<Order> orders)
-        {
-            var result =
-                from order in orders
-                group order by order.CustomerId into g
-                select new { Key = g.Key, Items = g.ToList() };
         }
     }
 }";

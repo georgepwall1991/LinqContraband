@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 /// variable before the query to enable better caching and testability.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
+public sealed partial class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC016";
     private const string Category = "Performance";
@@ -101,45 +101,6 @@ public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
         return isDateTime || isDateTimeOffset;
     }
 
-    private static IAnonymousFunctionOperation? FindQueryableLambda(IOperation operation)
-    {
-        var current = operation.Parent;
-        while (current != null)
-        {
-            if (current is IArgumentOperation argument)
-                // We found an argument. Check the invocation that owns it.
-                if (argument.Parent is IInvocationOperation linqInvocation)
-                {
-                    var method = linqInvocation.TargetMethod;
-
-                    // Must be one of the target LINQ methods
-                    if (TargetLinqMethods.Contains(method.Name))
-                        // Must be on IQueryable
-                        if (method.ContainingType.Name == "Queryable" &&
-                            method.ContainingNamespace?.ToString() == "System.Linq")
-                            return FindEnclosingLambda(operation);
-                }
-
-            current = current.Parent;
-        }
-
-        return null;
-    }
-
-    private static IAnonymousFunctionOperation? FindEnclosingLambda(IOperation operation)
-    {
-        var current = operation.Parent;
-        while (current != null)
-        {
-            if (current is IAnonymousFunctionOperation lambda)
-                return lambda;
-
-            current = current.Parent;
-        }
-
-        return null;
-    }
-
     private static bool HasEarlierIdenticalClockReference(
         IAnonymousFunctionOperation lambda,
         IPropertyReferenceOperation current)
@@ -160,16 +121,5 @@ public sealed class AvoidDateTimeNowAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
-    }
-
-    private static IEnumerable<IOperation> EnumerateOperations(IOperation operation)
-    {
-        yield return operation;
-
-        foreach (var child in operation.ChildOperations)
-        {
-            foreach (var descendant in EnumerateOperations(child))
-                yield return descendant;
-        }
     }
 }

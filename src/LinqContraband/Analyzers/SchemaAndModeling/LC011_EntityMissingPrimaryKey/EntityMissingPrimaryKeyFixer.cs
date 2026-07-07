@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -19,7 +18,7 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(EntityMissingPrimaryKeyFixer))]
 [Shared]
-public sealed class EntityMissingPrimaryKeyFixer : CodeFixProvider
+public sealed partial class EntityMissingPrimaryKeyFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(EntityMissingPrimaryKeyAnalyzer.DiagnosticId);
@@ -101,28 +100,4 @@ public sealed class EntityMissingPrimaryKeyFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private static bool TryGetEntityType(IPropertySymbol? propertySymbol, out ITypeSymbol entityType)
-    {
-        entityType = null!;
-
-        if (propertySymbol?.Type is not INamedTypeSymbol dbSetType || dbSetType.TypeArguments.Length == 0)
-            return false;
-
-        entityType = dbSetType.TypeArguments[0];
-        return true;
-    }
-
-    private static bool HasIdMember(ITypeSymbol entityType)
-    {
-        var current = entityType;
-        while (current != null && current.SpecialType != SpecialType.System_Object)
-        {
-            if (current.GetMembers().Any(member => member.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)))
-                return true;
-
-            current = current.BaseType;
-        }
-
-        return false;
-    }
 }

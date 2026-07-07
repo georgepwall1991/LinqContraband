@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PrematureMaterializationFixer))]
 [Shared]
-public sealed class PrematureMaterializationFixer : CodeFixProvider
+public sealed partial class PrematureMaterializationFixer : CodeFixProvider
 {
     private static readonly ImmutableHashSet<string> SequenceContinuationMethods = ImmutableHashSet.Create(
         "Where",
@@ -122,106 +122,4 @@ public sealed class PrematureMaterializationFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private static async Task<Document> RemoveRedundantMaterializationAsync(
-        Document document,
-        InvocationExpressionSyntax invocation,
-        CancellationToken cancellationToken)
-    {
-        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        if (!TryGetInlineMaterializerParts(invocation, out var currentMemberAccess, out var previousInvocation, out var previousMemberAccess))
-        {
-            return document;
-        }
-
-        SyntaxNode replacement;
-        var currentMaterializer = currentMemberAccess.Name.Identifier.Text;
-
-        if (currentMaterializer == "AsEnumerable")
-        {
-            replacement = previousInvocation
-                .WithTriviaFrom(invocation)
-                .WithAdditionalAnnotations(Formatter.Annotation);
-        }
-        else
-        {
-            replacement = invocation.WithExpression(
-                    currentMemberAccess.WithExpression(previousMemberAccess.Expression.WithoutTrivia()))
-                .WithTriviaFrom(invocation)
-                .WithAdditionalAnnotations(Formatter.Annotation);
-        }
-
-        editor.ReplaceNode(invocation, replacement);
-        return editor.GetChangedDocument();
-    }
-
-    private static bool IsInlineMaterializerReceiver(InvocationExpressionSyntax invocation)
-    {
-        return TryGetInlineMaterializerParts(invocation, out _, out _, out _);
-    }
-
-    private static bool TryGetInlineMaterializerParts(
-        InvocationExpressionSyntax invocation,
-        out MemberAccessExpressionSyntax currentMemberAccess,
-        out InvocationExpressionSyntax previousInvocation,
-        out MemberAccessExpressionSyntax previousMemberAccess)
-    {
-        currentMemberAccess = null!;
-        previousInvocation = null!;
-        previousMemberAccess = null!;
-
-        if (invocation.Expression is not MemberAccessExpressionSyntax currentAccess) return false;
-        if (currentAccess.Expression is not InvocationExpressionSyntax previousCall) return false;
-        if (previousCall.Expression is not MemberAccessExpressionSyntax previousAccess) return false;
-
-        currentMemberAccess = currentAccess;
-        previousInvocation = previousCall;
-        previousMemberAccess = previousAccess;
-        return true;
-    }
-
-    private static bool IsInsideOuterMaterialization(
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel,
-        CancellationToken cancellationToken)
-    {
-        if (invocation.Parent is MemberAccessExpressionSyntax parentMemberAccess &&
-            parentMemberAccess.Parent is InvocationExpressionSyntax parentInvocation)
-        {
-            var parentSymbol = semanticModel.GetSymbolInfo(parentInvocation, cancellationToken).Symbol as IMethodSymbol;
-            return parentSymbol != null && IsMaterializingMethod(parentSymbol.Name);
-        }
-
-        if (invocation.Parent is ArgumentSyntax argument &&
-            argument.Parent?.Parent is ObjectCreationExpressionSyntax objectCreation)
-        {
-            var constructor = semanticModel.GetSymbolInfo(objectCreation, cancellationToken).Symbol as IMethodSymbol;
-            return constructor != null && IsMaterializingConstructor(constructor.ContainingType.Name);
-        }
-
-        return false;
-    }
-
-    private static bool IsMaterializingMethod(string methodName)
-    {
-        return methodName == "AsEnumerable" ||
-               methodName == "ToList" ||
-               methodName == "ToArray" ||
-               methodName == "ToDictionary" ||
-               methodName == "ToHashSet" ||
-               methodName == "ToLookup" ||
-               methodName.StartsWith("ToImmutable");
-    }
-
-    private static bool IsMaterializingConstructor(string typeName)
-    {
-        return typeName is
-            "List" or
-            "HashSet" or
-            "Dictionary" or
-            "SortedDictionary" or
-            "SortedList" or
-            "LinkedList" or
-            "Queue" or
-            "Stack";
-    }
 }

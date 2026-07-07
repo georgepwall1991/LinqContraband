@@ -16,7 +16,7 @@ namespace LinqContraband.Analyzers.LC043_AsyncEnumerableBuffering;
 
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AsyncEnumerableBufferingFixer))]
 [Shared]
-public sealed class AsyncEnumerableBufferingFixer : CodeFixProvider
+public sealed partial class AsyncEnumerableBufferingFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AsyncEnumerableBufferingAnalyzer.DiagnosticId);
@@ -101,51 +101,6 @@ public sealed class AsyncEnumerableBufferingFixer : CodeFixProvider
             return false;
 
         fixInfo = new FixInfo(bufferInfo.LocalDeclaration, bufferInfo.LoopSyntax, bufferInfo.SourceExpression);
-        return true;
-    }
-
-    private static bool TryGetContainingLoopAndDeclaration(
-        InvocationExpressionSyntax invocation,
-        out LocalDeclarationStatementSyntax localDeclaration,
-        out ForEachStatementSyntax loopSyntax)
-    {
-        localDeclaration = null!;
-        loopSyntax = null!;
-
-        if (invocation.AncestorsAndSelf().OfType<AwaitExpressionSyntax>().FirstOrDefault() is not AwaitExpressionSyntax awaitExpression)
-            return false;
-
-        if (awaitExpression.Parent is not EqualsValueClauseSyntax equalsValueClause)
-            return false;
-
-        if (equalsValueClause.Parent is not VariableDeclaratorSyntax declarator)
-            return false;
-
-        if (declarator.Parent?.Parent is not LocalDeclarationStatementSyntax declaration)
-            return false;
-
-        if (declarator.Parent?.Parent?.Parent is not BlockSyntax block)
-            return false;
-
-        var statements = block.Statements;
-        var declarationIndex = -1;
-        for (var i = 0; i < statements.Count; i++)
-        {
-            if (ReferenceEquals(statements[i], declaration))
-            {
-                declarationIndex = i;
-                break;
-            }
-        }
-
-        if (declarationIndex < 0 || declarationIndex + 1 >= statements.Count)
-            return false;
-
-        if (statements[declarationIndex + 1] is not ForEachStatementSyntax loop)
-            return false;
-
-        localDeclaration = declaration;
-        loopSyntax = loop;
         return true;
     }
 

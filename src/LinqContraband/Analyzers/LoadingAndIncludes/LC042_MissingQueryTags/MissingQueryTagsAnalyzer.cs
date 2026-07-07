@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -14,64 +13,6 @@ public sealed partial class MissingQueryTagsAnalyzer : DiagnosticAnalyzer
     private const string Category = "Performance";
     private const int DefaultThreshold = 3;
     private const string ThresholdKey = "dotnet_code_quality.LC042.query_operator_threshold";
-
-    private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
-        StringComparer.Ordinal,
-        "Any",
-        "AnyAsync",
-        "All",
-        "AllAsync",
-        "Count",
-        "CountAsync",
-        "LongCount",
-        "LongCountAsync",
-        "First",
-        "FirstAsync",
-        "FirstOrDefault",
-        "FirstOrDefaultAsync",
-        "Single",
-        "SingleAsync",
-        "SingleOrDefault",
-        "SingleOrDefaultAsync",
-        "Last",
-        "LastAsync",
-        "LastOrDefault",
-        "LastOrDefaultAsync",
-        "ToList",
-        "ToListAsync",
-        "ToArray",
-        "ToArrayAsync",
-        "ToDictionary",
-        "ToDictionaryAsync",
-        "ToHashSet",
-        "ToHashSetAsync");
-
-    private static readonly ImmutableHashSet<string> QuerySteps = ImmutableHashSet.Create(
-        StringComparer.Ordinal,
-        "Where",
-        "Select",
-        "SelectMany",
-        "OrderBy",
-        "OrderByDescending",
-        "ThenBy",
-        "ThenByDescending",
-        "Skip",
-        "Take",
-        "Distinct",
-        "GroupBy",
-        "Join",
-        "Include",
-        "ThenInclude",
-        "AsNoTracking",
-        "AsNoTrackingWithIdentityResolution",
-        "AsTracking",
-        "AsSplitQuery",
-        "AsSingleQuery",
-        "IgnoreQueryFilters",
-        "IgnoreAutoIncludes",
-        "OfType",
-        "TagWith",
-        "TagWithCallSite");
 
     private static readonly LocalizableString Title = "Complex query should be tagged";
 

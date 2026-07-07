@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC006_CartesianExplosion;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(CartesianExplosionFixer))]
 [Shared]
-public sealed class CartesianExplosionFixer : CodeFixProvider
+public sealed partial class CartesianExplosionFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(CartesianExplosionAnalyzer.DiagnosticId);
@@ -80,48 +80,4 @@ public sealed class CartesianExplosionFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private static InvocationExpressionSyntax? FindEffectiveAsSingleQueryInvocation(InvocationExpressionSyntax invocation)
-    {
-        ExpressionSyntax? current = invocation;
-
-        while (current is InvocationExpressionSyntax currentInvocation &&
-               currentInvocation.Expression is MemberAccessExpressionSyntax currentMemberAccess)
-        {
-            if (currentMemberAccess.Name.Identifier.Text == "AsSingleQuery")
-                return currentInvocation;
-
-            if (currentMemberAccess.Name.Identifier.Text == "AsSplitQuery")
-                return null;
-
-            current = currentMemberAccess.Expression;
-        }
-
-        return null;
-    }
-
-    private static InvocationExpressionSyntax? FindFirstIncludeInvocation(InvocationExpressionSyntax invocation)
-    {
-        InvocationExpressionSyntax? firstInclude = null;
-        ExpressionSyntax? current = invocation;
-
-        while (current is InvocationExpressionSyntax currentInvocation &&
-               currentInvocation.Expression is MemberAccessExpressionSyntax currentMemberAccess)
-        {
-            if (currentMemberAccess.Name.Identifier.Text == "Include")
-                firstInclude = currentInvocation;
-
-            current = currentMemberAccess.Expression;
-        }
-
-        return firstInclude;
-    }
-
-    private static bool IsInvocationOf(ExpressionSyntax expression, string methodName)
-    {
-        if (expression is InvocationExpressionSyntax invocation &&
-            invocation.Expression is MemberAccessExpressionSyntax ma)
-            return ma.Name.Identifier.Text == methodName;
-
-        return false;
-    }
 }

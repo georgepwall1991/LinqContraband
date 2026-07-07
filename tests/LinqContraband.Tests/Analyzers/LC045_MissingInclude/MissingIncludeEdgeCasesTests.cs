@@ -4,7 +4,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
-public class MissingIncludeEdgeCasesTests
+public partial class MissingIncludeEdgeCasesTests
 {
     private static DiagnosticResult Diagnostic(int markupKey, string navigationPath, string entityName)
     {
@@ -149,90 +149,6 @@ namespace TestNamespace
 }";
 
     [Fact]
-    public async Task TestInnocent_LambdaIncludeCoversAccess_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(o => o.Customer).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Name);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_StringIncludeCoversAccess_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(""Customer"").ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Name);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ThenIncludeCoversNestedAccess_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(o => o.Customer).ThenInclude(c => c.Address).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Address.City);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_FilteredIncludeCoversAccess_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(o => o.Items.Where(i => i.Id > 0)).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Items.Count);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task TestInnocent_SelectProjectionInChain_NoDiagnostic()
     {
         // A Select reshapes the query: the materialized objects are no longer raw entities, so
@@ -301,111 +217,6 @@ class Program
     }
 
     [Fact]
-    public async Task TestInnocent_ResultLocalReassigned_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        orders = new List<Order>();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Name);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ResultPassedAsArgument_NoDiagnostic()
-    {
-        // The helper may explicitly load the navigations; once the list escapes we cannot
-        // prove the access is unbacked.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        Hydrate(orders);
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Name);
-        }
-    }
-
-    void Hydrate(List<Order> orders) { }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ResultReturned_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    List<Order> Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        Console.WriteLine(orders.Count);
-        return orders;
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ResultUsedThroughLambda_NoDiagnostic()
-    {
-        // Accesses inside lambdas over the result are out of scope for v1; the local escaping
-        // into the Select call keeps the rule quiet.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        var names = orders.Select(o => o.Customer.Name).ToList();
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ForEachMethodOnResult_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        orders.ForEach(o => Console.WriteLine(o.Customer.Name));
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task TestInnocent_NavAssignedNotRead_NoDiagnostic()
     {
         // Setting a navigation is how relationships are created on tracked entities; it does
@@ -454,27 +265,6 @@ class Program
     }
 
     [Fact]
-    public async Task TestInnocent_EntityPassedToEntry_NoDiagnostic()
-    {
-        // db.Entry(order) may be used to explicitly load the navigation; the entity escaping
-        // as an argument keeps the rule quiet.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.FirstOrDefault();
-        db.Entry(order);
-        Console.WriteLine(order.Customer.Name);
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task TestInnocent_NonEfSource_NoDiagnostic()
     {
         var test = Usings + @"
@@ -487,31 +277,6 @@ class Program
         foreach (var o in orders)
         {
             Console.WriteLine(o.Customer.Name);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_NonConstantStringInclude_BailsOnWholeQuery_NoDiagnostic()
-    {
-        // We cannot prove what the dynamic Include loads, so the entire query is out of scope
-        // — even for navigations the dynamic string could not plausibly cover.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var navigation = ""Customer"";
-        var orders = db.Orders.Include(navigation).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Name);
-            Console.WriteLine(o.Items.Count);
         }
     }
 }
@@ -543,50 +308,6 @@ class Program
     }
 
     [Fact]
-    public async Task TestInnocent_NullForgivingMidPathInclude_NoDiagnostic()
-    {
-        // o.Customer!.Address is the idiomatic NRT spelling of a multi-level include; the
-        // parser must see "Customer.Address", not a truncated "Address".
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(o => o.Customer!.Address).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Address.City);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_CastMidPathInclude_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.Include(o => ((Customer)o.Customer).Address).ToList();
-        foreach (var o in orders)
-        {
-            Console.WriteLine(o.Customer.Address.City);
-        }
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task TestInnocent_NavAssignedThenRead_NoDiagnostic()
     {
         // The navigation now points at an in-memory object, so the later read is backed
@@ -600,29 +321,6 @@ class Program
         var order = db.Orders.FirstOrDefault();
         order.Customer = new Customer();
         Console.WriteLine(order.Customer.Name);
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_EntityLocalReusedAcrossObjects_NoDiagnostic()
-    {
-        // The local is repointed between a fresh in-memory object and a query entity; with
-        // more than one assignment we cannot prove which object any given read sees.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        Order t = new Order();
-        Console.WriteLine(t.Customer.Name);
-        t = orders[0];
-        Console.WriteLine(t.Id);
     }
 }
 " + MockNamespace;
@@ -666,211 +364,6 @@ class Program
             (o.Customer, o.Status) = (new Customer(), ""done"");
         }
         db.SaveChanges();
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_IndexedEntityPassedAsArgument_NoDiagnostic()
-    {
-        // orders[0] escapes to a helper that could explicitly load the navigation.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var orders = db.Orders.ToList();
-        Hydrate(orders[0]);
-        Console.WriteLine(orders[0].Customer.Name);
-    }
-
-    void Hydrate(Order order) { }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ConditionalCollectionMutatorCall_NoDiagnostic()
-    {
-        // order?.Items?.Add(x) is the null-guarded spelling of the mutation pattern that the
-        // rule deliberately ignores: the Add call hangs off a conditional access, so the
-        // mutator-receiver check must look through the placeholder.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.FirstOrDefault();
-        order?.Items?.Add(new OrderItem());
-        db.SaveChanges();
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ChainedConditionalAccessCoveredByInclude_NoDiagnostic()
-    {
-        // order?.Customer?.Name nests two conditional accesses — the shape that previously
-        // sent TryGetAccessPath into infinite recursion. With the Include present the
-        // analyzer must both terminate and stay quiet.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
-        Console.WriteLine(order?.Customer?.Name);
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_NavAssignedThenChainedConditionalRead_NoDiagnostic()
-    {
-        // The write backs the later chained-?. read; satisfaction must work through
-        // conditional-access placeholders just as it does for plain reads.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.FirstOrDefault();
-        order.Customer = new Customer();
-        Console.WriteLine(order?.Customer?.Name);
-        db.SaveChanges();
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestInnocent_IncludeCoversInlineChainedConditionalAccess_NoDiagnostic()
-    {
-        // The chained-?. inline shape stays quiet when the Include covers the path.
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var name = db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer?.Name;
-    }
-}
-" + MockNamespace;
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task TestCrime_ParenthesizedConditionalAccessReportsFullNestedPath()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
-        Console.WriteLine((order?.Customer)?{|#0:.Address|}?.City);
-    }
-}
-" + MockNamespace;
-
-        var expected = Diagnostic(0, "Customer.Address", "Order");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task TestCrime_DeeperParenthesizedConditionalAccessReportsFullNestedPath()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders
-            .Include(o => o.Customer)
-            .ThenInclude(c => c.Address)
-            .FirstOrDefault();
-        Console.WriteLine((order?.Customer?.Address)?{|#0:.Region|}?.Name);
-    }
-}
-" + MockNamespace;
-
-        var expected = Diagnostic(0, "Customer.Address.Region", "Order");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task TestCrime_InlineMaterializerParenthesizedConditionalAccessReportsFullNestedPath()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var city = (db.Orders.Include(o => o.Customer).FirstOrDefault()?.Customer)?{|#0:.Address|}?.City;
-    }
-}
-" + MockNamespace;
-
-        var expected = Diagnostic(0, "Customer.Address", "Order");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task TestCrime_InheritedNavigationParenthesizedConditionalAccessReportsFullNestedPath()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.SpecialOrders.Include(o => o.Customer).FirstOrDefault();
-        Console.WriteLine((order?.Customer)?{|#0:.Address|}?.City);
-    }
-}
-" + MockNamespace;
-
-        var expected = Diagnostic(0, "Customer.Address", "SpecialOrder");
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task TestInnocent_ConditionalMethodReturnDoesNotAppendReceiverPath_NoDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    void Main()
-    {
-        var db = new MyDbContext();
-        var order = db.Orders.Include(o => o.Customer).FirstOrDefault();
-        var city = (order?.Customer.GetDetached())?.Address?.City;
     }
 }
 " + MockNamespace;

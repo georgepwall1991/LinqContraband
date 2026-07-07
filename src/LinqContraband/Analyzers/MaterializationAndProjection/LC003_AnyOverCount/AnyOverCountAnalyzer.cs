@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis.CSharp;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -17,7 +16,7 @@ namespace LinqContraband.Analyzers.LC003_AnyOverCount;
 /// especially critical with large result sets where Count() might scan millions of rows unnecessarily.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class AnyOverCountAnalyzer : DiagnosticAnalyzer
+public sealed partial class AnyOverCountAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC003";
     private const string Category = "Performance";
@@ -52,77 +51,7 @@ public sealed class AnyOverCountAnalyzer : DiagnosticAnalyzer
     {
         var binaryOp = (IBinaryOperation)context.Operation;
 
-        // We are looking for:
-        // 1. Count() > 0  OR  0 < Count()
-        // 2. Count() >= 1 OR  1 <= Count()
-        // 3. Count() != 0 OR  0 != Count()
-        // 4. Count() == 0 OR  0 == Count()
-
-        if (binaryOp.OperatorKind != BinaryOperatorKind.GreaterThan &&
-            binaryOp.OperatorKind != BinaryOperatorKind.LessThan &&
-            binaryOp.OperatorKind != BinaryOperatorKind.GreaterThanOrEqual &&
-            binaryOp.OperatorKind != BinaryOperatorKind.LessThanOrEqual &&
-            binaryOp.OperatorKind != BinaryOperatorKind.NotEquals &&
-            binaryOp.OperatorKind != BinaryOperatorKind.Equals)
-            return;
-
-        IOperation? countInvocation = null;
-        object? constantValue = null;
-
-        // Determine which side is the invocation and which is the constant
-        if (IsInvocation(binaryOp.LeftOperand) && IsConstant(binaryOp.RightOperand))
-        {
-            countInvocation = binaryOp.LeftOperand;
-            constantValue = binaryOp.RightOperand.ConstantValue.Value;
-        }
-        else if (IsConstant(binaryOp.LeftOperand) && IsInvocation(binaryOp.RightOperand))
-        {
-            constantValue = binaryOp.LeftOperand.ConstantValue.Value;
-            countInvocation = binaryOp.RightOperand;
-        }
-        else
-        {
-            return;
-        }
-
-        // Validate the logic
-        bool isMatch = false;
-
-        if (IsZero(constantValue))
-        {
-            // Count() > 0, 0 < Count(), Count() != 0, 0 != Count(), Count() == 0, 0 == Count()
-            if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThan || // Count > 0
-                binaryOp.OperatorKind == BinaryOperatorKind.LessThan ||    // 0 < Count
-                binaryOp.OperatorKind == BinaryOperatorKind.NotEquals ||   // Count != 0
-                binaryOp.OperatorKind == BinaryOperatorKind.Equals)        // Count == 0
-            {
-                // Ensure strict direction for inequalities
-                if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThan && binaryOp.LeftOperand != countInvocation) return; // 0 > Count (False)
-                if (binaryOp.OperatorKind == BinaryOperatorKind.LessThan && binaryOp.RightOperand != countInvocation) return;   // Count < 0 (False)
-                if (binaryOp.OperatorKind == BinaryOperatorKind.Equals &&
-                    binaryOp.LeftOperand != countInvocation &&
-                    binaryOp.RightOperand != countInvocation)
-                    return;
-
-                isMatch = true;
-            }
-        }
-        else if (IsOne(constantValue))
-        {
-            // Count() >= 1, 1 <= Count()
-            if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThanOrEqual ||
-                binaryOp.OperatorKind == BinaryOperatorKind.LessThanOrEqual)
-            {
-                // Ensure direction
-                // Count >= 1
-                if (binaryOp.OperatorKind == BinaryOperatorKind.GreaterThanOrEqual && binaryOp.LeftOperand == countInvocation) isMatch = true;
-
-                // 1 <= Count
-                if (binaryOp.OperatorKind == BinaryOperatorKind.LessThanOrEqual && binaryOp.RightOperand == countInvocation) isMatch = true;
-            }
-        }
-
-        if (!isMatch) return;
+        if (!TryGetCountExistenceCheck(binaryOp, out var countInvocation)) return;
 
         // Unwrap implicit conversions or await operations
         while (true)
@@ -162,30 +91,5 @@ public sealed class AnyOverCountAnalyzer : DiagnosticAnalyzer
                     context.ReportDiagnostic(Diagnostic.Create(Rule, binaryOp.Syntax.GetLocation()));
             }
         }
-    }
-
-    private bool IsInvocation(IOperation op)
-    {
-        var unwrapped = op.UnwrapConversions();
-        return unwrapped is IInvocationOperation;
-    }
-
-    private bool IsConstant(IOperation op)
-    {
-        return op.ConstantValue.HasValue;
-    }
-
-    private bool IsZero(object? value)
-    {
-        if (value is int i) return i == 0;
-        if (value is long l) return l == 0;
-        return false;
-    }
-
-    private bool IsOne(object? value)
-    {
-        if (value is int i) return i == 1;
-        if (value is long l) return l == 1;
-        return false;
     }
 }

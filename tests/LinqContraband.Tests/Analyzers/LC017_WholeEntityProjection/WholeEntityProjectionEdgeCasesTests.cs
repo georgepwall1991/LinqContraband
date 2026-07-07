@@ -7,7 +7,7 @@ namespace LinqContraband.Tests.Analyzers.LC017_WholeEntityProjection;
 /// Edge case tests for LC017 - Whole Entity Projection analyzer.
 /// Tests various code patterns to ensure correct detection and avoid false positives.
 /// </summary>
-public class WholeEntityProjectionEdgeCasesTests
+public partial class WholeEntityProjectionEdgeCasesTests
 {
     private const string Usings = @"
 using System;
@@ -77,123 +77,6 @@ namespace TestNamespace
         public DbSet<LargeEntity> LargeEntities { get; set; }
     }
 }";
-
-    #region Property Access Patterns
-
-    /// <summary>
-    /// Innocent: Null-conditional operator changes the operation type.
-    /// The analyzer doesn't track through conditional access.
-    /// </summary>
-    [Fact]
-    public async Task TestCrime_NullConditionalPropertyAccess_TriggersDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    public void Process()
-    {
-        var db = new MyDbContext();
-        var entities = db.LargeEntities.ToList();
-        foreach (var e in entities)
-        {
-            Console.WriteLine(e?.Name);
-        }
-    }
-}
-" + MockNamespace;
-
-        var expected = VerifyCS.Diagnostic("LC017")
-            .WithSpan(14, 24, 14, 49)
-            .WithArguments("LargeEntity", 1, 13);
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    /// <summary>
-    /// Crime: Property accessed via method chain.
-    /// </summary>
-    [Fact]
-    public async Task TestCrime_PropertyMethodChain_TriggersDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    public void Process()
-    {
-        var db = new MyDbContext();
-        var entities = db.LargeEntities.ToList();
-        foreach (var e in entities)
-        {
-            Console.WriteLine(e.Name.ToUpper());
-        }
-    }
-}
-" + MockNamespace;
-
-        var expected = VerifyCS.Diagnostic("LC017")
-            .WithSpan(14, 24, 14, 49)
-            .WithArguments("LargeEntity", 1, 13);
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    /// <summary>
-    /// Crime: Property accessed in string interpolation.
-    /// </summary>
-    [Fact]
-    public async Task TestCrime_StringInterpolation_TriggersDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    public void Process()
-    {
-        var db = new MyDbContext();
-        var entities = db.LargeEntities.ToList();
-        foreach (var e in entities)
-        {
-            Console.WriteLine($""Name: {e.Name}"");
-        }
-    }
-}
-" + MockNamespace;
-
-        var expected = VerifyCS.Diagnostic("LC017")
-            .WithSpan(14, 24, 14, 49)
-            .WithArguments("LargeEntity", 1, 13);
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    /// <summary>
-    /// Crime: Property accessed in binary expression.
-    /// </summary>
-    [Fact]
-    public async Task TestCrime_BinaryExpression_TriggersDiagnostic()
-    {
-        var test = Usings + @"
-class Program
-{
-    public void Process()
-    {
-        var db = new MyDbContext();
-        var entities = db.LargeEntities.ToList();
-        foreach (var e in entities)
-        {
-            var x = e.Id + 1;
-        }
-    }
-}
-" + MockNamespace;
-
-        var expected = VerifyCS.Diagnostic("LC017")
-            .WithSpan(14, 24, 14, 49)
-            .WithArguments("LargeEntity", 1, 13);
-
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
-    }
-
-    #endregion
 
     #region Loop Variations
 

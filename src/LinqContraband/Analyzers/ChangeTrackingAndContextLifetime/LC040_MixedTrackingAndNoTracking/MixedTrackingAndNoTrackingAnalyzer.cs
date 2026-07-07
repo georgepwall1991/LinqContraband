@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -101,51 +100,6 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
             _records.Add(new MaterializationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, trackingMode));
         }
 
-        public void ReportDiagnostics(CompilationAnalysisContext context)
-        {
-            var groupedByRoot = _records
-                .GroupBy(record => record.Root, OperationRootComparer.Instance)
-                .ToArray();
-
-            foreach (var rootGroup in groupedByRoot)
-            {
-                foreach (var contextGroup in rootGroup
-                             .Where(record => record.ContextSymbol != null)
-                             .GroupBy(record => record.ContextSymbol!, SymbolEqualityComparer.Default))
-                {
-                    var records = contextGroup
-                        .OrderBy(record => record.Position)
-                        .ToArray();
-
-                    if (records.Length < 2)
-                        continue;
-
-                    var reported = false;
-
-                    for (var i = 1; i < records.Length; i++)
-                    {
-                        var current = records[i];
-                        if (reported)
-                            continue;
-
-                        for (var previousIndex = 0; previousIndex < i; previousIndex++)
-                        {
-                            var previous = records[previousIndex];
-                            if (previous.Mode == current.Mode ||
-                                AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
-                            {
-                                continue;
-                            }
-
-                            context.ReportDiagnostic(
-                                Diagnostic.Create(Rule, current.Location, contextGroup.Key.Name));
-                            reported = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private sealed class MaterializationRecord

@@ -1,6 +1,4 @@
 using System.Collections.Immutable;
-using System.Linq;
-using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -76,81 +74,5 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
     {
         return method.Name is "Include" or "ThenInclude" or "AsSplitQuery" or "AsSingleQuery" &&
                method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
-    }
-
-    private enum QuerySplittingMode
-    {
-        None,
-        Split,
-        Single
-    }
-
-    private sealed class IncludeChainAnalysis
-    {
-        private readonly System.Collections.Generic.List<IncludePath> includePaths = new();
-
-        public QuerySplittingMode EffectiveQueryMode { get; set; }
-
-        public void AddIncludePath(IncludePath path)
-        {
-            if (path.Segments.Length > 0)
-                includePaths.Add(path);
-        }
-
-        public bool TryGetRiskySiblingCollections(out ImmutableArray<string> siblings)
-        {
-            var seenIncludePaths = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-            var groups = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>(System.StringComparer.Ordinal);
-            var groupSets = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>>(System.StringComparer.Ordinal);
-
-            foreach (var path in includePaths)
-            {
-                if (!seenIncludePaths.Add(path.Key))
-                    continue;
-
-                var collectionParent = new System.Collections.Generic.List<string>();
-                var referencePrefix = new System.Collections.Generic.List<string>();
-
-                foreach (var segment in path.Segments)
-                {
-                    if (segment.IsCollection)
-                    {
-                        var parentKey = string.Join(".", collectionParent);
-                        if (!groups.TryGetValue(parentKey, out var group))
-                        {
-                            group = new System.Collections.Generic.List<string>();
-                            groups[parentKey] = group;
-                            groupSets[parentKey] = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                        }
-
-                        var siblingName = referencePrefix.Count == 0
-                            ? segment.Name
-                            : string.Join(".", referencePrefix.Concat(new[] { segment.Name }));
-
-                        if (groupSets[parentKey].Add(siblingName))
-                            group.Add(siblingName);
-
-                        collectionParent.Add(segment.Name);
-                        referencePrefix.Clear();
-                    }
-                    else
-                    {
-                        referencePrefix.Add(segment.Name);
-                    }
-                }
-            }
-
-            foreach (var group in groups.Values)
-            {
-                if (group.Count > 1)
-                {
-                    siblings = group.ToImmutableArray();
-                    return true;
-                }
-            }
-
-            siblings = ImmutableArray<string>.Empty;
-            return false;
-        }
     }
 }

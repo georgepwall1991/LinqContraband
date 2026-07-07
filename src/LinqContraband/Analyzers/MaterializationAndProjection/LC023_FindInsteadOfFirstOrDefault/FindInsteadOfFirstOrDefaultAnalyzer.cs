@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -11,7 +10,7 @@ namespace LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 /// Analyzes usage of FirstOrDefault/SingleOrDefault with primary key predicates, suggesting Find/FindAsync instead for better performance via change tracker. Diagnostic ID: LC023
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
+public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC023";
     private const string Category = "Performance";
@@ -106,49 +105,5 @@ public sealed class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnalyzer
 
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
-    }
-
-    private static bool TryGetPrimaryKeyEqualityProperty(
-        IAnonymousFunctionOperation lambda,
-        out IPropertySymbol property)
-    {
-        property = null!;
-        var body = lambda.Body.Operations.FirstOrDefault();
-        if (body is IReturnOperation returnOp) body = returnOp.ReturnedValue;
-        if (body == null) return false;
-
-        body = body.UnwrapConversions();
-
-        if (body is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Equals)
-        {
-            // Check left or right for primary key property
-            if (TryGetLambdaParameterProperty(binary.LeftOperand, lambda, out property)) return true;
-            if (TryGetLambdaParameterProperty(binary.RightOperand, lambda, out property)) return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetLambdaParameterProperty(
-        IOperation operation,
-        IAnonymousFunctionOperation lambda,
-        out IPropertySymbol property)
-    {
-        property = null!;
-        var current = operation.UnwrapConversions();
-
-        if (current is IPropertyReferenceOperation propRef)
-        {
-            var receiver = propRef.Instance?.UnwrapConversions();
-            // Check if receiver is the lambda parameter
-            if (receiver is IParameterReferenceOperation paramRef &&
-                SymbolEqualityComparer.Default.Equals(paramRef.Parameter, lambda.Symbol.Parameters.FirstOrDefault()))
-            {
-                property = propRef.Property;
-                return true;
-            }
-        }
-
-        return false;
     }
 }

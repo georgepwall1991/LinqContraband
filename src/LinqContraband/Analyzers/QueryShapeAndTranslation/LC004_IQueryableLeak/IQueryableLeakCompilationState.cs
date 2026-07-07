@@ -1,11 +1,8 @@
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -18,42 +15,6 @@ internal static class IQueryableLeakDiagnosticProperties
 
 internal sealed partial class IQueryableLeakCompilationState
 {
-    private static readonly ImmutableHashSet<string> HazardousEnumerableMethods = ImmutableHashSet.Create(
-        "Aggregate",
-        "All",
-        "Any",
-        "Average",
-        "Contains",
-        "Count",
-        "ElementAt",
-        "ElementAtOrDefault",
-        "First",
-        "FirstOrDefault",
-        "Last",
-        "LastOrDefault",
-        "LongCount",
-        "Max",
-        "MaxBy",
-        "Min",
-        "MinBy",
-        "SequenceEqual",
-        "Single",
-        "SingleOrDefault",
-        "Sum",
-        "ToArray",
-        "ToDictionary",
-        "ToHashSet",
-        "ToList",
-        "ToLookup");
-
-    private static readonly ImmutableHashSet<string> MaterializingCollectionTypes = ImmutableHashSet.Create(
-        "HashSet",
-        "LinkedList",
-        "List",
-        "Queue",
-        "SortedSet",
-        "Stack");
-
     private readonly Compilation _compilation;
     private readonly INamedTypeSymbol _enumerableType;
     private readonly INamedTypeSymbol _enumerableGenericType;

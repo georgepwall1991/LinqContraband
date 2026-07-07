@@ -18,7 +18,7 @@ namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 /// for database operations, allowing the server to handle more concurrent requests with the same resources.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
+public sealed partial class SyncBlockerAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC008";
     private const string Category = "Performance";
@@ -79,12 +79,7 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
         // Case B: DbSet.Find
         if (method.Name == "Find") return method.ContainingType.IsDbSet();
 
-        // Case C: LINQ Extension methods on IQueryable
-        // These are usually defined in System.Linq.Queryable OR Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
-        // But "ToList" is NOT on IQueryable, it's on Enumerable. Wait. 
-        // EF Core adds "ToListAsync". "ToList" is standard LINQ to Objects.
-        // BUT calling .ToList() on an IQueryable triggers DB execution synchronously.
-        // So we need to check if the SOURCE is IQueryable.
+        // Case C: LINQ extension methods over IQueryable execute the database query synchronously.
 
         var receiverType = invocation.GetInvocationReceiverType();
 
@@ -135,63 +130,6 @@ public sealed class SyncBlockerAnalyzer : DiagnosticAnalyzer
             }
 
             return invocation.GetInvocationReceiverType()?.IsIQueryable() == true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Determines if the operation is within an async context.
-    /// This includes being directly in an async method, or being inside a lambda/local function
-    /// that is itself within an async method.
-    /// </summary>
-    private static bool IsInsideAsyncMethod(IOperation operation)
-    {
-        // Walk up the operation tree looking for async context
-        var parent = operation.Parent;
-        while (parent != null)
-        {
-            // Check for async local functions
-            if (parent is ILocalFunctionOperation localFunc)
-            {
-                // If the local function is async, we're in async context
-                if (localFunc.Symbol.IsAsync) return true;
-
-                // A static local function cannot capture the enclosing async context — it
-                // is a deliberate synchronous boundary, and a diagnostic inside it would be
-                // unfixable (await is illegal there). Do not look further up.
-                if (localFunc.Symbol.IsStatic) return false;
-                // Otherwise, continue checking parent scope
-            }
-
-            // Check for async lambdas
-            if (parent is IAnonymousFunctionOperation lambda)
-            {
-                // If the lambda is async, we're in async context
-                if (lambda.Symbol.IsAsync) return true;
-                // Otherwise, continue checking parent scope (the lambda might be inside an async method)
-            }
-
-            parent = parent.Parent;
-        }
-
-        // Fallback: Use SemanticModel to find the enclosing method symbol
-        // This handles the case where we're in a non-async lambda inside an async method
-        if (operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart) is IMethodSymbol methodSymbol)
-        {
-            // Walk up method containment to find if any enclosing method is async
-            var currentMethod = methodSymbol;
-            while (currentMethod != null)
-            {
-                if (currentMethod.IsAsync) return true;
-
-                // Same static-local-function boundary as the operation-tree walk.
-                if (currentMethod.MethodKind == MethodKind.LocalFunction && currentMethod.IsStatic)
-                    return false;
-
-                // Get the containing symbol - could be another method (for local functions) or a type
-                currentMethod = currentMethod.ContainingSymbol as IMethodSymbol;
-            }
         }
 
         return false;

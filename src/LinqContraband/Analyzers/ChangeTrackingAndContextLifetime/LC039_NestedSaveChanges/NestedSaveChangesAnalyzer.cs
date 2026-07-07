@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -103,86 +102,6 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
 
             _records.Add(new InvocationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, false, invocation.TargetMethod.Name));
         }
-
-        private static bool IsTransactionBoundaryInvocation(IInvocationOperation invocation)
-        {
-            if (!TransactionBoundaryMethodNames.Contains(invocation.TargetMethod.Name))
-                return false;
-
-            var receiverType = invocation.GetInvocationReceiverType();
-            return IsEfCoreTransactionBoundaryType(receiverType);
-        }
-
-        private static bool IsEfCoreTransactionBoundaryType(ITypeSymbol? type)
-        {
-            if (type == null)
-                return false;
-
-            if (IsEfCoreTransactionBoundaryNamedType(type))
-                return true;
-
-            return type.AllInterfaces.Any(IsEfCoreTransactionBoundaryNamedType);
-        }
-
-        private static bool IsEfCoreTransactionBoundaryNamedType(ITypeSymbol type)
-        {
-            var namespaceName = type.ContainingNamespace?.ToString();
-            if (namespaceName == null ||
-                !namespaceName.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            return type.Name is "DatabaseFacade" or "IDbContextTransaction" or "DbContextTransaction";
-        }
-
-        public void ReportDiagnostics(CompilationAnalysisContext context)
-        {
-            var groupedByRoot = _records
-                .GroupBy(record => record.Root, OperationRootComparer.Instance)
-                .ToArray();
-
-            foreach (var rootGroup in groupedByRoot)
-            {
-                var boundaries = rootGroup
-                    .Where(record => record.IsBoundary)
-                    .Select(record => record.Position)
-                    .OrderBy(position => position)
-                    .ToArray();
-
-                var savesByContext = rootGroup
-                    .Where(record => !record.IsBoundary && record.ContextSymbol != null)
-                    .GroupBy(record => record.ContextSymbol!, SymbolEqualityComparer.Default);
-
-                foreach (var contextGroup in savesByContext)
-                {
-                    var saves = contextGroup
-                        .OrderBy(record => record.Position)
-                        .ToArray();
-
-                    if (saves.Length < 2)
-                        continue;
-
-                    for (var i = 1; i < saves.Length; i++)
-                    {
-                        var previous = saves[i - 1];
-                        var current = saves[i];
-
-                        if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
-                            continue;
-
-                        if (AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
-                            continue;
-
-                        if (AreInsideSameTransactionUsing(previous.Syntax, current.Syntax, boundaries))
-                            continue;
-
-                        Report(context, current, contextGroup.Key, current.MethodName);
-                    }
-                }
-            }
-        }
-
     }
 
     private sealed class InvocationRecord

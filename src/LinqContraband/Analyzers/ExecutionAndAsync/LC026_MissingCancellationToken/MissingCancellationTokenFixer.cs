@@ -9,7 +9,6 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC026_MissingCancellationToken;
 
@@ -18,7 +17,7 @@ namespace LinqContraband.Analyzers.LC026_MissingCancellationToken;
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingCancellationTokenFixer))]
 [Shared]
-public sealed class MissingCancellationTokenFixer : CodeFixProvider
+public sealed partial class MissingCancellationTokenFixer : CodeFixProvider
 {
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingCancellationTokenAnalyzer.DiagnosticId);
@@ -73,33 +72,4 @@ public sealed class MissingCancellationTokenFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    private static ArgumentSyntax? FindExplicitCancellationTokenArgument(
-        SemanticModel semanticModel,
-        InvocationExpressionSyntax invocation,
-        CancellationToken cancellationToken)
-    {
-        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
-            return null;
-
-        foreach (var argument in operation.Arguments)
-        {
-            if (argument.Parameter is null ||
-                !IsCancellationTokenParameter(argument.Parameter) ||
-                argument.Syntax is not ArgumentSyntax syntax)
-            {
-                continue;
-            }
-
-            return syntax;
-        }
-
-        return null;
-    }
-
-    private static bool IsCancellationTokenParameter(IParameterSymbol parameter)
-    {
-        var type = parameter.Type;
-        return type.Name == "CancellationToken" &&
-               type.ContainingNamespace?.ToString() == "System.Threading";
-    }
 }

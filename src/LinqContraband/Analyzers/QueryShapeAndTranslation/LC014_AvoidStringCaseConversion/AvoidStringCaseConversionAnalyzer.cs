@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -16,7 +15,7 @@ namespace LinqContraband.Analyzers.LC014_AvoidStringCaseConversion;
 /// scans. Instead, use database collation, a normalized column, or provider-specific collation support.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
+public sealed partial class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC014";
     private const string Category = "Performance";
@@ -44,28 +43,6 @@ public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         "ToLowerInvariant",
         "ToUpper",
         "ToUpperInvariant"
-    };
-
-    private static readonly HashSet<string> TargetLinqMethods = new()
-    {
-        "Where",
-        "OrderBy", "OrderByDescending",
-        "ThenBy", "ThenByDescending",
-        "Count", "LongCount",
-        "Any", "All",
-        "First", "FirstOrDefault",
-        "Single", "SingleOrDefault",
-        "Last", "LastOrDefault",
-        "Join", "GroupJoin"
-    };
-
-    private static readonly HashSet<string> TargetEfAsyncPredicateMethods = new()
-    {
-        "CountAsync", "LongCountAsync",
-        "AnyAsync", "AllAsync",
-        "FirstAsync", "FirstOrDefaultAsync",
-        "SingleAsync", "SingleOrDefaultAsync",
-        "LastAsync", "LastOrDefaultAsync"
     };
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
@@ -98,187 +75,6 @@ public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
     }
 
-    private ImmutableArray<IParameterSymbol> GetEnclosingQueryableLambdaParameters(IOperation operation)
-    {
-        var current = operation.Parent;
-        while (current != null)
-        {
-            if (current is IAnonymousFunctionOperation lambda)
-            {
-                // Check if this lambda is passed to a Queryable method
-                // Lambda -> (Conversion) -> Argument -> Invocation
-                var parent = lambda.Parent;
-                while (parent is IConversionOperation) parent = parent.Parent;
-
-                if (parent is IArgumentOperation argument &&
-                    argument.Parent is IInvocationOperation linqInvocation)
-                {
-                    var method = linqInvocation.TargetMethod;
-                    if (IsTargetQueryableMethod(method) &&
-                        IsLambdaScopedToEntityFrameworkSource(argument, linqInvocation))
-                    {
-                        return lambda.Symbol.Parameters;
-                    }
-                }
-            }
-
-            current = current.Parent;
-        }
-
-        return ImmutableArray<IParameterSymbol>.Empty;
-    }
-
-    private static bool IsTargetQueryableMethod(IMethodSymbol method)
-    {
-        if (TargetLinqMethods.Contains(method.Name) &&
-            method.ContainingType.Name == "Queryable" &&
-            method.ContainingNamespace?.ToString() == "System.Linq")
-        {
-            return true;
-        }
-
-        return TargetEfAsyncPredicateMethods.Contains(method.Name) &&
-               method.ContainingType.Name == "EntityFrameworkQueryableExtensions" &&
-               method.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore";
-    }
-
-    private static bool IsLambdaScopedToEntityFrameworkSource(
-        IArgumentOperation argument,
-        IInvocationOperation linqInvocation)
-    {
-        var methodName = linqInvocation.TargetMethod.Name;
-        if (methodName is "Join" or "GroupJoin")
-        {
-            return argument.Parameter?.Name switch
-            {
-                "outerKeySelector" => HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver()),
-                "innerKeySelector" => TryGetArgumentValue(linqInvocation, "inner", out var inner) &&
-                                      HasEntityFrameworkQuerySource(inner),
-                _ => false
-            };
-        }
-
-        return HasEntityFrameworkQuerySource(linqInvocation.GetInvocationReceiver());
-    }
-
-    private static bool TryGetArgumentValue(
-        IInvocationOperation invocation,
-        string parameterName,
-        out IOperation value)
-    {
-        foreach (var argument in invocation.Arguments)
-        {
-            if (argument.Parameter?.Name == parameterName)
-            {
-                value = argument.Value;
-                return true;
-            }
-        }
-
-        value = null!;
-        return false;
-    }
-
-    private static bool HasEntityFrameworkQuerySource(IOperation? operation)
-    {
-        var current = operation;
-        while (current != null)
-        {
-            current = current.UnwrapConversions();
-
-            if (current.Type.IsDbSet())
-                return true;
-
-            switch (current)
-            {
-                case IInvocationOperation invocation:
-                    if (invocation.TargetMethod.Name == "Set" && invocation.TargetMethod.ContainingType.IsDbContext())
-                        return true;
-
-                    current = invocation.GetInvocationReceiver();
-                    continue;
-
-                case IPropertyReferenceOperation propertyReference:
-                    if (propertyReference.Type.IsDbSet())
-                        return true;
-
-                    current = propertyReference.Instance;
-                    continue;
-
-                case IFieldReferenceOperation fieldReference:
-                    if (fieldReference.Type.IsDbSet())
-                        return true;
-
-                    current = fieldReference.Instance;
-                    continue;
-
-                case ILocalReferenceOperation localReference:
-                    if (localReference.Type.IsDbSet())
-                        return true;
-
-                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue))
-                    {
-                        current = resolvedValue;
-                        continue;
-                    }
-
-                    return false;
-
-                case IParameterReferenceOperation parameterReference:
-                    return parameterReference.Type.IsDbSet();
-
-                default:
-                    return false;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool TryResolveLocalValue(ILocalSymbol local, IOperation reference, IOperation? executableRoot, out IOperation value)
-    {
-        value = null!;
-
-        if (executableRoot == null)
-            return false;
-
-        var referenceStart = reference.Syntax.SpanStart;
-        var bestWriteStart = -1;
-
-        foreach (var descendant in executableRoot.Descendants())
-        {
-            if (descendant is IVariableDeclarationOperation declaration)
-            {
-                foreach (var declarator in declaration.Declarators)
-                {
-                    if (!SymbolEqualityComparer.Default.Equals(declarator.Symbol, local) || declarator.Initializer == null)
-                        continue;
-
-                    var writeStart = declarator.Syntax.SpanStart;
-                    if (writeStart >= referenceStart || writeStart <= bestWriteStart)
-                        continue;
-
-                    bestWriteStart = writeStart;
-                    value = declarator.Initializer.Value;
-                }
-            }
-
-            if (descendant is ISimpleAssignmentOperation assignment &&
-                assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
-                SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
-            {
-                var writeStart = assignment.Syntax.SpanStart;
-                if (writeStart >= referenceStart || writeStart <= bestWriteStart)
-                    continue;
-
-                bestWriteStart = writeStart;
-                value = assignment.Value;
-            }
-        }
-
-        return bestWriteStart >= 0;
-    }
-
     // Whether a method argument of the given type can carry a column's text into the result, so
     // that a case conversion over that result would still touch column text. Reference types
     // (string, string[]/object[], collections, object) can; a `char`/`char?` argument contributes
@@ -298,95 +94,4 @@ public sealed class AvoidStringCaseConversionAnalyzer : DiagnosticAnalyzer
         return underlying.SpecialType == SpecialType.System_Char;
     }
 
-    private bool ReceiverDependsOnParameter(IOperation? operation, ImmutableArray<IParameterSymbol> targetParameters)
-    {
-        if (operation == null) return false;
-
-        // Unwrap conversions
-        operation = operation!.UnwrapConversions();
-
-        // If it's a parameter reference, check if it matches our target lambda parameters
-        if (operation is IParameterReferenceOperation paramRef) return targetParameters.Contains(paramRef.Parameter);
-
-        // If it's a property reference, check the instance of the property
-        if (operation is IPropertyReferenceOperation propRef)
-            return ReceiverDependsOnParameter(propRef.Instance, targetParameters);
-
-        // If it's a method call (chained), check the instance AND the arguments. The value
-        // depends on the parameter when the call is on a parameter-derived receiver
-        // (e.g. u.Name.Substring(..)) OR when a column-derived value is passed as an argument
-        // (e.g. string.Concat(u.A, u.B), a static method with no instance) — both produce a
-        // value over which a case conversion still defeats sargability.
-        if (operation is IInvocationOperation invocation)
-        {
-            if (ReceiverDependsOnParameter(invocation.Instance, targetParameters))
-                return true;
-
-            foreach (var argument in invocation.Arguments)
-            {
-                // Only an argument that can carry the column's text into the result makes the
-                // cased value column-derived. A value-type argument that just controls
-                // length/position/format (an `int` count/index, a `bool`, an enum such as
-                // `StringComparison`) does not — e.g. "CONST".PadRight(u.Name.Length) or
-                // "HELLO".Substring(0, u.Age) lowercases a constant, so it must stay quiet.
-                // A `char` argument is the exception: it contributes a character to the result
-                // (string.Concat(u.Name[0]), "x".Replace('x', u.Name[0])), so it is still
-                // followed. String, string[]/object[] params arrays, and string collections are
-                // reference types and are likewise followed (string.Concat(u.A, u.B),
-                // "p".Replace("x", u.Name)).
-                var argumentValue = argument.Value.UnwrapConversions();
-                if (!ArgumentCanCarryStringContent(argumentValue.Type))
-                    continue;
-
-                if (ReceiverDependsOnParameter(argumentValue, targetParameters))
-                    return true;
-            }
-
-            return false;
-        }
-
-        // A params argument (e.g. the value[] of string.Join / string.Format) is wrapped in an
-        // array creation, so look at the column-derived elements inside it.
-        if (operation is IArrayCreationOperation arrayCreation && arrayCreation.Initializer != null)
-        {
-            foreach (var element in arrayCreation.Initializer.ElementValues)
-            {
-                if (ReceiverDependsOnParameter(element, targetParameters))
-                    return true;
-            }
-
-            return false;
-        }
-
-        // If it's an array/indexer access
-        if (operation is IPropertyReferenceOperation indexer && indexer.Arguments.Length > 0)
-            return ReceiverDependsOnParameter(indexer.Instance, targetParameters);
-
-        // Binary Operator
-        if (operation is IBinaryOperation binaryOp)
-            return ReceiverDependsOnParameter(binaryOp.LeftOperand, targetParameters) ||
-                   ReceiverDependsOnParameter(binaryOp.RightOperand, targetParameters);
-
-        // Coalesce Operator
-        if (operation is ICoalesceOperation coalesce)
-            return ReceiverDependsOnParameter(coalesce.Value, targetParameters) ||
-                   ReceiverDependsOnParameter(coalesce.WhenNull, targetParameters);
-
-        if (operation.Kind == OperationKind.ConditionalAccess)
-        {
-            var conditional = (IConditionalAccessOperation)operation;
-            return ReceiverDependsOnParameter(conditional.Operation, targetParameters);
-        }
-
-        if (operation.Kind == OperationKind.ConditionalAccessInstance)
-        {
-            var parent = operation.Parent; // Invocation (ToLower)
-            var grandParent = parent?.Parent; // ConditionalAccessOperation
-
-            if (grandParent is IConditionalAccessOperation caOp)
-                return ReceiverDependsOnParameter(caOp.Operation, targetParameters);
-        }
-
-        return false;
-    }
 }

@@ -1,74 +1,12 @@
 using System.Collections.Generic;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
 
 public sealed partial class PrematureMaterializationAnalyzer
 {
-    private static bool TryCreateRedundantDiagnostic(
-        OperationAnalysisContext context,
-        IInvocationOperation invocation,
-        IOperation receiver,
-        out Diagnostic diagnostic)
-    {
-        diagnostic = null!;
-        if (!IsMaterializingMethod(invocation.TargetMethod) ||
-            invocation.TargetMethod.Name == "AsEnumerable")
-        {
-            return false;
-        }
-
-        if (!TryResolveInlineMaterializationOrigin(receiver, out var previousMaterialization) ||
-            previousMaterialization.MaterializerName == "AsEnumerable")
-        {
-            return false;
-        }
-
-        // The redundant fix removes the PREVIOUS materializer. Dropping a de-duplicating set
-        // (ToHashSet/ToImmutableHashSet/…) is never safe: a trailing non-set materializer would
-        // lose the de-duplication entirely (ToHashSet().ToList()), and even a trailing set would
-        // lose any custom equality comparer carried by the dropped call
-        // (ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet() must not collapse to the default
-        // ToHashSet()). So a set-materializer source is not treated as a redundant materialization.
-        // Non-set sources (ToList().ToHashSet(), ToArray().ToList()) remain genuinely redundant and
-        // still report and fix, with the trailing call's own arguments preserved.
-        if (IsDeduplicatingSetMaterializer(previousMaterialization.MaterializerName))
-        {
-            return false;
-        }
-
-        // A Dictionary/Lookup source is a keyed/grouped structure; a trailing materializer transforms
-        // its shape (ToDictionary().ToList() -> List<KeyValuePair<,>>, ToLookup().ToList() ->
-        // List<IGrouping<,>>) rather than redundantly re-materialising the sequence. Reporting the
-        // trailing call as "redundant because ToDictionary/ToLookup" is misleading, so skip it.
-        if (IsKeyedOrGroupedMaterializer(previousMaterialization.MaterializerName))
-        {
-            return false;
-        }
-
-        var properties = CreateProperties(
-            RedundantDiagnosticKind,
-            previousMaterialization.OriginKind,
-            invocation.TargetMethod.Name,
-            previousMaterialization.MaterializerName);
-
-        if (CanOfferRemoveRedundantMaterializationFix(invocation.TargetMethod.Name, previousMaterialization))
-        {
-            properties = properties.SetItem(FixKindKey, RemoveRedundantMaterializationFixKind);
-        }
-
-        diagnostic = Diagnostic.Create(
-            RedundantRule,
-            invocation.Syntax.GetLocation(),
-            properties,
-            invocation.TargetMethod.Name,
-            previousMaterialization.MaterializerName);
-        return true;
-    }
-
     private static bool TryResolveMaterializationOrigin(
         IOperation operation,
         int position,
