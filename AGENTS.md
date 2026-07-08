@@ -16,8 +16,11 @@ Roslyn analyzer repo. Package: `LinqContraband` (NuGet). Health tracker: **`docs
 Before broad text search or release review on analyzer work, use semantic tooling first:
 
 - **dotnet-lsp first:** run workspace/document symbol lookup for the target rule, then references on changed helpers or public entry points, and use diagnostics when available before full tests.
-- **Rider MCP when exposed:** use Rider-backed project context or inspections for Roslyn changes when the `rider` MCP is available in the active Codex session.
+- **roslyn MCP:** callers / impact / unused-code before renames (project `.grok/config.toml` + `.mcp.json`; `DOTNET_ROLL_FORWARD=LatestMajor`).
+- **Rider MCP when exposed:** use Rider-backed project context or inspections when the `rider` MCP is available (Grok uses JetBrains stdio proxy, not SSE).
 - **Text search second:** use code search/power scripts only to confirm semantic findings, locate non-C# artifacts, or when LSP/Rider is unavailable; state the fallback in the final summary.
+
+Skill: **`dotnet-semantic-workflow`**. Health check after MCP changes: `grok mcp doctor`.
 
 ## Load-bearing facts
 

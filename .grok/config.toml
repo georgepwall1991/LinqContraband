@@ -1,0 +1,40 @@
+# Grok Build — LinqContraband project MCP surface
+
+[mcp_servers.roslyn]
+command = "/Users/georgewall/.dotnet/tools/dotnet-roslyn-mcp"
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 180
+
+[mcp_servers.roslyn.env]
+DOTNET_ROOT = "/usr/local/share/dotnet"
+DOTNET_HOST_PATH = "/opt/homebrew/bin/dotnet"
+DOTNET_ROLL_FORWARD = "LatestMajor"
+DOTNET_SOLUTION_PATH = "/Users/georgewall/fiveFive/LinqContraband/LinqContraband.sln"
+DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+PATH = "/opt/homebrew/bin:/usr/local/share/dotnet:/Users/georgewall/.dotnet/tools:/usr/bin:/bin:/usr/sbin:/sbin"
+
+[mcp_servers.swift-lsp]
+command = "/Users/georgewall/.local/share/codex-tools/lsp-mcp/lsp_mcp.py"
+args = ["--server-name", "swift-lsp", "--tool-prefix", "swift", "--language-id", "swift", "--root-marker", "*.xcodeproj", "--root-marker", "Package.swift", "--", "/usr/bin/sourcekit-lsp"]
+enabled = false
+
+[mcp_servers.typescript-lsp]
+command = "/Users/georgewall/.local/share/codex-tools/lsp-mcp/lsp_mcp.py"
+args = ["--server-name", "typescript-lsp", "--tool-prefix", "typescript", "--language-id", "typescript", "--root-marker", "tsconfig.json", "--root-marker", "package.json", "--", "/Users/georgewall/.bun/bin/typescript-language-server", "--stdio"]
+enabled = false
+
+[mcp_servers.pyright]
+command = "/Users/georgewall/.local/share/codex-tools/lsp-mcp/lsp_mcp.py"
+args = ["--server-name", "pyright", "--tool-prefix", "py", "--language-id", "python", "--root-marker", "pyproject.toml", "--root-marker", "requirements.txt", "--root-marker", "setup.py", "--", "/Users/georgewall/.bun/bin/pyright-langserver", "--stdio"]
+enabled = false
+
+[mcp_servers.gopls]
+command = "/Users/georgewall/.local/share/codex-tools/lsp-mcp/lsp_mcp.py"
+args = ["--server-name", "gopls", "--tool-prefix", "go", "--language-id", "go", "--root-marker", "go.mod", "--", "/Users/georgewall/go/bin/gopls"]
+enabled = false
+
+[mcp_servers.playwright]
+command = "bunx"
+args = ["@playwright/mcp@latest"]
+enabled = false

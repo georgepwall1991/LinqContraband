@@ -1,0 +1,17 @@
+<Project>
+  <!-- Repo-wide build guardrails. Imported before every .csproj, so any project
+       can still override (this repo's csproj already sets TreatWarningsAsErrors=true
+       globally — that stricter choice is preserved). Added 2026-07-08. -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- Fast local loop: skip running analyzers at CLI build time (the IDE / the
+         dotnet-lsp + roslyn MCP still run them live, so LC feedback is never lost).
+         CI flips them back on by passing -p:ContinuousIntegrationBuild=true. -->
+    <RunAnalyzersDuringBuild Condition="'$(ContinuousIntegrationBuild)' != 'true'">false</RunAnalyzersDuringBuild>
+    <EnforceCodeStyleInBuild Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</EnforceCodeStyleInBuild>
+
+    <OptimizeImplicitlyTriggeredBuild>true</OptimizeImplicitlyTriggeredBuild>
+  </PropertyGroup>
+</Project>
