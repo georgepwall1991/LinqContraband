@@ -44,6 +44,7 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterOperationAction(AnalyzeMethodReference, OperationKind.MethodReference);
     }
 
     private void AnalyzeInvocation(OperationAnalysisContext context)
@@ -61,13 +62,10 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
 
         // 3. Check if inside a loop in the same executable body.
         // A local function or lambda declared inside a loop is not necessarily executed per iteration.
-        var loop = invocation.FindEnclosingLoop();
-        if (loop != null && invocation.SharesOwningExecutableRoot(loop))
+        var loop = FindSaveExecutionLoop(invocation);
+        if (loop != null)
         {
             if (IsSaveReceiverFreshContextDeclaredInsideLoopBody(invocation, loop))
-                return;
-
-            if (IsSaveInsideCatchGuardedRetryAttempt(invocation, loop))
                 return;
 
             context.ReportDiagnostic(
@@ -79,6 +77,31 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         {
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+            return;
+        }
+
+        if (IsInsideDelegateCalledFromLoop(invocation))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+        }
+    }
+
+    private void AnalyzeMethodReference(OperationAnalysisContext context)
+    {
+        var methodReference = (IMethodReferenceOperation)context.Operation;
+        var method = methodReference.Method;
+
+        if (method.Name != "SaveChanges" && method.Name != "SaveChangesAsync")
+            return;
+
+        if (!method.ContainingType.IsDbContext())
+            return;
+
+        if (IsSaveMethodReferenceAssignedToDelegateCalledFromLoop(methodReference))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, methodReference.Syntax.GetLocation(), method.Name));
         }
     }
 
@@ -116,7 +139,7 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
             if (current is ILocalFunctionOperation localFunction)
                 return localFunction;
 
-            if (current is IAnonymousFunctionOperation or IMethodBodyOperation)
+            if (current is IAnonymousFunctionOperation or IMethodBodyBaseOperation)
                 return null;
 
             current = current.Parent;
@@ -130,7 +153,7 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         var current = localFunction.Parent;
         while (current != null)
         {
-            if (current is IMethodBodyOperation or IAnonymousFunctionOperation)
+            if (current is IMethodBodyBaseOperation or IAnonymousFunctionOperation)
                 return current;
 
             current = current.Parent;
