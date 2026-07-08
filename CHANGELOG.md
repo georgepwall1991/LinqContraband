@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.43] - 2026-07-08
+
 ### Fixed
 - `LC010` now reports `SaveChanges` and `SaveChangesAsync` calls hidden behind local delegate variables, aliases, compound or self-combining delegate subscriptions, conditional delegate initializers or invocation, delegate call chains, setup helpers including nested live helper calls and wrapper setup helpers, local invoker callback helpers, loop-carried assignments, or method groups when the delegate is invoked inside a loop, including loop-variant branch-exiting or opposite-branch delegate paths, assignments after invocation inside loop-called wrapper delegates, local functions, or callback helpers, and conditionally assigned delegates that can carry a loop-local context into later iterations, while preserving fresh loop-local contexts, fresh contexts passed directly or through wrapper delegate parameters unless those parameters are reassigned on a path that can reach the save or forwarding call, delegate removals without clearing duplicate subscriptions, branch-exclusive or branch-exiting delegate paths with stable guards, branch-exclusive conditional initializer arms with stable guards, negated-guard delegate paths, called-helper delegate overwrites, return-exiting retries, retry-only loops, switch-local retry breaks, and same-path reassignment boundaries.
 
