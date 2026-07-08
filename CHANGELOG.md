@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.40] - 2026-07-08
+
 ### Fixed
 - `LC045` now treats `DbContext.Set<TEntity>()` as a query root when detecting missing includes, including hoisted query locals and entity types without a matching `DbSet` property, and its fixer inserts `.Include(...)` before materialization on those sources.
 
