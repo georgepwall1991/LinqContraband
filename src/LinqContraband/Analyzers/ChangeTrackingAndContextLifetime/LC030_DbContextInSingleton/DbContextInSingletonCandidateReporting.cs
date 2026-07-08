@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,19 +26,28 @@ public sealed partial class DbContextInSingletonAnalyzer
             typeCandidates.Add(candidate);
         }
 
-        foreach (var pair in candidatesByType)
+        foreach (var pair in candidatesByType
+                     .OrderBy(pair => GetFirstCandidatePath(pair.Value), StringComparer.Ordinal)
+                     .ThenBy(pair => GetFirstCandidateStart(pair.Value))
+                     .ThenBy(pair => pair.Key.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat), StringComparer.Ordinal))
         {
             if (!longLivedTypes.TryGetValue(pair.Key, out var reason))
             {
                 continue;
             }
 
-            var storedCandidates = pair.Value
+            var orderedCandidates = pair.Value
+                .OrderBy(GetCandidatePath, StringComparer.Ordinal)
+                .ThenBy(GetCandidateStart)
+                .ThenBy(candidate => candidate.Name, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.Kind)
+                .ToArray();
+            var storedCandidates = orderedCandidates
                 .Where(candidate => candidate.Kind != CandidateKind.ConstructorParameter)
                 .ToArray();
             var reportableCandidates = storedCandidates.Length > 0
                 ? storedCandidates
-                : pair.Value.Where(candidate => candidate.Kind == CandidateKind.ConstructorParameter).ToArray();
+                : orderedCandidates.Where(candidate => candidate.Kind == CandidateKind.ConstructorParameter).ToArray();
 
             foreach (var candidate in reportableCandidates)
             {
@@ -50,6 +60,36 @@ public sealed partial class DbContextInSingletonAnalyzer
                     reason));
             }
         }
+    }
+
+    private static string GetFirstCandidatePath(IEnumerable<DbContextCandidate> candidates)
+    {
+        return candidates
+            .OrderBy(GetCandidatePath, StringComparer.Ordinal)
+            .ThenBy(GetCandidateStart)
+            .Select(GetCandidatePath)
+            .FirstOrDefault() ?? string.Empty;
+    }
+
+    private static int GetFirstCandidateStart(IEnumerable<DbContextCandidate> candidates)
+    {
+        return candidates
+            .OrderBy(GetCandidatePath, StringComparer.Ordinal)
+            .ThenBy(GetCandidateStart)
+            .Select(GetCandidateStart)
+            .FirstOrDefault();
+    }
+
+    private static string GetCandidatePath(DbContextCandidate candidate)
+    {
+        return candidate.Location.SourceTree?.FilePath ?? string.Empty;
+    }
+
+    private static int GetCandidateStart(DbContextCandidate candidate)
+    {
+        return candidate.Location.IsInSource
+            ? candidate.Location.SourceSpan.Start
+            : int.MaxValue;
     }
 
     private static Location GetLocation(ISymbol symbol)

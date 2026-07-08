@@ -100,7 +100,15 @@ public sealed partial class DbContextInSingletonAnalyzer
     private static bool IsDependencyInjectionMethod(IMethodSymbol method)
     {
         var definition = method.ReducedFrom ?? method;
-        return definition.ContainingNamespace?.ToDisplayString() == "Microsoft.Extensions.DependencyInjection";
+        return definition.ContainingNamespace?.ToDisplayString() == "Microsoft.Extensions.DependencyInjection" &&
+               definition.Parameters.Length > 0 &&
+               IsServiceCollection(definition.Parameters[0].Type);
+    }
+
+    private static bool IsServiceCollection(ITypeSymbol? type)
+    {
+        return type?.Name == "IServiceCollection" &&
+               type.ContainingNamespace?.ToDisplayString() == "Microsoft.Extensions.DependencyInjection";
     }
 
     private static void ReportRegistrationDiagnostic(

@@ -58,7 +58,9 @@ public class MyService
     -   DI calls that register a `DbContext` itself as singleton.
 2.  **Strict long-lived proof**:
     -   Report when the containing type implements `IHostedService`, inherits `BackgroundService`, has a conventional ASP.NET Core middleware `Invoke`/`InvokeAsync(HttpContext, ...)` shape, is registered with `AddHostedService<T>()`, or is registered with `AddSingleton(...)`.
+    -   For singleton factory registrations, report the concrete implementation type only when the factory directly returns a constructed implementation, such as `AddSingleton<IWorker>(_ => new Worker(...))`.
     -   Report direct `AddSingleton<TDbContext>()` and `AddDbContext<TContext>(..., ServiceLifetime.Singleton)` registrations.
+    -   DI registration matching is limited to `Microsoft.Extensions.DependencyInjection` methods whose first parameter is `IServiceCollection`, avoiding project helpers that happen to share names such as `AddSingleton`.
     -   Stay quiet for controllers, page models, view components, `IMiddleware`, `AddScoped`, `AddTransient`, factories, options, and generic service classes with no long-lived proof.
 3.  **Optional project configuration**:
     -   `dotnet_code_quality.LC030.detection_mode = expanded` enables conservative name-based review hints such as `*Singleton*`, `*HostedService`, and `*BackgroundWorker`.
@@ -76,6 +78,7 @@ public sealed class Worker : BackgroundService { private static AppDbContext _db
 public sealed class Worker : BackgroundService { public AppDbContext Db { get; } = new AppDbContext(); ... }
 public sealed class Worker : BackgroundService { private AppDbContext Db => _services.GetRequiredService<AppDbContext>(); ... }
 public sealed class AuditMiddleware { private readonly AppDbContext _db; public Task InvokeAsync(HttpContext ctx) => Task.CompletedTask; }
+services.AddSingleton<IWorker>(_ => new Worker(db)); // factory returns a singleton implementation that stores DbContext
 services.AddSingleton<AppDbContext>(); // DbContext registered as singleton
 services.AddDbContext<AppDbContext>(contextLifetime: ServiceLifetime.Singleton);
 ```
