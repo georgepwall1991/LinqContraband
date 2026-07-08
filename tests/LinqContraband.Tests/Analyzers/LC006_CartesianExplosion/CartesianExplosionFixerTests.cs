@@ -76,6 +76,7 @@ namespace TestNamespace
     public class DbContext
     {
         public IQueryable<User> Users => new List<User>().AsQueryable();
+        public IQueryable<User> ArchivedUsers => new List<User>().AsQueryable();
     }
 }";
 
@@ -236,6 +237,122 @@ class Program
     {
         var db = new DbContext();
         var query = db.Users.AsSplitQuery().Include(u => u.Orders.Where(o => o.Id > 0).OrderBy(o => o.Id)).Include(u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_StaticExtensionIncludeChain_InjectsAsSplitQueryIntoSourceArgument()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = {|LC006:EntityFrameworkQueryableExtensions.Include(
+            EntityFrameworkQueryableExtensions.Include(db.Users, u => u.Orders),
+            u => u.Roles)|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = EntityFrameworkQueryableExtensions.Include(
+            EntityFrameworkQueryableExtensions.Include(db.Users.AsSplitQuery(), u => u.Orders),
+            u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_StaticExtensionConditionalSource_ParenthesizesSourceBeforeAsSplitQuery()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(bool includeArchived)
+    {
+        var db = new DbContext();
+        var query = {|LC006:EntityFrameworkQueryableExtensions.Include(
+            EntityFrameworkQueryableExtensions.Include(includeArchived ? db.ArchivedUsers : db.Users, u => u.Orders),
+            u => u.Roles)|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main(bool includeArchived)
+    {
+        var db = new DbContext();
+        var query = EntityFrameworkQueryableExtensions.Include(
+            EntityFrameworkQueryableExtensions.Include((includeArchived ? db.ArchivedUsers : db.Users).AsSplitQuery(), u => u.Orders),
+            u => u.Roles).ToList();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_StaticExtensionFinalAsSingleQuery_ReplacesWithStaticAsSplitQuery()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = {|LC006:EntityFrameworkQueryableExtensions.AsSingleQuery(
+            EntityFrameworkQueryableExtensions.Include(
+                EntityFrameworkQueryableExtensions.Include(db.Users, u => u.Orders),
+                u => u.Roles))|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = EntityFrameworkQueryableExtensions.AsSplitQuery(
+            EntityFrameworkQueryableExtensions.Include(
+                EntityFrameworkQueryableExtensions.Include(db.Users, u => u.Orders),
+                u => u.Roles)).ToList();
     }
 }
 " + MockNamespace;

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC006` now fixes static `EntityFrameworkQueryableExtensions.Include(...)` chains by inserting `AsSplitQuery()` on the real query source argument instead of rewriting the extension type name and producing invalid code.
+
 ## [5.6.40] - 2026-07-08
 
 ### Fixed

@@ -49,6 +49,7 @@ public sealed partial class CartesianExplosionFixer : CodeFixProvider
         CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
@@ -57,6 +58,24 @@ public sealed partial class CartesianExplosionFixer : CodeFixProvider
             var replacementMemberAccess = asSingleMemberAccess.WithName(
                 SyntaxFactory.IdentifierName("AsSplitQuery").WithTriviaFrom(asSingleMemberAccess.Name));
             editor.ReplaceNode(asSingleQuery, asSingleQuery.WithExpression(replacementMemberAccess));
+            return editor.GetChangedDocument();
+        }
+
+        if (semanticModel != null &&
+            TryFindStaticIncludeSourceArgument(invocation, semanticModel, cancellationToken, out var staticSource))
+        {
+            if (IsInvocationOf(staticSource, "AsSplitQuery")) return document;
+
+            var staticReceiver = ParenthesizeIfNeededForMemberAccess(staticSource);
+            var staticAsSplitQuery = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                staticReceiver,
+                SyntaxFactory.IdentifierName("AsSplitQuery"));
+
+            editor.ReplaceNode(
+                staticSource,
+                SyntaxFactory.InvocationExpression(staticAsSplitQuery).WithTriviaFrom(staticSource));
+
             return editor.GetChangedDocument();
         }
 
