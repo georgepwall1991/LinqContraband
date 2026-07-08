@@ -9,7 +9,12 @@ public sealed partial class SaveChangesInLoopAnalyzer
 {
     private static bool IsSaveInsideCatchGuardedRetryAttempt(IInvocationOperation invocation, ILoopOperation loop)
     {
-        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax)
+        return IsOperationInsideCatchGuardedRetryAttempt(invocation, loop);
+    }
+
+    private static bool IsOperationInsideCatchGuardedRetryAttempt(IOperation operation, ILoopOperation loop)
+    {
+        if (operation.Syntax is not InvocationExpressionSyntax invocationSyntax)
             return false;
 
         var tryStatement = FindTryStatementBetweenInvocationAndLoop(invocationSyntax, loop.Syntax);

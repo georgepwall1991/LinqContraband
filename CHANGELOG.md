@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC010` now reports `SaveChanges` and `SaveChangesAsync` calls hidden behind local delegate variables or method groups when the delegate is invoked inside a loop, while staying quiet when the delegate is reassigned before the loop call or only invoked outside the loop.
+
 ## [5.6.42] - 2026-07-08
 
 ### Fixed

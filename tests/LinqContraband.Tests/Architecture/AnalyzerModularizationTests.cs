@@ -1747,6 +1747,32 @@ public sealed class AnalyzerModularizationTests
     }
 
     [Fact]
+    public void LC010_DelegateExecutionAnalysis_LivesInDedicatedPartial()
+    {
+        var analyzerDir = Path.Combine(
+            _repoRoot,
+            "src",
+            "LinqContraband",
+            "Analyzers",
+            "ChangeTrackingAndContextLifetime",
+            "LC010_SaveChangesInLoop");
+        var analyzerPath = Path.Combine(analyzerDir, "SaveChangesInLoopAnalyzer.cs");
+        var delegateExecutionPath = Path.Combine(analyzerDir, "SaveChangesInLoopDelegateExecution.cs");
+
+        Assert.True(File.Exists(delegateExecutionPath), "LC010 delegate-loop execution proof should live in a focused partial file.");
+
+        var analyzerSource = File.ReadAllText(analyzerPath);
+        Assert.Contains("public sealed partial class SaveChangesInLoopAnalyzer", analyzerSource);
+        Assert.DoesNotContain("private static bool IsInsideDelegateCalledFromLoop", analyzerSource);
+        Assert.DoesNotContain("private static bool IsDelegateLocalCalledFromLoop", analyzerSource);
+
+        var delegateExecutionSource = File.ReadAllText(delegateExecutionPath);
+        Assert.Contains("private static bool IsInsideDelegateCalledFromLoop", delegateExecutionSource);
+        Assert.Contains("private static bool IsDelegateLocalCalledFromLoop", delegateExecutionSource);
+        Assert.Contains("private static bool IsLocalAssignedInStraightLinePathBetween", delegateExecutionSource);
+    }
+
+    [Fact]
     public void LC010_FixerMoveSafety_LivesInDedicatedPartial()
     {
         var analyzerDir = Path.Combine(
@@ -4943,12 +4969,12 @@ public sealed class AnalyzerModularizationTests
 
         var analyzerSource = File.ReadAllText(analyzerPath);
         Assert.DoesNotContain("private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody", analyzerSource);
-        Assert.DoesNotContain("private static bool IsLocalWrittenBeforeInvocation", analyzerSource);
+        Assert.DoesNotContain("private static bool IsLocalWrittenBeforeOperation", analyzerSource);
         Assert.DoesNotContain("private static bool IsLocalReference", analyzerSource);
 
         var freshContextSource = File.ReadAllText(freshContextPath);
         Assert.Contains("private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody", freshContextSource);
-        Assert.Contains("private static bool IsLocalWrittenBeforeInvocation", freshContextSource);
+        Assert.Contains("private static bool IsLocalWrittenBeforeOperation", freshContextSource);
         Assert.Contains("private static bool IsLocalReference", freshContextSource);
     }
 

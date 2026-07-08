@@ -40,9 +40,9 @@ db.SaveChanges();
 ### Severity: `Warning`
 
 ### Notes
-LC010 reports direct `SaveChanges()`/`SaveChangesAsync()` calls inside loops when the save call and loop are part of the same executable body. It also reports a local function body when that local function is invoked from a loop in the containing executable body.
+LC010 reports direct `SaveChanges()`/`SaveChangesAsync()` calls inside loops when the save call and loop are part of the same executable body. It also reports a local function body when that local function is invoked from a loop in the containing executable body, and local delegate targets when the delegate is assigned to a save-containing lambda, local function, or `DbContext.SaveChanges`/`SaveChangesAsync` method group before being invoked from a loop.
 
-It does not report saves inside a local function or lambda that is merely declared inside a loop, because that delegate is not necessarily executed once per iteration. Lambdas nested inside a local function remain quiet unless the save itself is directly inside a proven loop.
+It does not report saves inside a local function or lambda that is merely declared inside a loop, because that delegate is not necessarily executed once per iteration. Delegate calls outside loops and delegate locals reassigned before the loop call stay quiet. Lambdas nested inside a local function remain quiet unless the save itself is directly inside a proven loop or the lambda is reached through a proven local delegate or local-function loop call.
 
 It also does not report when the saved `DbContext` local is created inside the loop body and is not reassigned before the save. That shape creates a fresh context per iteration, so moving the save outside the loop would be invalid and the per-iteration save is usually the intended unit-of-work boundary. Loop-local aliases to an outer context, contexts declared in a `for` initializer, and locals reassigned before saving still report because they can reuse the same context across iterations.
 

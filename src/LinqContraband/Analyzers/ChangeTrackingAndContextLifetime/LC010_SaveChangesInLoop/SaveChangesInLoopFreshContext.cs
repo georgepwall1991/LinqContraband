@@ -7,9 +7,23 @@ namespace LinqContraband.Analyzers.LC010_SaveChangesInLoop;
 
 public sealed partial class SaveChangesInLoopAnalyzer
 {
-    private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody(IInvocationOperation invocation, ILoopOperation loop)
+    private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody(IOperation saveOperation, ILoopOperation loop)
     {
-        var receiver = invocation.GetInvocationReceiver();
+        return IsSaveReceiverFreshContextDeclaredInsideLoopBody(saveOperation, loop, saveOperation);
+    }
+
+    private static bool IsSaveReceiverFreshContextDeclaredInsideLoopBody(
+        IOperation saveOperation,
+        ILoopOperation loop,
+        IOperation executionOperation)
+    {
+        var receiver = saveOperation switch
+        {
+            IInvocationOperation invocation => invocation.GetInvocationReceiver(),
+            IMethodReferenceOperation methodReference => methodReference.Instance?.UnwrapConversions(),
+            _ => null,
+        };
+
         if (receiver is not ILocalReferenceOperation localReference)
             return false;
 
@@ -20,20 +34,20 @@ public sealed partial class SaveChangesInLoopAnalyzer
 
         return declaration?.Initializer?.Value is IObjectCreationOperation objectCreation &&
                objectCreation.Type?.IsDbContext() == true &&
-               !IsLocalWrittenBeforeInvocation(loop.Body, invocation, localReference.Local);
+               !IsLocalWrittenBeforeOperation(loop.Body, executionOperation, localReference.Local);
     }
 
-    private static bool IsLocalWrittenBeforeInvocation(IOperation scope, IInvocationOperation invocation, ILocalSymbol local)
+    private static bool IsLocalWrittenBeforeOperation(IOperation scope, IOperation operation, ILocalSymbol local)
     {
-        var invocationStart = invocation.Syntax.SpanStart;
+        var operationStart = operation.Syntax.SpanStart;
 
         return scope.Descendants()
                    .OfType<ISimpleAssignmentOperation>()
-                   .Any(assignment => assignment.Syntax.SpanStart < invocationStart &&
+                   .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsLocalReference(assignment.Target, local)) ||
                scope.Descendants()
                    .OfType<IArgumentOperation>()
-                   .Any(argument => argument.Syntax.SpanStart < invocationStart &&
+                   .Any(argument => argument.Syntax.SpanStart < operationStart &&
                                     argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
                                     IsLocalReference(argument.Value, local));
     }

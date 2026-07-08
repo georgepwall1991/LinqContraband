@@ -306,6 +306,581 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_LambdaAssignedToDelegateCalledInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_LambdaAssignedToDelegateCalledInsideConstructorLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    Program()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_LocalFunctionAssignedToDelegateCalledInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        void SaveCurrent()
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+
+        Action saveCurrent = SaveCurrent;
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_LocalFunctionAssignedToDelegateCalledInsideConstructorLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    Program()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        void SaveCurrent()
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+
+        Action saveCurrent = SaveCurrent;
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SaveChangesMethodGroupAssignedToDelegateCalledInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Func<int> saveCurrent = {|LC010:db.SaveChanges|};
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SaveChangesAsyncMethodGroupAssignedToDelegateCalledInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Func<Task<int>> saveCurrent = {|LC010:db.SaveChangesAsync|};
+
+        foreach (var item in items)
+        {
+            await saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateCalledInsideLocalFunctionLoopAfterAssignment_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+        Action saveCurrent = () => { };
+
+        void RunSaves()
+        {
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+
+        saveCurrent = () => {|LC010:db.SaveChanges()|};
+        RunSaves();
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateCalledInsideLocalFunctionAfterLaterAssignmentAndLoopCall_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+        Action saveCurrent = () => { };
+
+        void RunSave()
+        {
+            saveCurrent();
+        }
+
+        saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+        foreach (var item in items)
+        {
+            RunSave();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateInvokedInsideLocalFunctionCalledFromLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        void RunSave()
+        {
+            Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+            saveCurrent();
+        }
+
+        foreach (var item in items)
+        {
+            RunSave();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateDeclaredInsideCalledLocalFunctionLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        void RunSaves()
+        {
+            Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+
+        RunSaves();
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ConditionalDelegateReassignmentBeforeLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(bool condition)
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+        if (condition)
+            saveCurrent = () => { };
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateReassignmentInsideUncalledLocalFunctionBeforeLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+        void Configure()
+        {
+            saveCurrent = () => { };
+        }
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateReassignedInIfBranchButCalledInElseLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(bool condition)
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+
+        if (condition)
+        {
+            saveCurrent = () => { };
+        }
+        else
+        {
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateCalledInsideUncalledLocalFunctionLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => db.SaveChanges();
+
+        void NotCalled()
+        {
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateReassignedInsideCalledLocalFunctionBeforeLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => db.SaveChanges();
+
+        void RunSaves()
+        {
+            saveCurrent = () => { };
+
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+
+        RunSaves();
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateRetryLoopWithBreakAfterSuccess_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        Action saveCurrent = () => db.SaveChanges();
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                saveCurrent();
+                break;
+            }
+            catch (Exception)
+            {
+                if (attempt == 2)
+                    throw;
+            }
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateAssignedViaOutBeforeLoopCall_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => db.SaveChanges();
+        Configure(out saveCurrent);
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+
+    void Configure(out Action saveCurrent)
+    {
+        saveCurrent = () => { };
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_MethodGroupDelegateRetryLoopWithBreakAfterSuccess_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        Func<int> saveCurrent = db.SaveChanges;
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                saveCurrent();
+                break;
+            }
+            catch (Exception)
+            {
+                if (attempt == 2)
+                    throw;
+            }
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateLoopInsideUncalledNestedHelper_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+        Action saveCurrent = () => db.SaveChanges();
+
+        void RunSaves()
+        {
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        }
+
+        void Outer()
+        {
+            RunSaves();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateLoopInsideUncalledLambda_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+        Action saveCurrent = () => db.SaveChanges();
+
+        Action runSaves = () =>
+        {
+            foreach (var item in items)
+            {
+                saveCurrent();
+            }
+        };
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateAssignmentInsideUncalledLocalFunction_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+        Action saveCurrent = () => { };
+
+        void SaveCurrent()
+        {
+            db.SaveChanges();
+        }
+
+        void Configure()
+        {
+            saveCurrent = SaveCurrent;
+        }
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_SaveChangesInsideRetryLoopWithBreakAfterSuccess_ShouldNotTrigger()
     {
         var test = Usings + @"
@@ -465,6 +1040,122 @@ class Program
         }
 
         SaveOnce();
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_LambdaAssignedToDelegateCalledOutsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => db.SaveChanges();
+
+        foreach (var item in items)
+        {
+        }
+
+        saveCurrent();
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateReassignedBeforeLoopCall_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var db = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        Action saveCurrent = () => db.SaveChanges();
+        saveCurrent = () => { };
+
+        foreach (var item in items)
+        {
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_DelegateCapturesFreshContextDeclaredInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            using var db = new MyDbContext();
+            Action saveCurrent = () => db.SaveChanges();
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_MethodGroupDelegateCapturesFreshContextDeclaredInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            using var db = new MyDbContext();
+            Func<int> saveCurrent = db.SaveChanges;
+            saveCurrent();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateCapturesLoopLocalContextReassignedBeforeInvocation_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        using var shared = new MyDbContext();
+        var items = new List<int> { 1, 2, 3 };
+
+        foreach (var item in items)
+        {
+            var db = new MyDbContext();
+            Action saveCurrent = () => {|LC010:db.SaveChanges()|};
+            db = shared;
+            saveCurrent();
+        }
     }
 }" + MockNamespace;
 
