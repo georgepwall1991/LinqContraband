@@ -62,13 +62,10 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
 
         // 3. Check if inside a loop in the same executable body.
         // A local function or lambda declared inside a loop is not necessarily executed per iteration.
-        var loop = invocation.FindEnclosingLoop();
-        if (loop != null && invocation.SharesOwningExecutableRoot(loop))
+        var loop = FindSaveExecutionLoop(invocation);
+        if (loop != null)
         {
             if (IsSaveReceiverFreshContextDeclaredInsideLoopBody(invocation, loop))
-                return;
-
-            if (IsSaveInsideCatchGuardedRetryAttempt(invocation, loop))
                 return;
 
             context.ReportDiagnostic(
