@@ -41,6 +41,9 @@ public sealed partial class MissingIncludeAnalyzer
 
             if (current is IInvocationOperation invocation)
             {
+                if (IsDbContextSetRoot(invocation))
+                    break;
+
                 if (!ShapePreservingOperators.Contains(invocation.TargetMethod.Name) ||
                     !invocation.TargetMethod.IsFrameworkMethod())
                 {

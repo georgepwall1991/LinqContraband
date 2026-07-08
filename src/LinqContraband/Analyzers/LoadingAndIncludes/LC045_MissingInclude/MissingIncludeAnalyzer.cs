@@ -73,9 +73,9 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         if (!TryAnalyzeQueryChain(invocation, context.CancellationToken, out var query))
             return;
 
-        var entityTypes = entityTypeCache.GetOrAdd(query.ContextType, static contextType => CollectDbSetEntityTypes(contextType));
-        if (!entityTypes.Contains(query.EntityType))
-            return;
+        var entityTypes = EnsureRootEntityType(
+            entityTypeCache.GetOrAdd(query.ContextType, static contextType => CollectDbSetEntityTypes(contextType)),
+            query.EntityType);
 
         var accesses = CollectNavigationAccesses(
             invocation,
@@ -87,5 +87,19 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
             return;
 
         ReportMissingIncludeDiagnostics(context, invocation, query, accesses);
+    }
+
+    private static System.Collections.Generic.HashSet<INamedTypeSymbol> EnsureRootEntityType(
+        System.Collections.Generic.HashSet<INamedTypeSymbol> entityTypes,
+        INamedTypeSymbol rootEntityType)
+    {
+        if (entityTypes.Contains(rootEntityType))
+            return entityTypes;
+
+        var expandedEntityTypes = new System.Collections.Generic.HashSet<INamedTypeSymbol>(
+            entityTypes,
+            SymbolEqualityComparer.Default);
+        expandedEntityTypes.Add(rootEntityType);
+        return expandedEntityTypes;
     }
 }
