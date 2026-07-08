@@ -50,6 +50,31 @@ public static class Startup
     }
 
     [Fact]
+    public async Task AddSingletonFactoryImplementation_WithStoredDbContext_ShouldTriggerLC030()
+    {
+        var test = EFCoreMock + DependencyInjectionMock + @"
+public interface IWorker { }
+
+public sealed class Worker : IWorker
+{
+    private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_db|};
+
+    public Worker(Microsoft.EntityFrameworkCore.DbContext db) => _db = db;
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IWorker>(services, _ => new Worker(default!));
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AddSingletonTypeImplementation_WithStoredDbContext_ShouldTriggerLC030()
     {
         var test = EFCoreMock + DependencyInjectionMock + @"
@@ -65,6 +90,59 @@ public static class Startup
     public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
         Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(services, typeof(IWorker), typeof(Worker));
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AddSingletonInDependencyInjectionNamespaceWithoutServiceCollection_ShouldNotTrigger()
+    {
+        var test = EFCoreMock + @"
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public sealed class NotServices { }
+
+    public static class CustomExtensions
+    {
+        public static NotServices AddSingleton<TService>(this NotServices services) => services;
+    }
+}
+
+public sealed class Worker
+{
+    private readonly Microsoft.EntityFrameworkCore.DbContext _db;
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.NotServices services)
+    {
+        Microsoft.Extensions.DependencyInjection.CustomExtensions.AddSingleton<Worker>(services);
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task MultipleStoredDbContexts_ShouldReportInSourceOrder()
+    {
+        var test = EFCoreMock + DependencyInjectionMock + @"
+public sealed class Worker
+{
+    private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_first|};
+    private readonly Microsoft.EntityFrameworkCore.DbContext {|LC030:_second|};
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<Worker>(services);
     }
 }
 ";

@@ -76,6 +76,8 @@ namespace Microsoft.Extensions.DependencyInjection
     {
         public static IServiceCollection AddSingleton<TService>(this IServiceCollection services) => services;
         public static IServiceCollection AddSingleton<TService, TImplementation>(this IServiceCollection services) where TImplementation : TService => services;
+        public static IServiceCollection AddSingleton<TService>(this IServiceCollection services, Func<IServiceProvider, TService> implementationFactory) => services;
+        public static IServiceCollection AddSingleton<TService, TImplementation>(this IServiceCollection services, Func<IServiceProvider, TImplementation> implementationFactory) where TImplementation : TService => services;
         public static IServiceCollection AddSingleton(this IServiceCollection services, Type serviceType) => services;
         public static IServiceCollection AddSingleton(this IServiceCollection services, Type serviceType, Type implementationType) => services;
         public static IServiceCollection AddScoped<TService>(this IServiceCollection services) => services;
