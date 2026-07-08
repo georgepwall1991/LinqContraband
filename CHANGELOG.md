@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.42] - 2026-07-08
+
 ### Fixed
 - `LC030` now resolves concrete singleton implementations returned directly from `AddSingleton<TService>(..., provider => new Implementation(...))` factories, tightens DI-call recognition to real `IServiceCollection` extension methods, and reports multiple stored `DbContext` diagnostics in deterministic source order.
 
