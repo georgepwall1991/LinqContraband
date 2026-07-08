@@ -33,7 +33,7 @@ var users = db.Users
     .ToList();
 ```
 
-The provided code fix inserts `.AsSplitQuery()` immediately before the first `Include`. If the chain ends in `.AsSingleQuery()` (an explicit Cartesian opt-in), the fixer rewrites that call site to `.AsSplitQuery()` instead.
+The provided code fix inserts `.AsSplitQuery()` immediately before the first `Include`. If the chain is written with static `EntityFrameworkQueryableExtensions.Include(...)` calls, the fix inserts `.AsSplitQuery()` on the explicit source argument. If the chain ends in `.AsSingleQuery()` (an explicit Cartesian opt-in), the fixer rewrites that call site to `.AsSplitQuery()` instead.
 
 ## When AsSplitQuery is Not a Free Win
 
