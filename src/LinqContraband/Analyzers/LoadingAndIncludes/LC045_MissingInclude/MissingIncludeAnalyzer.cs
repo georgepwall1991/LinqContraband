@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -70,6 +71,11 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                     AnalyzeInvocation(operationContext, entityTypeCache, flowGraphCache),
                 OperationKind.Invocation
             );
+            compilationContext.RegisterOperationAction(
+                operationContext =>
+                    AnalyzeForEach(operationContext, entityTypeCache, flowGraphCache),
+                OperationKind.Loop
+            );
         });
     }
 
@@ -90,7 +96,11 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         if (!IsEntityMaterializer(invocation.TargetMethod, out var returnsCollection))
             return;
 
-        if (!TryAnalyzeQueryChain(invocation, context.CancellationToken, out var query))
+        var querySource = invocation.GetInvocationReceiver(unwrapConversions: false);
+        if (
+            querySource == null
+            || !TryAnalyzeQueryChain(querySource, context.CancellationToken, out var query)
+        )
             return;
 
         var entityTypes = EnsureRootEntityType(
@@ -112,7 +122,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         if (accesses == null || accesses.Count == 0)
             return;
 
-        ReportMissingIncludeDiagnostics(context, invocation, query, accesses);
+        ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
     }
 
     private static System.Collections.Generic.HashSet<INamedTypeSymbol> EnsureRootEntityType(

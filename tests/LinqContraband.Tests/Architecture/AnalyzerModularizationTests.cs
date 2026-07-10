@@ -6043,13 +6043,13 @@ public sealed class AnalyzerModularizationTests
 
         var fixerSource = File.ReadAllText(fixerPath);
         Assert.Contains("public sealed partial class MissingIncludeFixer", fixerSource);
-        Assert.DoesNotContain("private static async Task<ExpressionSyntax?> GetQuerySourceAsync", fixerSource);
-        Assert.DoesNotContain("method.MethodKind == MethodKind.ReducedExtension", fixerSource);
+        Assert.DoesNotContain("private static async Task<ExpressionSyntax?> GetQueryableSourceAsync", fixerSource);
+        Assert.DoesNotContain("semanticModel?.GetTypeInfo(querySource, cancellationToken)", fixerSource);
 
         var querySource = File.ReadAllText(querySourcePath);
-        Assert.Contains("private static async Task<ExpressionSyntax?> GetQuerySourceAsync", querySource);
-        Assert.Contains("method.MethodKind == MethodKind.ReducedExtension", querySource);
-        Assert.Contains("materializer.ArgumentList.Arguments[0].Expression", querySource);
+        Assert.Contains("private static async Task<ExpressionSyntax?> GetQueryableSourceAsync", querySource);
+        Assert.Contains("semanticModel?.GetTypeInfo(querySource, cancellationToken)", querySource);
+        Assert.Contains("query source", querySource);
     }
 
     [Fact]

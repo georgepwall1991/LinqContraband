@@ -6,7 +6,7 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
 public partial class MissingIncludeTests
 {
-    // LC045 carries the materializer invocation as an additional location for the fixer; the
+    // LC045 carries the exact query source expression as an additional location for the fixer; the
     // fixer tests verify it lands correctly, so analyzer tests ignore it instead of spelling
     // out a second brittle span per case.
     private static DiagnosticResult Diagnostic(int markupKey, string navigationPath, string entityName)
@@ -112,6 +112,20 @@ namespace TestNamespace
     {
         public int Id { get; set; }
         public string Sku { get; set; }
+        public Product Product { get; set; }
+        public List<OrderItemDetail> Details { get; set; }
+    }
+
+    public class OrderItemDetail
+    {
+        public int Id { get; set; }
+        public Product Product { get; set; }
+    }
+
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class OrderSummary
@@ -125,6 +139,8 @@ namespace TestNamespace
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
+        public DbSet<OrderItemDetail> OrderItemDetails { get; set; }
+        public DbSet<Product> Products { get; set; }
     }
 
     public class SetOnlyDbContext : DbContext
@@ -609,5 +625,134 @@ class Program
         var expected = Diagnostic(0, "Customer", "Order");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TestCrime_InlineMaterializerForeach_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders.ToList())
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_DirectDbSetForeach_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_HoistedQueryableForeach_TriggersDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        IQueryable<Order> query = db.Orders.Where(order => order.Id > 0);
+        foreach (var order in query)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_DirectDbSetForeachWithInclude_StaysQuiet()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders.Include(order => order.Customer))
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_NestedCollectionIteration_ReportsMaximalPath()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items)
+            {
+                Console.WriteLine({|#0:item.Product|}.Name);
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Items.Product", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_NestedCollectionIterationWithFullInclude_StaysQuiet()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(order => order.Items).ThenInclude(item => item.Product).ToList();
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items)
+            {
+                Console.WriteLine(item.Product.Name);
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 }

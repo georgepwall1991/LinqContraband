@@ -1759,7 +1759,9 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 
 **🛡️ Reliability Notes:**
 - LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
-  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized entity origin, and a navigation access on it.
+  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized or synchronously `foreach`-enumerated entity
+  origin, and a navigation access on it. Inline collection materializers, direct query roots, nested collection paths,
+  and exact `Enumerable` element extraction are covered.
 - Any `Select`/`Join`/custom operator or dynamic `Include(variable)` makes the query stay quiet. A later reassignment
   or escape (return, helper call, lambda capture, or external store) suppresses only subsequent uncertain reads of
   that entity origin; a proven read before it still reports. Escaping one extracted entity does not poison a sibling,
@@ -1769,6 +1771,8 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   performs the write; a one-branch or different-entity write does not hide a missing `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
   to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
+- `await foreach`, callbacks and predicate/default-value element extraction overloads, custom lookalikes, and repository
+  or `IQueryable` parameter roots remain conservative boundaries.
 - Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without
   another loading mechanism a consistently null navigation makes the guard dead code hiding the missing `Include`.
   Regrouped conditional paths such as

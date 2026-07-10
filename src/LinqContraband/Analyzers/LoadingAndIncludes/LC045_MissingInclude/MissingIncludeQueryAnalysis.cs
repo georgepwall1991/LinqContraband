@@ -11,20 +11,22 @@ public sealed partial class MissingIncludeAnalyzer
 {
     private sealed class QueryChainInfo
     {
-        public QueryChainInfo(INamedTypeSymbol entityType, INamedTypeSymbol contextType, HashSet<string> includedPrefixes)
+        public QueryChainInfo(IOperation querySource, INamedTypeSymbol entityType, INamedTypeSymbol contextType, HashSet<string> includedPrefixes)
         {
+            QuerySource = querySource;
             EntityType = entityType;
             ContextType = contextType;
             IncludedPrefixes = includedPrefixes;
         }
 
+        public IOperation QuerySource { get; }
         public INamedTypeSymbol EntityType { get; }
         public INamedTypeSymbol ContextType { get; }
         public HashSet<string> IncludedPrefixes { get; }
     }
 
     private static bool TryAnalyzeQueryChain(
-        IInvocationOperation materializer,
+        IOperation querySource,
         CancellationToken cancellationToken,
         out QueryChainInfo queryInfo)
     {
@@ -33,7 +35,7 @@ public sealed partial class MissingIncludeAnalyzer
         // Allocated lazily: most materializer-named invocations are plain LINQ-to-objects
         // that fail the DbSet root proof.
         List<IInvocationOperation>? chain = null;
-        var current = materializer.GetInvocationReceiver();
+        var current = querySource;
 
         while (current != null)
         {
@@ -82,7 +84,7 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
 
         var includedPrefixes = new HashSet<string>(System.StringComparer.Ordinal);
-        var semanticModel = materializer.SemanticModel;
+        var semanticModel = querySource.SemanticModel;
         IncludePath? currentIncludePath = null;
 
         // Root-first order so each ThenInclude sees the Include path it extends.
@@ -108,7 +110,7 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
-        queryInfo = new QueryChainInfo(entityType, contextType, includedPrefixes);
+        queryInfo = new QueryChainInfo(querySource, entityType, contextType, includedPrefixes);
         return true;
     }
 

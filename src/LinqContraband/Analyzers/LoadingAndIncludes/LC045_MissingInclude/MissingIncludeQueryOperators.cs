@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC045_MissingInclude;
 
@@ -64,5 +65,34 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return method.IsFrameworkMethod();
+    }
+
+    private static bool IsExactCollectionElementExtraction(IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        var compilation = invocation.SemanticModel?.Compilation;
+        if (compilation == null || method.Parameters.Length == 0)
+            return false;
+
+        var frameworkEnumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        if (frameworkEnumerable == null ||
+            !SymbolEqualityComparer.Default.Equals(method.ContainingType.OriginalDefinition, frameworkEnumerable) ||
+            !SymbolEqualityComparer.Default.Equals(
+                method.Parameters[0].Type.OriginalDefinition,
+                compilation.GetSpecialType(SpecialType.System_Collections_Generic_IEnumerable_T)))
+        {
+            return false;
+        }
+
+        return method.Name switch
+        {
+            "First" or "FirstOrDefault" or
+            "Single" or "SingleOrDefault" or
+            "Last" or "LastOrDefault" => method.Parameters.Length == 1,
+            "ElementAt" or "ElementAtOrDefault" =>
+                method.Parameters.Length == 2 &&
+                method.Parameters[1].Type.SpecialType == SpecialType.System_Int32,
+            _ => false,
+        };
     }
 }

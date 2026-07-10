@@ -99,6 +99,7 @@ namespace TestNamespace
         public Customer Customer { get; set; }
         public Customer BillingCustomer { get; set; }
         public List<OrderItem> Items { get; set; }
+        public List<OrderItem> OtherItems { get; set; }
         public OrderSummary Summary { get; set; }
     }
 
@@ -132,6 +133,20 @@ namespace TestNamespace
     {
         public int Id { get; set; }
         public string Sku { get; set; }
+        public Product Product { get; set; }
+        public List<OrderItemDetail> Details { get; set; }
+    }
+
+    public class OrderItemDetail
+    {
+        public int Id { get; set; }
+        public Product Product { get; set; }
+    }
+
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class OrderSummary
@@ -146,6 +161,8 @@ namespace TestNamespace
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
+        public DbSet<OrderItemDetail> OrderItemDetails { get; set; }
+        public DbSet<Product> Products { get; set; }
         public DbSet<Region> Regions { get; set; }
     }
 

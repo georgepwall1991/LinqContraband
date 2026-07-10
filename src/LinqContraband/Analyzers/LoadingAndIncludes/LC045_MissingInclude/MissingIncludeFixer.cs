@@ -14,7 +14,8 @@ namespace LinqContraband.Analyzers.LC045_MissingInclude;
 
 /// <summary>
 /// Provides code fixes for LC045. Inserts .Include(x => x.Nav) (and .ThenInclude for nested
-/// paths) immediately before the materializer so the accessed navigation is eagerly loaded.
+/// paths) immediately before a materializer or direct foreach source so the accessed navigation
+/// is eagerly loaded.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingIncludeFixer))]
 [Shared]
@@ -43,19 +44,19 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             if (diagnostic.AdditionalLocations.Count == 0)
                 continue;
 
-            var materializerNode = root?.FindNode(diagnostic.AdditionalLocations[0].SourceSpan, getInnermostNodeForTie: true);
-            var materializer = materializerNode as InvocationExpressionSyntax ??
-                               materializerNode?.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-            if (materializer == null)
+            var querySourceNode = root?.FindNode(diagnostic.AdditionalLocations[0].SourceSpan, getInnermostNodeForTie: true);
+            var querySource = querySourceNode as ExpressionSyntax ??
+                              querySourceNode?.FirstAncestorOrSelf<ExpressionSyntax>();
+            if (querySource == null)
                 continue;
 
-            if (await GetQuerySourceAsync(context.Document, materializer, context.CancellationToken).ConfigureAwait(false) == null)
+            if (await GetQueryableSourceAsync(context.Document, querySource, context.CancellationToken).ConfigureAwait(false) == null)
                 continue;
 
             context.RegisterCodeFix(
                 CodeAction.Create(
                     $"Add .Include() for '{navigationPath}'",
-                    c => ApplyFixAsync(context.Document, materializer, navigationPath!, c),
+                    c => ApplyFixAsync(context.Document, querySource, navigationPath!, c),
                     "LC045_AddInclude:" + navigationPath),
                 diagnostic);
         }
@@ -63,19 +64,21 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
 
     private static async Task<Document> ApplyFixAsync(
         Document document,
-        InvocationExpressionSyntax materializer,
+        ExpressionSyntax querySource,
         string navigationPath,
         CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
 
-        var source = await GetQuerySourceAsync(document, materializer, cancellationToken).ConfigureAwait(false);
+        var source = await GetQueryableSourceAsync(document, querySource, cancellationToken).ConfigureAwait(false);
         if (source == null)
             return document;
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
 
-        ExpressionSyntax current = source;
+        var leadingTrivia = source.GetLeadingTrivia();
+        var trailingTrivia = source.GetTrailingTrivia();
+        ExpressionSyntax current = ParenthesizeForMemberAccess((ExpressionSyntax)source.WithoutTrivia());
         var first = true;
 
         foreach (var segment in navigationPath.Split('.'))
@@ -91,7 +94,7 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             first = false;
         }
 
-        editor.ReplaceNode(source, current.WithTriviaFrom(source));
+        editor.ReplaceNode(source, current.WithLeadingTrivia(leadingTrivia).WithTrailingTrivia(trailingTrivia));
 
         return editor.GetChangedDocument();
     }
@@ -101,6 +104,13 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
         // A navigation named after a reserved keyword (e.g. `@event`) is stored unescaped in
         // the diagnostic path; emit it back with the verbatim prefix or the fix won't compile.
         return SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name;
+    }
+
+    private static ExpressionSyntax ParenthesizeForMemberAccess(ExpressionSyntax expression)
+    {
+        return expression is CastExpressionSyntax || expression.IsKind(SyntaxKind.AsExpression)
+            ? SyntaxFactory.ParenthesizedExpression(expression)
+            : expression;
     }
 
 }

@@ -11,7 +11,7 @@ public sealed partial class MissingIncludeAnalyzer
 {
     private static void ReportMissingIncludeDiagnostics(
         OperationAnalysisContext context,
-        IInvocationOperation invocation,
+        IOperation querySource,
         QueryChainInfo query,
         List<NavigationAccess> accesses)
     {
@@ -32,7 +32,7 @@ public sealed partial class MissingIncludeAnalyzer
         if (firstAccessByPath.Count == 0)
             return;
 
-        var materializerLocation = new[] { invocation.Syntax.GetLocation() };
+        var querySourceLocation = new[] { querySource.Syntax.GetLocation() };
 
         foreach (var pair in firstAccessByPath.OrderBy(entry => entry.Value.Syntax.SpanStart))
         {
@@ -46,7 +46,7 @@ public sealed partial class MissingIncludeAnalyzer
             context.ReportDiagnostic(Diagnostic.Create(
                 Rule,
                 pair.Value.Syntax.GetLocation(),
-                additionalLocations: materializerLocation,
+                additionalLocations: querySourceLocation,
                 properties: properties,
                 pair.Key,
                 query.EntityType.Name));

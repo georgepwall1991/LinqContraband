@@ -116,6 +116,7 @@ public sealed partial class MissingIncludeAnalyzer
         EscapeRoot,
         EscapeOrigin,
         CaptureOrigin,
+        InvalidateCollection,
         SnapshotOrigin,
         SatisfyPath,
         Access,
@@ -132,7 +133,8 @@ public sealed partial class MissingIncludeAnalyzer
             int accessId = -1,
             EntityOrigin? relatedOrigin = null,
             int sequence = 0,
-            int snapshotId = -1
+            int snapshotId = -1,
+            bool isFreshIterationStorage = false
         )
         {
             Kind = kind;
@@ -144,6 +146,7 @@ public sealed partial class MissingIncludeAnalyzer
             RelatedOrigin = relatedOrigin;
             Sequence = sequence;
             SnapshotId = snapshotId;
+            IsFreshIterationStorage = isFreshIterationStorage;
         }
 
         public FlowEventKind Kind { get; }
@@ -155,6 +158,7 @@ public sealed partial class MissingIncludeAnalyzer
         public EntityOrigin? RelatedOrigin { get; }
         public int Sequence { get; }
         public int SnapshotId { get; }
+        public bool IsFreshIterationStorage { get; }
     }
 
     private readonly struct FlowProbeState : IEquatable<FlowProbeState>
@@ -377,6 +381,11 @@ public sealed partial class MissingIncludeAnalyzer
             return -1;
         }
 
+        public long GetOwnGeneration(EntityOrigin origin)
+        {
+            return CurrentGenerations.TryGetValue(origin.Id, out var generation) ? generation : -1;
+        }
+
         public FlowProbeState WithCapturedOrigin(EntityOrigin origin)
         {
             return new FlowProbeState(
@@ -414,6 +423,45 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentBindingSnapshots,
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
+                CurrentOriginPrefixes,
+                CurrentPrefixSnapshots
+            );
+        }
+
+        public FlowProbeState WithoutReboundOriginFacts(EntityOrigin origin)
+        {
+            var generation = GetOwnGeneration(origin);
+            if (generation == -1)
+                return this;
+
+            var unknownGenerations = CurrentUnknownGenerations;
+            foreach (var fact in CurrentUnknownGenerations)
+            {
+                if (fact.Generation == generation)
+                    unknownGenerations = unknownGenerations.Remove(fact);
+            }
+
+            var satisfiedGenerations = CurrentSatisfiedGenerations;
+            foreach (var fact in CurrentSatisfiedGenerations)
+            {
+                if (fact.Generation == generation)
+                    satisfiedGenerations = satisfiedGenerations.Remove(fact);
+            }
+
+            return new FlowProbeState(
+                IsActive,
+                RootUnknown,
+                OriginBound,
+                OriginUnknown,
+                PathSatisfied,
+                OriginIndependentOfRoot,
+                IterationSourceCaptured,
+                AliasSourceLinked,
+                OriginGenerations,
+                CurrentCapturedOriginIds,
+                CurrentBindingSnapshots,
+                unknownGenerations,
+                satisfiedGenerations,
                 CurrentOriginPrefixes,
                 CurrentPrefixSnapshots
             );

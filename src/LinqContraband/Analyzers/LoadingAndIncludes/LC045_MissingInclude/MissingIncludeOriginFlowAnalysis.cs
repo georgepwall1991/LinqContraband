@@ -74,6 +74,62 @@ public sealed partial class MissingIncludeAnalyzer
         return true;
     }
 
+    private static bool TryCollectOriginAwareNavigationAccesses(
+        IOperation executableRoot,
+        IForEachLoopOperation rootForEach,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        CancellationToken cancellationToken,
+        out List<NavigationAccess> accesses
+    )
+    {
+        accesses = null!;
+
+        if (
+            !TryGetFlowGraph(
+                executableRoot,
+                rootForEach.SemanticModel,
+                flowGraphCache,
+                cancellationToken,
+                out var graph
+            )
+        )
+            return false;
+
+        var context = new OriginFlowContext(
+            executableRoot,
+            rootForEach,
+            entityType,
+            entityTypes,
+            cancellationToken
+        );
+
+        context.Build();
+        if (!context.TryMapEventsToBlocks(graph))
+            return false;
+
+        accesses = new List<NavigationAccess>();
+        foreach (var candidate in context.Candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                TryGetProvenMissingAccess(
+                    graph,
+                    context,
+                    candidate,
+                    cancellationToken,
+                    out var provenAccess
+                )
+            )
+            {
+                accesses.Add(provenAccess);
+            }
+        }
+
+        return true;
+    }
+
     private static bool TryGetFlowGraph(
         IOperation executableRoot,
         SemanticModel? semanticModel,
@@ -328,6 +384,13 @@ public sealed partial class MissingIncludeAnalyzer
             case FlowEventKind.BindAliasOrigin when flowEvent.Origin != null:
                 var oldAliasGeneration = state.GetGeneration(flowEvent.Origin);
                 var oldAliasPrefix = state.GetOriginPrefix(flowEvent.Origin);
+                var isFreshIterationStorage = flowEvent.IsFreshIterationStorage;
+                if (isFreshIterationStorage)
+                {
+                    state = state
+                        .WithoutReboundOriginFacts(flowEvent.Origin)
+                        .WithoutCapturedOrigin(flowEvent.Origin);
+                }
                 var aliasGeneration = -1L;
                 string? aliasPrefix = null;
                 if (flowEvent.SnapshotId >= 0)
@@ -380,8 +443,17 @@ public sealed partial class MissingIncludeAnalyzer
                         originUnknown: aliasGeneration == -1
                             || capturedBinding
                             || sourceUnknown
-                            || (keepsSameBinding && state.OriginUnknown),
-                        pathSatisfied: sourceSatisfied || (keepsSameBinding && state.PathSatisfied),
+                            || (
+                                keepsSameBinding
+                                && !isFreshIterationStorage
+                                && state.OriginUnknown
+                            ),
+                        pathSatisfied: sourceSatisfied
+                            || (
+                                keepsSameBinding
+                                && !isFreshIterationStorage
+                                && state.PathSatisfied
+                            ),
                         originIndependentOfRoot: aliasGeneration != -1,
                         iterationSourceCaptured: state.IterationSourceCaptured,
                         aliasSourceLinked: true
@@ -411,7 +483,17 @@ public sealed partial class MissingIncludeAnalyzer
                 break;
 
             case FlowEventKind.BindIterationOrigin when flowEvent.Origin != null:
-                state = state.WithoutCapturedOrigin(flowEvent.Origin);
+                state = state
+                    .WithoutReboundOriginFacts(flowEvent.Origin)
+                    .WithoutCapturedOrigin(flowEvent.Origin);
+                var parentOrigin = flowEvent.Origin.AliasSourceOrigin;
+                var parentIsUncertain =
+                    parentOrigin != null
+                    && HasUncertainOriginOrAncestor(
+                        parentOrigin,
+                        GetEffectiveAccessPath(candidate, state) ?? candidate.Access.Path,
+                        state
+                    );
                 var canBindIteration =
                     state.IsActive && (!state.RootUnknown || state.IterationSourceCaptured);
                 state = state.WithGeneration(
@@ -439,9 +521,9 @@ public sealed partial class MissingIncludeAnalyzer
                 {
                     state = state.WithOrigin(
                         originBound: true,
-                        originUnknown: false,
+                        originUnknown: parentIsUncertain,
                         pathSatisfied: false,
-                        originIndependentOfRoot: true,
+                        originIndependentOfRoot: !parentIsUncertain,
                         iterationSourceCaptured: true,
                         aliasSourceLinked: state.AliasSourceLinked
                     );
@@ -523,7 +605,8 @@ public sealed partial class MissingIncludeAnalyzer
                 if (
                     state.IsActive
                     && escapedGeneration != -1
-                    && state.GetOriginPrefix(flowEvent.Origin) is string escapedPrefix
+                    && (flowEvent.Path ?? state.GetOriginPrefix(flowEvent.Origin))
+                        is string escapedPrefix
                 )
                 {
                     state = state.WithUnknownGeneration(escapedGeneration, escapedPrefix);
@@ -532,7 +615,14 @@ public sealed partial class MissingIncludeAnalyzer
                 if (
                     state.IsActive
                     && state.OriginBound
-                    && OriginEventAffectsCandidate(flowEvent, candidate, state)
+                    && (
+                        OriginEventAffectsCandidate(flowEvent, candidate, state)
+                        || IsPostBindingRelatedOriginEventAffectingCandidate(
+                            flowEvent,
+                            candidate,
+                            state
+                        )
+                    )
                 )
                 {
                     state = state.WithOriginUnknown();
@@ -553,10 +643,27 @@ public sealed partial class MissingIncludeAnalyzer
                 if (
                     state.IsActive
                     && state.OriginBound
-                    && OriginEventAffectsCandidate(flowEvent, candidate, state)
+                    && (
+                        OriginEventAffectsCandidate(flowEvent, candidate, state)
+                        || IsPostBindingRelatedOriginEventAffectingCandidate(
+                            flowEvent,
+                            candidate,
+                            state
+                        )
+                    )
                 )
                 {
                     state = state.WithOriginUnknown();
+                }
+
+                break;
+
+            case FlowEventKind.InvalidateCollection
+                when flowEvent.Origin != null && flowEvent.Path != null:
+                var invalidatedGeneration = GetOrCreateKnownGeneration(flowEvent.Origin, ref state);
+                if (state.IsActive && invalidatedGeneration != -1)
+                {
+                    state = state.WithUnknownGeneration(invalidatedGeneration, flowEvent.Path);
                 }
 
                 break;
@@ -644,6 +751,50 @@ public sealed partial class MissingIncludeAnalyzer
             && SymbolEqualityComparer.Default.Equals(eventOrigin.Local, candidate.AccessLocal);
     }
 
+    private static bool HasUncertainOriginOrAncestor(
+        EntityOrigin origin,
+        string accessPath,
+        FlowProbeState state
+    )
+    {
+        for (var current = origin; current != null; current = current.AliasSourceOrigin)
+        {
+            var generation = state.GetGeneration(current);
+            if (
+                generation == -1
+                || state.IsOriginCaptured(current)
+                || state.IsGenerationUnknown(generation, accessPath)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPostBindingRelatedOriginEventAffectingCandidate(
+        FlowEvent flowEvent,
+        FlowAccessCandidate candidate,
+        FlowProbeState state
+    )
+    {
+        if (
+            flowEvent.Origin == null
+            || !candidate.Origin.IsIteration
+            || flowEvent.Position <= candidate.BindingPosition
+            || GetEffectiveAccessPath(candidate, state) is not string effectivePath
+        )
+        {
+            return false;
+        }
+
+        return (
+            IsAncestorOrigin(flowEvent.Origin, candidate.Origin)
+            || SharesLiveUltimateSource(flowEvent.Origin, candidate.Origin, state)
+        ) && EventScopesAccess(flowEvent, state, effectivePath);
+    }
+
     private static bool OriginEventAffectsCandidate(
         FlowEvent flowEvent,
         FlowAccessCandidate candidate,
@@ -660,7 +811,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         if (
             ReferenceEquals(eventOrigin, candidate.Origin)
-            && OriginPrefixScopesAccess(eventOrigin, state, effectivePath)
+            && EventScopesAccess(flowEvent, state, effectivePath)
         )
             return true;
 
@@ -669,19 +820,31 @@ public sealed partial class MissingIncludeAnalyzer
         if (
             eventGeneration != -1
             && eventGeneration == candidateGeneration
-            && OriginPrefixScopesAccess(eventOrigin, state, effectivePath)
+            && EventScopesAccess(flowEvent, state, effectivePath)
         )
             return true;
 
         if (
             IsAncestorOrigin(eventOrigin, candidate.Origin)
-            && OriginPrefixScopesAccess(eventOrigin, state, effectivePath)
+            && EventScopesAccess(flowEvent, state, effectivePath)
         )
         {
             return candidateGeneration == -1 && flowEvent.Position < candidate.BindingPosition;
         }
 
         return false;
+    }
+
+    private static bool EventScopesAccess(
+        FlowEvent flowEvent,
+        FlowProbeState state,
+        string accessPath
+    )
+    {
+        return flowEvent.Path != null
+            ? PathCovers(flowEvent.Path, accessPath)
+            : flowEvent.Origin != null
+                && OriginPrefixScopesAccess(flowEvent.Origin, state, accessPath);
     }
 
     private static bool OriginPrefixScopesAccess(
@@ -749,6 +912,19 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return false;
+    }
+
+    private static bool SharesLiveUltimateSource(
+        EntityOrigin eventOrigin,
+        EntityOrigin candidateOrigin,
+        FlowProbeState state
+    )
+    {
+        var eventUltimateSource = GetUltimateSourceOrigin(eventOrigin);
+        var candidateUltimateSource = GetUltimateSourceOrigin(candidateOrigin);
+        return ReferenceEquals(eventUltimateSource, candidateUltimateSource)
+            && state.GetGeneration(eventOrigin) != -1
+            && state.GetGeneration(eventOrigin) == state.GetGeneration(eventUltimateSource);
     }
 
     private static EntityOrigin GetUltimateSourceOrigin(EntityOrigin origin)

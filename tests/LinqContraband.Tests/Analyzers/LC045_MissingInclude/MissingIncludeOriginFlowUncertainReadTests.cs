@@ -1099,4 +1099,581 @@ public partial class MissingIncludeEdgeCasesTests
 "
         );
     }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_EscapedParentBeforeNestedIteration_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        Hydrate(order);
+
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_OneBranchParentEscapeBeforeNestedIteration_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool hydrate)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        if (hydrate)
+        {
+            Hydrate(order);
+        }
+
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_ParentEscapeAfterNestedBinding_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            Hydrate(order);
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_ParentEscapeBetweenNestedBindings_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders
+            .Include(order => order.Items)
+            .ThenInclude(item => item.Details)
+            .FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            Hydrate(order);
+            foreach (var detail in item.Details)
+            {
+                Console.WriteLine(detail.Product.Name);
+            }
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_NestedForeachRebindsAfterEscapedContinue_StillReports()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(order => order.Items).ToList();
+        foreach (var order in orders)
+        {
+            if (skip)
+            {
+                Hydrate(order);
+                skip = false;
+                continue;
+            }
+
+            foreach (var item in order.Items)
+            {
+                Console.WriteLine({|#0:item.Product|}.Name);
+            }
+        }
+    }
+
+    void Hydrate(Order order) { }
+",
+            Diagnostic(0, "Items.Product", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_StableSiblingAliasEscapeAfterNestedBinding_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        var alias = order;
+        foreach (var item in order.Items)
+        {
+            Hydrate(alias);
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_CollectionArgumentEscapeBeforeAndAfterNestedBinding_NoDiagnostic()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool escapeBeforeBinding)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        if (escapeBeforeBinding)
+        {
+            Hydrate(order.Items);
+        }
+
+        foreach (var item in order.Items)
+        {
+            if (!escapeBeforeBinding)
+            {
+                Hydrate(order.Items);
+            }
+
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    void Hydrate(List<OrderItem> items) { }
+"
+        );
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TestInnocent_OriginFlow_CollectionReplacementBeforeNestedBinding_NoDiagnostic(
+        bool replaceNestedCollection
+    )
+    {
+        var programBody = replaceNestedCollection
+            ? @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders
+            .Include(order => order.Items)
+            .ThenInclude(item => item.Details)
+            .FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            item.Details = BuildDetails();
+            foreach (var detail in item.Details)
+            {
+                Console.WriteLine(detail.Product.Name);
+            }
+        }
+    }
+
+    List<OrderItemDetail> BuildDetails() => new List<OrderItemDetail>();
+"
+            : @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        order.Items = BuildItems();
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    List<OrderItem> BuildItems() => new List<OrderItem>();
+";
+
+        await VerifyOriginFlowAsync(programBody);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TestCrime_OriginFlow_FreshNestedIterationDoesNotCarryPriorItemFacts(
+        bool capturesAlias
+    )
+    {
+        var programBody = capturesAlias
+            ? @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            var alias = item;
+            if (skip)
+            {
+                Store(() => Hydrate(alias));
+                skip = false;
+                continue;
+            }
+
+            Console.WriteLine({|#0:alias.Product|}.Name);
+        }
+    }
+
+    void Store(Action action) { }
+    void Hydrate(OrderItem item) { }
+"
+            : @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            if (skip)
+            {
+                item.Product = new Product();
+                skip = false;
+                continue;
+            }
+
+            var alias = item;
+            Console.WriteLine({|#0:alias.Product|}.Name);
+        }
+    }
+";
+
+        await VerifyOriginFlowAsync(programBody, Diagnostic(0, "Items.Product", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_CapturedLoopExternalAliasRemainsUncertain()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        OrderItem alias = null;
+        foreach (var item in order.Items)
+        {
+            if (skip)
+            {
+                alias = item;
+                Store(() => Hydrate(alias));
+                skip = false;
+                continue;
+            }
+
+            alias = item;
+            Console.WriteLine(alias.Product.Name);
+        }
+    }
+
+    void Store(Action action) { }
+    void Hydrate(OrderItem item) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_CollectionReplacementSatisfiesCollectionPath()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        order.Items = BuildItems();
+        Console.WriteLine(order.Items.Count);
+    }
+
+    List<OrderItem> BuildItems() => new List<OrderItem>();
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_MultipleScopedCollectionArgumentsKeepSiblingPath()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders
+            .Include(order => order.Items)
+            .Include(order => order.OtherItems)
+            .FirstOrDefault();
+        Hydrate(order.Items, order.OtherItems);
+        Console.WriteLine({|#0:order.Customer|}.Name);
+    }
+
+    void Hydrate(List<OrderItem> first, List<OrderItem> second) { }
+",
+            Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_ReadBeforeCollectionEscapeAndSiblingPath_StillReport()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine({|#0:item.Product|}.Name);
+            Hydrate(order.Items);
+            Console.WriteLine(item.Product.Name);
+        }
+
+        Console.WriteLine({|#1:order.Customer|}.Name);
+    }
+
+    void Hydrate(List<OrderItem> items) { }
+",
+            Diagnostic(0, "Items.Product", "Order"),
+            Diagnostic(1, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_UnrelatedCollectionEffectsDoNotSuppressNestedPath()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void OtherCollectionArgument()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        var other = db.Orders.Include(order => order.Items).FirstOrDefault();
+        Hydrate(other.Items);
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine({|#0:item.Product|}.Name);
+        }
+    }
+
+    void OtherCollectionReplacement()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        var other = db.Orders.Include(order => order.Items).FirstOrDefault();
+        other.Items = BuildItems();
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine({|#1:item.Product|}.Name);
+        }
+    }
+
+    void Hydrate(List<OrderItem> items) { }
+    List<OrderItem> BuildItems() => new List<OrderItem>();
+",
+            Diagnostic(0, "Items.Product", "Order"),
+            Diagnostic(1, "Items.Product", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_RepointedSiblingAliasDoesNotSuppressNestedIteration()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        var alias = order;
+        alias = new Order();
+        foreach (var item in order.Items)
+        {
+            Hydrate(alias);
+            Console.WriteLine({|#0:item.Product|}.Name);
+        }
+    }
+
+    void Hydrate(Order order) { }
+",
+            Diagnostic(0, "Items.Product", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_CollectionReplacementAfterNestedBindingKeepsDetachedItem()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            order.Items = BuildItems();
+            Console.WriteLine({|#0:item.Product|}.Name);
+        }
+    }
+
+    List<OrderItem> BuildItems() => new List<OrderItem>();
+",
+            Diagnostic(0, "Items.Product", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_OriginFlow_TransitiveFreshBodyAliasDoesNotCarryCapture()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            var first = item;
+            var second = first;
+            if (skip)
+            {
+                Store(() => Hydrate(second));
+                skip = false;
+                continue;
+            }
+
+            Console.WriteLine({|#0:second.Product|}.Name);
+        }
+    }
+
+    void Store(Action action) { }
+    void Hydrate(OrderItem item) { }
+",
+            Diagnostic(0, "Items.Product", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_OuterBodyAliasCapturedInInnerLoopRemainsUncertain()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(bool skip)
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(order => order.Items).ToList();
+        foreach (var order in orders)
+        {
+            OrderItem alias = null;
+            foreach (var item in order.Items)
+            {
+                if (skip)
+                {
+                    alias = item;
+                    Store(() => Hydrate(alias));
+                    skip = false;
+                    continue;
+                }
+
+                alias = item;
+                Console.WriteLine(alias.Product.Name);
+            }
+        }
+    }
+
+    void Store(Action action) { }
+    void Hydrate(OrderItem item) { }
+"
+            );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_BodyLocalReassignmentDoesNotClearCapture()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        foreach (var item in order.Items)
+        {
+            var alias = item;
+            Store(() => Hydrate(alias));
+            alias = item;
+            Console.WriteLine(alias.Product.Name);
+        }
+    }
+
+    void Store(Action action) { }
+    void Hydrate(OrderItem item) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_OriginFlow_DeconstructionCollectionReplacementSatisfiesAndInvalidates()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void DirectCollectionRead()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.FirstOrDefault();
+        int ignored;
+        (order.Items, ignored) = (BuildItems(), 0);
+        Console.WriteLine(order.Items.Count);
+    }
+
+    void DescendantProvenance()
+    {
+        var db = new MyDbContext();
+        var order = db.Orders.Include(order => order.Items).FirstOrDefault();
+        int ignored;
+        (order.Items, ignored) = (BuildItems(), 0);
+        foreach (var item in order.Items)
+        {
+            Console.WriteLine(item.Product.Name);
+        }
+    }
+
+    List<OrderItem> BuildItems() => new List<OrderItem>();
+"
+        );
+    }
 }

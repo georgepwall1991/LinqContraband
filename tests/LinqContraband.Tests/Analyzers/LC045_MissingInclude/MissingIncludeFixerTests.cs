@@ -448,4 +448,166 @@ class Program
         await testObj.RunAsync();
     }
 
+    [Fact]
+    public async Task FixCrime_InlineMaterializerForeach_AddsIncludeBeforeMaterializer()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders.ToList())
+        {
+            Console.WriteLine({|LC045:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders.Include(x => x.Customer).ToList())
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_DirectDbSetForeach_AddsIncludeToCollectionSource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders)
+        {
+            Console.WriteLine({|LC045:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders.Include(x => x.Customer))
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_HoistedQueryableForeach_AddsIncludeToCollectionSource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        IQueryable<Order> query = db.Orders;
+        foreach (var order in query)
+        {
+            Console.WriteLine({|LC045:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        IQueryable<Order> query = db.Orders;
+        foreach (var order in query.Include(x => x.Customer))
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_DirectForeachAsQueryable_ParenthesizesIncludeReceiver()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in db.Orders as IQueryable<Order>)
+        {
+            Console.WriteLine({|LC045:order.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        foreach (var order in (db.Orders as IQueryable<Order>).Include(x => x.Customer))
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        await testObj.RunAsync();
+    }
+
 }

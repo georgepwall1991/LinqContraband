@@ -49,7 +49,9 @@ public sealed partial class MissingIncludeAnalyzer
                     );
                     break;
 
-                case IInvocationOperation invocation when !IsMaterializer(invocation):
+                case IInvocationOperation invocation
+                    when !IsMaterializer(invocation)
+                        && !IsExactMaterializedCollectionElementExtraction(invocation):
                     CollectInvocationEscapeEvents(invocation);
                     break;
 
@@ -117,6 +119,35 @@ public sealed partial class MissingIncludeAnalyzer
 
             if (target is not ILocalReferenceOperation)
             {
+                if (
+                    TryResolveCollectionNavigationEscape(
+                        target,
+                        out var collectionParentOrigin,
+                        out var collectionPath
+                    )
+                )
+                {
+                    events.Add(
+                        new FlowEvent(
+                            FlowEventKind.InvalidateCollection,
+                            assignment.Syntax,
+                            assignment.Syntax.Span.End,
+                            collectionParentOrigin,
+                            collectionPath
+                        )
+                    );
+                    events.Add(
+                        new FlowEvent(
+                            FlowEventKind.SatisfyPath,
+                            assignment.Syntax,
+                            assignment.Syntax.Span.End,
+                            collectionParentOrigin,
+                            collectionPath
+                        )
+                    );
+                    return;
+                }
+
                 if (
                     TryResolveTrackedSource(target, out var isRoot, out var indexedOrigin)
                     && !isRoot
@@ -262,7 +293,12 @@ public sealed partial class MissingIncludeAnalyzer
                         targetOrigin,
                         relatedOrigin: descriptor.SourceOrigin,
                         sequence: sequence,
-                        snapshotId: snapshotId
+                        snapshotId: snapshotId,
+                        isFreshIterationStorage: IsFreshIterationStorage(
+                            targetOrigin,
+                            descriptor.SourceOrigin,
+                            value.Syntax.Span.End
+                        )
                     )
                 );
                 return;
@@ -277,6 +313,43 @@ public sealed partial class MissingIncludeAnalyzer
                     sequence: sequence
                 )
             );
+        }
+
+        private bool IsFreshIterationStorage(
+            EntityOrigin targetOrigin,
+            EntityOrigin sourceOrigin,
+            int bindingPosition
+        )
+        {
+            if (targetOrigin.Local == null || targetOrigin.BindingPosition != bindingPosition)
+                return false;
+
+            var iterationSource = sourceOrigin;
+            while (iterationSource != null && !iterationSource.IsIteration)
+                iterationSource = iterationSource.AliasSourceOrigin;
+
+            if (iterationSource == null)
+                return false;
+
+            foreach (var binding in iterationBindings)
+            {
+                if (!ReferenceEquals(binding.Origin, iterationSource))
+                    continue;
+
+                foreach (var location in targetOrigin.Local.Locations)
+                {
+                    if (
+                        location.IsInSource
+                        && location.SourceTree == binding.Body.SyntaxTree
+                        && binding.Body.Span.Contains(location.SourceSpan)
+                    )
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private void CollectDeconstructionAssignmentEvents(
@@ -337,6 +410,37 @@ public sealed partial class MissingIncludeAnalyzer
                     );
                 }
 
+                return;
+            }
+
+            if (
+                TryResolveCollectionNavigationEscape(
+                    target,
+                    out var collectionParentOrigin,
+                    out var collectionPath
+                )
+            )
+            {
+                events.Add(
+                    new FlowEvent(
+                        FlowEventKind.InvalidateCollection,
+                        syntax,
+                        completionPosition,
+                        collectionParentOrigin,
+                        collectionPath,
+                        sequence: target.Syntax.SpanStart
+                    )
+                );
+                events.Add(
+                    new FlowEvent(
+                        FlowEventKind.SatisfyPath,
+                        syntax,
+                        completionPosition,
+                        collectionParentOrigin,
+                        collectionPath,
+                        sequence: target.Syntax.SpanStart
+                    )
+                );
                 return;
             }
 
@@ -463,7 +567,7 @@ public sealed partial class MissingIncludeAnalyzer
             IMethodSymbol? targetMethod
         )
         {
-            var escapedOrigins = new HashSet<int>();
+            var escapedOrigins = new Dictionary<int, List<string?>>();
             var escapedRoot = false;
 
             AddCallSource(instance);
@@ -477,7 +581,7 @@ public sealed partial class MissingIncludeAnalyzer
             {
                 escapedRoot |= capture.EscapesRoot;
                 foreach (var originId in capture.OriginIds)
-                    escapedOrigins.Add(originId);
+                    AddEscapedOrigin(originId, navigationPath: null);
             }
 
             if (escapedRoot)
@@ -485,17 +589,21 @@ public sealed partial class MissingIncludeAnalyzer
                 events.Add(new FlowEvent(FlowEventKind.EscapeRoot, syntax, completionPosition));
             }
 
-            foreach (var originId in escapedOrigins)
+            foreach (var escapedOrigin in escapedOrigins)
             {
-                var origin = FindOrigin(originId);
-                if (origin != null)
+                var origin = FindOrigin(escapedOrigin.Key);
+                if (origin == null)
+                    continue;
+
+                foreach (var navigationPath in escapedOrigin.Value)
                 {
                     events.Add(
                         new FlowEvent(
                             FlowEventKind.EscapeOrigin,
                             syntax,
                             completionPosition,
-                            origin
+                            origin,
+                            navigationPath
                         )
                     );
                 }
@@ -542,21 +650,44 @@ public sealed partial class MissingIncludeAnalyzer
                         return;
                 }
 
-                if (!TryResolveTrackedSource(source, out var isRoot, out var origin))
-                {
-                    if (source == null || !TryResolveEntityOrigin(source, out var entityOrigin))
-                        return;
-
-                    isRoot = false;
-                    origin = entityOrigin;
-                }
+                if (
+                    !TryResolveEscapeSource(
+                        source,
+                        out var isRoot,
+                        out var origin,
+                        out var navigationPath
+                    )
+                )
+                    return;
 
                 if (isRoot)
                     escapedRoot = true;
                 else if (origin?.IsUnstableDirectIndex == true)
                     escapedRoot = true;
                 else if (origin != null)
-                    escapedOrigins.Add(origin.Id);
+                    AddEscapedOrigin(origin.Id, navigationPath);
+            }
+
+            void AddEscapedOrigin(int originId, string? navigationPath)
+            {
+                if (!escapedOrigins.TryGetValue(originId, out var navigationPaths))
+                {
+                    navigationPaths = new List<string?>();
+                    escapedOrigins[originId] = navigationPaths;
+                }
+
+                if (navigationPaths.Contains(null))
+                    return;
+
+                if (navigationPath == null)
+                {
+                    navigationPaths.Clear();
+                    navigationPaths.Add(null);
+                }
+                else if (!navigationPaths.Contains(navigationPath))
+                {
+                    navigationPaths.Add(navigationPath);
+                }
             }
         }
 
@@ -586,7 +717,7 @@ public sealed partial class MissingIncludeAnalyzer
                     new FlowEvent(FlowEventKind.EscapeRoot, lambda.Syntax, lambda.Syntax.Span.End)
                 );
 
-                if (lambda.Syntax.Span.End < materializer.Syntax.Span.End)
+                if (materializer != null && lambda.Syntax.Span.End < materializer.Syntax.Span.End)
                 {
                     events.Add(
                         new FlowEvent(
@@ -669,6 +800,9 @@ public sealed partial class MissingIncludeAnalyzer
 
             if (IsWriteTarget(propertyReference))
             {
+                if (IsCollectionNavigation(propertyReference, entityTypes))
+                    return;
+
                 events.Add(
                     new FlowEvent(
                         FlowEventKind.SatisfyPath,
