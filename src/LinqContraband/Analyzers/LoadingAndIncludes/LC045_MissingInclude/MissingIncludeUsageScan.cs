@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -16,13 +17,43 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        CancellationToken cancellationToken)
+        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        CancellationToken cancellationToken
+    )
     {
+        if (
+            TryCollectOriginAwareNavigationAccesses(
+                executableRoot,
+                materializer,
+                resultLocal,
+                returnsCollection,
+                entityType,
+                entityTypes,
+                flowGraphCache,
+                cancellationToken,
+                out var flowAccesses
+            )
+        )
+        {
+            return flowAccesses;
+        }
+
+        // Roslyn cannot build a CFG for every incomplete or nested executable shape. Keep the
+        // previous all-or-nothing scan as a conservative fallback in those cases.
+        if (
+            LocalAssignmentCache
+                .GetAssignments(executableRoot, resultLocal, cancellationToken)
+                .Count != 1
+        )
+            return null;
+
         bool IsTrackedLocal(IOperation? operation)
         {
-            return operation?.UnwrapConversions() is ILocalReferenceOperation localReference &&
-                   (SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal) ||
-                    entityLocals.Contains(localReference.Local));
+            return operation?.UnwrapConversions() is ILocalReferenceOperation localReference
+                && (
+                    SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal)
+                    || entityLocals.Contains(localReference.Local)
+                );
         }
 
         bool IsEntitySource(IOperation? operation)
@@ -31,7 +62,15 @@ public sealed partial class MissingIncludeAnalyzer
                 return true;
 
             // Direct indexed access: orders[0].Customer without an intermediate local.
-            return returnsCollection && operation != null && IsIndexedAccessOf(operation, resultLocal);
+            return returnsCollection
+                && operation != null
+                && IsIndexedAccessOf(operation, resultLocal);
+        }
+
+        bool TryResolveFallbackOrigin(IOperation? operation, out EntityOrigin origin)
+        {
+            origin = FallbackEntityOrigin;
+            return IsEntitySource(operation);
         }
 
         var accesses = new List<NavigationAccess>();
@@ -43,9 +82,9 @@ public sealed partial class MissingIncludeAnalyzer
 
             switch (descendant)
             {
-                case IReturnOperation returnOperation when
-                    returnOperation.ReturnedValue != null &&
-                    IsEntitySource(returnOperation.ReturnedValue):
+                case IReturnOperation returnOperation
+                    when returnOperation.ReturnedValue != null
+                        && IsEntitySource(returnOperation.ReturnedValue):
                     return null;
 
                 case IInvocationOperation call when call != materializer:
@@ -61,19 +100,34 @@ public sealed partial class MissingIncludeAnalyzer
 
                     break;
 
-                case IAnonymousFunctionOperation lambda when
-                    LambdaReferencesTrackedLocal(lambda, resultLocal, entityLocals, cancellationToken):
+                case IAnonymousFunctionOperation lambda
+                    when LambdaReferencesTrackedLocal(
+                        lambda,
+                        resultLocal,
+                        entityLocals,
+                        cancellationToken
+                    ):
                     return null;
 
-                case ISimpleAssignmentOperation assignmentOperation when
-                    IsEntitySource(assignmentOperation.Value) &&
-                    assignmentOperation.Target.UnwrapConversions() is not ILocalReferenceOperation:
+                case ISimpleAssignmentOperation assignmentOperation
+                    when IsEntitySource(assignmentOperation.Value)
+                        && assignmentOperation.Target.UnwrapConversions()
+                            is not ILocalReferenceOperation:
                     return null;
 
                 case IPropertyReferenceOperation propertyReference:
                     if (IsInsideNameOf(propertyReference))
                         break;
-                    if (!TryGetAccessPath(propertyReference, entityType, entityTypes, IsEntitySource, out var path))
+                    if (
+                        !TryGetAccessPath(
+                            propertyReference,
+                            entityType,
+                            entityTypes,
+                            TryResolveFallbackOrigin,
+                            out var path,
+                            out _
+                        )
+                    )
                         break;
 
                     if (IsWriteTarget(propertyReference))
@@ -81,7 +135,10 @@ public sealed partial class MissingIncludeAnalyzer
                         // o.Customer = c assigns an in-memory object, so reads of that path
                         // and below it after the assignment are backed regardless of Include.
                         var spanStart = propertyReference.Syntax.SpanStart;
-                        if (!satisfiedPaths.TryGetValue(path, out var existingSpan) || spanStart < existingSpan)
+                        if (
+                            !satisfiedPaths.TryGetValue(path, out var existingSpan)
+                            || spanStart < existingSpan
+                        )
                             satisfiedPaths[path] = spanStart;
                         break;
                     }
@@ -89,8 +146,10 @@ public sealed partial class MissingIncludeAnalyzer
                     // o.Items.Add(x): mutating a tracked entity's collection does not read it.
                     // Only collection navigations qualify; order.Customer.Clear() still reads
                     // the Customer navigation.
-                    if (IsCollectionNavigation(propertyReference, entityTypes) &&
-                        IsCollectionMutatorReceiver(propertyReference))
+                    if (
+                        IsCollectionNavigation(propertyReference, entityTypes)
+                        && IsCollectionMutatorReceiver(propertyReference)
+                    )
                     {
                         break;
                     }

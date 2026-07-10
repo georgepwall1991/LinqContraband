@@ -11,10 +11,13 @@ public sealed partial class MissingIncludeAnalyzer
         IPropertyReferenceOperation propertyReference,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        System.Func<IOperation?, bool> isEntitySource,
-        out string path)
+        EntityOriginResolver tryResolveEntityOrigin,
+        out string path,
+        out EntityOrigin origin
+    )
     {
         path = null!;
+        origin = null!;
 
         if (!TryGetNavigationTarget(propertyReference.Property, entityTypes, out _, out _))
             return false;
@@ -26,21 +29,37 @@ public sealed partial class MissingIncludeAnalyzer
         if (instance is IConditionalAccessInstanceOperation)
             instance = ResolveConditionalAccessReceiver(propertyReference)?.UnwrapConversions();
 
-        if (isEntitySource(instance))
+        if (tryResolveEntityOrigin(instance, out origin))
         {
-            if (!IsPropertyOfEntity(propertyReference.Property, entityType))
+            var originEntityType = origin.EntityType ?? entityType;
+            if (!IsPropertyOfEntity(propertyReference.Property, originEntityType))
                 return false;
 
-            path = propertyReference.Property.Name;
+            path = CombineNavigationPath(origin.NavigationPrefix, propertyReference.Property.Name);
             return true;
         }
 
         // Nested access through a reference navigation: o.Customer.Address => "Customer.Address".
-        if (instance is IPropertyReferenceOperation parentReference &&
-            TryGetAccessPath(parentReference, entityType, entityTypes, isEntitySource, out var parentPath))
+        if (
+            instance is IPropertyReferenceOperation parentReference
+            && TryGetAccessPath(
+                parentReference,
+                entityType,
+                entityTypes,
+                tryResolveEntityOrigin,
+                out var parentPath,
+                out origin
+            )
+        )
         {
-            if (!TryGetNavigationTarget(parentReference.Property, entityTypes, out var parentTarget, out var parentIsCollection) ||
-                parentIsCollection)
+            if (
+                !TryGetNavigationTarget(
+                    parentReference.Property,
+                    entityTypes,
+                    out var parentTarget,
+                    out var parentIsCollection
+                ) || parentIsCollection
+            )
             {
                 return false;
             }
@@ -56,12 +75,29 @@ public sealed partial class MissingIncludeAnalyzer
         // Address instance back to the whole inner conditional access rather than directly to
         // the Customer property. Re-enter through the terminal navigation property so the
         // deeper path is still reported as Customer.Address.
-        if (instance is IConditionalAccessOperation conditionalInstance &&
-            FindConditionalAccessTerminalProperty(conditionalInstance) is IPropertyReferenceOperation conditionalParentReference &&
-            TryGetAccessPath(conditionalParentReference, entityType, entityTypes, isEntitySource, out var conditionalParentPath))
+        if (
+            instance is IConditionalAccessOperation conditionalInstance
+            && FindConditionalAccessTerminalProperty(conditionalInstance)
+                is IPropertyReferenceOperation conditionalParentReference
+            && TryGetAccessPath(
+                conditionalParentReference,
+                entityType,
+                entityTypes,
+                tryResolveEntityOrigin,
+                out var conditionalParentPath,
+                out origin
+            )
+        )
         {
-            if (!TryResolveNavigationTargetForPath(entityType, conditionalParentPath, entityTypes, out var conditionalParentTarget, out var conditionalParentIsCollection) ||
-                conditionalParentIsCollection)
+            if (
+                !TryResolveNavigationTargetForPath(
+                    entityType,
+                    conditionalParentPath,
+                    entityTypes,
+                    out var conditionalParentTarget,
+                    out var conditionalParentIsCollection
+                ) || conditionalParentIsCollection
+            )
             {
                 return false;
             }
@@ -76,12 +112,18 @@ public sealed partial class MissingIncludeAnalyzer
         return false;
     }
 
+    private static string CombineNavigationPath(string prefix, string segment)
+    {
+        return prefix.Length == 0 ? segment : prefix + "." + segment;
+    }
+
     private static bool TryResolveNavigationTargetForPath(
         INamedTypeSymbol entityType,
         string path,
         HashSet<INamedTypeSymbol> entityTypes,
         out INamedTypeSymbol targetEntity,
-        out bool isCollection)
+        out bool isCollection
+    )
     {
         targetEntity = null!;
         isCollection = false;
@@ -91,8 +133,15 @@ public sealed partial class MissingIncludeAnalyzer
         {
             var segmentProperty = FindEntityProperty(currentEntity, segment);
 
-            if (segmentProperty == null ||
-                !TryGetNavigationTarget(segmentProperty, entityTypes, out targetEntity, out isCollection))
+            if (
+                segmentProperty == null
+                || !TryGetNavigationTarget(
+                    segmentProperty,
+                    entityTypes,
+                    out targetEntity,
+                    out isCollection
+                )
+            )
             {
                 return false;
             }
@@ -122,9 +171,14 @@ public sealed partial class MissingIncludeAnalyzer
 
     private static bool IsCollectionNavigation(
         IPropertyReferenceOperation propertyReference,
-        HashSet<INamedTypeSymbol> entityTypes)
+        HashSet<INamedTypeSymbol> entityTypes
+    )
     {
-        return TryGetNavigationTarget(propertyReference.Property, entityTypes, out _, out var isCollection) &&
-               isCollection;
+        return TryGetNavigationTarget(
+                propertyReference.Property,
+                entityTypes,
+                out _,
+                out var isCollection
+            ) && isCollection;
     }
 }

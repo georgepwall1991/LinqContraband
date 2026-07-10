@@ -9,9 +9,9 @@ public class MissingIncludeSample
     {
         Console.WriteLine("Testing LC045...");
 
-        // VIOLATION: ShippingAddress is never Included. With lazy-loading proxies every
-        // iteration fires an extra query (read-side N+1); without proxies the navigation
-        // is silently null and this throws.
+        // VIOLATION: ShippingAddress is not Included. With lazy-loading proxies each
+        // iteration can fire an extra query (read-side N+1); without another loading
+        // mechanism or relationship fix-up, the navigation can remain null and throw.
         var customers = db.Customers.ToList();
         foreach (var c in customers)
         {
