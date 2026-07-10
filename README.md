@@ -1728,9 +1728,9 @@ db.SaveChanges();
 
 ### LC045: Missing Include
 
-If you materialize a query (`ToList`, `FirstOrDefault`, …) and then read a navigation property the query never
-`Include`d, one of two bugs ships: with lazy-loading proxies every access fires an extra query (the classic read-side
-N+1); without proxies the navigation is silently `null` or an empty collection.
+If you materialize a query (`ToList`, `FirstOrDefault`, …) and then read a navigation property the query did not
+`Include`, the access can trigger a read-side N+1 with lazy-loading proxies. Without lazy loading, it can remain
+`null` or empty when explicit loading, `AutoInclude`, and relationship fix-up have not populated it.
 
 **👶 Explain it like I'm a ten year old:** You ordered a burger but didn't ask for fries. Now either the kitchen makes
 a separate trip for every single fry you reach for (slow!), or there are simply no fries on your plate and you go
@@ -1742,7 +1742,7 @@ hungry (null!).
 var orders = db.Orders.ToList();
 foreach (var o in orders)
 {
-    Console.WriteLine(o.Customer.Name); // N+1 query per order, or NullReferenceException
+    Console.WriteLine(o.Customer.Name); // N+1, or null when no other loading mechanism applies
 }
 ```
 
@@ -1759,15 +1759,19 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 
 **🛡️ Reliability Notes:**
 - LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
-  operators (`Where`, `OrderBy`, `Include`, …), a single-assignment result local, and a navigation access on it.
-- Any `Select`/`Join`/custom operator, a reassigned local, a dynamic `Include(variable)`, or the result escaping
-  (returned, passed to a method, captured by a lambda) makes the rule stay quiet.
+  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized entity origin, and a navigation access on it.
+- Any `Select`/`Join`/custom operator or dynamic `Include(variable)` makes the query stay quiet. A later reassignment
+  or escape (return, helper call, lambda capture, or external store) suppresses only subsequent uncertain reads of
+  that entity origin; a proven read before it still reports. Escaping one extracted entity does not poison a sibling,
+  but escaping their materialized collection root makes every still-root-derived origin uncertain.
 - Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
-  and are not flagged.
+  and are not flagged. A setter satisfies a later read only for the same entity and only when every path to the read
+  performs the write; a one-branch or different-entity write does not hide a missing `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
   to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
-- Null-guarded reads still fire deliberately: under proxies the null check itself triggers the N+1, and without
-  proxies the guard is dead code hiding the missing `Include`. Regrouped conditional paths such as
+- Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without
+  another loading mechanism a consistently null navigation makes the guard dead code hiding the missing `Include`.
+  Regrouped conditional paths such as
   `(order?.Customer)?.Address?.City` report the full `Customer.Address` navigation, including inline materializer
   and inherited-navigation forms, while conditional method-call results stay outside the queried receiver path.
 

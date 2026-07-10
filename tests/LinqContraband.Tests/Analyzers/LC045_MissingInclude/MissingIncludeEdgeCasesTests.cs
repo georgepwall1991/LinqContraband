@@ -1,20 +1,25 @@
 using Microsoft.CodeAnalysis.Testing;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
-    LinqContraband.Analyzers.LC045_MissingInclude.MissingIncludeAnalyzer>;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<LinqContraband.Analyzers.LC045_MissingInclude.MissingIncludeAnalyzer>;
 
 namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
 public partial class MissingIncludeEdgeCasesTests
 {
-    private static DiagnosticResult Diagnostic(int markupKey, string navigationPath, string entityName)
+    private static DiagnosticResult Diagnostic(
+        int markupKey,
+        string navigationPath,
+        string entityName
+    )
     {
-        return VerifyCS.Diagnostic("LC045")
+        return VerifyCS
+            .Diagnostic("LC045")
             .WithLocation(markupKey)
             .WithArguments(navigationPath, entityName)
             .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations);
     }
 
-    private const string Usings = @"
+    private const string Usings =
+        @"
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -24,7 +29,8 @@ using Microsoft.EntityFrameworkCore.Query;
 using TestNamespace;
 ";
 
-    private const string MockNamespace = @"
+    private const string MockNamespace =
+        @"
 namespace Microsoft.EntityFrameworkCore.Query
 {
     public interface IIncludableQueryable<out TEntity, out TProperty> : IQueryable<TEntity> { }
@@ -91,6 +97,7 @@ namespace TestNamespace
         public int Id { get; set; }
         public string Status { get; set; }
         public Customer Customer { get; set; }
+        public Customer BillingCustomer { get; set; }
         public List<OrderItem> Items { get; set; }
         public OrderSummary Summary { get; set; }
     }
@@ -154,7 +161,9 @@ namespace TestNamespace
         // A Select reshapes the query: the materialized objects are no longer raw entities, so
         // any navigation data was either projected deliberately or the access happens on a
         // different type. The whole query is out of scope.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -167,7 +176,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -175,7 +185,9 @@ class Program
     [Fact]
     public async Task TestInnocent_OnlyScalarPropertiesAccessed_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -188,7 +200,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -198,7 +211,9 @@ class Program
     {
         // OrderSummary has no DbSet on the context: it is an owned/unmapped type, which EF
         // loads with the entity (or never), so Include does not apply.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -211,7 +226,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -221,7 +237,9 @@ class Program
     {
         // Setting a navigation is how relationships are created on tracked entities; it does
         // not read unloaded data.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -235,7 +253,8 @@ class Program
         db.SaveChanges();
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -245,7 +264,9 @@ class Program
     {
         // Adding to a tracked entity's collection is a legitimate write pattern that does not
         // require the existing rows to be loaded.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -259,7 +280,8 @@ class Program
         db.SaveChanges();
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -267,7 +289,9 @@ class Program
     [Fact]
     public async Task TestInnocent_NonEfSource_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -280,7 +304,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -289,7 +314,9 @@ class Program
     public async Task TestInnocent_UnknownQueryOperatorInChain_NoDiagnostic()
     {
         // A custom operator may reshape the query or add its own includes; bail conservatively.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -302,7 +329,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -312,7 +340,9 @@ class Program
     {
         // The navigation now points at an in-memory object, so the later read is backed
         // regardless of Include.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -323,7 +353,8 @@ class Program
         Console.WriteLine(order.Customer.Name);
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -331,7 +362,9 @@ class Program
     [Fact]
     public async Task TestInnocent_NameofNavigation_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -344,7 +377,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -352,7 +386,9 @@ class Program
     [Fact]
     public async Task TestInnocent_DeconstructionAssignmentToNav_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -366,7 +402,8 @@ class Program
         db.SaveChanges();
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -374,7 +411,9 @@ class Program
     [Fact]
     public async Task TestInnocent_AggregateTerminal_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -384,7 +423,8 @@ class Program
         Console.WriteLine(count);
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

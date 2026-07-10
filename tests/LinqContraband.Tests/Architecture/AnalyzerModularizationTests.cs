@@ -506,6 +506,67 @@ public sealed class AnalyzerModularizationTests
     }
 
     [Fact]
+    public void LC045_OriginAwareFlowResponsibilities_LiveInDedicatedPartials()
+    {
+        var analyzerDir = Path.Combine(
+            _repoRoot,
+            "src",
+            "LinqContraband",
+            "Analyzers",
+            "LoadingAndIncludes",
+            "LC045_MissingInclude");
+        var analyzerPath = Path.Combine(analyzerDir, "MissingIncludeAnalyzer.cs");
+        var usageScanPath = Path.Combine(analyzerDir, "MissingIncludeUsageScan.cs");
+        var flowAnalysisPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowAnalysis.cs");
+        var flowBindingsPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowBindings.cs");
+        var flowContextPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowContext.cs");
+        var flowEventsPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowEvents.cs");
+        var flowStatePath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowState.cs");
+
+        Assert.True(File.Exists(flowAnalysisPath), "LC045 origin-aware control-flow analysis should live in a focused partial file.");
+        Assert.True(File.Exists(flowBindingsPath), "LC045 origin and alias binding discovery should live in a focused partial file.");
+        Assert.True(File.Exists(flowContextPath), "LC045 origin-flow context construction should live in a focused partial file.");
+        Assert.True(File.Exists(flowEventsPath), "LC045 origin-flow event collection should live in a focused partial file.");
+        Assert.True(File.Exists(flowStatePath), "LC045 origin-flow state and event models should live in a focused partial file.");
+
+        var usageScanSource = File.ReadAllText(usageScanPath);
+        Assert.DoesNotContain("private static bool TryGetFlowGraph", usageScanSource);
+        Assert.DoesNotContain("private sealed partial class OriginFlowContext", usageScanSource);
+        Assert.DoesNotContain("private readonly struct FlowProbeState", usageScanSource);
+        Assert.DoesNotContain("private enum FlowEventKind", usageScanSource);
+        Assert.DoesNotContain("private void DiscoverStableAliases", usageScanSource);
+
+        var analyzerSource = File.ReadAllText(analyzerPath);
+        Assert.Contains("RegisterCompilationStartAction", analyzerSource);
+        Assert.Contains("var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<", analyzerSource);
+        Assert.Contains("AnalyzeInvocation(operationContext, entityTypeCache, flowGraphCache)", analyzerSource);
+
+        var flowAnalysisSource = File.ReadAllText(flowAnalysisPath);
+        Assert.Contains("private static bool TryCollectOriginAwareNavigationAccesses", flowAnalysisSource);
+        Assert.Contains("private static bool TryGetFlowGraph", flowAnalysisSource);
+        Assert.Contains("ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache", flowAnalysisSource);
+        Assert.DoesNotContain("static readonly ConditionalWeakTable<IOperation", flowAnalysisSource);
+
+        var flowBindingsSource = File.ReadAllText(flowBindingsPath);
+        Assert.Contains("private void DiscoverStableAliases", flowBindingsSource);
+        Assert.Contains("private sealed class IterationBinding", flowBindingsSource);
+
+        var flowContextSource = File.ReadAllText(flowContextPath);
+        Assert.Contains("private sealed partial class OriginFlowContext", flowContextSource);
+        Assert.Contains("public bool TryMapEventsToBlocks", flowContextSource);
+        Assert.Contains("private bool TryResolveEntityOrigin", flowContextSource);
+
+        var flowEventsSource = File.ReadAllText(flowEventsPath);
+        Assert.Contains("private void CollectBindingAndEscapeEvents", flowEventsSource);
+        Assert.Contains("private void CollectNavigationEvent", flowEventsSource);
+
+        var flowStateSource = File.ReadAllText(flowStatePath);
+        Assert.Contains("private sealed class EntityOrigin", flowStateSource);
+        Assert.Contains("private enum FlowEventKind", flowStateSource);
+        Assert.Contains("private readonly struct FlowProbeState", flowStateSource);
+    }
+
+    [Fact]
     public void LC045_DiagnosticReporting_LivesInDedicatedPartial()
     {
         var analyzerDir = Path.Combine(
@@ -4703,6 +4764,40 @@ public sealed class AnalyzerModularizationTests
         Assert.Contains("public partial class MissingIncludeEdgeCasesTests", escapedResultTestsSource);
         Assert.Contains("TestInnocent_ResultPassedAsArgument_NoDiagnostic", escapedResultTestsSource);
         Assert.Contains("TestInnocent_IndexedEntityPassedAsArgument_NoDiagnostic", escapedResultTestsSource);
+    }
+
+    [Fact]
+    public void LC045_OriginAwareFlowTests_LiveInDedicatedPartial()
+    {
+        var testDir = Path.Combine(
+            _repoRoot,
+            "tests",
+            "LinqContraband.Tests",
+            "Analyzers",
+            "LC045_MissingInclude");
+        var escapedResultTestsPath = Path.Combine(testDir, "MissingIncludeEscapedResultTests.cs");
+        var originFlowTestsPath = Path.Combine(testDir, "MissingIncludeOriginFlowTests.cs");
+        var uncertainReadTestsPath = Path.Combine(testDir, "MissingIncludeOriginFlowUncertainReadTests.cs");
+
+        Assert.True(File.Exists(originFlowTestsPath), "LC045 origin-aware control-flow coverage should live in a focused partial test file.");
+        Assert.True(File.Exists(uncertainReadTestsPath), "LC045 uncertain-read control-flow guardrails should live in a focused partial test file.");
+
+        var escapedResultTestsSource = File.ReadAllText(escapedResultTestsPath);
+        Assert.DoesNotContain("TestCrime_OriginFlow_", escapedResultTestsSource);
+        Assert.DoesNotContain("TestInnocent_OriginFlow_", escapedResultTestsSource);
+
+        var originFlowTestsSource = File.ReadAllText(originFlowTestsPath);
+        Assert.Contains("public partial class MissingIncludeEdgeCasesTests", originFlowTestsSource);
+        Assert.Contains("TestCrime_OriginFlow_ReadBeforeHelperEscape_StillReports", originFlowTestsSource);
+        Assert.Contains("TestCrime_OriginFlow_OneBranchNavigationAssignment_StillReports", originFlowTestsSource);
+        Assert.Contains("TestCrime_OriginFlow_WriteOnDifferentEntity_DoesNotSatisfyRead", originFlowTestsSource);
+        Assert.Contains("TestCrime_OriginFlow_LoopReadBeforeWrite_StillReports", originFlowTestsSource);
+        Assert.DoesNotContain("TestInnocent_OriginFlow_HelperEscapeBeforeRead_NoDiagnostic", originFlowTestsSource);
+
+        var uncertainReadTestsSource = File.ReadAllText(uncertainReadTestsPath);
+        Assert.Contains("public partial class MissingIncludeEdgeCasesTests", uncertainReadTestsSource);
+        Assert.Contains("TestInnocent_OriginFlow_HelperEscapeBeforeRead_NoDiagnostic", uncertainReadTestsSource);
+        Assert.Contains("TestInnocent_OriginFlow_BothBranchesAssignNavigationBeforeRead_NoDiagnostic", uncertainReadTestsSource);
     }
 
     [Fact]

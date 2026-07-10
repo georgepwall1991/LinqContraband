@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC045` now follows materialized entities through intra-procedural control flow, preserving missing-`Include` diagnostics that occur before a later escape or reassignment and allowing navigation writes to satisfy later reads only for the same entity origin when the write occurs on every path to the read.
+
 ## [5.6.43] - 2026-07-08
 
 ### Fixed
