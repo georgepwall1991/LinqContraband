@@ -13,8 +13,10 @@ public sealed partial class MissingIncludeAnalyzer
     private sealed partial class OriginFlowContext
     {
         private readonly IOperation executableRoot;
-        private readonly IInvocationOperation materializer;
-        private readonly ILocalSymbol resultLocal;
+        private readonly IInvocationOperation? materializer;
+        private readonly ILocalSymbol? resultLocal;
+        private readonly IForEachLoopOperation? rootForEach;
+        private readonly SyntaxNode activationSyntax;
         private readonly bool returnsCollection;
         private readonly INamedTypeSymbol entityType;
         private readonly HashSet<INamedTypeSymbol> entityTypes;
@@ -23,6 +25,9 @@ public sealed partial class MissingIncludeAnalyzer
             SymbolEqualityComparer.Default
         );
         private readonly Dictionary<string, EntityOrigin> indexedOrigins = new(
+            StringComparer.Ordinal
+        );
+        private readonly Dictionary<string, EntityOrigin> extractionOrigins = new(
             StringComparer.Ordinal
         );
         private readonly Dictionary<string, EntityOrigin> navigationOrigins = new(
@@ -56,7 +61,25 @@ public sealed partial class MissingIncludeAnalyzer
             this.executableRoot = executableRoot;
             this.materializer = materializer;
             this.resultLocal = resultLocal;
+            activationSyntax = materializer.Syntax;
             this.returnsCollection = returnsCollection;
+            this.entityType = entityType;
+            this.entityTypes = entityTypes;
+            this.cancellationToken = cancellationToken;
+        }
+
+        public OriginFlowContext(
+            IOperation executableRoot,
+            IForEachLoopOperation rootForEach,
+            INamedTypeSymbol entityType,
+            HashSet<INamedTypeSymbol> entityTypes,
+            CancellationToken cancellationToken
+        )
+        {
+            this.executableRoot = executableRoot;
+            this.rootForEach = rootForEach;
+            activationSyntax = rootForEach.Collection.Syntax;
+            returnsCollection = true;
             this.entityType = entityType;
             this.entityTypes = entityTypes;
             this.cancellationToken = cancellationToken;
@@ -74,8 +97,8 @@ public sealed partial class MissingIncludeAnalyzer
             events.Add(
                 new FlowEvent(
                     FlowEventKind.Materialize,
-                    materializer.Syntax,
-                    materializer.Syntax.Span.End
+                    activationSyntax,
+                    activationSyntax.Span.End
                 )
             );
 
@@ -163,16 +186,26 @@ public sealed partial class MissingIncludeAnalyzer
 
         private void DiscoverOrigins()
         {
-            if (!returnsCollection)
+            if (!returnsCollection && resultLocal != null)
             {
                 rootEntityOrigin = CreateOrigin(
                     resultLocal,
                     initiallyBound: true,
                     canDetachFromRoot: false,
                     isIteration: false,
-                    materializer.Syntax.Span.End,
+                    activationSyntax.Span.End,
                     entityType,
                     navigationPrefix: ""
+                );
+            }
+
+            if (rootForEach != null)
+            {
+                AddIterationOrigins(
+                    rootForEach,
+                    entityType,
+                    navigationPrefix: "",
+                    aliasSourceOrigin: null
                 );
             }
 
@@ -185,28 +218,101 @@ public sealed partial class MissingIncludeAnalyzer
                 switch (operation)
                 {
                     case IForEachLoopOperation forEach when IsResultCollection(forEach.Collection):
-                        foreach (var local in forEach.Locals)
-                        {
-                            var origin = CreateOrigin(
-                                local,
-                                initiallyBound: false,
-                                canDetachFromRoot: true,
-                                isIteration: true,
-                                forEach.Body.Syntax.SpanStart,
-                                entityType,
-                                navigationPrefix: ""
-                            );
-                            iterationBindings.Add(
-                                new IterationBinding(origin, forEach.Body.Syntax)
-                            );
-                        }
+                        AddIterationOrigins(
+                            forEach,
+                            entityType,
+                            navigationPrefix: "",
+                            aliasSourceOrigin: null
+                        );
+                        break;
+
+                    case IForEachLoopOperation forEach
+                        when TryResolveCollectionNavigationIteration(
+                            forEach.Collection,
+                            out var parentOrigin,
+                            out var elementEntityType,
+                            out var navigationPrefix
+                        ):
+                        AddIterationOrigins(
+                            forEach,
+                            elementEntityType,
+                            navigationPrefix,
+                            parentOrigin
+                        );
                         break;
                 }
             }
         }
 
+        private void AddIterationOrigins(
+            IForEachLoopOperation forEach,
+            INamedTypeSymbol originEntityType,
+            string navigationPrefix,
+            EntityOrigin? aliasSourceOrigin
+        )
+        {
+            foreach (var local in forEach.Locals)
+            {
+                var origin = CreateOrigin(
+                    local,
+                    initiallyBound: false,
+                    canDetachFromRoot: true,
+                    isIteration: true,
+                    forEach.Body.Syntax.SpanStart,
+                    originEntityType,
+                    navigationPrefix,
+                    aliasSourceOrigin
+                );
+                iterationBindings.Add(new IterationBinding(origin, forEach.Body.Syntax));
+            }
+        }
+
+        private bool TryResolveCollectionNavigationIteration(
+            IOperation collection,
+            out EntityOrigin parentOrigin,
+            out INamedTypeSymbol elementEntityType,
+            out string navigationPrefix
+        )
+        {
+            parentOrigin = null!;
+            elementEntityType = null!;
+            navigationPrefix = null!;
+
+            var unwrapped = collection.UnwrapConversions();
+            if (
+                unwrapped is not IPropertyReferenceOperation propertyReference
+                || !TryResolveEntityOrigin(propertyReference.Instance, out parentOrigin)
+                || !TryGetNavigationTarget(
+                    propertyReference.Property,
+                    entityTypes,
+                    out elementEntityType,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(
+                    propertyReference.Property,
+                    parentOrigin.EntityType ?? entityType
+                )
+            )
+            {
+                parentOrigin = null!;
+                elementEntityType = null!;
+                navigationPrefix = null!;
+                return false;
+            }
+
+            navigationPrefix = CombineNavigationPath(
+                parentOrigin.NavigationPrefix,
+                propertyReference.Property.Name
+            );
+            return true;
+        }
+
         private bool TryResolveEntityOrigin(IOperation? operation, out EntityOrigin origin)
         {
+            if (TryResolveExactCollectionElementExtraction(operation, out origin))
+                return true;
+
             if (
                 TryResolveTrackedSource(operation, out var isRoot, out var trackedOrigin)
                 && !isRoot
@@ -246,6 +352,73 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
+        private bool TryResolveCollectionNavigationEscape(
+            IOperation? operation,
+            out EntityOrigin parentOrigin,
+            out string navigationPath
+        )
+        {
+            parentOrigin = null!;
+            navigationPath = null!;
+            var unwrapped = operation?.UnwrapConversions();
+            if (
+                unwrapped is not IPropertyReferenceOperation propertyReference
+                || !TryResolveEntityOrigin(propertyReference.Instance, out parentOrigin)
+                || !TryGetNavigationTarget(
+                    propertyReference.Property,
+                    entityTypes,
+                    out _,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(
+                    propertyReference.Property,
+                    parentOrigin.EntityType ?? entityType
+                )
+            )
+            {
+                parentOrigin = null!;
+                navigationPath = null!;
+                return false;
+            }
+
+            navigationPath = CombineNavigationPath(
+                parentOrigin.NavigationPrefix,
+                propertyReference.Property.Name
+            );
+            return true;
+        }
+
+        private bool TryResolveEscapeSource(
+            IOperation? source,
+            out bool isRoot,
+            out EntityOrigin? origin,
+            out string? navigationPath
+        )
+        {
+            navigationPath = null;
+            if (TryResolveTrackedSource(source, out isRoot, out origin))
+                return true;
+
+            if (TryResolveEntityOrigin(source, out var entityOrigin))
+            {
+                isRoot = false;
+                origin = entityOrigin;
+                return true;
+            }
+
+            if (TryResolveCollectionNavigationEscape(source, out var parentOrigin, out navigationPath))
+            {
+                isRoot = false;
+                origin = parentOrigin;
+                return true;
+            }
+
+            isRoot = false;
+            origin = null;
+            return false;
+        }
+
         private bool TryResolveTrackedSource(
             IOperation? operation,
             out bool isRoot,
@@ -260,7 +433,10 @@ public sealed partial class MissingIncludeAnalyzer
             var unwrapped = operation.UnwrapConversions();
             if (unwrapped is ILocalReferenceOperation localReference)
             {
-                if (SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal))
+                if (
+                    resultLocal != null
+                    && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal)
+                )
                 {
                     if (returnsCollection)
                     {
@@ -278,7 +454,11 @@ public sealed partial class MissingIncludeAnalyzer
                     return true;
             }
 
-            if (returnsCollection && IsIndexedAccessOf(unwrapped, resultLocal))
+            if (
+                returnsCollection
+                && resultLocal != null
+                && IsIndexedAccessOf(unwrapped, resultLocal)
+            )
             {
                 var key = GetDirectIndexOriginKey(unwrapped, out var isUnstable);
                 if (!indexedOrigins.TryGetValue(key, out origin))
@@ -303,16 +483,51 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
+        private bool TryResolveExactCollectionElementExtraction(
+            IOperation? operation,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
+            if (
+                operation?.UnwrapConversions() is not IInvocationOperation invocation
+                || !IsExactMaterializedCollectionElementExtraction(invocation)
+            )
+            {
+                return false;
+            }
+
+            var key = SiteKey(invocation, out _);
+            if (!extractionOrigins.TryGetValue(key, out origin))
+            {
+                origin = new EntityOrigin(
+                    nextOriginId++,
+                    local: null,
+                    initiallyBound: true,
+                    canDetachFromRoot: false,
+                    isIteration: false,
+                    bindingPosition: invocation.Syntax.Span.End,
+                    entityType: entityType,
+                    navigationPrefix: ""
+                );
+                extractionOrigins[key] = origin;
+            }
+
+            return true;
+        }
+
+        private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
+        {
+            return IsExactCollectionElementExtraction(invocation)
+                && invocation.GetInvocationReceiver() is { } source
+                && TryResolveTrackedSource(source, out var isRoot, out _)
+                && isRoot;
+        }
+
         private void AddEscapeForSource(IOperation source, SyntaxNode syntax, int position)
         {
-            if (!TryResolveTrackedSource(source, out var isRoot, out var origin))
-            {
-                if (!TryResolveEntityOrigin(source, out var entityOrigin))
-                    return;
-
-                isRoot = false;
-                origin = entityOrigin;
-            }
+            if (!TryResolveEscapeSource(source, out var isRoot, out var origin, out var navigationPath))
+                return;
 
             if (origin?.IsUnstableDirectIndex == true)
             {
@@ -325,7 +540,8 @@ public sealed partial class MissingIncludeAnalyzer
                     isRoot ? FlowEventKind.EscapeRoot : FlowEventKind.EscapeOrigin,
                     syntax,
                     position,
-                    origin
+                    origin,
+                    navigationPath
                 )
             );
         }
@@ -373,6 +589,12 @@ public sealed partial class MissingIncludeAnalyzer
                     return origin;
             }
 
+            foreach (var origin in extractionOrigins.Values)
+            {
+                if (origin.Id == id)
+                    return origin;
+            }
+
             foreach (var origin in navigationOrigins.Values)
             {
                 if (origin.Id == id)
@@ -409,13 +631,15 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsResultCollection(IOperation operation)
         {
-            return operation.UnwrapConversions() is ILocalReferenceOperation localReference
+            return resultLocal != null
+                && operation.UnwrapConversions() is ILocalReferenceOperation localReference
                 && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal);
         }
 
         private bool IsMaterializer(IInvocationOperation invocation)
         {
-            return invocation.Syntax.SyntaxTree == materializer.Syntax.SyntaxTree
+            return materializer != null
+                && invocation.Syntax.SyntaxTree == materializer.Syntax.SyntaxTree
                 && invocation.Syntax.Span == materializer.Syntax.Span;
         }
 
@@ -441,6 +665,7 @@ public sealed partial class MissingIncludeAnalyzer
                         continue;
                     default:
                         return operation is IInvocationOperation invocation
+                            && materializer != null
                             && IsMaterializer(invocation);
                 }
             }

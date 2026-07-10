@@ -6,7 +6,7 @@ title: "Spec: LC045 - Missing Include: navigation accessed on materialized entit
 # Spec: LC045 - Missing Include: navigation accessed on materialized entity
 
 ## Goal
-Detect the canonical EF Core read-side bug: a DbSet-rooted query is materialized (`ToList`, `FirstOrDefault`, …) and a navigation property of the result is then read without a matching `Include`/`ThenInclude` in the chain. With lazy-loading proxies the access can fire an extra query (the classic N+1); without lazy loading, and when explicit loading, `AutoInclude`, or relationship fix-up has not populated it, the navigation can remain `null` or empty. Both failure modes can ship invisibly and surface only as production slowness or missing data.
+Detect the canonical EF Core read-side bug: a DbSet-rooted query is materialized (`ToList`, `FirstOrDefault`, …), or synchronously enumerated directly with `foreach`, and a navigation property of the entity is then read without a matching `Include`/`ThenInclude` in the chain. With lazy-loading proxies the access can fire an extra query (the classic N+1); without lazy loading, and when explicit loading, `AutoInclude`, or relationship fix-up has not populated it, the navigation can remain `null` or empty. Both failure modes can ship invisibly and surface only as production slowness or missing data.
 
 ## The Problem
 EF Core can populate navigations through eager, explicit, lazy, or model-level automatic loading, and through relationship fix-up for already-tracked entities. Without one of those mechanisms, materializing an entity does not load arbitrary navigations. The query below compiles, runs, and looks correct — but `o.Customer` was not requested:
@@ -35,7 +35,7 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 ```
 
 ## Code Fix
-The code fix inserts the missing eager load immediately before the materializer — `recv.ToList()` becomes `recv.Include(x => x.Nav).ToList()`. Nested paths become `Include`/`ThenInclude` chains: a flagged `Customer.Address` produces `.Include(x => x.Customer).ThenInclude(x => x.Address)`. FixAll applies the same navigation across the document/project.
+The code fix wraps the exact query source immediately before the materializer or direct `foreach` enumeration — `recv.ToList()` becomes `recv.Include(x => x.Nav).ToList()`, while `foreach (var x in recv)` becomes `foreach (var x in recv.Include(x => x.Nav))`. Nested paths become `Include`/`ThenInclude` chains: a flagged `Customer.Address` produces `.Include(x => x.Customer).ThenInclude(x => x.Address)`. FixAll applies the same navigation across the document/project.
 
 The fix only registers when the source expression it would wrap is statically `IQueryable<T>`. If the query has already been widened to `IEnumerable<T>` (for example `IEnumerable<Order> source = db.Orders; source.ToList()`), LC045 still reports the missing eager load, but the remediation is manual: add `Include` before widening or keep the local typed as `IQueryable<T>`.
 
@@ -46,12 +46,12 @@ The fix only registers when the source expression it would wrap is statically `I
 ### Severity: `Warning`
 
 ### Algorithm
-1. **Anchor**: register on entity-producing materializers only — `ToList`/`ToArray` (+`Async`) and `First`/`Single`/`Last` (`OrDefault`, `Async`) framework methods. Aggregates (`Count`, `Any`, …) never materialize entities and are ignored.
+1. **Anchor**: register on entity-producing materializers — `ToList`/`ToArray` (+`Async`) and `First`/`Single`/`Last` (`OrDefault`, `Async`) framework methods — plus synchronous `foreach` directly over a statically `IQueryable<T>` DbSet-rooted source. Inline collection materializers such as `foreach (var order in db.Orders.ToList())` use the same source proof. Aggregates (`Count`, `Any`, …) never materialize entities and are ignored.
 2. **Chain proof**: walk the receiver chain back to a `DbSet<T>` property/field on a `DbContext`, or to `DbContext.Set<TEntity>()`. Only shape-preserving operators are allowed (`Where`, `OrderBy*`, `Skip`, `Take`, `Distinct`, `AsNoTracking*`, `AsTracking`, `AsSplitQuery`, `AsSingleQuery`, `TagWith*`, `IgnoreQueryFilters`, `Include`, `ThenInclude`). Anything else — `Select`, `Join`, `GroupBy`, custom extensions — bails. The chain may be hoisted across a single-assignment local (`var q = db.Orders.Where(…); q.ToList()`).
 3. **Included paths**: parse every `Include`/`ThenInclude` (lambda, filtered-lambda, and constant-string overloads) into navigation paths and record every prefix (`Include(o => o.A.B)` covers `A` and `A.B`). If any Include cannot be parsed (dynamic string), the whole query is skipped — it could cover anything.
 4. **Navigation classification**: a property is a navigation when its type (or collection element type) has a `DbSet` on the same context. Owned and unmapped types have no `DbSet` and are never flagged.
-5. **Usage scan**: build and cache the Roslyn control-flow graph for the containing method or constructor, then analyse forward from the materializer. Track entity-bearing locals — collection results, `foreach` iteration variables, indexer-initialized locals, aliases, and locals extracted from reference navigations — by materializer, extraction origin, binding generation, and navigation prefix. At joins, keep only identical bindings, retain navigation writes that occurred on every incoming path, and treat an escape or uncertain reassignment on any incoming path as uncertainty for subsequent reads. Record each navigation read while its origin is still proven, including nested reference-navigation paths (`o.Customer.Address` → `Customer.Address`) and dynamically rebound prefixes.
-6. **Emit**: one diagnostic per distinct missing navigation path, at the first access site, carrying the materializer location and the dotted path for the code fix. Only maximal paths are reported — fixing `Customer.Address` eagerly loads `Customer` too.
+5. **Usage scan**: build and cache the Roslyn control-flow graph for the containing method or constructor, then analyse forward from the materializer or direct loop source. Track entity-bearing locals — collection results, `foreach` iteration variables, indexer-initialized locals, exact `System.Linq.Enumerable` element extraction (`First*`, `Single*`, `Last*`, `ElementAt*`) from a materialized collection, aliases, and locals extracted from reference navigations — by origin, binding generation, and navigation prefix. Nested collection iteration carries that prefix (`order.Items` then `item.Product` → `Items.Product`). At joins, keep only identical bindings, retain navigation writes that occurred on every incoming path, and treat an escape or uncertain reassignment on any incoming path as uncertainty for subsequent reads.
+6. **Emit**: one diagnostic per distinct missing navigation path, at the first access site, carrying the exact query source location and the dotted path for the code fix. Only maximal paths are reported — fixing `Customer.Address` eagerly loads `Customer` too.
 
 ## False-Positive Disciplines
 - Any non-shape-preserving operator in the chain (`Select`, `Join`, custom extensions) silences the query.
@@ -67,7 +67,7 @@ The fix only registers when the source expression it would wrap is statically `I
 - **Null-guarded access still fires.** `if (o.Customer != null)` and `order?.Customer` are flagged on purpose: with proxies the null check itself can trigger the N+1 load, and without another loading mechanism a consistently null navigation makes the guard dead code hiding the bug. Suppress with `#pragma warning disable LC045` if the guard is intentional. This holds for every null-conditional spelling: chained inline access on the materializer (`FirstOrDefault()?.Customer?.Name`, `FirstOrDefault()?.Customer.Address?.City`), parenthesized regrouping (`(order?.Customer)?.Address?.City`, reported as `Customer.Address`, including inline materializer and inherited-navigation forms), conditional element access on the result (`orders?[0].Customer`), and locals initialized from a conditional indexer (`var o = orders?[0];`). Conditional method-call results such as `(order?.Customer.GetDetached())?.Address` are treated as call results, not as a continuation of the queried navigation path.
 - Model-level `AutoInclude()` configuration is invisible to the analyzer; if you rely on it, suppress LC045 at the access site or project instead.
 - Widened `IEnumerable<T>` aliases are diagnostic-only: the analyzer can still prove the DbSet root, but the fixer will not emit `Include` against a non-queryable source expression.
-- Current scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): second-level access through collection navigations (`foreach (var i in o.Items) i.Product`), accesses inside consumer lambdas over the result, property patterns (`order is { Customer: null }`), `Entry(...).Reference/Collection(...).Load()` recognition, `IQueryable` parameters / repository-returned queries as roots, and `foreach` directly over an inline materializer.
+- Current scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): `await foreach`, arbitrary callbacks or predicate/default-value element extractor overloads, custom extraction lookalikes, accesses inside consumer lambdas over the result, property patterns (`order is { Customer: null }`), `Entry(...).Reference/Collection(...).Load()` recognition, and `IQueryable` parameters / repository-returned queries as roots.
 
 ## Test Cases
 
@@ -81,12 +81,20 @@ Console.WriteLine(order.Customer.Name);                          // LC045: Custo
 
 var withCustomer = db.Orders.Include(o => o.Customer).ToList();
 foreach (var o in withCustomer) Console.WriteLine(o.Customer.Address.City); // LC045: Customer.Address
+
+var nested = db.Orders.ToList();
+foreach (var order in nested)
+foreach (var item in order.Items) Console.WriteLine(item.Product.Name);      // LC045: Items.Product
 ```
 
 ### Valid
 ```csharp
 var orders = db.Orders.Include(o => o.Customer).ToList();
 foreach (var o in orders) Console.WriteLine(o.Customer.Name);
+
+var nested = db.Orders.Include(o => o.Items).ThenInclude(i => i.Product).ToList();
+foreach (var order in nested)
+foreach (var item in order.Items) Console.WriteLine(item.Product.Name);
 
 var names = db.Orders.Select(o => o.Customer.Name).ToList();     // projection — out of scope
 

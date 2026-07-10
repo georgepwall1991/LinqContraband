@@ -32,4 +32,50 @@ public class MissingIncludeSample
             Console.WriteLine(street);
         }
     }
+
+    public static void RunNested(NestedCollectionContext db)
+    {
+        var orders = db
+            .Orders.AsNoTracking()
+            .OrderBy(order => order.Id)
+            .Take(50)
+            .TagWith("LC045 nested collection sample")
+            .ToList();
+
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items)
+            {
+                // VIOLATION: neither Items nor Product was eagerly loaded.
+                Console.WriteLine(item.Product.Name);
+            }
+        }
+    }
+}
+
+public sealed class NestedCollectionContext : DbContext
+{
+    public DbSet<NestedOrder> Orders { get; set; } = null!;
+    public DbSet<NestedItem> Items { get; set; } = null!;
+    public DbSet<NestedProduct> Products { get; set; } = null!;
+}
+
+public sealed class NestedOrder
+{
+    public int Id { get; set; }
+    public List<NestedItem> Items { get; set; } = [];
+}
+
+public sealed class NestedItem
+{
+    public int Id { get; set; }
+    public int NestedOrderId { get; set; }
+    public int NestedProductId { get; set; }
+    public NestedProduct Product { get; set; } = null!;
+}
+
+public sealed class NestedProduct
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
 }

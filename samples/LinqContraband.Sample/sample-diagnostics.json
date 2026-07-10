@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "safeSamples": [
-    "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSafeSample.cs"
+    "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSafeSample.cs",
+    "Samples/LC045_MissingInclude/MissingIncludeNestedCollectionSafeSample.cs"
   ],
   "expectations": [
     {
