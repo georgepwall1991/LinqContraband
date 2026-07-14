@@ -93,10 +93,10 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
     {
         var invocation = (IInvocationOperation)context.Operation;
 
-        if (!IsEntityMaterializer(invocation.TargetMethod, out var returnsCollection))
+        if (!IsEntityMaterializer(invocation, out var returnsCollection))
             return;
 
-        var querySource = invocation.GetInvocationReceiver(unwrapConversions: false);
+        var querySource = GetQuerySource(invocation)?.UnwrapConversions();
         if (
             querySource == null
             || !TryAnalyzeQueryChain(querySource, context.CancellationToken, out var query)

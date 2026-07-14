@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,29 +9,31 @@ namespace LinqContraband.Extensions;
 
 internal static partial class IncludePathParser
 {
-    private static readonly ImmutableHashSet<string> FilteredIncludeMethods = ImmutableHashSet.Create(
-        System.StringComparer.Ordinal,
-        "Where",
-        "OrderBy",
-        "OrderByDescending",
-        "ThenBy",
-        "ThenByDescending",
-        "Skip",
-        "Take");
+    private static readonly ImmutableHashSet<string> FilteredIncludeMethods =
+        ImmutableHashSet.Create(
+            System.StringComparer.Ordinal,
+            "Where",
+            "OrderBy",
+            "OrderByDescending",
+            "ThenBy",
+            "ThenByDescending",
+            "Skip",
+            "Take"
+        );
 
     private static bool TryGetLambdaExpression(
         IInvocationOperation invocation,
-        out LambdaExpressionSyntax lambdaExpression)
+        out LambdaExpressionSyntax lambdaExpression
+    )
     {
         lambdaExpression = null!;
-        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax ||
-            invocationSyntax.ArgumentList.Arguments.Count == 0)
-        {
-            return false;
-        }
-
-        var expression = invocationSyntax.ArgumentList.Arguments[invocationSyntax.ArgumentList.Arguments.Count - 1].Expression;
-        if (expression is LambdaExpressionSyntax lambda)
+        var navigationArgument = invocation.Arguments.FirstOrDefault(argument =>
+            argument.Parameter?.Ordinal == GetNavigationParameterOrdinal(invocation)
+        );
+        if (
+            navigationArgument?.Value is { } value
+            && value.UnwrapConversions().Syntax is LambdaExpressionSyntax lambda
+        )
         {
             lambdaExpression = lambda;
             return true;
@@ -42,7 +45,8 @@ internal static partial class IncludePathParser
     private static bool TryGetNavigationPath(
         CSharpSyntaxNode body,
         SemanticModel semanticModel,
-        out IncludePath includePath)
+        out IncludePath includePath
+    )
     {
         includePath = new IncludePath(ImmutableArray<NavigationSegment>.Empty);
         var builder = ImmutableArray.CreateBuilder<NavigationSegment>();
@@ -57,15 +61,22 @@ internal static partial class IncludePathParser
     private static bool TryAddNavigationSegments(
         CSharpSyntaxNode expression,
         SemanticModel semanticModel,
-        ImmutableArray<NavigationSegment>.Builder builder)
+        ImmutableArray<NavigationSegment>.Builder builder
+    )
     {
         expression = UnwrapExpression(expression);
 
-        if (expression is InvocationExpressionSyntax invocation &&
-            invocation.Expression is MemberAccessExpressionSyntax invocationMemberAccess &&
-            FilteredIncludeMethods.Contains(invocationMemberAccess.Name.Identifier.Text))
+        if (
+            expression is InvocationExpressionSyntax invocation
+            && invocation.Expression is MemberAccessExpressionSyntax invocationMemberAccess
+            && FilteredIncludeMethods.Contains(invocationMemberAccess.Name.Identifier.Text)
+        )
         {
-            return TryAddNavigationSegments(invocationMemberAccess.Expression, semanticModel, builder);
+            return TryAddNavigationSegments(
+                invocationMemberAccess.Expression,
+                semanticModel,
+                builder
+            );
         }
 
         if (expression is not MemberAccessExpressionSyntax memberAccess)
@@ -110,7 +121,8 @@ internal static partial class IncludePathParser
                 case CastExpressionSyntax cast:
                     expression = cast.Expression;
                     continue;
-                case PostfixUnaryExpressionSyntax postfix when postfix.Kind() == SyntaxKind.SuppressNullableWarningExpression:
+                case PostfixUnaryExpressionSyntax postfix
+                    when postfix.Kind() == SyntaxKind.SuppressNullableWarningExpression:
                     expression = postfix.Operand;
                     continue;
                 default:

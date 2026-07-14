@@ -81,7 +81,27 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> IgnoreAutoIncludes<T>(this IQueryable<T> source) => source;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => null;
+        public static Task<HashSet<T>> ToHashSetAsync<T>(
+            this IQueryable<T> source,
+            System.Threading.CancellationToken cancellationToken = default) => null;
+        public static Task<HashSet<T>> ToHashSetAsync<T>(
+            this IQueryable<T> source,
+            IEqualityComparer<T> comparer,
+            System.Threading.CancellationToken cancellationToken = default) => null;
+        public static Task<T> ElementAtAsync<T>(
+            this IQueryable<T> source,
+            int index,
+            System.Threading.CancellationToken cancellationToken = default) => null;
+        public static Task<T> ElementAtOrDefaultAsync<T>(
+            this IQueryable<T> source,
+            int index,
+            System.Threading.CancellationToken cancellationToken = default) => null;
+        public static Task<T> FirstOrDefaultAsync<T>(
+            this IQueryable<T> source,
+            System.Linq.Expressions.Expression<Func<T, bool>> predicate,
+            System.Threading.CancellationToken cancellationToken = default) => null;
     }
 }
 

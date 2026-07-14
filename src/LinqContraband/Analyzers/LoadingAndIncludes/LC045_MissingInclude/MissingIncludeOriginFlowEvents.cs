@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -51,7 +52,12 @@ public sealed partial class MissingIncludeAnalyzer
 
                 case IInvocationOperation invocation
                     when !IsMaterializer(invocation)
-                        && !IsExactMaterializedCollectionElementExtraction(invocation):
+                        && !IsExactMaterializedCollectionElementExtraction(invocation)
+                        && !IsEffectFreeSupportedCollectionCallback(
+                            invocation,
+                            materializer,
+                            resultLocal
+                        ):
                     CollectInvocationEscapeEvents(invocation);
                     break;
 
@@ -115,6 +121,25 @@ public sealed partial class MissingIncludeAnalyzer
                     );
                     return;
                 }
+            }
+
+            if (
+                target is IParameterReferenceOperation targetParameter
+                && originsByParameter.TryGetValue(
+                    targetParameter.Parameter,
+                    out var parameterOrigin
+                )
+            )
+            {
+                events.Add(
+                    new FlowEvent(
+                        FlowEventKind.UnbindOrigin,
+                        assignment.Syntax,
+                        assignment.Syntax.Span.End,
+                        parameterOrigin
+                    )
+                );
+                return;
             }
 
             if (target is not ILocalReferenceOperation)
@@ -855,6 +880,105 @@ public sealed partial class MissingIncludeAnalyzer
                     accessId
                 )
             );
+        }
+
+        private void CollectPropertyPatternNavigationEvent(IPropertySubpatternOperation subpattern)
+        {
+            if (
+                subpattern
+                    .ChildOperations.OfType<IPropertyReferenceOperation>()
+                    .FirstOrDefault()
+                    ?.Property
+                    is not IPropertySymbol
+                || !TryFindPatternRoot(subpattern, out var isPattern)
+                || !TryResolveEntityOrigin(isPattern.Value, out var origin)
+            )
+            {
+                return;
+            }
+
+            var properties = new List<IPropertySymbol>();
+            for (IOperation? current = subpattern; current != null; current = current.Parent)
+            {
+                if (
+                    current is IPropertySubpatternOperation ancestor
+                    && ancestor
+                        .ChildOperations.OfType<IPropertyReferenceOperation>()
+                        .FirstOrDefault()
+                        ?.Property
+                        is IPropertySymbol property
+                )
+                    properties.Add(property);
+                if (current is IIsPatternOperation)
+                    break;
+            }
+            properties.Reverse();
+
+            var currentEntity = origin.EntityType ?? entityType;
+            var pathSegments = new List<string>();
+            foreach (var property in properties)
+            {
+                if (!IsPropertyOfEntity(property, currentEntity))
+                    return;
+
+                if (!TryGetNavigationTarget(property, entityTypes, out var targetEntity, out _))
+                {
+                    if (pathSegments.Count == 0)
+                        return;
+                    break;
+                }
+
+                pathSegments.Add(property.Name);
+                currentEntity = targetEntity;
+            }
+
+            if (pathSegments.Count == 0)
+                return;
+
+            var path = CombineNavigationPath(
+                origin.NavigationPrefix,
+                string.Join(".", pathSegments)
+            );
+            var accessId = nextAccessId++;
+            Candidates.Add(
+                new FlowAccessCandidate(
+                    accessId,
+                    new NavigationAccess(path, subpattern.Syntax),
+                    origin,
+                    origin.CanDetachFromRoot,
+                    origin.BindingPosition,
+                    isAliasBinding: origin.AliasSourceOrigin != null,
+                    accessLocal: null
+                )
+            );
+            events.Add(
+                new FlowEvent(
+                    FlowEventKind.Access,
+                    subpattern.Syntax,
+                    subpattern.Syntax.SpanStart,
+                    origin,
+                    path,
+                    accessId
+                )
+            );
+        }
+
+        private static bool TryFindPatternRoot(
+            IPropertySubpatternOperation subpattern,
+            out IIsPatternOperation isPattern
+        )
+        {
+            for (IOperation? current = subpattern.Parent; current != null; current = current.Parent)
+            {
+                if (current is IIsPatternOperation match)
+                {
+                    isPattern = match;
+                    return true;
+                }
+            }
+
+            isPattern = null!;
+            return false;
         }
 
         private static int FindWriteCompletionPosition(

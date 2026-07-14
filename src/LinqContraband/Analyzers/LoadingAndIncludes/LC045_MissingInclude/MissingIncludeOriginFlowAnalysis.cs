@@ -74,6 +74,237 @@ public sealed partial class MissingIncludeAnalyzer
         return true;
     }
 
+    private static bool IsMaterializedCollectionActiveAtInvocation(
+        IOperation executableRoot,
+        IInvocationOperation materializer,
+        ILocalSymbol resultLocal,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        IInvocationOperation invocation,
+        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        CancellationToken cancellationToken
+    )
+    {
+        if (
+            !TryGetFlowGraph(
+                executableRoot,
+                materializer.SemanticModel,
+                flowGraphCache,
+                cancellationToken,
+                out var graph
+            )
+        )
+        {
+            return false;
+        }
+
+        var context = new OriginFlowContext(
+            executableRoot,
+            materializer,
+            resultLocal,
+            returnsCollection: true,
+            entityType,
+            entityTypes,
+            cancellationToken
+        );
+        context.Build();
+        var probe = context.AddRootProbe(invocation.Syntax);
+        if (!context.TryMapEventsToBlocks(graph))
+            return false;
+
+        return IsProvenActiveAtProbe(graph, context, probe, cancellationToken);
+    }
+
+    private static bool IsProvenActiveAtProbe(
+        ControlFlowGraph graph,
+        OriginFlowContext context,
+        FlowAccessCandidate probe,
+        CancellationToken cancellationToken
+    )
+    {
+        var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
+        var worklist = new Queue<FlowWorkItem>();
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist);
+
+        var sawActive = false;
+        var sawUncertain = false;
+        while (worklist.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = worklist.Dequeue();
+            var state = item.State;
+            var reachedProbe = false;
+
+            if (context.EventsByBlock.TryGetValue(item.Block.Ordinal, out var events))
+            {
+                foreach (var flowEvent in events)
+                {
+                    if (
+                        flowEvent.Kind == FlowEventKind.Access
+                        && flowEvent.AccessId == probe.AccessId
+                    )
+                    {
+                        reachedProbe = true;
+                        if (state.IsActive && !state.RootUnknown)
+                            sawActive = true;
+                        else
+                            sawUncertain = true;
+                        break;
+                    }
+
+                    ApplyEvent(flowEvent, probe, ref state);
+                }
+            }
+
+            if (reachedProbe)
+                continue;
+
+            foreach (var successor in GetSuccessors(item.Block))
+                Enqueue(successor, state, statesByBlock, worklist);
+        }
+
+        return sawActive && !sawUncertain;
+    }
+
+    private static bool TryCollectOriginAwareNavigationAccesses(
+        IOperation parentExecutableRoot,
+        IAnonymousFunctionOperation callback,
+        IParameterSymbol callbackParameter,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        CancellationToken cancellationToken,
+        out List<NavigationAccess> accesses
+    )
+    {
+        accesses = null!;
+        if (
+            !TryGetFlowGraph(
+                parentExecutableRoot,
+                callback.SemanticModel,
+                flowGraphCache,
+                cancellationToken,
+                out var parentGraph
+            ) || !TryGetCallbackFlowGraph(parentGraph, callback, cancellationToken, out var graph)
+        )
+        {
+            return false;
+        }
+
+        var context = new OriginFlowContext(
+            callback,
+            callbackParameter,
+            entityType,
+            entityTypes,
+            cancellationToken
+        );
+        context.Build();
+        if (!context.TryMapEventsToBlocks(graph))
+            return false;
+
+        accesses = new List<NavigationAccess>();
+        foreach (var candidate in context.Candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                TryGetProvenMissingAccess(
+                    graph,
+                    context,
+                    candidate,
+                    cancellationToken,
+                    out var access
+                )
+            )
+                accesses.Add(access);
+        }
+
+        return true;
+    }
+
+    private static bool TryGetCallbackFlowGraph(
+        ControlFlowGraph parentGraph,
+        IAnonymousFunctionOperation callback,
+        CancellationToken cancellationToken,
+        out ControlFlowGraph graph
+    )
+    {
+        foreach (var block in parentGraph.Blocks)
+        {
+            if (
+                TryFindFlowAnonymousFunction(block.Operations, callback, out var anonymous)
+                || (
+                    block.BranchValue != null
+                    && TryFindFlowAnonymousFunction(
+                        System.Collections.Immutable.ImmutableArray.Create(block.BranchValue),
+                        callback,
+                        out anonymous
+                    )
+                )
+            )
+            {
+                try
+                {
+                    graph = parentGraph.GetAnonymousFunctionControlFlowGraph(
+                        anonymous,
+                        cancellationToken
+                    );
+                    return true;
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    break;
+                }
+            }
+        }
+
+        graph = null!;
+        return false;
+    }
+
+    private static bool TryFindFlowAnonymousFunction(
+        System.Collections.Immutable.ImmutableArray<IOperation> operations,
+        IAnonymousFunctionOperation callback,
+        out IFlowAnonymousFunctionOperation anonymous
+    )
+    {
+        foreach (var operation in operations)
+        {
+            if (TryFind(operation, callback, out anonymous))
+            {
+                return true;
+            }
+        }
+
+        anonymous = null!;
+        return false;
+
+        static bool TryFind(
+            IOperation operation,
+            IAnonymousFunctionOperation callback,
+            out IFlowAnonymousFunctionOperation anonymous
+        )
+        {
+            if (
+                operation is IFlowAnonymousFunctionOperation flowAnonymous
+                && flowAnonymous.Syntax.SyntaxTree == callback.Syntax.SyntaxTree
+                && flowAnonymous.Syntax.Span == callback.Syntax.Span
+            )
+            {
+                anonymous = flowAnonymous;
+                return true;
+            }
+
+            foreach (var child in operation.ChildOperations)
+            {
+                if (TryFind(child, callback, out anonymous))
+                    return true;
+            }
+
+            anonymous = null!;
+            return false;
+        }
+    }
+
     private static bool TryCollectOriginAwareNavigationAccesses(
         IOperation executableRoot,
         IForEachLoopOperation rootForEach,
@@ -444,15 +675,11 @@ public sealed partial class MissingIncludeAnalyzer
                             || capturedBinding
                             || sourceUnknown
                             || (
-                                keepsSameBinding
-                                && !isFreshIterationStorage
-                                && state.OriginUnknown
+                                keepsSameBinding && !isFreshIterationStorage && state.OriginUnknown
                             ),
                         pathSatisfied: sourceSatisfied
                             || (
-                                keepsSameBinding
-                                && !isFreshIterationStorage
-                                && state.PathSatisfied
+                                keepsSameBinding && !isFreshIterationStorage && state.PathSatisfied
                             ),
                         originIndependentOfRoot: aliasGeneration != -1,
                         iterationSourceCaptured: state.IterationSourceCaptured,
@@ -790,9 +1017,9 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return (
-            IsAncestorOrigin(flowEvent.Origin, candidate.Origin)
-            || SharesLiveUltimateSource(flowEvent.Origin, candidate.Origin, state)
-        ) && EventScopesAccess(flowEvent, state, effectivePath);
+                IsAncestorOrigin(flowEvent.Origin, candidate.Origin)
+                || SharesLiveUltimateSource(flowEvent.Origin, candidate.Origin, state)
+            ) && EventScopesAccess(flowEvent, state, effectivePath);
     }
 
     private static bool OriginEventAffectsCandidate(
