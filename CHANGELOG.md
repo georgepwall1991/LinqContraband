@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `LC045` now resolves exact static/named Queryable and EF query sources, preserves `AsQueryable`, `IgnoreAutoIncludes`, and `FromSql*` paths, detects supported `ToHashSet*` and query-root `ElementAt*` overloads, and analyses direct property subpatterns plus exact inline materialized-collection callbacks while their source generation remains active. Framework-namespace lookalikes, effectful callback chains, entity-returning projections, multi-source operators, temporal APIs, `Find*`, async streams, and repository-query roots remain conservative boundaries.
 - `LC045` now follows materialized entities through intra-procedural control flow, preserving missing-`Include` diagnostics that occur before a later escape or reassignment and allowing navigation writes to satisfy later reads only for the same entity origin when the write occurs on every path to the read.
 - `LC045` now follows synchronous `foreach` over inline collection materializers and proven DbSet/IQueryable roots, carries nested collection prefixes such as `Items.Product`, and recognises exact framework element extraction from materialized collections. Its fixer now anchors the exact query source for both materializer and direct-loop diagnostics while preserving widened-`IEnumerable` diagnostic-only behaviour.
 

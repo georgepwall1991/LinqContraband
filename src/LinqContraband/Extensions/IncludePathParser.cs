@@ -54,12 +54,15 @@ internal static partial class IncludePathParser
         IInvocationOperation invocation,
         SemanticModel semanticModel,
         IncludePath? previousIncludePath,
-        out IncludePath includePath)
+        out IncludePath includePath
+    )
     {
         includePath = new IncludePath(ImmutableArray<NavigationSegment>.Empty);
 
-        if (invocation.TargetMethod.Name == "Include" &&
-            TryGetStringIncludePath(invocation, out includePath))
+        if (
+            invocation.TargetMethod.Name == "Include"
+            && TryGetStringIncludePath(invocation, out includePath)
+        )
         {
             return true;
         }
@@ -83,20 +86,26 @@ internal static partial class IncludePathParser
         return true;
     }
 
-    private static bool TryGetStringIncludePath(IInvocationOperation invocation, out IncludePath includePath)
+    private static bool TryGetStringIncludePath(
+        IInvocationOperation invocation,
+        out IncludePath includePath
+    )
     {
         includePath = new IncludePath(ImmutableArray<NavigationSegment>.Empty);
-        if (invocation.Arguments.Length == 0)
+        var navigationArgument = invocation.Arguments.FirstOrDefault(argument =>
+            argument.Parameter?.Ordinal == GetNavigationParameterOrdinal(invocation)
+        );
+        if (navigationArgument == null)
             return false;
 
-        var value = invocation.Arguments[invocation.Arguments.Length - 1].Value;
+        var value = navigationArgument.Value;
         if (!value.ConstantValue.HasValue || value.ConstantValue.Value is not string pathText)
             return false;
 
         if (string.IsNullOrWhiteSpace(pathText))
             return false;
 
-        var receiverType = invocation.GetInvocationReceiverType();
+        var receiverType = GetSourceType(invocation);
         if (!TryGetQueryableElementType(receiverType, out var currentType))
             return false;
 
@@ -128,5 +137,20 @@ internal static partial class IncludePathParser
 
         includePath = new IncludePath(builder.ToImmutable());
         return true;
+    }
+
+    private static ITypeSymbol? GetSourceType(IInvocationOperation invocation)
+    {
+        if (invocation.Instance != null)
+            return invocation.Instance.Type;
+
+        return invocation
+            .Arguments.FirstOrDefault(argument => argument.Parameter?.Ordinal == 0)
+            ?.Value.Type;
+    }
+
+    private static int GetNavigationParameterOrdinal(IInvocationOperation invocation)
+    {
+        return invocation.Instance == null ? 1 : 0;
     }
 }

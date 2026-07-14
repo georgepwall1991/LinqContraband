@@ -26,13 +26,13 @@ public sealed partial class MissingIncludeAnalyzer
         IOperation querySource;
         if (
             collection is IInvocationOperation invocation
-            && IsEntityMaterializer(invocation.TargetMethod, out var returnsCollection)
+            && IsEntityMaterializer(invocation, out var returnsCollection)
         )
         {
             if (!returnsCollection)
                 return;
 
-            querySource = invocation.GetInvocationReceiver(unwrapConversions: false)!;
+            querySource = GetQuerySource(invocation)?.UnwrapConversions()!;
             if (querySource == null)
                 return;
         }

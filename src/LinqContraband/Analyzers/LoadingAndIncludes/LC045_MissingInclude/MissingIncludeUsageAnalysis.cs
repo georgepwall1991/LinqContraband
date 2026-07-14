@@ -54,13 +54,52 @@ public sealed partial class MissingIncludeAnalyzer
                 );
         }
 
-        var resultLocal = FindVariableAssignment(materializer);
-        if (resultLocal == null)
-            return null;
-
         var executableRoot = materializer.FindOwningExecutableRoot();
         if (executableRoot == null)
             return null;
+
+        var resultLocal = FindVariableAssignment(materializer);
+        if (resultLocal == null)
+        {
+            if (!returnsCollection)
+                return null;
+
+            var inlineAccesses = new List<NavigationAccess>();
+            foreach (var operation in executableRoot.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (
+                    operation is not IInvocationOperation invocation
+                    || !TryGetSupportedCollectionCallback(
+                        invocation,
+                        materializer,
+                        resultLocal,
+                        out var callback
+                    )
+                )
+                {
+                    continue;
+                }
+
+                if (
+                    TryCollectOriginAwareNavigationAccesses(
+                        executableRoot,
+                        callback,
+                        callback.Symbol.Parameters[0],
+                        entityType,
+                        entityTypes,
+                        flowGraphCache,
+                        cancellationToken,
+                        out var callbackAccesses
+                    )
+                )
+                {
+                    inlineAccesses.AddRange(callbackAccesses);
+                }
+            }
+
+            return inlineAccesses;
+        }
 
         var entityLocals = CollectEntityLocals(
             executableRoot,
@@ -68,7 +107,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection,
             cancellationToken
         );
-        return CollectNavigationAccessesFromExecutableRoot(
+        var accesses = CollectNavigationAccessesFromExecutableRoot(
             executableRoot,
             materializer,
             resultLocal,
@@ -79,5 +118,52 @@ public sealed partial class MissingIncludeAnalyzer
             flowGraphCache,
             cancellationToken
         );
+        if (accesses == null || !returnsCollection)
+            return accesses;
+
+        foreach (var operation in executableRoot.Descendants())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                operation is not IInvocationOperation invocation
+                || !TryGetSupportedCollectionCallback(
+                    invocation,
+                    materializer,
+                    resultLocal,
+                    out var callback
+                )
+                || !IsMaterializedCollectionActiveAtInvocation(
+                    executableRoot,
+                    materializer,
+                    resultLocal,
+                    entityType,
+                    entityTypes,
+                    invocation,
+                    flowGraphCache,
+                    cancellationToken
+                )
+            )
+            {
+                continue;
+            }
+
+            if (
+                TryCollectOriginAwareNavigationAccesses(
+                    executableRoot,
+                    callback,
+                    callback.Symbol.Parameters[0],
+                    entityType,
+                    entityTypes,
+                    flowGraphCache,
+                    cancellationToken,
+                    out var callbackAccesses
+                )
+            )
+            {
+                accesses.AddRange(callbackAccesses);
+            }
+        }
+
+        return accesses;
     }
 }

@@ -2058,16 +2058,23 @@ public sealed class AnalyzerModularizationTests
             "LC045_MissingInclude");
         var queryAnalysisPath = Path.Combine(analyzerDir, "MissingIncludeQueryAnalysis.cs");
         var queryOperatorsPath = Path.Combine(analyzerDir, "MissingIncludeQueryOperators.cs");
+        var querySemanticsPath = Path.Combine(analyzerDir, "MissingIncludeQuerySemantics.cs");
 
         Assert.True(File.Exists(queryOperatorsPath), "LC045 query operator/materializer classification should live in a focused partial file.");
+        Assert.True(File.Exists(querySemanticsPath), "LC045 exact query symbol/source classification should live in a focused partial file.");
 
         var queryAnalysisSource = File.ReadAllText(queryAnalysisPath);
-        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> ShapePreservingOperators", queryAnalysisSource);
+        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> ShapePreservingQueryableOperators", queryAnalysisSource);
         Assert.DoesNotContain("private static bool IsEntityMaterializer", queryAnalysisSource);
 
         var queryOperatorsSource = File.ReadAllText(queryOperatorsPath);
-        Assert.Contains("private static readonly ImmutableHashSet<string> ShapePreservingOperators", queryOperatorsSource);
+        Assert.Contains("private static readonly ImmutableHashSet<string> ShapePreservingQueryableOperators", queryOperatorsSource);
+        Assert.Contains("private static readonly ImmutableHashSet<string> ShapePreservingEntityFrameworkOperators", queryOperatorsSource);
         Assert.Contains("private static bool IsEntityMaterializer", queryOperatorsSource);
+
+        var querySemanticsSource = File.ReadAllText(querySemanticsPath);
+        Assert.Contains("private static IOperation? GetQuerySource", querySemanticsSource);
+        Assert.Contains("private static bool IsExactShapePreservingQueryStep", querySemanticsSource);
     }
 
     [Fact]

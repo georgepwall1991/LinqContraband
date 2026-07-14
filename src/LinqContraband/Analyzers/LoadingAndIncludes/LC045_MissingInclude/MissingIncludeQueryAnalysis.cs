@@ -11,7 +11,12 @@ public sealed partial class MissingIncludeAnalyzer
 {
     private sealed class QueryChainInfo
     {
-        public QueryChainInfo(IOperation querySource, INamedTypeSymbol entityType, INamedTypeSymbol contextType, HashSet<string> includedPrefixes)
+        public QueryChainInfo(
+            IOperation querySource,
+            INamedTypeSymbol entityType,
+            INamedTypeSymbol contextType,
+            HashSet<string> includedPrefixes
+        )
         {
             QuerySource = querySource;
             EntityType = entityType;
@@ -28,7 +33,8 @@ public sealed partial class MissingIncludeAnalyzer
     private static bool TryAnalyzeQueryChain(
         IOperation querySource,
         CancellationToken cancellationToken,
-        out QueryChainInfo queryInfo)
+        out QueryChainInfo queryInfo
+    )
     {
         queryInfo = null!;
 
@@ -46,14 +52,13 @@ public sealed partial class MissingIncludeAnalyzer
                 if (IsDbContextSetRoot(invocation))
                     break;
 
-                if (!ShapePreservingOperators.Contains(invocation.TargetMethod.Name) ||
-                    !invocation.TargetMethod.IsFrameworkMethod())
+                if (!IsExactShapePreservingQueryStep(invocation))
                 {
                     return false;
                 }
 
                 (chain ??= new List<IInvocationOperation>()).Add(invocation);
-                current = invocation.GetInvocationReceiver();
+                current = GetQuerySource(invocation);
                 continue;
             }
 
@@ -62,13 +67,16 @@ public sealed partial class MissingIncludeAnalyzer
             if (current is ILocalReferenceOperation localReference)
             {
                 var executableRoot = localReference.FindOwningExecutableRoot();
-                if (executableRoot != null &&
-                    LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                if (
+                    executableRoot != null
+                    && LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                         executableRoot,
                         localReference.Local,
                         localReference.Syntax.SpanStart,
                         out var assignedValue,
-                        cancellationToken))
+                        cancellationToken
+                    )
+                )
                 {
                     current = assignedValue;
                     continue;
@@ -99,8 +107,15 @@ public sealed partial class MissingIncludeAnalyzer
 
                 // An Include we cannot parse (dynamic string, unresolved symbol) could cover any
                 // navigation, so the whole query must stay quiet.
-                if (semanticModel == null ||
-                    !IncludePathParser.TryGetIncludePath(invocation, semanticModel, currentIncludePath, out var includePath))
+                if (
+                    semanticModel == null
+                    || !IncludePathParser.TryGetIncludePath(
+                        invocation,
+                        semanticModel,
+                        currentIncludePath,
+                        out var includePath
+                    )
+                )
                 {
                     return false;
                 }

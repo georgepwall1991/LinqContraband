@@ -1,5 +1,4 @@
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
-    LinqContraband.Analyzers.LC045_MissingInclude.MissingIncludeAnalyzer>;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<LinqContraband.Analyzers.LC045_MissingInclude.MissingIncludeAnalyzer>;
 
 namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
@@ -8,7 +7,9 @@ public partial class MissingIncludeEdgeCasesTests
     [Fact]
     public async Task TestInnocent_ResultLocalReassigned_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -22,7 +23,8 @@ class Program
         }
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -32,7 +34,9 @@ class Program
     {
         // The helper may explicitly load the navigations; once the list escapes we cannot
         // prove the access is unbacked.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -48,7 +52,8 @@ class Program
 
     void Hydrate(List<Order> orders) { }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -56,7 +61,9 @@ class Program
     [Fact]
     public async Task TestInnocent_ResultReturned_NoDiagnostic()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     List<Order> Main()
@@ -67,47 +74,52 @@ class Program
         return orders;
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task TestInnocent_ResultUsedThroughLambda_NoDiagnostic()
+    public async Task TestCrime_ResultUsedThroughExactSelectCallback_Reports()
     {
-        // Accesses inside lambdas over the result are out of scope for v1; the local escaping
-        // into the Select call keeps the rule quiet.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
     {
         var db = new MyDbContext();
         var orders = db.Orders.ToList();
-        var names = orders.Select(o => o.Customer.Name).ToList();
+        var names = orders.Select(o => {|#0:o.Customer|}.Name).ToList();
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
     }
 
     [Fact]
-    public async Task TestInnocent_ForEachMethodOnResult_NoDiagnostic()
+    public async Task TestCrime_ExactListForEachOnResult_Reports()
     {
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
     {
         var db = new MyDbContext();
         var orders = db.Orders.ToList();
-        orders.ForEach(o => Console.WriteLine(o.Customer.Name));
+        orders.ForEach(o => Console.WriteLine({|#0:o.Customer|}.Name));
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
     }
 
     [Fact]
@@ -115,7 +127,9 @@ class Program
     {
         // db.Entry(order) may be used to explicitly load the navigation; the entity escaping
         // as an argument keeps the rule quiet.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -126,7 +140,8 @@ class Program
         Console.WriteLine(order.Customer.Name);
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -136,7 +151,9 @@ class Program
     {
         // The local is repointed between a fresh in-memory object and a query entity; with
         // more than one assignment we cannot prove which object any given read sees.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -149,7 +166,8 @@ class Program
         Console.WriteLine(t.Id);
     }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
@@ -158,7 +176,9 @@ class Program
     public async Task TestInnocent_IndexedEntityPassedAsArgument_NoDiagnostic()
     {
         // orders[0] escapes to a helper that could explicitly load the navigation.
-        var test = Usings + @"
+        var test =
+            Usings
+            + @"
 class Program
 {
     void Main()
@@ -171,7 +191,8 @@ class Program
 
     void Hydrate(Order order) { }
 }
-" + MockNamespace;
+"
+            + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

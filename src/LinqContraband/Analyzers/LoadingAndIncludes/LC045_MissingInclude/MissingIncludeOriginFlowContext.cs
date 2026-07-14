@@ -16,12 +16,16 @@ public sealed partial class MissingIncludeAnalyzer
         private readonly IInvocationOperation? materializer;
         private readonly ILocalSymbol? resultLocal;
         private readonly IForEachLoopOperation? rootForEach;
+        private readonly IParameterSymbol? rootCallbackParameter;
         private readonly SyntaxNode activationSyntax;
         private readonly bool returnsCollection;
         private readonly INamedTypeSymbol entityType;
         private readonly HashSet<INamedTypeSymbol> entityTypes;
         private readonly CancellationToken cancellationToken;
         private readonly Dictionary<ILocalSymbol, EntityOrigin> originsByLocal = new(
+            SymbolEqualityComparer.Default
+        );
+        private readonly Dictionary<IParameterSymbol, EntityOrigin> originsByParameter = new(
             SymbolEqualityComparer.Default
         );
         private readonly Dictionary<string, EntityOrigin> indexedOrigins = new(
@@ -85,8 +89,49 @@ public sealed partial class MissingIncludeAnalyzer
             this.cancellationToken = cancellationToken;
         }
 
+        public OriginFlowContext(
+            IAnonymousFunctionOperation callback,
+            IParameterSymbol callbackParameter,
+            INamedTypeSymbol entityType,
+            HashSet<INamedTypeSymbol> entityTypes,
+            CancellationToken cancellationToken
+        )
+        {
+            executableRoot = callback;
+            rootCallbackParameter = callbackParameter;
+            activationSyntax = callback.Body.Syntax;
+            returnsCollection = false;
+            this.entityType = entityType;
+            this.entityTypes = entityTypes;
+            this.cancellationToken = cancellationToken;
+        }
+
         public List<FlowAccessCandidate> Candidates { get; } = new();
         public Dictionary<int, List<FlowEvent>> EventsByBlock { get; } = new();
+
+        public FlowAccessCandidate AddRootProbe(SyntaxNode syntax)
+        {
+            var candidate = new FlowAccessCandidate(
+                nextAccessId++,
+                new NavigationAccess(string.Empty, syntax),
+                FallbackEntityOrigin,
+                canDetachFromRoot: false,
+                bindingPosition: activationSyntax.Span.End,
+                isAliasBinding: false,
+                accessLocal: resultLocal
+            );
+            events.Add(
+                new FlowEvent(
+                    FlowEventKind.Access,
+                    syntax,
+                    syntax.Span.Start,
+                    candidate.Origin,
+                    candidate.Access.Path,
+                    candidate.AccessId
+                )
+            );
+            return candidate;
+        }
 
         public void Build()
         {
@@ -98,7 +143,9 @@ public sealed partial class MissingIncludeAnalyzer
                 new FlowEvent(
                     FlowEventKind.Materialize,
                     activationSyntax,
-                    activationSyntax.Span.End
+                    rootCallbackParameter != null
+                        ? activationSyntax.Span.Start
+                        : activationSyntax.Span.End
                 )
             );
 
@@ -122,6 +169,8 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (operation is IPropertyReferenceOperation propertyReference)
                     CollectNavigationEvent(propertyReference);
+                else if (operation is IPropertySubpatternOperation propertySubpattern)
+                    CollectPropertyPatternNavigationEvent(propertySubpattern);
             }
         }
 
@@ -130,6 +179,14 @@ public sealed partial class MissingIncludeAnalyzer
             foreach (var flowEvent in events)
             {
                 var blockOrdinal = FindBlockOrdinal(graph, flowEvent.Syntax);
+                if (
+                    blockOrdinal < 0
+                    && flowEvent.Kind == FlowEventKind.Materialize
+                    && executableRoot is IAnonymousFunctionOperation
+                )
+                {
+                    blockOrdinal = FindFirstBlockOrdinalInside(graph, activationSyntax);
+                }
                 if (blockOrdinal < 0)
                     return false;
 
@@ -186,6 +243,17 @@ public sealed partial class MissingIncludeAnalyzer
 
         private void DiscoverOrigins()
         {
+            if (rootCallbackParameter != null)
+            {
+                rootEntityOrigin = CreateParameterOrigin(
+                    rootCallbackParameter,
+                    initiallyBound: true,
+                    activationSyntax.Span.Start,
+                    entityType,
+                    navigationPrefix: ""
+                );
+            }
+
             if (!returnsCollection && resultLocal != null)
             {
                 rootEntityOrigin = CreateOrigin(
@@ -407,7 +475,13 @@ public sealed partial class MissingIncludeAnalyzer
                 return true;
             }
 
-            if (TryResolveCollectionNavigationEscape(source, out var parentOrigin, out navigationPath))
+            if (
+                TryResolveCollectionNavigationEscape(
+                    source,
+                    out var parentOrigin,
+                    out navigationPath
+                )
+            )
             {
                 isRoot = false;
                 origin = parentOrigin;
@@ -452,6 +526,14 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (originsByLocal.TryGetValue(localReference.Local, out origin))
                     return true;
+            }
+
+            if (
+                unwrapped is IParameterReferenceOperation parameterReference
+                && originsByParameter.TryGetValue(parameterReference.Parameter, out origin)
+            )
+            {
+                return true;
             }
 
             if (
@@ -519,14 +601,21 @@ public sealed partial class MissingIncludeAnalyzer
         private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
         {
             return IsExactCollectionElementExtraction(invocation)
-                && invocation.GetInvocationReceiver() is { } source
+                && GetQuerySource(invocation) is { } source
                 && TryResolveTrackedSource(source, out var isRoot, out _)
                 && isRoot;
         }
 
         private void AddEscapeForSource(IOperation source, SyntaxNode syntax, int position)
         {
-            if (!TryResolveEscapeSource(source, out var isRoot, out var origin, out var navigationPath))
+            if (
+                !TryResolveEscapeSource(
+                    source,
+                    out var isRoot,
+                    out var origin,
+                    out var navigationPath
+                )
+            )
                 return;
 
             if (origin?.IsUnstableDirectIndex == true)
@@ -575,9 +664,40 @@ public sealed partial class MissingIncludeAnalyzer
             return origin;
         }
 
+        private EntityOrigin CreateParameterOrigin(
+            IParameterSymbol parameter,
+            bool initiallyBound,
+            int bindingPosition,
+            INamedTypeSymbol originEntityType,
+            string navigationPrefix
+        )
+        {
+            if (originsByParameter.TryGetValue(parameter, out var existing))
+                return existing;
+
+            var origin = new EntityOrigin(
+                nextOriginId++,
+                local: null,
+                initiallyBound,
+                canDetachFromRoot: false,
+                isIteration: true,
+                bindingPosition,
+                entityType: originEntityType,
+                navigationPrefix: navigationPrefix
+            );
+            originsByParameter[parameter] = origin;
+            return origin;
+        }
+
         private EntityOrigin? FindOrigin(int id)
         {
             foreach (var origin in originsByLocal.Values)
+            {
+                if (origin.Id == id)
+                    return origin;
+            }
+
+            foreach (var origin in originsByParameter.Values)
             {
                 if (origin.Id == id)
                     return origin;
@@ -673,6 +793,9 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsDeclaredInExecutableRoot(IAnonymousFunctionOperation lambda)
         {
+            if (executableRoot is IAnonymousFunctionOperation callback)
+                return !ReferenceEquals(lambda, callback) && BelongsToExecutableRoot(lambda);
+
             var parent = lambda.Parent;
             return parent != null
                 && ReferenceEquals(parent.FindOwningExecutableRoot(), executableRoot);
@@ -680,6 +803,29 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool BelongsToExecutableRoot(IOperation operation)
         {
+            if (executableRoot is IAnonymousFunctionOperation callback)
+            {
+                if (
+                    operation.Syntax.SyntaxTree != callback.Syntax.SyntaxTree
+                    || !callback.Body.Syntax.Span.Contains(operation.Syntax.Span)
+                )
+                {
+                    return false;
+                }
+
+                for (
+                    var parent = operation.Parent;
+                    parent != null && !ReferenceEquals(parent, callback);
+                    parent = parent.Parent
+                )
+                {
+                    if (parent is IAnonymousFunctionOperation)
+                        return false;
+                }
+
+                return true;
+            }
+
             return ReferenceEquals(operation.FindOwningExecutableRoot(), executableRoot);
         }
 

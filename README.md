@@ -1771,8 +1771,12 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   performs the write; a one-branch or different-entity write does not hide a missing `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
   to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
-- `await foreach`, callbacks and predicate/default-value element extraction overloads, custom lookalikes, and repository
-  or `IQueryable` parameter roots remain conservative boundaries.
+- `await foreach`, arbitrary callbacks/delegate forms, predicate/default-value element extraction overloads, custom
+  lookalikes, and repository or `IQueryable` parameter roots remain conservative boundaries. Exact inline
+  `List<T>.ForEach` and single-source `Enumerable.Where`/`Select`/`Any`/`All` callbacks and property-pattern reads
+  use the same origin-flow proof while the original materialized collection generation remains active. Effectful
+  `Where` predicates and entity-returning `Select` projections stay conservative; scalar `Select` projections do
+  not suppress later proven reads.
 - Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without
   another loading mechanism a consistently null navigation makes the guard dead code hiding the missing `Include`.
   Regrouped conditional paths such as
