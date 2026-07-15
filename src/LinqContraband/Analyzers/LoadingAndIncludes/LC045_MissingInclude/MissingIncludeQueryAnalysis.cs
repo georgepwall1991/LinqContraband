@@ -15,19 +15,22 @@ public sealed partial class MissingIncludeAnalyzer
             IOperation querySource,
             INamedTypeSymbol entityType,
             INamedTypeSymbol contextType,
-            HashSet<string> includedPrefixes
+            HashSet<string> includedPrefixes,
+            bool ignoresAutoIncludes
         )
         {
             QuerySource = querySource;
             EntityType = entityType;
             ContextType = contextType;
             IncludedPrefixes = includedPrefixes;
+            IgnoresAutoIncludes = ignoresAutoIncludes;
         }
 
         public IOperation QuerySource { get; }
         public INamedTypeSymbol EntityType { get; }
         public INamedTypeSymbol ContextType { get; }
         public HashSet<string> IncludedPrefixes { get; }
+        public bool IgnoresAutoIncludes { get; }
     }
 
     private static bool TryAnalyzeQueryChain(
@@ -94,6 +97,7 @@ public sealed partial class MissingIncludeAnalyzer
         var includedPrefixes = new HashSet<string>(System.StringComparer.Ordinal);
         var semanticModel = querySource.SemanticModel;
         IncludePath? currentIncludePath = null;
+        var ignoresAutoIncludes = false;
 
         // Root-first order so each ThenInclude sees the Include path it extends.
         if (chain != null)
@@ -102,6 +106,9 @@ public sealed partial class MissingIncludeAnalyzer
             foreach (var invocation in chain)
             {
                 var methodName = invocation.TargetMethod.Name;
+                if (methodName == "IgnoreAutoIncludes")
+                    ignoresAutoIncludes = true;
+
                 if (methodName != "Include" && methodName != "ThenInclude")
                     continue;
 
@@ -125,7 +132,13 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
-        queryInfo = new QueryChainInfo(querySource, entityType, contextType, includedPrefixes);
+        queryInfo = new QueryChainInfo(
+            querySource,
+            entityType,
+            contextType,
+            includedPrefixes,
+            ignoresAutoIncludes
+        );
         return true;
     }
 

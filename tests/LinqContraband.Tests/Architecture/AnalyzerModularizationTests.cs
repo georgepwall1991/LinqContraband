@@ -522,12 +522,14 @@ public sealed class AnalyzerModularizationTests
         var flowContextPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowContext.cs");
         var flowEventsPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowEvents.cs");
         var flowStatePath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowState.cs");
+        var autoIncludePath = Path.Combine(analyzerDir, "MissingIncludeAutoIncludeConfiguration.cs");
 
         Assert.True(File.Exists(flowAnalysisPath), "LC045 origin-aware control-flow analysis should live in a focused partial file.");
         Assert.True(File.Exists(flowBindingsPath), "LC045 origin and alias binding discovery should live in a focused partial file.");
         Assert.True(File.Exists(flowContextPath), "LC045 origin-flow context construction should live in a focused partial file.");
         Assert.True(File.Exists(flowEventsPath), "LC045 origin-flow event collection should live in a focused partial file.");
         Assert.True(File.Exists(flowStatePath), "LC045 origin-flow state and event models should live in a focused partial file.");
+        Assert.True(File.Exists(autoIncludePath), "LC045 model-level AutoInclude proof should live in a focused partial file.");
 
         var usageScanSource = File.ReadAllText(usageScanPath);
         Assert.DoesNotContain("private static bool TryGetFlowGraph", usageScanSource);
@@ -539,7 +541,13 @@ public sealed class AnalyzerModularizationTests
         var analyzerSource = File.ReadAllText(analyzerPath);
         Assert.Contains("RegisterCompilationStartAction", analyzerSource);
         Assert.Contains("var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<", analyzerSource);
-        Assert.Contains("AnalyzeInvocation(operationContext, entityTypeCache, flowGraphCache)", analyzerSource);
+        Assert.Contains("var autoIncludeCache = new System.Collections.Concurrent.ConcurrentDictionary<", analyzerSource);
+        Assert.Contains("AnalyzeInvocation(", analyzerSource);
+        Assert.Contains("autoIncludeCache,", analyzerSource);
+
+        var autoIncludeSource = File.ReadAllText(autoIncludePath);
+        Assert.Contains("private static void AddModelAutoIncludePrefixes", autoIncludeSource);
+        Assert.Contains("private static bool TryGetDirectAutoInclude", autoIncludeSource);
 
         var flowAnalysisSource = File.ReadAllText(flowAnalysisPath);
         Assert.Contains("private static bool TryCollectOriginAwareNavigationAccesses", flowAnalysisSource);

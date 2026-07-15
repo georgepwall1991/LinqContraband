@@ -42,9 +42,32 @@ namespace Microsoft.EntityFrameworkCore
 
     public class DbContext : IDisposable
     {
+        protected virtual void OnModelCreating(ModelBuilder modelBuilder) { }
         public void Dispose() { }
         public int SaveChanges() => 0;
         public EntityEntry<T> Entry<T>(T entity) where T : class => null;
+    }
+
+    public class ModelBuilder
+    {
+        public Metadata.Builders.EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => null;
+    }
+
+    namespace Metadata.Builders
+    {
+        public class EntityTypeBuilder<TEntity> where TEntity : class
+        {
+            public NavigationBuilder<TEntity, TProperty> Navigation<TProperty>(
+                System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationExpression) => null;
+        }
+
+        public class NavigationBuilder { }
+
+        public class NavigationBuilder<TSource, TTarget> : NavigationBuilder
+            where TSource : class
+        {
+            public virtual NavigationBuilder<TSource, TTarget> AutoInclude(bool autoInclude = true) => this;
+        }
     }
 
     public class EntityEntry<T> where T : class { }

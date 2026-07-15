@@ -1732,6 +1732,12 @@ If you materialize a query (`ToList`, `FirstOrDefault`, …) and then read a nav
 `Include`, the access can trigger a read-side N+1 with lazy-loading proxies. Without lazy loading, it can remain
 `null` or empty when explicit loading, `AutoInclude`, and relationship fix-up have not populated it.
 
+LC045 honours exact top-level `OnModelCreating` configuration such as
+`modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude()` for the exact queried context and
+navigation. A query that calls `IgnoreAutoIncludes()` still reports, as do conditional, runtime-valued,
+early-exit-guarded, deferred, hidden-slot, later unproven, or indirect model configurations that the analyzer
+cannot prove. Constructed generic context symbols are matched back to their original override declarations.
+
 **👶 Explain it like I'm a ten year old:** You ordered a burger but didn't ask for fries. Now either the kitchen makes
 a separate trip for every single fry you reach for (slow!), or there are simply no fries on your plate and you go
 hungry (null!).

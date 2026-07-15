@@ -16,6 +16,10 @@ public sealed partial class MissingIncludeAnalyzer
             INamedTypeSymbol,
             HashSet<INamedTypeSymbol>
         > entityTypeCache,
+        System.Collections.Concurrent.ConcurrentDictionary<
+            INamedTypeSymbol,
+            Dictionary<INamedTypeSymbol, HashSet<string>>
+        > autoIncludeCache,
         ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache
     )
     {
@@ -69,6 +73,12 @@ public sealed partial class MissingIncludeAnalyzer
         if (accesses == null || accesses.Count == 0)
             return;
 
+        AddModelAutoIncludePrefixes(
+            query,
+            autoIncludeCache,
+            context.Compilation,
+            context.CancellationToken
+        );
         ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
     }
 
