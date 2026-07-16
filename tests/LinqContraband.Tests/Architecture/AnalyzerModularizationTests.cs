@@ -4088,7 +4088,7 @@ public sealed class AnalyzerModularizationTests
         Assert.DoesNotContain("private static bool HasInterpolationInsideSqlStringLiteral", fixerSource);
         Assert.DoesNotContain("private static bool HasInterpolationOutsideLikelySqlValuePosition", fixerSource);
         Assert.DoesNotContain("private static bool IsLikelySqlValuePosition", fixerSource);
-        Assert.DoesNotContain("private static void UpdateSqlDelimiterState", fixerSource);
+        Assert.DoesNotContain("private static bool ToggleSqlStringLiteralState", fixerSource);
 
         var sqlSafetySource = File.ReadAllText(sqlSafetyPath);
         Assert.Contains("private static bool HasInterpolationInsideSqlStringLiteral", sqlSafetySource);
