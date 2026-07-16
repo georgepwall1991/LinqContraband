@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
@@ -496,6 +497,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (tryStatement.Block.Statements.LastOrDefault() is not ThrowStatementSyntax terminalThrow)
             return false;
 
+        var semanticModel = tryOperation.SemanticModel ?? mutation.SemanticModel;
+        var nullReferenceType = semanticModel?.Compilation
+            .GetTypeByMetadataName("System.NullReferenceException");
+        var terminalOperandMayBeNull = semanticModel != null &&
+                                       TerminalThrowOperandMayBeNull(
+                                           terminalThrow, semanticModel);
+
         foreach (var catchClause in tryStatement.Catches)
         {
             if (ReferenceEquals(catchClause, requiredCatch)) continue;
@@ -515,6 +523,21 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 continue;
             }
 
+            if (semanticModel != null &&
+                nullReferenceType != null &&
+                terminalOperandMayBeNull)
+            {
+                var caughtType = catchClause.Declaration == null
+                    ? semanticModel.Compilation.GetTypeByMetadataName("System.Exception")
+                    : semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+                if (ExactExceptionReachesCatch(
+                        nullReferenceType, catchClause, tryStatement, semanticModel) &&
+                    CanCatchExactType(nullReferenceType, caughtType, catchClause))
+                {
+                    return true;
+                }
+            }
+
             var canReachCatch = tryOperation.Descendants()
                 .Any(operation =>
                     (operation.Syntax.SpanStart < terminalThrow.SpanStart ||
@@ -532,6 +555,179 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return false;
+    }
+
+    private static bool TerminalThrowOperandMayBeNull(
+        ThrowStatementSyntax terminalThrow,
+        SemanticModel semanticModel)
+    {
+        if (semanticModel.GetOperation(terminalThrow) is not IThrowOperation throwOperation ||
+            throwOperation.Exception == null)
+        {
+            return false;
+        }
+
+        return TerminalThrowOperandMayBeNull(throwOperation.Exception, semanticModel);
+    }
+
+    private static bool TerminalThrowOperandMayBeNull(
+        IOperation? operation,
+        SemanticModel semanticModel)
+    {
+        var terminalOperand = UnwrapTerminalThrowOperand(operation);
+        return terminalOperand switch
+        {
+            IObjectCreationOperation => false,
+            IThrowOperation => false,
+            IConditionalOperation conditional =>
+                TerminalThrowOperandMayBeNull(conditional.WhenTrue, semanticModel) ||
+                TerminalThrowOperandMayBeNull(conditional.WhenFalse, semanticModel),
+            ICoalesceOperation coalesce =>
+                TerminalThrowOperandMayBeNull(coalesce.WhenNull, semanticModel),
+            ILocalReferenceOperation localReference
+                when TryGetUnchangedLocalInitializer(
+                    localReference, semanticModel, out var initializer) =>
+                TerminalThrowOperandMayBeNull(initializer, semanticModel),
+            null => true,
+            _ => semanticModel.GetTypeInfo(terminalOperand.Syntax)
+                     .Nullability.FlowState != NullableFlowState.NotNull,
+        };
+    }
+
+    private static bool TryGetUnchangedLocalInitializer(
+        ILocalReferenceOperation localReference,
+        SemanticModel semanticModel,
+        out IOperation initializer)
+    {
+        initializer = null!;
+        if (localReference.Local.DeclaringSyntaxReferences.Length != 1 ||
+            localReference.Local.DeclaringSyntaxReferences[0].GetSyntax() is not
+                VariableDeclaratorSyntax { Initializer.Value: { } initializerSyntax } ||
+            localReference.FindOwningExecutableRoot() is not { } executableRoot ||
+            HasLocalWriteBefore(
+                executableRoot,
+                localReference.Local,
+                semanticModel,
+                localReference.Syntax.SpanStart))
+        {
+            return false;
+        }
+
+        initializer = semanticModel.GetOperation(initializerSyntax)!;
+        return initializer != null;
+    }
+
+    private static bool HasLocalWriteBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        SemanticModel semanticModel,
+        int beforeSpanStart)
+    {
+        foreach (var node in executableRoot.Syntax.DescendantNodes())
+        {
+            ExpressionSyntax? target = node switch
+            {
+                AssignmentExpressionSyntax assignment => assignment.Left,
+                PrefixUnaryExpressionSyntax prefix when
+                    prefix.IsKind(SyntaxKind.PreIncrementExpression) ||
+                    prefix.IsKind(SyntaxKind.PreDecrementExpression) => prefix.Operand,
+                PostfixUnaryExpressionSyntax postfix when
+                    postfix.IsKind(SyntaxKind.PostIncrementExpression) ||
+                    postfix.IsKind(SyntaxKind.PostDecrementExpression) => postfix.Operand,
+                ArgumentSyntax argument when
+                    !argument.RefKindKeyword.IsKind(SyntaxKind.None) => argument.Expression,
+                _ => null,
+            };
+            if (target == null)
+                continue;
+
+            var targetOperation = semanticModel.GetOperation(target);
+            if (targetOperation == null)
+            {
+                continue;
+            }
+
+            var sharesExecutableRoot = executableRoot.SharesOwningExecutableRoot(targetOperation);
+            if (sharesExecutableRoot
+                    ? targetOperation.Syntax.SpanStart >= beforeSpanStart
+                    : !NestedExecutableIsInvokedBefore(
+                        targetOperation, executableRoot, semanticModel, beforeSpanStart))
+            {
+                continue;
+            }
+
+            var writesLocal = targetOperation is ILocalReferenceOperation localTarget &&
+                              SymbolEqualityComparer.Default.Equals(localTarget.Local, local) ||
+                              target is TupleExpressionSyntax &&
+                              targetOperation.DescendantsAndSelf()
+                                  .OfType<ILocalReferenceOperation>()
+                                  .Any(candidate => SymbolEqualityComparer.Default.Equals(
+                                      candidate.Local, local));
+            if (writesLocal)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool NestedExecutableIsInvokedBefore(
+        IOperation nestedOperation,
+        IOperation executableRoot,
+        SemanticModel semanticModel,
+        int beforeSpanStart)
+    {
+        var nestedExecutable = nestedOperation.Syntax.Ancestors().FirstOrDefault(syntax =>
+            syntax is LocalFunctionStatementSyntax or
+                LambdaExpressionSyntax or
+                AnonymousMethodExpressionSyntax);
+        ISymbol? invokedSymbol = nestedExecutable switch
+        {
+            LocalFunctionStatementSyntax localFunction =>
+                semanticModel.GetDeclaredSymbol(localFunction),
+            LambdaExpressionSyntax or AnonymousMethodExpressionSyntax =>
+                nestedExecutable.Ancestors().OfType<VariableDeclaratorSyntax>()
+                    .Select(declarator => semanticModel.GetDeclaredSymbol(declarator))
+                    .FirstOrDefault(symbol => symbol != null),
+            _ => null,
+        };
+        if (invokedSymbol == null)
+            return false;
+
+        foreach (var invocation in executableRoot.Syntax.DescendantNodes()
+                     .OfType<InvocationExpressionSyntax>())
+        {
+            if (invocation.SpanStart >= beforeSpanStart ||
+                semanticModel.GetOperation(invocation) is not IInvocationOperation invocationOperation ||
+                !executableRoot.SharesOwningExecutableRoot(invocationOperation))
+            {
+                continue;
+            }
+
+            var candidate = invokedSymbol is IMethodSymbol
+                ? semanticModel.GetSymbolInfo(invocation).Symbol
+                : GetInvokedDelegateSymbol(invocation, invocationOperation, semanticModel);
+            if (SymbolEqualityComparer.Default.Equals(candidate, invokedSymbol))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static ISymbol? GetInvokedDelegateSymbol(
+        InvocationExpressionSyntax invocation,
+        IInvocationOperation invocationOperation,
+        SemanticModel semanticModel)
+    {
+        var directSymbol = semanticModel.GetSymbolInfo(invocation.Expression).Symbol;
+        if (directSymbol is ILocalSymbol)
+            return directSymbol;
+
+        return UnwrapTerminalThrowOperand(invocationOperation.Instance) is
+            ILocalReferenceOperation localReference
+                ? localReference.Local
+                : null;
     }
 
     private static bool PotentialOperationCanReachCatch(

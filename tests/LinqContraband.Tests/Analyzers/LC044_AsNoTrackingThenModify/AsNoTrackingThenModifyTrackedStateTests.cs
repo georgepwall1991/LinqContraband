@@ -852,6 +852,446 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NullableThrowOperandCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, System.InvalidOperationException exception)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when a null operand reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NullOperandCatchAlsoAttaches_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, System.InvalidOperationException exception)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+                ctx.Attach(u);
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted on every reachable handler path"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_CoalescedThrowExpressionCannotProduceNull_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, System.InvalidOperationException exception)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw exception ?? throw new System.InvalidOperationException();
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_DefinitelyNonNullLocalThrowOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ReassignedLocalThrowOperandCanBeNull_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            exception = null;
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the reassigned operand reaches the null handler"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_LocalWriteAfterThrowDoesNotChangeOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+                exception = null;
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UninvokedLambdaLocalWriteDoesNotChangeOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action overwrite = () => exception = null;
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_InvokedLambdaCanNullLocalOperand_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action overwrite = () => exception = null;
+            overwrite();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the invoked lambda nulls the operand"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_InvokedLocalFunctionCanNullLocalOperand_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            void Overwrite() => exception = null;
+            Overwrite();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the invoked local function nulls the operand"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_LaterDeclaredInvokedLocalFunctionCanNullLocalOperand_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            Overwrite();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            void Overwrite() => exception = null;
+            {|LC044:u.Name|} = ""lost when the later-declared invoked local function nulls the operand"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ExplicitDelegateInvokeCanNullLocalOperand_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action overwrite = () => exception = null;
+            overwrite.Invoke();
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the explicitly invoked delegate nulls the operand"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_LocalMemberWriteDoesNotReassignOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            exception.Data[""key""] = ""value"";
+            try
+            {
+                throw exception;
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConditionalNestedConstructorsRemainOpen_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw first
+                    ? new System.InvalidOperationException()
+                    : new System.InvalidOperationException();
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost if a nested constructor reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MandatoryCatchPriorAttach_StaticFieldTypeInitializerCanReachAlternateCatch_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
