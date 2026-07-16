@@ -153,6 +153,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 start.Syntax.Span.Contains(operation.Syntax.Span) ||
                 operation.Syntax.AncestorsAndSelf()
                     .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) ||
+                !StartCanReachSyntax(start.Syntax, operation.Syntax) ||
                 !IsImplicitlyPotentiallyThrowingOperation(operation) ||
                 !start.SharesOwningExecutableRoot(operation))
             {

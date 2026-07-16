@@ -49,6 +49,7 @@ internal readonly struct ReattachEntry
         ISymbol? contextSymbol,
         ImmutableArray<MemberPathSegment> targetPath,
         bool persistsExistingMutation,
+        bool coversDescendantPaths,
         int spanStart,
         TextSpan span)
     {
@@ -56,6 +57,7 @@ internal readonly struct ReattachEntry
         ContextSymbol = contextSymbol;
         TargetPath = targetPath;
         PersistsExistingMutation = persistsExistingMutation;
+        CoversDescendantPaths = coversDescendantPaths;
         SpanStart = spanStart;
         Span = span;
     }
@@ -64,6 +66,7 @@ internal readonly struct ReattachEntry
     public ISymbol? ContextSymbol { get; }
     public ImmutableArray<MemberPathSegment> TargetPath { get; }
     public bool PersistsExistingMutation { get; }
+    public bool CoversDescendantPaths { get; }
     public int SpanStart { get; }
     public TextSpan Span { get; }
 }

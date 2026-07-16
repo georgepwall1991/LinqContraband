@@ -28,7 +28,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             var entry = reattaches[i];
             if (entry.SpanStart <= mutation.Syntax.SpanStart || entry.SpanStart >= saveSpan) continue;
             if (!entry.PersistsExistingMutation) continue;
-            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
+            if (!ReattachCoversPath(entry, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
@@ -267,7 +267,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = reattaches[i];
             if (entry.SpanStart <= afterSpan || entry.SpanStart >= mutationSpan) continue;
-            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
+            if (!ReattachCoversPath(entry, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
@@ -297,7 +297,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = reattaches[i];
             if (!range.Contains(entry.Span)) continue;
-            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
+            if (!ReattachCoversPath(entry, receiverPath)) continue;
 
             var entryPrecedesMutation = entry.SpanStart < mutation.Syntax.SpanStart;
             if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
@@ -342,6 +342,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         return true;
     }
+
+    private static bool ReattachCoversPath(
+        ReattachEntry entry,
+        ImmutableArray<MemberPathSegment> receiverPath) =>
+        (entry.CoversDescendantPaths || entry.TargetPath.Length == receiverPath.Length) &&
+        MemberPathIsPrefix(entry.TargetPath, receiverPath);
 
     private static bool HasEarlierSaveChangesOnSameContext(
         AsNoTrackingThenModifyRootScan scan,

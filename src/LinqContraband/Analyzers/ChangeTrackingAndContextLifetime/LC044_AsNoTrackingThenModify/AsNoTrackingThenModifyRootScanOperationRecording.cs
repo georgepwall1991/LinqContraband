@@ -31,6 +31,7 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
                         entryContext,
                         entryTargetPath,
                         persistsExistingMutation: true,
+                        coversDescendantPaths: false,
                         assignment.Syntax.SpanStart,
                         assignment.Syntax.Span));
             }
@@ -224,6 +225,7 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
                 contextSymbol,
                 targetPath,
                 persistsExistingMutation,
+                coversDescendantPaths: true,
                 invocation.Syntax.SpanStart,
                 invocation.Syntax.Span));
     }

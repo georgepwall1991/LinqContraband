@@ -29,6 +29,29 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MutateNestedMember_ContextUpdateRoot_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            user.Address.City = ""persisted by graph update"";
+            ctx.Update(user);
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MutateNestedMember_EntryNestedEntityModified_ThenSave_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
@@ -44,6 +67,29 @@ namespace Test
             var user = ctx.Users.AsNoTracking().First();
             user.Address.City = ""London"";
             ctx.Entry(user.Address).State = EntityState.Modified;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MutateNestedMember_EntryRootModified_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            {|LC044:user.Address.City|} = ""not covered by the root entry state"";
+            ctx.Entry(user).State = EntityState.Modified;
             ctx.SaveChanges();
         }
     }
@@ -3818,6 +3864,43 @@ namespace Test
             try
             {
                 _ = holder?.Value;
+                ctx.Update(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_ImplicitThrowInSiblingBranchBeforeUpdate_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void MaybeThrow() { }
+
+        public void M(TestCtx ctx, bool mutate)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                if (mutate)
+                {
+                    u.Name = ""persisted"";
+                }
+                else
+                {
+                    MaybeThrow();
+                }
                 ctx.Update(u);
             }
             catch (System.Exception)
