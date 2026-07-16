@@ -319,6 +319,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 Dominates(entry.Operation, mutation) &&
+                !RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation) &&
                 !HasInterveningDetach(
                     scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
@@ -350,7 +351,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
 
             var coversMutationPath = entryPrecedesMutation
-                ? Dominates(entry.Operation, mutation)
+                ? Dominates(entry.Operation, mutation) &&
+                  !RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation)
                 : IsRequiredOnPathFrom(mutation, entry.Operation, save);
             if (!coversMutationPath) continue;
 

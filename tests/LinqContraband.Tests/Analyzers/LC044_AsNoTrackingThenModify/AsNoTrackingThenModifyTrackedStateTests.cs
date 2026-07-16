@@ -235,6 +235,121 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_PriorAttachCanThrowIntoFallThroughCatch_MutateThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                ctx.Attach(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            {|LC044:u.Name|} = ""lost if Attach throws"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_PriorEntryModifiedCanThrowIntoFallThroughCatch_MutateThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                ctx.Entry(u).State = EntityState.Modified;
+            }
+            catch (System.Exception)
+            {
+            }
+            {|LC044:u.Name|} = ""lost if Entry or State evaluation throws"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ForeachPriorAttachCanThrowIntoFallThroughCatch_MutateThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            foreach (var u in ctx.Users.AsNoTracking())
+            {
+                try
+                {
+                    ctx.Attach(u);
+                }
+                catch (System.Exception)
+                {
+                }
+                {|LC044:u.Name|} = ""lost if Attach throws"";
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_PriorAttachCanThrowIntoTerminatingCatch_MutateThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                ctx.Attach(u);
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
+            u.Name = ""persisted whenever save is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ConditionalReattach_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
