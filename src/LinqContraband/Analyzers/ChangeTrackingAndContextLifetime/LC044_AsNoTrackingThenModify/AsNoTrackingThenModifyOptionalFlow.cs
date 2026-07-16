@@ -38,6 +38,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (HasPotentiallyThrowingOperationSkippingRequired(start, required, later))
             return false;
 
+        if (RequiredOperationCanTransferBeforeCompletion(required, later))
+        {
+            return false;
+        }
+
         for (var ancestor = required.Syntax.Parent; ancestor != null; ancestor = ancestor.Parent)
         {
             switch (ancestor)
@@ -94,6 +99,32 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return true;
+    }
+
+    private static bool RequiredOperationCanTransferBeforeCompletion(
+        IOperation required,
+        IOperation later)
+    {
+        if (IsImplicitlyPotentiallyThrowingOperation(required) &&
+            CanTransferToFallThroughCatch(required, later))
+        {
+            return true;
+        }
+
+        if (required is not ISimpleAssignmentOperation)
+            return false;
+
+        foreach (var operation in required.Descendants())
+        {
+            if (required.SharesOwningExecutableRoot(operation) &&
+                IsImplicitlyPotentiallyThrowingOperation(operation) &&
+                CanTransferToFallThroughCatch(operation, later))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool CatchClauseIsMandatoryFrom(

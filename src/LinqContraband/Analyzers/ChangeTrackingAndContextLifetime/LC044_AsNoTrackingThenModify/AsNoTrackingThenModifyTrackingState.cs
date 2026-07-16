@@ -110,7 +110,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (!branch.Span.Contains(entry.SpanStart) ||
                 !reachesSave ||
                 (rejectCaughtThrow &&
-                 (HasCaughtThrowSkippingRequired(mutation, entry.Operation, save) ||
+                 (RequiredOperationCanBypassCollectiveReattach(
+                      entry, matchingReattaches, mutation, save) ||
+                  HasCaughtThrowSkippingRequired(mutation, entry.Operation, save) ||
                   CatchContainsCaughtThrowSkippingRequired(entry, save) ||
                   BranchContainsImplicitTransferBeforeReattach(
                       branch, entry.Operation, save))))
@@ -127,6 +129,51 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return StatementGuaranteesReattach(branch, eligibleReattaches, save);
+    }
+
+    private static bool RequiredOperationCanBypassCollectiveReattach(
+        ReattachEntry entry,
+        List<ReattachEntry> matchingReattaches,
+        IOperation mutation,
+        IOperation save)
+    {
+        if (!RequiredOperationCanTransferBeforeCompletion(entry.Operation, save))
+            return false;
+
+        var hasSaveReachingHandler = false;
+        foreach (var tryStatement in entry.Operation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(entry.SpanStart) ||
+                save.Syntax.SpanStart <= tryStatement.Span.End)
+            {
+                continue;
+            }
+
+            foreach (var catchClause in tryStatement.Catches)
+            {
+                if (catchClause.Filter?.FilterExpression is { } filterExpression)
+                {
+                    var constant = mutation.SemanticModel?.GetConstantValue(filterExpression);
+                    if (constant is { HasValue: true, Value: false })
+                        continue;
+                }
+
+                if (StatementSkipsLater(catchClause.Block, save.Syntax) &&
+                    !CatchHandlerCanReachLater(catchClause, save))
+                {
+                    continue;
+                }
+
+                hasSaveReachingHandler = true;
+                if (!BranchHasUnconditionalReattach(
+                        catchClause.Block, matchingReattaches, mutation, save))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return !hasSaveReachingHandler;
     }
 
     private static bool StatementGuaranteesReattach(

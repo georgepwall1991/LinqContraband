@@ -21,7 +21,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             {
                 var entry = detaches[i];
                 if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
-                if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
+                if (entry.TargetPath.Length != receiverPath.Length ||
+                    !MemberPathIsPrefix(entry.TargetPath, receiverPath))
+                {
+                    continue;
+                }
 
                 if (entry.ContextSymbol != null &&
                     SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&

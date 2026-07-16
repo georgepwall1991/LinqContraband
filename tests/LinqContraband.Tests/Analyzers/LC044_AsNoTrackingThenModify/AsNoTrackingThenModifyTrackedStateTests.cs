@@ -98,6 +98,54 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MutateNestedMember_UpdateRootThenDetachRoot_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            user.Address.City = ""persisted by the still-tracked nested entity"";
+            ctx.Update(user);
+            ctx.Entry(user).State = EntityState.Detached;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateRootThenDetachNestedEntity_MutateNestedMember_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(user);
+            ctx.Entry(user.Address).State = EntityState.Detached;
+            {|LC044:user.Address.City|} = ""lost after the nested entity is detached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MutateNestedMember_UpdateDifferentNestedEntity_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -493,11 +541,11 @@ namespace Test
                 u.Name = ""persisted whenever save is reached"";
                 if (fail)
                     throw new System.InvalidOperationException();
-                ctx.Update(u);
             }
             catch (System.ArgumentException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -524,11 +572,11 @@ namespace Test
                     u.Name = ""persisted"";
                 else
                     throw new System.InvalidOperationException();
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -921,7 +969,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeOuterCatch_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeOuterCatch_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -937,7 +985,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw new System.InvalidOperationException();
                     ctx.Update(u);
@@ -995,7 +1043,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_ConstantTrueInnerCatchReattachesBeforeOuterCatch_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_ConstantTrueInnerCatchReattachesBeforeOuterCatch_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -1011,7 +1059,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw new System.InvalidOperationException();
                     ctx.Update(u);
@@ -1105,11 +1153,11 @@ namespace Test
             try
             {
                 u.Name = value ?? throw new System.InvalidOperationException();
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -1165,11 +1213,11 @@ namespace Test
                     0 => u.Name = ""persisted"",
                     _ => throw new System.InvalidOperationException()
                 };
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -1226,11 +1274,11 @@ namespace Test
             try
             {
                 _ = (System.Action)(() => { throw new System.InvalidOperationException(); });
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -1256,11 +1304,11 @@ namespace Test
             {
                 void NeverInvoked() { throw new System.InvalidOperationException(); }
                 _ = (System.Action)NeverInvoked;
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -1345,7 +1393,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeRethrowToOuterCatch_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeRethrowToOuterCatch_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -1361,7 +1409,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw new System.InvalidOperationException();
                     ctx.Update(u);
@@ -1420,7 +1468,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeExplicitRethrow_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeExplicitRethrow_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -1436,7 +1484,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw new System.InvalidOperationException();
                     ctx.Update(u);
@@ -1611,7 +1659,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeThrowingReplacement_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_InnerCatchReattachesBeforeThrowingReplacement_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -1627,7 +1675,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw new System.InvalidOperationException();
                     ctx.Update(u);
@@ -1774,11 +1822,11 @@ namespace Test
             {
                 if (fail)
                     throw (System.Exception)new System.Exception();
-                ctx.Update(u);
             }
             catch (System.InvalidOperationException)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -1819,7 +1867,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_InnerCatchConsumesConvertedConditionalSubtype_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_InnerCatchConsumesConvertedConditionalSubtype_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -1835,7 +1883,7 @@ namespace Test
             {
                 try
                 {
-                    u.Name = ""persisted or execution terminates"";
+                    {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
                     if (fail)
                         throw (System.Exception)(chooseInvalidOperation
                             ? new System.InvalidOperationException()
@@ -2901,6 +2949,7 @@ namespace Test
             }
             catch (System.Exception)
             {
+                ctx.Update(u);
             }
             ctx.SaveChanges();
         }
@@ -3084,7 +3133,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_SoleCatchUpdateThenCompatibleRethrow_ThenSave_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_SoleCatchUpdateThenCompatibleRethrow_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -3096,7 +3145,7 @@ namespace Test
         public void M(TestCtx ctx)
         {
             var u = ctx.Users.AsNoTracking().First();
-            u.Name = ""persisted"";
+            {|LC044:u.Name|} = ""lost if the catch-side Update throws"";
             try
             {
                 try
@@ -3550,6 +3599,105 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_Mutate_UpdateCanThrowIntoFallThroughCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when Update throws before tracking"";
+            try
+            {
+                ctx.Update(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_CollectiveCatchUpdateCanThrowIntoOuterCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost if both Update calls throw"";
+            try
+            {
+                try
+                {
+                    ctx.Update(u);
+                }
+                catch (System.Exception)
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_CollectiveCatchUpdateOuterHandlerReturns_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted whenever save is reached"";
+            try
+            {
+                try
+                {
+                    ctx.Update(u);
+                }
+                catch (System.Exception)
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ThrowingConditionCanBypassBothBranchUpdates_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -3698,7 +3846,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_Mutate_ImplicitThrowHandledInsideCoveredBranchWithinOuterCatch_DoesNotTrigger()
+    public async Task AsNoTracking_Mutate_ImplicitThrowHandledInsideCoveredBranchWithinOuterCatch_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -3712,7 +3860,7 @@ namespace Test
         public void M(TestCtx ctx, bool first)
         {
             var u = ctx.Users.AsNoTracking().First();
-            u.Name = ""persisted"";
+            {|LC044:u.Name|} = ""lost if a branch Update throws"";
             try
             {
                 if (first)
@@ -3834,11 +3982,11 @@ namespace Test
             try
             {
                 _ = value;
-                ctx.Update(u);
             }
             catch (System.Exception)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -3864,11 +4012,11 @@ namespace Test
             try
             {
                 _ = holder?.Value;
-                ctx.Update(u);
             }
             catch (System.Exception)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
@@ -3901,11 +4049,11 @@ namespace Test
                 {
                     MaybeThrow();
                 }
-                ctx.Update(u);
             }
             catch (System.Exception)
             {
             }
+            ctx.Update(u);
             ctx.SaveChanges();
         }
     }
