@@ -195,6 +195,18 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     if (constant is { HasValue: true, Value: false }) continue;
                 }
 
+                var semanticModel = operation.SemanticModel;
+                var caughtType = catchClause.Declaration == null
+                    ? semanticModel?.Compilation.GetTypeByMetadataName("System.Exception")
+                    : semanticModel?.GetTypeInfo(catchClause.Declaration.Type).Type;
+                if (caughtType != null &&
+                    semanticModel != null &&
+                    !ExactExceptionEscapesNestedTries(
+                        caughtType, operation.Syntax, tryStatement, semanticModel))
+                {
+                    continue;
+                }
+
                 if (!StatementSkipsLater(catchClause.Block, later.Syntax))
                     return true;
             }

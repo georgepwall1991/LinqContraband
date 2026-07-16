@@ -3614,6 +3614,132 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_Mutate_ImplicitThrowHandledInsideCoveredBranchBeforeUpdate_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void MaybeThrow() { }
+
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            if (first)
+            {
+                try
+                {
+                    MaybeThrow();
+                }
+                catch (System.Exception)
+                {
+                }
+                ctx.Update(u);
+            }
+            else
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_ImplicitThrowHandledInsideCoveredBranchWithinOuterCatch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void MaybeThrow() { }
+
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            try
+            {
+                if (first)
+                {
+                    try
+                    {
+                        MaybeThrow();
+                    }
+                    catch (System.Exception)
+                    {
+                    }
+                    ctx.Update(u);
+                }
+                else
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_ImplicitThrowNotFullyHandledInsideCoveredBranch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void MaybeThrow() { }
+
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when another implicit exception reaches the outer catch"";
+            try
+            {
+                if (first)
+                {
+                    try
+                    {
+                        MaybeThrow();
+                    }
+                    catch (System.InvalidOperationException)
+                    {
+                    }
+                    ctx.Update(u);
+                }
+                else
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ThrowingConditionHandlerReturnsOrBranchUpdates_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"

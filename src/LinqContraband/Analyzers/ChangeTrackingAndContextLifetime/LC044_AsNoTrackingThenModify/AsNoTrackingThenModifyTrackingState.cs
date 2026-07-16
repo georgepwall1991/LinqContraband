@@ -159,7 +159,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 continue;
             }
 
-            if (CanTransferToFallThroughCatch(operation, save))
+            if (CanTransferToFallThroughCatch(
+                    operation, save, reattach.Syntax.SpanStart))
                 return true;
         }
 
