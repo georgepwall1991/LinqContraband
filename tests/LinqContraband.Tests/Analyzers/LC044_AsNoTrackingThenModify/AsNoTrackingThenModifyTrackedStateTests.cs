@@ -736,6 +736,145 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_Mutate_TryAndCatchBothReattach_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool fail)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                u.Name = ""persisted"";
+                if (fail)
+                    throw new System.InvalidOperationException();
+                ctx.Update(u);
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_CaughtThrowSkipsCatchReattach_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool failInner, bool failHandler)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                try
+                {
+                    {|LC044:u.Name|} = ""lost when failHandler is true"";
+                    if (failInner)
+                        throw new System.InvalidOperationException();
+                    ctx.Update(u);
+                }
+                catch (System.InvalidOperationException)
+                {
+                    if (failHandler)
+                        throw new System.ArgumentException();
+                    ctx.Attach(u);
+                }
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_TryAndCatchBothReattachWithHarmlessFinally_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool fail)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                u.Name = ""persisted"";
+                if (fail)
+                    throw new System.InvalidOperationException();
+                ctx.Update(u);
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            finally
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_TryAndCatchBothReattachThenFinallyClears_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool fail)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                {|LC044:u.Name|} = ""lost after clear"";
+                if (fail)
+                    throw new System.InvalidOperationException();
+                ctx.Update(u);
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            finally
+            {
+                ctx.ChangeTracker.Clear();
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ContextUpdate_ThenSave_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"

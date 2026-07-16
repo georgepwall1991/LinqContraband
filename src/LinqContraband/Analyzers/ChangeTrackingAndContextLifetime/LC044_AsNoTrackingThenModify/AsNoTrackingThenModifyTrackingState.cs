@@ -40,7 +40,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             }
         }
 
-        return HasExhaustiveIfBranchReattach(matchingReattaches, mutation, save);
+        return HasExhaustiveIfBranchReattach(matchingReattaches, mutation, save) ||
+               HasExhaustiveTryCatchReattach(matchingReattaches, mutation, save);
     }
 
     private static bool HasExhaustiveIfBranchReattach(
@@ -79,14 +80,15 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         StatementSyntax branch,
         List<ReattachEntry> matchingReattaches,
         IOperation mutation,
-        IOperation save)
+        IOperation save,
+        bool rejectCaughtThrow = true)
     {
         for (var i = 0; i < matchingReattaches.Count; i++)
         {
             var entry = matchingReattaches[i];
             if (!branch.Span.Contains(entry.SpanStart) ||
                 !BlockReaches(entry.Operation, save) ||
-                HasCaughtThrowSkippingRequired(mutation, entry.Operation, save))
+                (rejectCaughtThrow && HasCaughtThrowSkippingRequired(mutation, entry.Operation, save)))
             {
                 continue;
             }
@@ -107,6 +109,52 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 .Any(statement => statement.SpanStart < entry.SpanStart &&
                                   statement is GotoStatementSyntax or BreakStatementSyntax or ContinueStatementSyntax);
             if (!hasBranchSkippingReattach)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasExhaustiveTryCatchReattach(
+        List<ReattachEntry> matchingReattaches,
+        IOperation mutation,
+        IOperation save)
+    {
+        if (matchingReattaches.Count < 2) return false;
+
+        foreach (var tryStatement in mutation.Syntax.AncestorsAndSelf().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(mutation.Syntax.SpanStart) ||
+                tryStatement.Span.End >= save.Syntax.SpanStart ||
+                tryStatement.Catches.Count == 0 ||
+                !BranchHasUnconditionalReattach(
+                    tryStatement.Block, matchingReattaches, mutation, save, rejectCaughtThrow: false))
+            {
+                continue;
+            }
+
+            var allHandlersCovered = true;
+            foreach (var catchClause in tryStatement.Catches)
+            {
+                if (catchClause.Filter?.FilterExpression is { } filterExpression)
+                {
+                    var constant = mutation.SemanticModel?.GetConstantValue(filterExpression);
+                    if (constant is { HasValue: true, Value: false })
+                        continue;
+                }
+
+                if (StatementSkipsLater(catchClause.Block, save.Syntax))
+                    continue;
+
+                if (!BranchHasUnconditionalReattach(
+                        catchClause.Block, matchingReattaches, mutation, save))
+                {
+                    allHandlersCovered = false;
+                    break;
+                }
+            }
+
+            if (allHandlersCovered)
                 return true;
         }
 
