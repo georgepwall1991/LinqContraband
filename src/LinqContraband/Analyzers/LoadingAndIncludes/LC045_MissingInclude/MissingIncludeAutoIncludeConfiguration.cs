@@ -100,7 +100,8 @@ public sealed partial class MissingIncludeAnalyzer
                                 isTopLevel
                                 && IsUnprovenModelConfigurationBoundary(
                                     configurationInvocation,
-                                    method.Parameters[0]
+                                    method.Parameters[0],
+                                    cancellationToken
                                 )
                             )
                             {
@@ -320,7 +321,8 @@ public sealed partial class MissingIncludeAnalyzer
 
     private static bool IsUnprovenModelConfigurationBoundary(
         IInvocationOperation invocation,
-        IParameterSymbol modelBuilderParameter
+        IParameterSymbol modelBuilderParameter,
+        CancellationToken cancellationToken
     )
     {
         return invocation.TargetMethod.Name
@@ -328,14 +330,20 @@ public sealed partial class MissingIncludeAnalyzer
                     or "OnModelCreating"
                     or "ApplyConfiguration"
                     or "ApplyConfigurationsFromAssembly"
-            || ReferencesParameter(invocation.Instance, modelBuilderParameter)
+            || ReferencesParameter(invocation.Instance, modelBuilderParameter, cancellationToken)
             || invocation.Arguments.Any(argument =>
-                ReferencesParameter(argument.Value, modelBuilderParameter)
+                ReferencesParameter(argument.Value, modelBuilderParameter, cancellationToken)
             );
     }
 
-    private static bool ReferencesParameter(IOperation? operation, IParameterSymbol parameter)
+    private static bool ReferencesParameter(
+        IOperation? operation,
+        IParameterSymbol parameter,
+        CancellationToken cancellationToken,
+        HashSet<ILocalSymbol>? visitedLocals = null
+    )
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (operation == null)
             return false;
 
@@ -350,7 +358,45 @@ public sealed partial class MissingIncludeAnalyzer
             return true;
         }
 
-        return operation.ChildOperations.Any(child => ReferencesParameter(child, parameter));
+        if (operation.UnwrapConversions() is ILocalReferenceOperation localReference)
+        {
+            visitedLocals ??= new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+            var executableRoot = operation.FindOwningExecutableRoot();
+            if (executableRoot != null && visitedLocals.Add(localReference.Local))
+            {
+                var assignments = LocalAssignmentCache.GetAssignments(
+                    executableRoot,
+                    localReference.Local,
+                    cancellationToken
+                );
+                foreach (var assignment in assignments)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (assignment.SpanStart >= operation.Syntax.SpanStart)
+                        continue;
+
+                    var assignmentVisited = new HashSet<ILocalSymbol>(
+                        visitedLocals,
+                        SymbolEqualityComparer.Default
+                    );
+                    if (
+                        ReferencesParameter(
+                            assignment.Value,
+                            parameter,
+                            cancellationToken,
+                            assignmentVisited
+                        )
+                    )
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return operation.ChildOperations.Any(child =>
+            ReferencesParameter(child, parameter, cancellationToken, visitedLocals)
+        );
     }
 
     private static bool IsEfBuilderType(INamedTypeSymbol type, string expectedName)
