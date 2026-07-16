@@ -502,9 +502,14 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         var hasEarlierPotentialTransfer = tryOperation.Descendants()
             .Any(operation =>
-                operation.Syntax.SpanStart < terminalThrow.SpanStart &&
+                (operation.Syntax.SpanStart < terminalThrow.SpanStart ||
+                 (terminalThrow.Expression?.Span.Contains(operation.Syntax.Span) == true &&
+                  operation is not IObjectCreationOperation)) &&
                 !operation.Syntax.AncestorsAndSelf()
-                    .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) &&
+                    .Any(syntax =>
+                        syntax is ThrowExpressionSyntax ||
+                        syntax is ThrowStatementSyntax throwStatement &&
+                        !ReferenceEquals(throwStatement, terminalThrow)) &&
                 IsImplicitlyPotentiallyThrowingOperation(operation) &&
                 tryOperation.SharesOwningExecutableRoot(operation) &&
                 CanTransferToFallThroughCatch(
