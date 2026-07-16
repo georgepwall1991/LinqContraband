@@ -11,9 +11,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         ILocalSymbol local,
         ISymbol saveContext,
         ImmutableArray<MemberPathSegment> receiverPath,
-        int afterSpan,
+        IOperation after,
         IOperation save)
     {
+        var afterSpan = after.Syntax.SpanStart;
         var saveSpan = save.Syntax.SpanStart;
         if (scan.DetachesByLocal.TryGetValue(local, out var detaches))
         {
@@ -29,6 +30,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
                 if (entry.ContextSymbol != null &&
                     SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                    BlockReaches(after, entry.Operation) &&
                     BlockReaches(entry.Operation, save))
                 {
                     return true;
@@ -44,6 +46,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                BlockReaches(after, entry.Operation) &&
                 BlockReaches(entry.Operation, save))
             {
                 return true;

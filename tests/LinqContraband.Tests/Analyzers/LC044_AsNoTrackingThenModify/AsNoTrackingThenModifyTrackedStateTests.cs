@@ -146,6 +146,66 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MutateNestedMember_UpdateNestedEntity_SiblingDetach_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            if (flag)
+            {
+                user.Address.City = ""persisted on the mutation path"";
+                ctx.Update(user.Address);
+            }
+            else
+            {
+                ctx.Entry(user.Address).State = EntityState.Detached;
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MutateNestedMember_UpdateNestedEntity_SiblingTrackerClear_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            if (flag)
+            {
+                user.Address.City = ""persisted on the mutation path"";
+                ctx.Update(user.Address);
+            }
+            else
+            {
+                ctx.ChangeTracker.Clear();
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MutateNestedMember_UpdateDifferentNestedEntity_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -784,6 +844,153 @@ namespace Test
                 ctx.Attach(u);
             }
             u.Name = ""persisted on every path that reaches the mutation"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_StaticFieldTypeInitializerCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public static class Holder
+    {
+        public static readonly System.InvalidOperationException Exception;
+        static Holder() => throw new System.Exception();
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw Holder.Exception;
+            }
+            catch (System.TypeInitializationException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when type initialization reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_StaticFieldCannotReachIncompatibleAlternateCatch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public static class Holder
+    {
+        public static readonly System.InvalidOperationException Exception = new();
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw Holder.Exception;
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantFieldOperandCannotRunTypeInitializer_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public static class Holder { public const string Message = ""safe""; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw new System.InvalidOperationException(Holder.Message);
+            }
+            catch (System.TypeInitializationException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_EarlierConstantTrueCatchInterceptsStaticFieldFailure_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public static class Holder
+    {
+        public static readonly System.InvalidOperationException Exception;
+        static Holder() => throw new System.Exception();
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw Holder.Exception;
+            }
+            catch (System.TypeInitializationException) when (true)
+            {
+                ctx.Attach(u);
+            }
+            catch (System.TypeInitializationException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted on every reachable handler path"";
             ctx.SaveChanges();
         }
     }
@@ -4681,6 +4888,36 @@ namespace Test
             {
             }
             ctx.Update(u);
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_ConstantFieldBeforeUpdateThatCanThrow_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public static class Holder { public const int Value = 1; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost if Update itself throws into the handler"";
+            try
+            {
+                _ = Holder.Value;
+                ctx.Update(u);
+            }
+            catch (System.TypeInitializationException)
+            {
+            }
             ctx.SaveChanges();
         }
     }

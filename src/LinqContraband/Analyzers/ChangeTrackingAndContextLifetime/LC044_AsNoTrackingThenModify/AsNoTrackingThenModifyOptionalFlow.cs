@@ -203,6 +203,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             IObjectCreationOperation or
             IArrayElementReferenceOperation or
             IPropertyReferenceOperation ||
+        operation is IFieldReferenceOperation { Field: { IsStatic: true, HasConstantValue: false } } ||
         operation is IFieldReferenceOperation { Instance: { } instance } &&
         instance is not IInstanceReferenceOperation &&
         instance is not IConditionalAccessInstanceOperation &&

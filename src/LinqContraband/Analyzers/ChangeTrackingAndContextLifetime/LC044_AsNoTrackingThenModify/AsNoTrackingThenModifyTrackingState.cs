@@ -33,7 +33,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 !HasInterveningDetach(
-                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
+                    scan, local, saveContext, receiverPath, entry.Operation, save))
             {
                 if (IsRequiredOnPathFrom(mutation, entry.Operation, save) &&
                     !CatchContainsCaughtThrowSkippingRequired(entry, save))
@@ -320,7 +320,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 !HasInterveningDetach(
-                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
+                    scan, local, saveContext, receiverPath, entry.Operation, save))
             {
                 matchingReattaches.Add(entry);
             }
@@ -362,7 +362,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 !HasInterveningDetach(
-                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
+                    scan, local, saveContext, receiverPath, entry.Operation, save))
             {
                 matchingReattaches.Add(entry);
             }
@@ -552,6 +552,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         var exactTypes = new List<ITypeSymbol>();
         switch (operation)
         {
+            case IFieldReferenceOperation { Field: { IsStatic: true, HasConstantValue: false } }:
+                AddMetadataType(exactTypes, semanticModel, "System.TypeInitializationException");
+                break;
+
             case IFieldReferenceOperation:
                 AddMetadataType(exactTypes, semanticModel, "System.NullReferenceException");
                 break;
@@ -573,9 +577,39 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return exactTypes.Any(candidate =>
+            ExactExceptionReachesCatch(
+                candidate, catchClause, targetTry, semanticModel) &&
             CanCatchExactType(candidate, caughtType, catchClause) &&
             ExactExceptionEscapesNestedTries(
                 candidate, operation.Syntax, targetTry, semanticModel));
+    }
+
+    private static bool ExactExceptionReachesCatch(
+        ITypeSymbol exactType,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        SemanticModel semanticModel)
+    {
+        foreach (var catchClause in targetTry.Catches)
+        {
+            if (ReferenceEquals(catchClause, targetCatch))
+                return true;
+
+            var caughtType = catchClause.Declaration == null
+                ? semanticModel.Compilation.GetTypeByMetadataName("System.Exception")
+                : semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+            if (!CanCatchExactType(exactType, caughtType, catchClause))
+                continue;
+
+            if (catchClause.Filter?.FilterExpression is not { } filterExpression)
+                return false;
+
+            var constant = semanticModel.GetConstantValue(filterExpression);
+            if (constant is { HasValue: true, Value: true })
+                return false;
+        }
+
+        return false;
     }
 
     private static bool IsTopLevelSystemExceptionConstruction(
