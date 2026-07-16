@@ -170,7 +170,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         operation is IInvocationOperation or
             IObjectCreationOperation or
             IArrayElementReferenceOperation or
-            IPropertyReferenceOperation;
+            IPropertyReferenceOperation ||
+        operation is IFieldReferenceOperation { Instance: { } instance } &&
+        instance is not IInstanceReferenceOperation &&
+        instance is not IConditionalAccessInstanceOperation &&
+        (instance.Type?.IsReferenceType == true ||
+         instance.Type?.TypeKind == TypeKind.TypeParameter);
 
     private static bool CanTransferToFallThroughCatch(
         IOperation operation,

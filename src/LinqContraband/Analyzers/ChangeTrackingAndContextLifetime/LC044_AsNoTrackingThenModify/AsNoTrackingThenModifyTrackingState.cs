@@ -99,6 +99,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         IOperation save,
         bool rejectCaughtThrow = true)
     {
+        var eligibleReattaches = new List<ReattachEntry>();
         for (var i = 0; i < matchingReattaches.Count; i++)
         {
             var entry = matchingReattaches[i];
@@ -117,26 +118,50 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 continue;
             }
 
-            if (branch is ExpressionStatementSyntax)
-                return true;
-
-            if (branch is not BlockSyntax block)
-                continue;
-
-            var directStatement = block.Statements.FirstOrDefault(statement =>
-                statement.Span.Contains(entry.SpanStart));
-            if (directStatement is not ExpressionStatementSyntax)
-                continue;
-
-            var hasBranchSkippingReattach = block.DescendantNodes()
+            var hasBranchSkippingReattach = branch.DescendantNodes()
                 .OfType<StatementSyntax>()
                 .Any(statement => statement.SpanStart < entry.SpanStart &&
                                   statement is GotoStatementSyntax or BreakStatementSyntax or ContinueStatementSyntax);
             if (!hasBranchSkippingReattach)
-                return true;
+                eligibleReattaches.Add(entry);
         }
 
-        return false;
+        return StatementGuaranteesReattach(branch, eligibleReattaches, save);
+    }
+
+    private static bool StatementGuaranteesReattach(
+        StatementSyntax statement,
+        List<ReattachEntry> eligibleReattaches,
+        IOperation save)
+    {
+        switch (statement)
+        {
+            case ExpressionStatementSyntax:
+                return eligibleReattaches.Any(entry => statement.Span.Contains(entry.SpanStart));
+
+            case BlockSyntax block:
+                return block.Statements.Any(child =>
+                    StatementGuaranteesReattach(child, eligibleReattaches, save));
+
+            case DoStatementSyntax doStatement:
+                return StatementGuaranteesReattach(
+                    doStatement.Statement, eligibleReattaches, save);
+
+            case IfStatementSyntax ifStatement when ifStatement.Else?.Statement is { } elseStatement:
+                return (StatementGuaranteesReattach(
+                            ifStatement.Statement, eligibleReattaches, save) ||
+                        StatementSkipsLater(ifStatement.Statement, save.Syntax)) &&
+                       (StatementGuaranteesReattach(
+                            elseStatement, eligibleReattaches, save) ||
+                        StatementSkipsLater(elseStatement, save.Syntax));
+
+            case LabeledStatementSyntax labeledStatement:
+                return StatementGuaranteesReattach(
+                    labeledStatement.Statement, eligibleReattaches, save);
+
+            default:
+                return false;
+        }
     }
 
     private static bool BranchContainsImplicitTransferBeforeReattach(
@@ -154,7 +179,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 operation.Syntax.AncestorsAndSelf()
                     .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) ||
                 !IsImplicitlyPotentiallyThrowingOperation(operation) ||
-                !reattach.SharesOwningExecutableRoot(operation))
+                !reattach.SharesOwningExecutableRoot(operation) ||
+                !StartCanReachSyntax(operation.Syntax, reattach.Syntax))
             {
                 continue;
             }

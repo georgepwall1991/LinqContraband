@@ -3740,6 +3740,300 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_Mutate_InstanceFieldReadCanBypassUpdate_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class Holder { public int Value = 0; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, Holder holder)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when the field receiver is null"";
+            try
+            {
+                _ = holder.Value;
+                ctx.Update(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_CurrentInstanceFieldReadBeforeUpdate_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private int value = 0;
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            try
+            {
+                _ = value;
+                ctx.Update(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_ConditionalInstanceFieldReadBeforeUpdate_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class Holder { public int Value = 0; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, Holder holder)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            try
+            {
+                _ = holder?.Value;
+                ctx.Update(u);
+            }
+            catch (System.Exception)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_NestedBlockReattachInCoveredBranch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            if (first)
+            {
+                {
+                    ctx.Update(u);
+                }
+            }
+            else
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_MandatoryDoReattachInCoveredBranch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            if (first)
+            {
+                do
+                {
+                    ctx.Update(u);
+                }
+                while (false);
+            }
+            else
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_NestedExhaustiveBranchReattach_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first, bool second)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            if (first)
+            {
+                if (second)
+                    ctx.Update(u);
+                else
+                    ctx.Update(u);
+            }
+            else
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_NestedOptionalBranchReattach_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first, bool second)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when both conditions are true"";
+            if (first)
+            {
+                if (second)
+                    ctx.Update(u);
+            }
+            else
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_NestedThrowCanReachOuterCatchBeforeReattach_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool first, bool second)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when the nested throw reaches the handler"";
+            try
+            {
+                if (first)
+                {
+                    if (second)
+                        throw new System.InvalidOperationException();
+                    else
+                        ctx.Update(u);
+                }
+                else
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_BranchThrowCatchReattaches_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void MaybeThrow() { }
+
+        public void M(TestCtx ctx, bool first)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            try
+            {
+                if (first)
+                {
+                    MaybeThrow();
+                    ctx.Update(u);
+                }
+                else
+                {
+                    ctx.Update(u);
+                }
+            }
+            catch (System.Exception)
+            {
+                ctx.Update(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ThrowingConditionHandlerReturnsOrBranchUpdates_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
