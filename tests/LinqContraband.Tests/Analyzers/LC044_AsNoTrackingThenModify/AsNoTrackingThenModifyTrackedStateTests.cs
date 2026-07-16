@@ -350,6 +350,159 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_OptionalCatchOnlyPriorAttach_MutateThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void Risk() { }
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                Risk();
+            }
+            catch (System.Exception)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost on the normal try path"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ForeachOptionalCatchOnlyPriorEntryModified_MutateThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void Risk() { }
+
+        public void M(TestCtx ctx)
+        {
+            foreach (var u in ctx.Users.AsNoTracking())
+            {
+                try
+                {
+                    Risk();
+                }
+                catch (System.Exception)
+                {
+                    ctx.Entry(u).State = EntityState.Modified;
+                }
+                {|LC044:u.Name|} = ""lost on the normal try path"";
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_MutateThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw new System.InvalidOperationException();
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever save is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_PriorTryAndCatchBothAttach_MutateThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                ctx.Attach(u);
+            }
+            catch (System.Exception)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ForeachPriorTryAndCatchBothUpdate_MutateThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            foreach (var u in ctx.Users.AsNoTracking())
+            {
+                try
+                {
+                    ctx.Update(u);
+                }
+                catch (System.Exception)
+                {
+                    ctx.Update(u);
+                }
+                u.Name = ""persisted whenever mutation is reached"";
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ConditionalReattach_ThenSave_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"

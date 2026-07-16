@@ -310,6 +310,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
 
         var mutationSpan = mutation.Syntax.SpanStart;
+        var matchingReattaches = new List<ReattachEntry>();
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
@@ -318,10 +319,19 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
-                Dominates(entry.Operation, mutation) &&
-                !RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation) &&
                 !HasInterveningDetach(
                     scan, local, saveContext, receiverPath, entry.SpanStart, save))
+            {
+                matchingReattaches.Add(entry);
+            }
+        }
+
+        for (var i = 0; i < matchingReattaches.Count; i++)
+        {
+            var entry = matchingReattaches[i];
+            if (PriorReattachDominatesMutation(entry.Operation, mutation) &&
+                !RequiredPriorOperationCanBypassCollectiveReattach(
+                    entry, matchingReattaches, mutation))
             {
                 return true;
             }
@@ -341,31 +351,134 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
     {
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
 
+        var matchingReattaches = new List<ReattachEntry>();
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
             if (!range.Contains(entry.Span)) continue;
             if (!ReattachCoversPath(entry, receiverPath)) continue;
 
-            var entryPrecedesMutation = entry.SpanStart < mutation.Syntax.SpanStart;
-            if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
-
-            var coversMutationPath = entryPrecedesMutation
-                ? Dominates(entry.Operation, mutation) &&
-                  !RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation)
-                : IsRequiredOnPathFrom(mutation, entry.Operation, save);
-            if (!coversMutationPath) continue;
-
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 !HasInterveningDetach(
                     scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
-                return true;
+                matchingReattaches.Add(entry);
             }
         }
 
+        for (var i = 0; i < matchingReattaches.Count; i++)
+        {
+            var entry = matchingReattaches[i];
+            var entryPrecedesMutation = entry.SpanStart < mutation.Syntax.SpanStart;
+            if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
+
+            var coversMutationPath = entryPrecedesMutation
+                ? PriorReattachDominatesMutation(entry.Operation, mutation) &&
+                  !RequiredPriorOperationCanBypassCollectiveReattach(
+                      entry, matchingReattaches, mutation)
+                : IsRequiredOnPathFrom(mutation, entry.Operation, save);
+            if (!coversMutationPath) continue;
+
+            return true;
+        }
+
         return false;
+    }
+
+    private static bool RequiredPriorOperationCanBypassCollectiveReattach(
+        ReattachEntry entry,
+        List<ReattachEntry> matchingReattaches,
+        IOperation mutation)
+    {
+        if (!RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation))
+            return false;
+
+        var hasMutationReachingHandler = false;
+        foreach (var tryStatement in entry.Operation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(entry.SpanStart) ||
+                mutation.Syntax.SpanStart <= tryStatement.Span.End)
+            {
+                continue;
+            }
+
+            foreach (var catchClause in tryStatement.Catches)
+            {
+                if (catchClause.Filter?.FilterExpression is { } filterExpression)
+                {
+                    var constant = mutation.SemanticModel?.GetConstantValue(filterExpression);
+                    if (constant is { HasValue: true, Value: false })
+                        continue;
+                }
+
+                if (StatementSkipsLater(catchClause.Block, mutation.Syntax) &&
+                    !CatchHandlerCanReachLater(catchClause, mutation))
+                {
+                    continue;
+                }
+
+                hasMutationReachingHandler = true;
+                if (!PriorBranchHasUnconditionalReattach(
+                        catchClause.Block, matchingReattaches, mutation))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return !hasMutationReachingHandler;
+    }
+
+    private static bool PriorBranchHasUnconditionalReattach(
+        StatementSyntax branch,
+        List<ReattachEntry> matchingReattaches,
+        IOperation mutation)
+    {
+        var eligibleReattaches = new List<ReattachEntry>();
+        for (var i = 0; i < matchingReattaches.Count; i++)
+        {
+            var entry = matchingReattaches[i];
+            var reachesMutation = BlockReaches(entry.Operation, mutation) ||
+                                  (branch.Parent is CatchClauseSyntax catchClause &&
+                                   (!StatementSkipsLater(catchClause.Block, mutation.Syntax) ||
+                                    CatchHandlerCanReachLater(catchClause, mutation)));
+            if (!branch.Span.Contains(entry.SpanStart) ||
+                !reachesMutation ||
+                RequiredOperationCanTransferBeforeCompletion(entry.Operation, mutation))
+            {
+                continue;
+            }
+
+            var hasBranchSkippingReattach = branch.DescendantNodes()
+                .OfType<StatementSyntax>()
+                .Any(statement => statement.SpanStart < entry.SpanStart &&
+                                  statement is GotoStatementSyntax or BreakStatementSyntax or ContinueStatementSyntax);
+            if (!hasBranchSkippingReattach)
+                eligibleReattaches.Add(entry);
+        }
+
+        return StatementGuaranteesReattach(branch, eligibleReattaches, mutation);
+    }
+
+    private static bool PriorReattachDominatesMutation(
+        IOperation reattach,
+        IOperation mutation)
+    {
+        if (!Dominates(reattach, mutation)) return false;
+
+        var catchClause = reattach.Syntax.Ancestors()
+            .OfType<CatchClauseSyntax>()
+            .FirstOrDefault();
+        if (catchClause == null) return true;
+
+        if (catchClause.Parent is not TryStatementSyntax tryStatement)
+            return false;
+
+        var semanticModel = reattach.SemanticModel ?? mutation.SemanticModel;
+        var tryOperation = semanticModel?.GetOperation(tryStatement.Block);
+        return tryOperation != null &&
+               CatchClauseIsMandatoryFrom(catchClause, tryOperation, mutation);
     }
 
     private static bool MemberPathIsPrefix(
