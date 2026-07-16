@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.6.44</Version>
+        <Version>5.6.45</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now proves exact query consumers, materializer overloads, and active callback provenance while preserving conservative lookalike, projection, and fixer boundaries.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now honours exact model-level AutoInclude configuration while preserving diagnostics for disabled, indirect, conditional, and aliased configuration paths.</PackageReleaseNotes>
         <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

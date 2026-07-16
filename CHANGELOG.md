@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.45] - 2026-07-16
+
 ### Fixed
 - `LC045` now honours exact top-level `OnModelCreating` configuration that marks the queried entity's navigation with EF Core `AutoInclude()`, including constructed generic contexts, while keeping `IgnoreAutoIncludes()`, fluent, explicit, conditional, or runtime-valued disablement, early-exit or deferred configuration, later unproven model-configuration boundaries, hidden override slots, shadowed methods, and different context/navigation paths diagnostic.
 
