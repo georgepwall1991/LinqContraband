@@ -49,8 +49,9 @@ parameterize the value correctly.
 
 The fixer is also withheld for SQL structure that database parameters cannot represent, including table, column, and
 stored-procedure identifiers such as `DELETE FROM {tableName}`, `WHERE {columnName} = 1`, or `EXEC {procedureName}`.
-String, object, dynamic, and collection holes stay manual even after a comparison operator because the fixer cannot prove
-whether they represent a scalar value or a structural fragment. User-defined structs, enums, and generic type parameters
+String, `char`, object, dynamic, and collection holes stay manual even after a comparison operator because the fixer
+cannot prove whether they represent a scalar value or a structural fragment without changing raw interpolation
+semantics. User-defined structs, enums, and generic type parameters
 also stay manual because the fixer cannot prove provider mappings or formatting behaviour. Formatted or aligned holes,
 adjacent holes, PostgreSQL dollar-quoted literals, provider comments such as MySQL `#`, batch separators such as `GO`,
 separator-free non-DML batch commands, and other multi-statement SQL stay manual rather than reusing an earlier

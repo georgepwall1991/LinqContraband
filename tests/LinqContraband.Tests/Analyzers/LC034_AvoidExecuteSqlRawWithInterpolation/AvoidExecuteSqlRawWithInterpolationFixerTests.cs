@@ -248,6 +248,24 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenCharInterpolationChangesSqlMeaning()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, char initial)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:$""UPDATE Users SET Initial = {initial}""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldRegister_WhenValueInterpolationsHaveDistinctPositions()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

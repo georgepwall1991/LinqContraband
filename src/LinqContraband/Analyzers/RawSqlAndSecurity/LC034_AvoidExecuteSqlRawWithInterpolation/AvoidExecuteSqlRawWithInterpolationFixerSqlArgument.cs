@@ -283,7 +283,6 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
             SpecialType.System_Single or
             SpecialType.System_Double or
             SpecialType.System_Decimal or
-            SpecialType.System_Char or
             SpecialType.System_DateTime)
             return true;
 
