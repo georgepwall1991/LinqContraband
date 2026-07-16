@@ -53,7 +53,8 @@ String, object, dynamic, and collection holes stay manual even after a compariso
 whether they represent a scalar value or a structural fragment. User-defined structs, enums, and generic type parameters
 also stay manual because the fixer cannot prove provider mappings or formatting behaviour. Formatted or aligned holes,
 adjacent holes, PostgreSQL dollar-quoted literals, provider comments such as MySQL `#`, batch separators such as `GO`,
-and other multi-statement SQL stay manual rather than reusing an earlier value-position assumption. Framework-scalar
+separator-free non-DML batch commands, and other multi-statement SQL stay manual rather than reusing an earlier
+value-position assumption. Framework-scalar
 lookalikes declared by application source are not treated as framework types.
 Provider-style backslash-escaped quotes are treated as
 remaining inside the SQL literal. Interpolation inside bracketed, double-quoted, or backtick-delimited SQL identifiers

@@ -322,7 +322,7 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
                sql.IndexOf("/*", System.StringComparison.Ordinal) >= 0 ||
                sql.IndexOf('#') >= 0 ||
                LastIndexOfSqlWord(sql, "GO") >= 0 ||
-               ContainsAdditionalDmlCommand(sql) ||
+               ContainsAdditionalSqlStatement(sql) ||
                ContainsPostgreSqlDollarQuoteDelimiter(sql);
     }
 
@@ -339,11 +339,41 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
         return ContainsAmbiguousSqlBoundary(sql);
     }
 
-    private static bool ContainsAdditionalDmlCommand(string sql)
+    private static bool ContainsAdditionalSqlStatement(string sql)
     {
-        return CountSqlWord(sql, "UPDATE") +
-               CountSqlWord(sql, "DELETE") +
-               CountSqlWord(sql, "INSERT") > 1;
+        if (CountSqlWord(sql, "UPDATE") +
+            CountSqlWord(sql, "DELETE") +
+            CountSqlWord(sql, "INSERT") > 1)
+            return true;
+
+        return LastIndexOfSqlWord(sql, "ALTER") >= 0 ||
+               LastIndexOfSqlWord(sql, "ANALYZE") >= 0 ||
+               LastIndexOfSqlWord(sql, "ATTACH") >= 0 ||
+               LastIndexOfSqlWord(sql, "BEGIN") >= 0 ||
+               LastIndexOfSqlWord(sql, "CALL") >= 0 ||
+               LastIndexOfSqlWord(sql, "COMMIT") >= 0 ||
+               LastIndexOfSqlWord(sql, "COPY") >= 0 ||
+               LastIndexOfSqlWord(sql, "CREATE") >= 0 ||
+               LastIndexOfSqlWord(sql, "DECLARE") >= 0 ||
+               LastIndexOfSqlWord(sql, "DENY") >= 0 ||
+               LastIndexOfSqlWord(sql, "DETACH") >= 0 ||
+               LastIndexOfSqlWord(sql, "DO") >= 0 ||
+               LastIndexOfSqlWord(sql, "DROP") >= 0 ||
+               LastIndexOfSqlWord(sql, "EXEC") >= 0 ||
+               LastIndexOfSqlWord(sql, "EXECUTE") >= 0 ||
+               LastIndexOfSqlWord(sql, "GRANT") >= 0 ||
+               LastIndexOfSqlWord(sql, "MERGE") >= 0 ||
+               LastIndexOfSqlWord(sql, "PRINT") >= 0 ||
+               LastIndexOfSqlWord(sql, "RAISERROR") >= 0 ||
+               LastIndexOfSqlWord(sql, "REINDEX") >= 0 ||
+               LastIndexOfSqlWord(sql, "REPLACE") >= 0 ||
+               LastIndexOfSqlWord(sql, "REVOKE") >= 0 ||
+               LastIndexOfSqlWord(sql, "ROLLBACK") >= 0 ||
+               LastIndexOfSqlWord(sql, "SELECT") >= 0 ||
+               LastIndexOfSqlWord(sql, "THROW") >= 0 ||
+               LastIndexOfSqlWord(sql, "TRUNCATE") >= 0 ||
+               LastIndexOfSqlWord(sql, "USE") >= 0 ||
+               LastIndexOfSqlWord(sql, "VACUUM") >= 0;
     }
 
     private static int CountSqlWord(string sql, string word)

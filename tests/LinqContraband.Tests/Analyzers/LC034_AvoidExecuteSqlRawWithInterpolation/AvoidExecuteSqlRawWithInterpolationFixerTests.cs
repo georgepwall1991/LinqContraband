@@ -540,6 +540,9 @@ namespace TestApp
     [InlineData("$\"UPDATE Users SET Value = {value}\\nDELETE FROM Audit\"")]
     [InlineData("$\"UPDATE Users SET Value = {value}\\nGO\\nSELECT 1\"")]
     [InlineData("$\"UPDATE Users SET Value = {value} # provider comment\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value} DROP TABLE Audit\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value} EXEC CleanupAudit\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value} CREATE TABLE Audit (Id int)\"")]
     public async Task Fixer_ShouldNotRegister_ForAdditionalBatchOrProviderComment(string sqlExpression)
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
