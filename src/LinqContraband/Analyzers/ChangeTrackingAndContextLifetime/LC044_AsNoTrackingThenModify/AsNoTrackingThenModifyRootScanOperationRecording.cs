@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -11,21 +12,36 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
     {
         HandlePropertyMutation(scan, assignment, assignment.Target);
 
-        if (TryParseEntryStateAssignment(assignment, out var entryLocal, out var entryContext, out var stateName))
+        if (TryParseEntryStateAssignment(
+                assignment,
+                out var entryLocal,
+                out var entryContext,
+                out var entryTargetPath,
+                out var stateName))
         {
             if (TrackingStates.Contains(stateName))
             {
                 AddReattach(
                     scan,
                     entryLocal,
-                    new ReattachEntry(assignment, entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+                    new ReattachEntry(
+                        assignment,
+                        entryContext,
+                        entryTargetPath,
+                        assignment.Syntax.SpanStart,
+                        assignment.Syntax.Span));
             }
             else if (stateName == "Detached")
             {
                 AddDetach(
                     scan,
                     entryLocal,
-                    new DetachEntry(assignment, entryContext, assignment.Syntax.SpanStart, assignment.Syntax.Span));
+                    new DetachEntry(
+                        assignment,
+                        entryContext,
+                        entryTargetPath,
+                        assignment.Syntax.SpanStart,
+                        assignment.Syntax.Span));
             }
         }
     }
@@ -34,18 +50,23 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
     {
         if (target is IPropertyReferenceOperation propRef &&
             !HasNotMappedAttribute(propRef.Property) &&
-            TryGetMutationRootLocal(propRef.Instance, out var rootLocal))
+            TryGetRootLocalAndMemberPath(propRef.Instance, out var rootLocal, out var receiverPath))
         {
             AddMutation(scan, rootLocal, new MutationEntry(
                 mutation,
                 propRef.Syntax.GetLocation(),
                 propRef.Property.Name,
+                receiverPath,
                 mutation.Syntax.SpanStart));
         }
     }
 
-    private static bool TryGetMutationRootLocal(IOperation? instance, out ILocalSymbol rootLocal)
+    private static bool TryGetRootLocalAndMemberPath(
+        IOperation? instance,
+        out ILocalSymbol rootLocal,
+        out ImmutableArray<ISymbol> memberPath)
     {
+        var reversedPath = ImmutableArray.CreateBuilder<ISymbol>();
         var current = instance?.UnwrapConversions();
         while (current != null)
         {
@@ -53,25 +74,33 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
             {
                 case IPropertyReferenceOperation propertyReference
                     when !HasNotMappedAttribute(propertyReference.Property):
+                    reversedPath.Add(propertyReference.Property);
                     current = propertyReference.Instance?.UnwrapConversions();
                     continue;
 
                 case IFieldReferenceOperation fieldReference
                     when !HasNotMappedAttribute(fieldReference.Field):
+                    reversedPath.Add(fieldReference.Field);
                     current = fieldReference.Instance?.UnwrapConversions();
                     continue;
 
                 case ILocalReferenceOperation localReference:
                     rootLocal = localReference.Local;
+                    var path = ImmutableArray.CreateBuilder<ISymbol>(reversedPath.Count);
+                    for (var i = reversedPath.Count - 1; i >= 0; i--)
+                        path.Add(reversedPath[i]);
+                    memberPath = path.MoveToImmutable();
                     return true;
 
                 default:
                     rootLocal = null!;
+                    memberPath = ImmutableArray<ISymbol>.Empty;
                     return false;
             }
         }
 
         rootLocal = null!;
+        memberPath = ImmutableArray<ISymbol>.Empty;
         return false;
     }
 
@@ -102,16 +131,25 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
             if (TryGetSymbol(invocation.Instance, out var sym))
             {
                 saves ??= new List<SaveChangesEntry>();
-                saves.Add(new SaveChangesEntry(sym, invocation.Syntax.SpanStart));
+                saves.Add(new SaveChangesEntry(invocation, sym, invocation.Syntax.SpanStart));
             }
         }
 
-        if (TryParseReattachInvocation(invocation, out var reattachLocal, out var reattachContext))
+        if (TryParseReattachInvocation(
+                invocation,
+                out var reattachLocal,
+                out var reattachContext,
+                out var reattachTargetPath))
         {
             AddReattach(
                 scan,
                 reattachLocal,
-                new ReattachEntry(invocation, reattachContext, invocation.Syntax.SpanStart, invocation.Syntax.Span));
+                new ReattachEntry(
+                    invocation,
+                    reattachContext,
+                    reattachTargetPath,
+                    invocation.Syntax.SpanStart,
+                    invocation.Syntax.Span));
         }
 
         if (TryParseTrackerClear(invocation, out var clearContext))

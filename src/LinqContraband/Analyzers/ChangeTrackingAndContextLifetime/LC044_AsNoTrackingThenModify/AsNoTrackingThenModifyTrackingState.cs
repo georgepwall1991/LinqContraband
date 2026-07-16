@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
@@ -10,7 +11,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        int afterSpan,
+        ImmutableArray<ISymbol> receiverPath,
+        IOperation mutation,
         IOperation save)
     {
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches)) return false;
@@ -19,11 +21,14 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
-            if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
+            if (entry.SpanStart <= mutation.Syntax.SpanStart || entry.SpanStart >= saveSpan) continue;
+            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
-                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
+                IsRequiredOnPathFrom(mutation, entry.Operation, save) &&
+                !HasInterveningDetach(
+                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
                 return true;
             }
@@ -36,6 +41,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
+        ImmutableArray<ISymbol> receiverPath,
         int afterSpan,
         IOperation mutation,
         IOperation save)
@@ -47,11 +53,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = reattaches[i];
             if (entry.SpanStart <= afterSpan || entry.SpanStart >= mutationSpan) continue;
+            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
                 Dominates(entry.Operation, mutation) &&
-                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
+                !HasInterveningDetach(
+                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
                 return true;
             }
@@ -64,6 +72,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
+        ImmutableArray<ISymbol> receiverPath,
+        IOperation mutation,
         TextSpan range,
         IOperation save)
     {
@@ -73,10 +83,17 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = reattaches[i];
             if (!range.Contains(entry.Span)) continue;
+            if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
+
+            var coversMutationPath = entry.SpanStart < mutation.Syntax.SpanStart
+                ? Dominates(entry.Operation, mutation)
+                : IsRequiredOnPathFrom(mutation, entry.Operation, save);
+            if (!coversMutationPath) continue;
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
-                !HasInterveningDetach(scan, local, saveContext, entry.SpanStart, save))
+                !HasInterveningDetach(
+                    scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
                 return true;
             }
@@ -85,19 +102,37 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return false;
     }
 
+    private static bool MemberPathIsPrefix(
+        ImmutableArray<ISymbol> candidatePrefix,
+        ImmutableArray<ISymbol> path)
+    {
+        if (candidatePrefix.Length > path.Length) return false;
+
+        for (var i = 0; i < candidatePrefix.Length; i++)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(candidatePrefix[i], path[i]))
+                return false;
+        }
+
+        return true;
+    }
+
     private static bool HasEarlierSaveChangesOnSameContext(
         AsNoTrackingThenModifyRootScan scan,
         ISymbol saveContext,
-        int afterSpan,
-        int currentSaveSpan)
+        IOperation mutation,
+        IOperation currentSave)
     {
+        var afterSpan = mutation.Syntax.SpanStart;
+        var currentSaveSpan = currentSave.Syntax.SpanStart;
         var saves = scan.SaveChangesCalls;
         for (var i = 0; i < saves.Count; i++)
         {
             var entry = saves[i];
             if (entry.SpanStart <= afterSpan || entry.SpanStart >= currentSaveSpan) continue;
             if (entry.ContextSymbol != null &&
-                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext))
+                SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                IsRequiredOnPathFrom(mutation, entry.Operation, currentSave))
             {
                 return true;
             }

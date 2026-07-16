@@ -16,10 +16,12 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
     private static bool TryParseReattachInvocation(
         IInvocationOperation invocation,
         out ILocalSymbol local,
-        out ISymbol? contextSymbol)
+        out ISymbol? contextSymbol,
+        out ImmutableArray<ISymbol> targetPath)
     {
         local = null!;
         contextSymbol = null;
+        targetPath = ImmutableArray<ISymbol>.Empty;
 
         if (!ReattachMethodNames.Contains(invocation.TargetMethod.Name)) return false;
 
@@ -27,12 +29,11 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         if (!container.IsDbContext() && !container.IsDbSet()) return false;
 
         if (invocation.Arguments.Length == 0) return false;
-        if (invocation.Arguments[0].Value.UnwrapConversions() is not ILocalReferenceOperation argLocal)
+        if (!TryGetRootLocalAndMemberPath(invocation.Arguments[0].Value, out local, out targetPath))
             return false;
 
         if (!TryResolveInvocationContext(invocation, out contextSymbol)) return false;
 
-        local = argLocal.Local;
         return true;
     }
 
@@ -40,10 +41,12 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         ISimpleAssignmentOperation assignment,
         out ILocalSymbol local,
         out ISymbol? contextSymbol,
+        out ImmutableArray<ISymbol> targetPath,
         out string stateName)
     {
         local = null!;
         contextSymbol = null;
+        targetPath = ImmutableArray<ISymbol>.Empty;
         stateName = "";
 
         if (assignment.Target is not IPropertyReferenceOperation targetProp) return false;
@@ -55,7 +58,8 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         if (!entryInv.TargetMethod.ContainingType.IsDbContext()) return false;
 
         if (entryInv.Arguments.Length == 0) return false;
-        if (entryInv.Arguments[0].Value.UnwrapConversions() is not ILocalReferenceOperation argLocal) return false;
+        if (!TryGetRootLocalAndMemberPath(entryInv.Arguments[0].Value, out local, out targetPath))
+            return false;
 
         if (!TryGetSymbol(entryInv.Instance, out contextSymbol)) return false;
 
@@ -64,7 +68,6 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         if (fieldRef.Field.ContainingType?.Name != "EntityState") return false;
         if (!TrackingStates.Contains(fieldRef.Field.Name) && fieldRef.Field.Name != "Detached") return false;
 
-        local = argLocal.Local;
         stateName = fieldRef.Field.Name;
         return true;
     }

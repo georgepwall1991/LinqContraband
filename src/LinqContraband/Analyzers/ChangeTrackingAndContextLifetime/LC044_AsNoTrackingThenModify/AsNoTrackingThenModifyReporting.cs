@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
@@ -29,20 +31,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         if (HasMultipleAssignments(root, local)) return;
 
-        var mutationNullable = FindFirstPropertyMutation(scan, local, declSpan, saveSpan);
+        var mutationNullable = FindFirstPropertyMutation(
+            scan, local, saveContext, declSpan, saveSpan, save);
         if (mutationNullable == null) return;
         var mutation = mutationNullable.Value;
-
-        if (!BlockReaches(mutation.Operation, save)) return;
-
-        if (HasEarlierSaveChangesOnSameContext(scan, saveContext, mutation.Operation.Syntax.SpanStart, saveSpan))
-            return;
-
-        if (HasDominatingPriorReattach(scan, local, saveContext, declSpan, mutation.Operation, save))
-            return;
-
-        if (HasReattach(scan, local, saveContext, mutation.Operation.Syntax.SpanStart, save))
-            return;
 
         reported.Add(local);
         context.ReportDiagnostic(Diagnostic.Create(
@@ -70,20 +62,22 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (!SymbolEqualityComparer.Default.Equals(saveContext, queryContextSymbol)) return;
 
         var forEachSpan = forEach.Syntax.Span;
+        if (!BlockReaches(forEach, save)) return;
 
         foreach (var loopLocal in forEach.Locals)
         {
             if (reported.Contains(loopLocal)) continue;
 
-            var mutationNullable = FindFirstPropertyMutation(scan, loopLocal, forEach.Syntax.SpanStart - 1, saveSpan);
+            var mutationNullable = FindFirstUnpersistedForeachMutation(
+                scan,
+                loopLocal,
+                saveContext,
+                forEach.Syntax.SpanStart - 1,
+                saveSpan,
+                forEachSpan,
+                save);
             if (mutationNullable == null) continue;
             var mutation = mutationNullable.Value;
-
-            if (HasReattachInRange(scan, loopLocal, saveContext, forEachSpan, save)) continue;
-            if (!BlockReaches(forEach, save)) continue;
-
-            if (HasEarlierSaveChangesOnSameContext(scan, saveContext, forEach.Syntax.SpanStart, saveSpan))
-                continue;
 
             reported.Add(loopLocal);
             context.ReportDiagnostic(Diagnostic.Create(
@@ -96,23 +90,31 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
     private readonly struct MutationHit
     {
-        public MutationHit(IOperation operation, Location targetLocation, string propertyName)
+        public MutationHit(
+            IOperation operation,
+            Location targetLocation,
+            string propertyName,
+            ImmutableArray<ISymbol> receiverPath)
         {
             Operation = operation;
             TargetLocation = targetLocation;
             PropertyName = propertyName;
+            ReceiverPath = receiverPath;
         }
 
         public IOperation Operation { get; }
         public Location TargetLocation { get; }
         public string PropertyName { get; }
+        public ImmutableArray<ISymbol> ReceiverPath { get; }
     }
 
     private static MutationHit? FindFirstPropertyMutation(
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
+        ISymbol saveContext,
         int afterSpan,
-        int beforeSpan)
+        int beforeSpan,
+        IOperation save)
     {
         if (!scan.MutationsByLocal.TryGetValue(local, out var mutations)) return null;
 
@@ -121,13 +123,79 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = mutations[i];
             if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
-            if (best == null || entry.SpanStart < best.Value.Operation.Syntax.SpanStart)
+            if (!BlockReaches(entry.Operation, save)) continue;
+            if (HasEarlierSaveChangesOnSameContext(scan, saveContext, entry.Operation, save))
+                continue;
+            if (HasDominatingPriorReattach(
+                    scan,
+                    local,
+                    saveContext,
+                    entry.ReceiverPath,
+                    afterSpan,
+                    entry.Operation,
+                    save))
             {
-                best = new MutationHit(entry.Operation, entry.TargetLocation, entry.PropertyName);
+                continue;
             }
+            if (HasReattach(
+                    scan,
+                    local,
+                    saveContext,
+                    entry.ReceiverPath,
+                    entry.Operation,
+                    save))
+            {
+                continue;
+            }
+
+            best = EarlierMutation(best, entry);
         }
 
         return best;
+    }
+
+    private static MutationHit? FindFirstUnpersistedForeachMutation(
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        int afterSpan,
+        int beforeSpan,
+        TextSpan forEachSpan,
+        IOperation save)
+    {
+        if (!scan.MutationsByLocal.TryGetValue(local, out var mutations)) return null;
+
+        MutationHit? best = null;
+        for (var i = 0; i < mutations.Count; i++)
+        {
+            var entry = mutations[i];
+            if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
+            if (HasEarlierSaveChangesOnSameContext(scan, saveContext, entry.Operation, save))
+                continue;
+            if (HasReattachInRange(
+                    scan, local, saveContext, entry.ReceiverPath, entry.Operation, forEachSpan, save))
+            {
+                continue;
+            }
+
+            best = EarlierMutation(best, entry);
+        }
+
+        return best;
+    }
+
+    private static MutationHit EarlierMutation(MutationHit? current, MutationEntry candidate)
+    {
+        if (current == null || candidate.SpanStart < current.Value.Operation.Syntax.SpanStart)
+        {
+            return new MutationHit(
+                candidate.Operation,
+                candidate.TargetLocation,
+                candidate.PropertyName,
+                candidate.ReceiverPath);
+        }
+
+        return current.Value;
     }
 
     private static bool HasMultipleAssignments(IOperation root, ILocalSymbol local)
