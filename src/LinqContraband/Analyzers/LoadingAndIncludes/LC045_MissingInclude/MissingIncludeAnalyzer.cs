@@ -62,18 +62,35 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                 INamedTypeSymbol,
                 System.Collections.Generic.HashSet<INamedTypeSymbol>
             >(SymbolEqualityComparer.Default);
+            var autoIncludeCache = new System.Collections.Concurrent.ConcurrentDictionary<
+                INamedTypeSymbol,
+                System.Collections.Generic.Dictionary<
+                    INamedTypeSymbol,
+                    System.Collections.Generic.HashSet<string>
+                >
+            >(SymbolEqualityComparer.Default);
             var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<
                 IOperation,
                 FlowGraphHolder
             >();
             compilationContext.RegisterOperationAction(
                 operationContext =>
-                    AnalyzeInvocation(operationContext, entityTypeCache, flowGraphCache),
+                    AnalyzeInvocation(
+                        operationContext,
+                        entityTypeCache,
+                        autoIncludeCache,
+                        flowGraphCache
+                    ),
                 OperationKind.Invocation
             );
             compilationContext.RegisterOperationAction(
                 operationContext =>
-                    AnalyzeForEach(operationContext, entityTypeCache, flowGraphCache),
+                    AnalyzeForEach(
+                        operationContext,
+                        entityTypeCache,
+                        autoIncludeCache,
+                        flowGraphCache
+                    ),
                 OperationKind.Loop
             );
         });
@@ -85,6 +102,13 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
             INamedTypeSymbol,
             System.Collections.Generic.HashSet<INamedTypeSymbol>
         > entityTypeCache,
+        System.Collections.Concurrent.ConcurrentDictionary<
+            INamedTypeSymbol,
+            System.Collections.Generic.Dictionary<
+                INamedTypeSymbol,
+                System.Collections.Generic.HashSet<string>
+            >
+        > autoIncludeCache,
         System.Runtime.CompilerServices.ConditionalWeakTable<
             IOperation,
             FlowGraphHolder
@@ -122,6 +146,12 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         if (accesses == null || accesses.Count == 0)
             return;
 
+        AddModelAutoIncludePrefixes(
+            query,
+            autoIncludeCache,
+            context.Compilation,
+            context.CancellationToken
+        );
         ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
     }
 
