@@ -329,7 +329,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < matchingReattaches.Count; i++)
         {
             var entry = matchingReattaches[i];
-            if (PriorReattachDominatesMutation(entry.Operation, mutation) &&
+            if (PriorReattachDominatesMutation(
+                    entry.Operation, matchingReattaches, mutation) &&
                 !RequiredPriorOperationCanBypassCollectiveReattach(
                     entry, matchingReattaches, mutation))
             {
@@ -374,7 +375,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
 
             var coversMutationPath = entryPrecedesMutation
-                ? PriorReattachDominatesMutation(entry.Operation, mutation) &&
+                ? PriorReattachDominatesMutation(
+                      entry.Operation, matchingReattaches, mutation) &&
                   !RequiredPriorOperationCanBypassCollectiveReattach(
                       entry, matchingReattaches, mutation)
                 : IsRequiredOnPathFrom(mutation, entry.Operation, save);
@@ -463,6 +465,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
     private static bool PriorReattachDominatesMutation(
         IOperation reattach,
+        List<ReattachEntry> matchingReattaches,
         IOperation mutation)
     {
         if (!Dominates(reattach, mutation)) return false;
@@ -480,7 +483,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return tryOperation != null &&
                CatchClauseIsMandatoryFrom(catchClause, tryOperation, mutation) &&
                !HasAlternateMutationReachingCatchBeforeMandatoryThrow(
-                   tryStatement, catchClause, tryOperation, mutation) &&
+                   tryStatement, catchClause, tryOperation, matchingReattaches, mutation) &&
                !HasPotentiallyThrowingOperationSkippingRequired(
                    tryOperation, reattach, mutation) &&
                !HasCaughtThrowSkippingRequired(
@@ -491,6 +494,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         TryStatementSyntax tryStatement,
         CatchClauseSyntax requiredCatch,
         IOperation tryOperation,
+        List<ReattachEntry> matchingReattaches,
         IOperation mutation)
     {
         if (tryStatement.Block.Statements.LastOrDefault() is not ThrowStatementSyntax terminalThrow)
@@ -502,7 +506,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 !operation.Syntax.AncestorsAndSelf()
                     .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) &&
                 IsImplicitlyPotentiallyThrowingOperation(operation) &&
-                tryOperation.SharesOwningExecutableRoot(operation));
+                tryOperation.SharesOwningExecutableRoot(operation) &&
+                CanTransferToFallThroughCatch(
+                    operation, mutation, terminalThrow.SpanStart));
         if (!hasEarlierPotentialTransfer) return false;
 
         foreach (var catchClause in tryStatement.Catches)
@@ -516,8 +522,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     continue;
             }
 
-            if (!StatementSkipsLater(catchClause.Block, mutation.Syntax) ||
-                CatchHandlerCanReachLater(catchClause, mutation))
+            if ((!StatementSkipsLater(catchClause.Block, mutation.Syntax) ||
+                 CatchHandlerCanReachLater(catchClause, mutation)) &&
+                !PriorBranchHasUnconditionalReattach(
+                    catchClause.Block, matchingReattaches, mutation))
             {
                 return true;
             }

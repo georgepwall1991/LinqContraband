@@ -551,6 +551,117 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ThrowFactoryCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static System.InvalidOperationException CreateException() => new System.InvalidOperationException();
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw CreateException();
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the throw factory reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_AlternateCatchAlsoAttaches_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void Risk() { }
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                Risk();
+                throw new System.InvalidOperationException();
+            }
+            catch (System.ArgumentException)
+            {
+                ctx.Attach(u);
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted on every handler path"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NestedCatchSwallowsEarlierThrow_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        private static void Risk() { }
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                try
+                {
+                    Risk();
+                }
+                catch (System.Exception)
+                {
+                }
+                throw new System.InvalidOperationException();
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted after the nested catch swallows the earlier throw"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_PriorTryAndCatchBothAttach_MutateThenSave_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
