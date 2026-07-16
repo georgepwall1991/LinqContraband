@@ -40,9 +40,33 @@ await db.Database.ExecuteSqlRawAsync(
 
 ### Notes
 The fixer is intentionally narrow. It appears only for direct interpolated-string calls with no additional raw SQL
-parameters, where the method-name rewrite keeps the SQL text and argument flow semantically safe. It is not offered when
-an interpolation hole appears inside SQL single quotes, such as `'{name}'`; remove the SQL quotes manually before using
-`ExecuteSql(...)` or `ExecuteSqlAsync(...)` so EF can parameterize the value correctly.
+parameters, where every interpolation hole is a supported core-library scalar type in an unambiguous single-statement
+`UPDATE`, `DELETE`, or `INSERT` value position and the method-name rewrite keeps the SQL text and argument flow
+semantically safe. It is not offered when an interpolation hole
+appears inside SQL single quotes,
+such as `'{name}'`; remove the SQL quotes manually before using `ExecuteSql(...)` or `ExecuteSqlAsync(...)` so EF can
+parameterize the value correctly.
+
+The fixer is also withheld for SQL structure that database parameters cannot represent, including table, column, and
+stored-procedure identifiers such as `DELETE FROM {tableName}`, `WHERE {columnName} = 1`, or `EXEC {procedureName}`.
+String, `char`, object, dynamic, and collection holes stay manual even after a comparison operator because the fixer
+cannot prove whether they represent a scalar value or a structural fragment without changing raw interpolation
+semantics. User-defined structs, enums, and generic type parameters
+also stay manual because the fixer cannot prove provider mappings or formatting behaviour. Formatted or aligned holes,
+adjacent holes, PostgreSQL dollar-quoted literals, provider comments such as MySQL `#`, batch separators such as `GO`,
+separator-free non-DML batch commands, and other multi-statement SQL stay manual rather than reusing an earlier
+value-position assumption. Framework-scalar
+lookalikes declared by application source are not treated as framework types.
+Provider-style backslash-escaped quotes are treated as
+remaining inside the SQL literal. Interpolation inside bracketed, double-quoted, or backtick-delimited SQL identifiers
+also remains manual, including identifiers that use doubled closing delimiters; apostrophes inside those identifiers do
+not alter later SQL-string tracking. FixAll uses one shared action identity for mixed `ExecuteSqlRaw` and
+`ExecuteSqlRawAsync` diagnostics while preserving the correct safe sibling for each call.
+For `INSERT`, the fixer recognises direct scalar holes in complete `VALUES (...)` rows, including multiple parameters and
+multiple rows, but keeps interpolated table names, column names, SQL expressions around a hole, and other ambiguous
+INSERT shapes manual.
+Keep the diagnostic and redesign the query around constant SQL, or select the structural fragment from a strict
+application-owned allow-list before constructing the command.
 
 No-hole interpolated strings and constant-only interpolations stay quiet because they do not embed runtime data into raw SQL.
 
