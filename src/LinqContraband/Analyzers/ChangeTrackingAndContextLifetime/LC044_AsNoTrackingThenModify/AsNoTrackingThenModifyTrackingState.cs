@@ -14,7 +14,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        ImmutableArray<ISymbol> receiverPath,
+        ImmutableArray<MemberPathSegment> receiverPath,
         IOperation mutation,
         IOperation save)
     {
@@ -26,6 +26,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = reattaches[i];
             if (entry.SpanStart <= mutation.Syntax.SpanStart || entry.SpanStart >= saveSpan) continue;
+            if (!entry.PersistsExistingMutation) continue;
             if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
@@ -33,7 +34,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 !HasInterveningDetach(
                     scan, local, saveContext, receiverPath, entry.SpanStart, save))
             {
-                if (IsRequiredOnPathFrom(mutation, entry.Operation, save))
+                if (IsRequiredOnPathFrom(mutation, entry.Operation, save) &&
+                    !CatchContainsCaughtThrowSkippingRequired(entry, save))
                     return true;
 
                 matchingReattaches.Add(entry);
@@ -66,6 +68,15 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (ifOperation == null || !IsRequiredOnPathFrom(mutation, ifOperation, save))
                 continue;
 
+            var conditionOperation = mutation.SemanticModel?.GetOperation(ifStatement.Condition);
+            if (conditionOperation != null &&
+                (ConditionOperationCanBypassBranches(conditionOperation, save) ||
+                 conditionOperation.Descendants().Any(operation =>
+                     ConditionOperationCanBypassBranches(operation, save))))
+            {
+                continue;
+            }
+
             if (BranchHasUnconditionalReattach(ifStatement.Statement, matchingReattaches, mutation, save) &&
                 BranchHasUnconditionalReattach(elseStatement, matchingReattaches, mutation, save))
             {
@@ -75,6 +86,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         return false;
     }
+
+    private static bool ConditionOperationCanBypassBranches(IOperation operation, IOperation save) =>
+        IsImplicitlyPotentiallyThrowingOperation(operation) &&
+        CanTransferToFallThroughCatch(operation, save);
 
     private static bool BranchHasUnconditionalReattach(
         StatementSyntax branch,
@@ -86,9 +101,15 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < matchingReattaches.Count; i++)
         {
             var entry = matchingReattaches[i];
+            var reachesSave = BlockReaches(entry.Operation, save) ||
+                              (branch.Parent is CatchClauseSyntax catchClause &&
+                               (!StatementSkipsLater(catchClause.Block, save.Syntax) ||
+                                CatchHandlerCanReachLater(catchClause, save)));
             if (!branch.Span.Contains(entry.SpanStart) ||
-                !BlockReaches(entry.Operation, save) ||
-                (rejectCaughtThrow && HasCaughtThrowSkippingRequired(mutation, entry.Operation, save)))
+                !reachesSave ||
+                (rejectCaughtThrow &&
+                 (HasCaughtThrowSkippingRequired(mutation, entry.Operation, save) ||
+                  CatchContainsCaughtThrowSkippingRequired(entry, save))))
             {
                 continue;
             }
@@ -122,15 +143,26 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
     {
         if (matchingReattaches.Count < 2) return false;
 
-        foreach (var tryStatement in mutation.Syntax.AncestorsAndSelf().OfType<TryStatementSyntax>())
+        foreach (var tryStatement in mutation.Syntax.SyntaxTree.GetRoot()
+                     .DescendantNodes()
+                     .OfType<TryStatementSyntax>())
         {
-            if (!tryStatement.Block.Span.Contains(mutation.Syntax.SpanStart) ||
+            var mutationIsInTry = tryStatement.Block.Span.Contains(mutation.Syntax.SpanStart);
+            var tryFollowsMutation = tryStatement.SpanStart > mutation.Syntax.SpanStart;
+            if ((!mutationIsInTry && !tryFollowsMutation) ||
                 tryStatement.Span.End >= save.Syntax.SpanStart ||
                 tryStatement.Catches.Count == 0 ||
                 !BranchHasUnconditionalReattach(
                     tryStatement.Block, matchingReattaches, mutation, save, rejectCaughtThrow: false))
             {
                 continue;
+            }
+
+            if (tryFollowsMutation)
+            {
+                var tryOperation = mutation.SemanticModel?.GetOperation(tryStatement);
+                if (tryOperation == null || !IsRequiredOnPathFrom(mutation, tryOperation, save))
+                    continue;
             }
 
             var allHandlersCovered = true;
@@ -143,7 +175,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                         continue;
                 }
 
-                if (StatementSkipsLater(catchClause.Block, save.Syntax))
+                if (StatementSkipsLater(catchClause.Block, save.Syntax) &&
+                    !CatchHandlerCanReachLater(catchClause, save))
                     continue;
 
                 if (!BranchHasUnconditionalReattach(
@@ -165,7 +198,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        ImmutableArray<ISymbol> receiverPath,
+        ImmutableArray<MemberPathSegment> receiverPath,
         int afterSpan,
         IOperation mutation,
         IOperation save)
@@ -196,7 +229,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        ImmutableArray<ISymbol> receiverPath,
+        ImmutableArray<MemberPathSegment> receiverPath,
         IOperation mutation,
         TextSpan range,
         IOperation save)
@@ -209,7 +242,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (!range.Contains(entry.Span)) continue;
             if (!MemberPathIsPrefix(entry.TargetPath, receiverPath)) continue;
 
-            var coversMutationPath = entry.SpanStart < mutation.Syntax.SpanStart
+            var entryPrecedesMutation = entry.SpanStart < mutation.Syntax.SpanStart;
+            if (!entryPrecedesMutation && !entry.PersistsExistingMutation) continue;
+
+            var coversMutationPath = entryPrecedesMutation
                 ? Dominates(entry.Operation, mutation)
                 : IsRequiredOnPathFrom(mutation, entry.Operation, save);
             if (!coversMutationPath) continue;
@@ -227,14 +263,23 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
     }
 
     private static bool MemberPathIsPrefix(
-        ImmutableArray<ISymbol> candidatePrefix,
-        ImmutableArray<ISymbol> path)
+        ImmutableArray<MemberPathSegment> candidatePrefix,
+        ImmutableArray<MemberPathSegment> path)
     {
         if (candidatePrefix.Length > path.Length) return false;
 
         for (var i = 0; i < candidatePrefix.Length; i++)
         {
-            if (!SymbolEqualityComparer.Default.Equals(candidatePrefix[i], path[i]))
+            if (!SymbolEqualityComparer.Default.Equals(candidatePrefix[i].Member, path[i].Member))
+                return false;
+
+            if (candidatePrefix[i].IsIndexer != path[i].IsIndexer)
+                return false;
+
+            if (candidatePrefix[i].IsIndexer &&
+                (candidatePrefix[i].IndexKey == null ||
+                 path[i].IndexKey == null ||
+                 candidatePrefix[i].IndexKey != path[i].IndexKey))
                 return false;
         }
 

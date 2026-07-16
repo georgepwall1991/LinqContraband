@@ -33,14 +33,18 @@ namespace Microsoft.EntityFrameworkCore
         public int SaveChanges() => 0;
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
         public void Update(object entity) { }
+        public void UpdateRange(params object[] entities) { }
         public void Attach(object entity) { }
+        public void AttachRange(params object[] entities) { }
         public EntityEntry Entry(object entity) => new EntityEntry();
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
     {
         public void Update(TEntity entity) { }
+        public void UpdateRange(params TEntity[] entities) { }
         public void Attach(TEntity entity) { }
+        public void AttachRange(params TEntity[] entities) { }
         public Type ElementType => typeof(TEntity);
         public Expression Expression => null;
         public IQueryProvider Provider => null;
@@ -108,7 +112,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task AsNoTracking_ThenMutateNestedFieldMemberProperty_ThenSaveChanges_Triggers()
+    public async Task AsNoTracking_ThenMutateNestedUnconfiguredFieldMemberProperty_ThenSaveChanges_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -121,7 +125,7 @@ namespace Test
         public void M(TestCtx ctx)
         {
             var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
-            {|LC044:user.AddressField.City|} = ""London"";
+            user.AddressField.City = ""London"";
             ctx.SaveChanges();
         }
     }

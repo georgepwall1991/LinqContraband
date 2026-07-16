@@ -10,7 +10,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        ImmutableArray<ISymbol> receiverPath,
+        ImmutableArray<MemberPathSegment> receiverPath,
         int afterSpan,
         IOperation save)
     {

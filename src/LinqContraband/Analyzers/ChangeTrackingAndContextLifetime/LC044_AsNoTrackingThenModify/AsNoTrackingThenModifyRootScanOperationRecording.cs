@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -28,6 +30,7 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
                         assignment,
                         entryContext,
                         entryTargetPath,
+                        persistsExistingMutation: true,
                         assignment.Syntax.SpanStart,
                         assignment.Syntax.Span));
             }
@@ -64,9 +67,9 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
     private static bool TryGetRootLocalAndMemberPath(
         IOperation? instance,
         out ILocalSymbol rootLocal,
-        out ImmutableArray<ISymbol> memberPath)
+        out ImmutableArray<MemberPathSegment> memberPath)
     {
-        var reversedPath = ImmutableArray.CreateBuilder<ISymbol>();
+        var reversedPath = ImmutableArray.CreateBuilder<MemberPathSegment>();
         var current = instance?.UnwrapConversions();
         while (current != null)
         {
@@ -74,19 +77,13 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
             {
                 case IPropertyReferenceOperation propertyReference
                     when !HasNotMappedAttribute(propertyReference.Property):
-                    reversedPath.Add(propertyReference.Property);
+                    reversedPath.Add(CreateMemberPathSegment(propertyReference));
                     current = propertyReference.Instance?.UnwrapConversions();
-                    continue;
-
-                case IFieldReferenceOperation fieldReference
-                    when !HasNotMappedAttribute(fieldReference.Field):
-                    reversedPath.Add(fieldReference.Field);
-                    current = fieldReference.Instance?.UnwrapConversions();
                     continue;
 
                 case ILocalReferenceOperation localReference:
                     rootLocal = localReference.Local;
-                    var path = ImmutableArray.CreateBuilder<ISymbol>(reversedPath.Count);
+                    var path = ImmutableArray.CreateBuilder<MemberPathSegment>(reversedPath.Count);
                     for (var i = reversedPath.Count - 1; i >= 0; i--)
                         path.Add(reversedPath[i]);
                     memberPath = path.MoveToImmutable();
@@ -94,14 +91,50 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
 
                 default:
                     rootLocal = null!;
-                    memberPath = ImmutableArray<ISymbol>.Empty;
+                    memberPath = ImmutableArray<MemberPathSegment>.Empty;
                     return false;
             }
         }
 
         rootLocal = null!;
-        memberPath = ImmutableArray<ISymbol>.Empty;
+        memberPath = ImmutableArray<MemberPathSegment>.Empty;
         return false;
+    }
+
+    private static MemberPathSegment CreateMemberPathSegment(IPropertyReferenceOperation propertyReference)
+    {
+        if (!propertyReference.Property.IsIndexer)
+            return new MemberPathSegment(propertyReference.Property, isIndexer: false, indexKey: null);
+
+        var keyParts = new List<string>(propertyReference.Arguments.Length);
+        foreach (var argument in propertyReference.Arguments)
+        {
+            var constant = argument.Value.ConstantValue;
+            if (!constant.HasValue)
+                return new MemberPathSegment(propertyReference.Property, isIndexer: true, indexKey: null);
+
+            var typeName = argument.Value.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
+            var valueText = constant.Value switch
+            {
+                null => null,
+                IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+                _ => constant.Value.ToString()
+            };
+            keyParts.Add(EncodeIndexKeyPart(typeName, valueText));
+        }
+
+        return new MemberPathSegment(
+            propertyReference.Property,
+            isIndexer: true,
+            indexKey: string.Join("|", keyParts));
+    }
+
+    private static string EncodeIndexKeyPart(string typeName, string? valueText)
+    {
+        var encodedValue = valueText == null
+            ? "N"
+            : "V" + valueText.Length.ToString(CultureInfo.InvariantCulture) + ":" + valueText;
+        return typeName.Length.ToString(CultureInfo.InvariantCulture) + ":" + typeName + encodedValue;
     }
 
     private static bool HasNotMappedAttribute(ISymbol member)
@@ -137,24 +170,61 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
 
         if (TryParseReattachInvocation(
                 invocation,
-                out var reattachLocal,
                 out var reattachContext,
-                out var reattachTargetPath))
+                out var persistsExistingMutation))
         {
-            AddReattach(
-                scan,
-                reattachLocal,
-                new ReattachEntry(
+            foreach (var argument in invocation.Arguments)
+            {
+                RecordReattachTargets(
+                    scan,
                     invocation,
+                    argument.Value,
                     reattachContext,
-                    reattachTargetPath,
-                    invocation.Syntax.SpanStart,
-                    invocation.Syntax.Span));
+                    persistsExistingMutation);
+            }
         }
 
         if (TryParseTrackerClear(invocation, out var clearContext))
         {
             scan.TrackerClears.Add(new TrackerClearEntry(invocation, clearContext, invocation.Syntax.SpanStart));
         }
+    }
+
+    private static void RecordReattachTargets(
+        AsNoTrackingThenModifyRootScan scan,
+        IInvocationOperation invocation,
+        IOperation value,
+        ISymbol? contextSymbol,
+        bool persistsExistingMutation)
+    {
+        var unwrappedValue = value.UnwrapConversions();
+        if (unwrappedValue is IArrayCreationOperation { Initializer: { } initializer })
+        {
+            foreach (var element in initializer.ElementValues)
+            {
+                RecordReattachTargets(
+                    scan,
+                    invocation,
+                    element,
+                    contextSymbol,
+                    persistsExistingMutation);
+            }
+
+            return;
+        }
+
+        if (!TryGetRootLocalAndMemberPath(unwrappedValue, out var local, out var targetPath))
+            return;
+
+        AddReattach(
+            scan,
+            local,
+            new ReattachEntry(
+                invocation,
+                contextSymbol,
+                targetPath,
+                persistsExistingMutation,
+                invocation.Syntax.SpanStart,
+                invocation.Syntax.Span));
     }
 }

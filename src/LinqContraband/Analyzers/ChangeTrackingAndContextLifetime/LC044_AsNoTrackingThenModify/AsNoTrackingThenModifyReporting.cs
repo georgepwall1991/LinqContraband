@@ -94,7 +94,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             IOperation operation,
             Location targetLocation,
             string propertyName,
-            ImmutableArray<ISymbol> receiverPath)
+            ImmutableArray<MemberPathSegment> receiverPath)
         {
             Operation = operation;
             TargetLocation = targetLocation;
@@ -105,7 +105,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         public IOperation Operation { get; }
         public Location TargetLocation { get; }
         public string PropertyName { get; }
-        public ImmutableArray<ISymbol> ReceiverPath { get; }
+        public ImmutableArray<MemberPathSegment> ReceiverPath { get; }
     }
 
     private static MutationHit? FindFirstPropertyMutation(
@@ -170,6 +170,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             var entry = mutations[i];
             if (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan) continue;
+            if (!BlockReaches(entry.Operation, save)) continue;
             if (HasEarlierSaveChangesOnSameContext(scan, saveContext, entry.Operation, save))
                 continue;
             if (HasReattachInRange(

@@ -1,4 +1,5 @@
 using System.Linq;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Operations;
@@ -11,8 +12,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         System.Collections.Immutable.ImmutableArray<IOperation> operations,
         int afterSpanStart,
         int beforeSpanStart,
-        SyntaxNode saveSyntax)
+        IOperation later)
     {
+        var laterSyntax = later.Syntax;
         foreach (var operation in operations)
         {
             if (operation.Syntax.SpanStart <= afterSpanStart || operation.Syntax.SpanStart >= beforeSpanStart)
@@ -21,6 +23,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             // Unconditional exits that leave the current executable root block reachability.
             if (operation is IReturnOperation or IThrowOperation)
                 return true;
+
+            if (operation is ITryOperation tryOperation &&
+                TryOperationAlwaysSkipsLater(tryOperation, later))
+            {
+                return true;
+            }
 
             // Branch operations that skip the remainder of the current region can break
             // reachability. `break` exits a loop/switch; `continue` jumps to the loop
@@ -32,15 +40,71 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 if (branch.BranchKind == BranchKind.GoTo)
                     return true;
 
-                if (branch.BranchKind == BranchKind.Break && IsBreakBlocking(branch, saveSyntax))
+                if (branch.BranchKind == BranchKind.Break && IsBreakBlocking(branch, laterSyntax))
                     return true;
 
-                if (branch.BranchKind == BranchKind.Continue && IsContinueBlocking(branch, saveSyntax))
+                if (branch.BranchKind == BranchKind.Continue && IsContinueBlocking(branch, laterSyntax))
                     return true;
             }
         }
 
         return false;
+    }
+
+    private static bool TryOperationAlwaysSkipsLater(
+        ITryOperation tryOperation,
+        IOperation later)
+    {
+        if (tryOperation.Syntax is not Microsoft.CodeAnalysis.CSharp.Syntax.TryStatementSyntax tryStatement ||
+            tryStatement.Block.Statements.LastOrDefault() is not Microsoft.CodeAnalysis.CSharp.Syntax.ThrowStatementSyntax terminalThrow)
+        {
+            return false;
+        }
+
+        var semanticModel = later.SemanticModel ??
+                            later.FindOwningExecutableRoot()?.SemanticModel;
+        if (semanticModel?.GetOperation(terminalThrow) is not IThrowOperation throwOperation)
+            return false;
+
+        var exactThrownTypes = new System.Collections.Generic.List<ITypeSymbol>();
+        if (!TryCollectExactThrownTypes(throwOperation.Exception, exactThrownTypes) ||
+            exactThrownTypes.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var exactThrownType in exactThrownTypes)
+        {
+            var definitelyHandled = false;
+            foreach (var catchClause in tryStatement.Catches)
+            {
+                if (catchClause.Filter?.FilterExpression is { } filterExpression)
+                {
+                    var constant = semanticModel.GetConstantValue(filterExpression);
+                    if (constant.HasValue && constant.Value is false) continue;
+                    if (!constant.HasValue || constant.Value is not true) return false;
+                }
+
+                var caughtType = catchClause.Declaration == null
+                    ? null
+                    : semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+                if (!CanCatchExactType(exactThrownType, caughtType, catchClause))
+                    continue;
+
+                if (!StatementSkipsLater(catchClause.Block, later.Syntax) ||
+                    CatchHandlerCanReachLater(catchClause, later))
+                {
+                    return false;
+                }
+
+                definitelyHandled = true;
+                break;
+            }
+
+            if (!definitelyHandled) return false;
+        }
+
+        return true;
     }
 
     private static bool IsBreakBlocking(IBranchOperation branch, SyntaxNode saveSyntax)

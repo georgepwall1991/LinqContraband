@@ -5,13 +5,27 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
+internal readonly struct MemberPathSegment
+{
+    public MemberPathSegment(ISymbol member, bool isIndexer, string? indexKey)
+    {
+        Member = member;
+        IsIndexer = isIndexer;
+        IndexKey = indexKey;
+    }
+
+    public ISymbol Member { get; }
+    public bool IsIndexer { get; }
+    public string? IndexKey { get; }
+}
+
 internal readonly struct MutationEntry
 {
     public MutationEntry(
         IOperation operation,
         Location targetLocation,
         string propertyName,
-        ImmutableArray<ISymbol> receiverPath,
+        ImmutableArray<MemberPathSegment> receiverPath,
         int spanStart)
     {
         Operation = operation;
@@ -24,7 +38,7 @@ internal readonly struct MutationEntry
     public IOperation Operation { get; }
     public Location TargetLocation { get; }
     public string PropertyName { get; }
-    public ImmutableArray<ISymbol> ReceiverPath { get; }
+    public ImmutableArray<MemberPathSegment> ReceiverPath { get; }
     public int SpanStart { get; }
 }
 
@@ -33,20 +47,23 @@ internal readonly struct ReattachEntry
     public ReattachEntry(
         IOperation operation,
         ISymbol? contextSymbol,
-        ImmutableArray<ISymbol> targetPath,
+        ImmutableArray<MemberPathSegment> targetPath,
+        bool persistsExistingMutation,
         int spanStart,
         TextSpan span)
     {
         Operation = operation;
         ContextSymbol = contextSymbol;
         TargetPath = targetPath;
+        PersistsExistingMutation = persistsExistingMutation;
         SpanStart = spanStart;
         Span = span;
     }
 
     public IOperation Operation { get; }
     public ISymbol? ContextSymbol { get; }
-    public ImmutableArray<ISymbol> TargetPath { get; }
+    public ImmutableArray<MemberPathSegment> TargetPath { get; }
+    public bool PersistsExistingMutation { get; }
     public int SpanStart { get; }
     public TextSpan Span { get; }
 }
@@ -56,7 +73,7 @@ internal readonly struct DetachEntry
     public DetachEntry(
         IOperation operation,
         ISymbol? contextSymbol,
-        ImmutableArray<ISymbol> targetPath,
+        ImmutableArray<MemberPathSegment> targetPath,
         int spanStart,
         TextSpan span)
     {
@@ -69,7 +86,7 @@ internal readonly struct DetachEntry
 
     public IOperation Operation { get; }
     public ISymbol? ContextSymbol { get; }
-    public ImmutableArray<ISymbol> TargetPath { get; }
+    public ImmutableArray<MemberPathSegment> TargetPath { get; }
     public int SpanStart { get; }
     public TextSpan Span { get; }
 }

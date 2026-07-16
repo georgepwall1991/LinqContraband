@@ -7,46 +7,46 @@ namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
 internal sealed partial class AsNoTrackingThenModifyRootScan
 {
-    private static readonly ImmutableHashSet<string> ReattachMethodNames = ImmutableHashSet.Create(
-        "Update", "UpdateRange", "Attach", "AttachRange");
+    private static readonly ImmutableHashSet<string> UpdateMethodNames = ImmutableHashSet.Create(
+        "Update", "UpdateRange");
+
+    private static readonly ImmutableHashSet<string> AttachMethodNames = ImmutableHashSet.Create(
+        "Attach", "AttachRange");
 
     private static readonly ImmutableHashSet<string> TrackingStates = ImmutableHashSet.Create(
         "Modified", "Added");
 
     private static bool TryParseReattachInvocation(
         IInvocationOperation invocation,
-        out ILocalSymbol local,
         out ISymbol? contextSymbol,
-        out ImmutableArray<ISymbol> targetPath)
+        out bool persistsExistingMutation)
     {
-        local = null!;
         contextSymbol = null;
-        targetPath = ImmutableArray<ISymbol>.Empty;
+        persistsExistingMutation = false;
 
-        if (!ReattachMethodNames.Contains(invocation.TargetMethod.Name)) return false;
+        var methodName = invocation.TargetMethod.Name;
+        if (!UpdateMethodNames.Contains(methodName) && !AttachMethodNames.Contains(methodName))
+            return false;
 
         var container = invocation.TargetMethod.ContainingType;
         if (!container.IsDbContext() && !container.IsDbSet()) return false;
 
-        if (invocation.Arguments.Length == 0) return false;
-        if (!TryGetRootLocalAndMemberPath(invocation.Arguments[0].Value, out local, out targetPath))
-            return false;
-
         if (!TryResolveInvocationContext(invocation, out contextSymbol)) return false;
 
-        return true;
+        persistsExistingMutation = UpdateMethodNames.Contains(methodName);
+        return invocation.Arguments.Length > 0;
     }
 
     private static bool TryParseEntryStateAssignment(
         ISimpleAssignmentOperation assignment,
         out ILocalSymbol local,
         out ISymbol? contextSymbol,
-        out ImmutableArray<ISymbol> targetPath,
+        out ImmutableArray<MemberPathSegment> targetPath,
         out string stateName)
     {
         local = null!;
         contextSymbol = null;
-        targetPath = ImmutableArray<ISymbol>.Empty;
+        targetPath = ImmutableArray<MemberPathSegment>.Empty;
         stateName = "";
 
         if (assignment.Target is not IPropertyReferenceOperation targetProp) return false;

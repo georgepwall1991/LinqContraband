@@ -1700,7 +1700,7 @@ db.SaveChanges(); // <-- persists nothing; returns 0
 ```
 
 **✅ The Fix:**
-Either drop `AsNoTracking` so the entity is tracked from the start, or re-attach before saving.
+Either drop `AsNoTracking` so the entity is tracked from the start, or explicitly mark the detached entity for persistence.
 
 ```csharp
 // Option A: track from origin
@@ -1708,19 +1708,26 @@ var user = db.Users.FirstOrDefault(u => u.Id == id);
 user.Name = "New Name";
 db.SaveChanges();
 
-// Option B: explicit re-attach
+// Option B: persist the existing detached mutation
 var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
 user.Name = "New Name";
-db.Users.Update(user); // or db.Attach(user); or db.Entry(user).State = EntityState.Modified;
+db.Users.Update(user); // or db.Entry(user).State = EntityState.Modified;
 db.SaveChanges();
 ```
 
+`Attach` is safe when it runs before the mutation. Calling it after changing the entity snapshots the changed value as
+`Unchanged`, so that existing write is still lost; use `Update`/`UpdateRange` or explicit `Modified`/`Added` state instead.
+
 **🛡️ Reliability Notes:**
 - LC044 only fires when the chain `AsNoTracking origin → property mutation → SaveChanges on the same context` is
-  provable inside one method and no re-attach (`Update`, `Attach`, `Entry(entity).State = Modified|Added`) intervenes.
-- A guaranteed re-attach before the property mutation is treated as safe because EF is tracking the later write; an
-  optional branch re-attach still reports because another path can mutate and save the entity while it remains untracked.
+  provable inside one method and no persistence-enabling tracking operation intervenes.
+- A guaranteed `Attach`/`AttachRange` before the property mutation is safe because EF tracks the later write. After the
+  mutation, only `Update`/`UpdateRange` or `Entry(entity).State = Modified|Added` suppresses; an optional branch operation
+  still reports because another path can mutate and save the entity while it remains untracked.
   Explicit detach (`Entry(entity).State = Detached`) or `ChangeTracker.Clear()` before `SaveChanges` also keeps LC044 live.
+- Nested graph proof distinguishes constant indexer arguments without sentinel collisions and excludes unconfigured
+  field-only paths. Exception flow includes exact and implicit try-to-catch/finally saves plus calls, condition
+  evaluations, property getters, and indexers that can bypass persistence into a handler that still reaches `SaveChanges`.
 - Ambiguous dataflow, mutations in branches that never reach `SaveChanges`, and entities that arrive as parameters are
   intentionally skipped to keep false positives at zero.
 
