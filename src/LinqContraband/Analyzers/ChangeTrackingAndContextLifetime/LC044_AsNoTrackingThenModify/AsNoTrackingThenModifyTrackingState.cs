@@ -468,12 +468,10 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         List<ReattachEntry> matchingReattaches,
         IOperation mutation)
     {
-        if (!Dominates(reattach, mutation)) return false;
-
         var catchClause = reattach.Syntax.Ancestors()
             .OfType<CatchClauseSyntax>()
             .FirstOrDefault();
-        if (catchClause == null) return true;
+        if (catchClause == null) return Dominates(reattach, mutation);
 
         if (catchClause.Parent is not TryStatementSyntax tryStatement)
             return false;
@@ -484,8 +482,6 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                CatchClauseIsMandatoryFrom(catchClause, tryOperation, mutation) &&
                !HasAlternateMutationReachingCatchBeforeMandatoryThrow(
                    tryStatement, catchClause, tryOperation, matchingReattaches, mutation) &&
-               !HasPotentiallyThrowingOperationSkippingRequired(
-                   tryOperation, reattach, mutation) &&
                !HasCaughtThrowSkippingRequired(
                    tryOperation, reattach, mutation);
     }
@@ -500,22 +496,6 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (tryStatement.Block.Statements.LastOrDefault() is not ThrowStatementSyntax terminalThrow)
             return false;
 
-        var hasEarlierPotentialTransfer = tryOperation.Descendants()
-            .Any(operation =>
-                (operation.Syntax.SpanStart < terminalThrow.SpanStart ||
-                 (terminalThrow.Expression?.Span.Contains(operation.Syntax.Span) == true &&
-                  operation is not IObjectCreationOperation)) &&
-                !operation.Syntax.AncestorsAndSelf()
-                    .Any(syntax =>
-                        syntax is ThrowExpressionSyntax ||
-                        syntax is ThrowStatementSyntax throwStatement &&
-                        !ReferenceEquals(throwStatement, terminalThrow)) &&
-                IsImplicitlyPotentiallyThrowingOperation(operation) &&
-                tryOperation.SharesOwningExecutableRoot(operation) &&
-                CanTransferToFallThroughCatch(
-                    operation, mutation, terminalThrow.SpanStart));
-        if (!hasEarlierPotentialTransfer) return false;
-
         foreach (var catchClause in tryStatement.Catches)
         {
             if (ReferenceEquals(catchClause, requiredCatch)) continue;
@@ -527,16 +507,128 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     continue;
             }
 
-            if ((!StatementSkipsLater(catchClause.Block, mutation.Syntax) ||
-                 CatchHandlerCanReachLater(catchClause, mutation)) &&
-                !PriorBranchHasUnconditionalReattach(
+            if ((StatementSkipsLater(catchClause.Block, mutation.Syntax) &&
+                 !CatchHandlerCanReachLater(catchClause, mutation)) ||
+                PriorBranchHasUnconditionalReattach(
                     catchClause.Block, matchingReattaches, mutation))
             {
-                return true;
+                continue;
             }
+
+            var canReachCatch = tryOperation.Descendants()
+                .Any(operation =>
+                    (operation.Syntax.SpanStart < terminalThrow.SpanStart ||
+                     terminalThrow.Expression?.Span.Contains(operation.Syntax.Span) == true) &&
+                    !operation.Syntax.AncestorsAndSelf()
+                        .Any(syntax =>
+                            syntax is ThrowExpressionSyntax ||
+                            syntax is ThrowStatementSyntax throwStatement &&
+                            !ReferenceEquals(throwStatement, terminalThrow)) &&
+                    IsImplicitlyPotentiallyThrowingOperation(operation) &&
+                    tryOperation.SharesOwningExecutableRoot(operation) &&
+                    PotentialOperationCanReachCatch(
+                        operation, catchClause, tryStatement, terminalThrow, mutation));
+            if (canReachCatch) return true;
         }
 
         return false;
+    }
+
+    private static bool PotentialOperationCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax catchClause,
+        TryStatementSyntax targetTry,
+        ThrowStatementSyntax terminalThrow,
+        IOperation mutation)
+    {
+        var semanticModel = operation.SemanticModel ?? mutation.SemanticModel;
+        if (semanticModel == null) return true;
+
+        var caughtType = catchClause.Declaration == null
+            ? semanticModel.Compilation.GetTypeByMetadataName("System.Exception")
+            : semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+        if (caughtType == null) return true;
+
+        var exactTypes = new List<ITypeSymbol>();
+        switch (operation)
+        {
+            case IFieldReferenceOperation:
+                AddMetadataType(exactTypes, semanticModel, "System.NullReferenceException");
+                break;
+
+            case IArrayElementReferenceOperation:
+                AddMetadataType(exactTypes, semanticModel, "System.NullReferenceException");
+                AddMetadataType(exactTypes, semanticModel, "System.IndexOutOfRangeException");
+                break;
+
+            case IObjectCreationOperation { Type: { } creationType } creation
+                when IsTopLevelSystemExceptionConstruction(
+                    creation, terminalThrow, semanticModel):
+                AddExactType(exactTypes, creationType);
+                break;
+
+            default:
+                AddExactType(exactTypes, caughtType);
+                break;
+        }
+
+        return exactTypes.Any(candidate =>
+            CanCatchExactType(candidate, caughtType, catchClause) &&
+            ExactExceptionEscapesNestedTries(
+                candidate, operation.Syntax, targetTry, semanticModel));
+    }
+
+    private static bool IsTopLevelSystemExceptionConstruction(
+        IObjectCreationOperation creation,
+        ThrowStatementSyntax terminalThrow,
+        SemanticModel semanticModel)
+    {
+        var exceptionType = semanticModel.Compilation
+            .GetTypeByMetadataName("System.Exception");
+        var terminalOperand = UnwrapTerminalThrowOperand(
+            semanticModel.GetOperation(terminalThrow) is IThrowOperation throwOperation
+                ? throwOperation.Exception
+                : null);
+        var namespaceName = creation.Type?.ContainingNamespace?.ToDisplayString();
+        return creation.Type != null &&
+               exceptionType != null &&
+               terminalOperand?.Syntax.Span == creation.Syntax.Span &&
+               (namespaceName == "System" ||
+                namespaceName?.StartsWith(
+                    "System.", System.StringComparison.Ordinal) == true) &&
+               SymbolEqualityComparer.Default.Equals(
+                   creation.Type.ContainingAssembly,
+                   exceptionType.ContainingAssembly) &&
+               IsSameOrDerivedFrom(creation.Type, exceptionType);
+    }
+
+    private static IOperation? UnwrapTerminalThrowOperand(IOperation? operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { OperatorMethod: null } conversion:
+                    operation = conversion.Operand;
+                    continue;
+
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+
+                default:
+                    return operation;
+            }
+        }
+    }
+
+    private static void AddMetadataType(
+        List<ITypeSymbol> types,
+        SemanticModel semanticModel,
+        string metadataName)
+    {
+        if (semanticModel.Compilation.GetTypeByMetadataName(metadataName) is { } type)
+            AddExactType(types, type);
     }
 
     private static bool MemberPathIsPrefix(

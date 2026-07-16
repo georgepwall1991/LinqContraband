@@ -750,8 +750,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         SyntaxNode throwSyntax,
         SemanticModel semanticModel)
     {
-        if (throwOperation.Exception?.Type is { } explicitType)
-            return explicitType;
+        if (throwSyntax is ThrowStatementSyntax { Expression: { } expression })
+        {
+            return semanticModel.GetTypeInfo(expression).Type ??
+                   throwOperation.Exception?.Type;
+        }
 
         if (throwSyntax is not ThrowStatementSyntax { Expression: null })
             return null;

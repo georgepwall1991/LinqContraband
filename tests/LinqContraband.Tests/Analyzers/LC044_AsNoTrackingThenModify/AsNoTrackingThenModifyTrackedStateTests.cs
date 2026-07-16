@@ -585,6 +585,213 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ThrowConstructorCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class CustomException : System.InvalidOperationException
+    {
+        public CustomException()
+        {
+            throw new System.ArgumentException();
+        }
+    }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw new CustomException();
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when construction reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NestedMetadataConstructorCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, int count)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw new System.InvalidOperationException(new string('x', count));
+            }
+            catch (System.ArgumentOutOfRangeException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when nested metadata construction reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UserDefinedSystemNamespaceConstructorCanReachAlternateCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace System.Custom
+{
+    public sealed class UserException : Exception
+    {
+        public UserException() => throw new ArgumentException();
+    }
+}
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw new System.Custom.UserException();
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.Custom.UserException)
+            {
+                ctx.Attach(u);
+            }
+            {|LC044:u.Name|} = ""lost when the source constructor reaches the alternate catch"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ParenthesizedSystemException_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw (new System.InvalidOperationException());
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ParenthesizedNestedSystemException_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw (new System.IO.IOException());
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.IO.IOException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted whenever the mutation is reached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_FieldOperandCannotReachAlternateCatch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class Holder { public System.InvalidOperationException Exception; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, Holder holder)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                throw holder.Exception;
+            }
+            catch (System.ArgumentException)
+            {
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+            u.Name = ""persisted on every path that reaches the mutation"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MandatoryCatchPriorAttach_AlternateCatchAlsoAttaches_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
