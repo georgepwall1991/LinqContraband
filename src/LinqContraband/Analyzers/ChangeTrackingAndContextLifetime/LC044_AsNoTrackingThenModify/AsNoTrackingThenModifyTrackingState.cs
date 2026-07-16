@@ -478,7 +478,52 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         var semanticModel = reattach.SemanticModel ?? mutation.SemanticModel;
         var tryOperation = semanticModel?.GetOperation(tryStatement.Block);
         return tryOperation != null &&
-               CatchClauseIsMandatoryFrom(catchClause, tryOperation, mutation);
+               CatchClauseIsMandatoryFrom(catchClause, tryOperation, mutation) &&
+               !HasAlternateMutationReachingCatchBeforeMandatoryThrow(
+                   tryStatement, catchClause, tryOperation, mutation) &&
+               !HasPotentiallyThrowingOperationSkippingRequired(
+                   tryOperation, reattach, mutation) &&
+               !HasCaughtThrowSkippingRequired(
+                   tryOperation, reattach, mutation);
+    }
+
+    private static bool HasAlternateMutationReachingCatchBeforeMandatoryThrow(
+        TryStatementSyntax tryStatement,
+        CatchClauseSyntax requiredCatch,
+        IOperation tryOperation,
+        IOperation mutation)
+    {
+        if (tryStatement.Block.Statements.LastOrDefault() is not ThrowStatementSyntax terminalThrow)
+            return false;
+
+        var hasEarlierPotentialTransfer = tryOperation.Descendants()
+            .Any(operation =>
+                operation.Syntax.SpanStart < terminalThrow.SpanStart &&
+                !operation.Syntax.AncestorsAndSelf()
+                    .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) &&
+                IsImplicitlyPotentiallyThrowingOperation(operation) &&
+                tryOperation.SharesOwningExecutableRoot(operation));
+        if (!hasEarlierPotentialTransfer) return false;
+
+        foreach (var catchClause in tryStatement.Catches)
+        {
+            if (ReferenceEquals(catchClause, requiredCatch)) continue;
+
+            if (catchClause.Filter?.FilterExpression is { } filterExpression)
+            {
+                var constant = mutation.SemanticModel?.GetConstantValue(filterExpression);
+                if (constant is { HasValue: true, Value: false })
+                    continue;
+            }
+
+            if (!StatementSkipsLater(catchClause.Block, mutation.Syntax) ||
+                CatchHandlerCanReachLater(catchClause, mutation))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool MemberPathIsPrefix(
