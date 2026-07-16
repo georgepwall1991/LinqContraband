@@ -6,7 +6,7 @@ title: "Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent dat
 # Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss
 
 ## Goal
-Detect the chain `AsNoTracking origin → property mutation → SaveChanges on the same context` when no re-attach (`Update` / `Attach` / `Entry(entity).State = Modified | Added`) intervenes. In this pattern EF Core silently persists nothing — no exception, no log — and callers typically spend hours debugging why their update "didn't stick".
+Detect the chain `AsNoTracking origin → property or nested-member mutation → SaveChanges on the same context` when no re-attach (`Update` / `Attach` / `Entry(entity).State = Modified | Added`) intervenes. In this pattern EF Core silently persists nothing — no exception, no log — and callers typically spend hours debugging why their update "didn't stick".
 
 ## The Problem
 `AsNoTracking()` tells EF Core not to track the entity in the change tracker. A subsequent property mutation has no effect on the DbContext state, and `SaveChanges` returns `0`. Because there is no diagnostic at runtime, silent data loss is extremely hard to notice until production traffic discovers missing updates.
@@ -16,6 +16,13 @@ Detect the chain `AsNoTracking origin → property mutation → SaveChanges on t
 // Silent data loss: `SaveChanges` persists nothing.
 var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
 user.Name = "New Name";
+db.SaveChanges();
+```
+
+The same loss occurs when a property on the materialized entity graph is changed:
+```csharp
+var user = db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
+user.Address.City = "London";
 db.SaveChanges();
 ```
 
@@ -46,7 +53,7 @@ db.SaveChanges();
 3. **Origin scan**: in the same executable root, collect local declarations whose initializer is a materializer invocation (`First`, `FirstOrDefault`, `Single`, `ToList`, async variants, …) and whose chain contains `AsNoTracking`. Collect `foreach` loops whose collection chain contains `AsNoTracking`. The chain scan honours the **last** tracking directive (each `AsTracking()`/`AsNoTracking()` overwrites `QueryTrackingBehavior`): `AsNoTracking().AsTracking()` is tracked and does **not** report, while `AsTracking().AsNoTracking()` is untracked and does.
 4. **Same-context gate**: extract the DbSet-owner context symbol from the query chain and require `SymbolEqualityComparer` match against the SaveChanges context symbol.
 5. **Single-assignment gate**: skip locals that are assigned more than once (ambiguous dataflow).
-6. **Mutation scan**: find the first property mutation whose target is an `IPropertyReferenceOperation` instance-referencing the local, positioned between the local's declaration and the SaveChanges. A plain assignment (`entity.Prop = …`), a compound assignment (`entity.Prop += …`), and an increment/decrement (`entity.Prop++`) all count — each mutates the untracked entity and is silently lost.
+6. **Mutation scan**: find the first property mutation whose property/field receiver chain is rooted in the local, positioned between the local's declaration and the SaveChanges. Both direct writes (`entity.Prop = …`) and nested graph writes (`entity.Owned.Prop = …`) count. Plain assignments, compound assignments (`entity.Prop += …`), and increment/decrement operations (`entity.Prop++`) are all mutations of the untracked graph and are silently lost. Any receiver member explicitly marked `[NotMapped]` ends the chain so transient UI/domain state is not treated as an EF write.
 7. **Block reachability**: the mutation must be in the same executable root as the SaveChanges and reachable from it. The mutation's block and the SaveChanges's block must be on the same branch (one is the same block, an ancestor, or a descendant of the other); blocks that are siblings under different `if`/`else` branches or `switch` sections do not reach each other. Explicit `return`/`throw` terminators between the mutation and the SaveChanges break reachability.
 8. **Earlier-save gate**: if another SaveChanges on the same context already ran between the mutation and the current one, this anchor is not the silent-write site; skip.
 9. **Re-attach gate**: scan for `DbContext.Update/Attach/UpdateRange/AttachRange`, their `DbSet` counterparts, or `DbContext.Entry(entity).State = EntityState.Modified | Added` — on the same context, with the entity as the argument. A re-attach after the mutation and before SaveChanges suppresses the diagnostic only when it is not invalidated by a reachable `Entry(entity).State = Detached` or `ChangeTracker.Clear()` before SaveChanges. A re-attach before the mutation also suppresses only when it dominates the mutation path and remains valid through SaveChanges; an optional branch re-attach is not enough.
@@ -62,6 +69,7 @@ db.SaveChanges();
 - Mutation sits inside a branch that's not an ancestor of the SaveChanges's block (e.g., an `if` branch that returns or throws early, or a sibling branch the SaveChanges cannot reach).
 - Entity arrives as a parameter from outside the method (v1 scope is intra-procedural; cross-method is future work).
 - A different entity is mutated (symbol identity on `ILocalSymbol` prevents cross-entity confusion).
+- A source-visible member in the receiver chain is marked `[NotMapped]`.
 - Mutation is a collection member call (`list.Add(x)`), not an entity property assignment.
 
 ## Test Cases

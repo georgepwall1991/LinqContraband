@@ -86,6 +86,79 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_ThenMutateNestedMemberProperty_ThenSaveChanges_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address Address { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            {|LC044:user.Address.City|} = ""London"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ThenMutateNestedFieldMemberProperty_ThenSaveChanges_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class User { public int Id { get; set; } public Address AddressField; }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            {|LC044:user.AddressField.City|} = ""London"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_ThenMutateNotMappedNestedMember_ThenSaveChanges_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class UiState { public string Theme { get; set; } }
+    public class User
+    {
+        public int Id { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public UiState UiState { get; set; }
+    }
+
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().FirstOrDefault(u => u.Id == 1);
+            user.UiState.Theme = ""dark"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTrackingThenAsTracking_ThenMutate_ThenSave_DoesNotTrigger()
     {
         // AsTracking() overrides the earlier AsNoTracking() (last tracking directive wins), so the

@@ -33,14 +33,60 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
     private static void HandlePropertyMutation(AsNoTrackingThenModifyRootScan scan, IOperation mutation, IOperation? target)
     {
         if (target is IPropertyReferenceOperation propRef &&
-            propRef.Instance?.UnwrapConversions() is ILocalReferenceOperation instanceLocal)
+            !HasNotMappedAttribute(propRef.Property) &&
+            TryGetMutationRootLocal(propRef.Instance, out var rootLocal))
         {
-            AddMutation(scan, instanceLocal.Local, new MutationEntry(
+            AddMutation(scan, rootLocal, new MutationEntry(
                 mutation,
                 propRef.Syntax.GetLocation(),
                 propRef.Property.Name,
                 mutation.Syntax.SpanStart));
         }
+    }
+
+    private static bool TryGetMutationRootLocal(IOperation? instance, out ILocalSymbol rootLocal)
+    {
+        var current = instance?.UnwrapConversions();
+        while (current != null)
+        {
+            switch (current)
+            {
+                case IPropertyReferenceOperation propertyReference
+                    when !HasNotMappedAttribute(propertyReference.Property):
+                    current = propertyReference.Instance?.UnwrapConversions();
+                    continue;
+
+                case IFieldReferenceOperation fieldReference
+                    when !HasNotMappedAttribute(fieldReference.Field):
+                    current = fieldReference.Instance?.UnwrapConversions();
+                    continue;
+
+                case ILocalReferenceOperation localReference:
+                    rootLocal = localReference.Local;
+                    return true;
+
+                default:
+                    rootLocal = null!;
+                    return false;
+            }
+        }
+
+        rootLocal = null!;
+        return false;
+    }
+
+    private static bool HasNotMappedAttribute(ISymbol member)
+    {
+        foreach (var attribute in member.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() ==
+                "System.ComponentModel.DataAnnotations.Schema.NotMappedAttribute")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void HandleInvocation(

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC044` now follows nested property- and field-receiver chains back to an entity materialized by `AsNoTracking()`, so silently lost graph mutations such as `user.Address.City = value` report before same-context `SaveChanges()` just like direct entity-property writes, while source-visible `[NotMapped]` members remain excluded.
+
 ## [5.6.46] - 2026-07-16
 
 ### Fixed
