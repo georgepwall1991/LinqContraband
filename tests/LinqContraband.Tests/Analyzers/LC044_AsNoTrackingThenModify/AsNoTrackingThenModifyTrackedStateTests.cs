@@ -646,6 +646,96 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_Mutate_ComplementaryBranchReattach_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool useUpdate)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            u.Name = ""persisted"";
+            if (useUpdate)
+                ctx.Update(u);
+            else
+                ctx.Attach(u);
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_OptionalNestedComplementaryBranchReattach_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool reattach, bool useUpdate)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when reattach is false"";
+            if (reattach)
+            {
+                if (useUpdate)
+                    ctx.Update(u);
+                else
+                    ctx.Attach(u);
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_Mutate_CaughtThrowSkipsComplementaryBranchReattach_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool useUpdate, bool fail)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            {|LC044:u.Name|} = ""lost when fail is true"";
+            try
+            {
+                if (useUpdate)
+                {
+                    if (fail)
+                        throw new System.InvalidOperationException();
+                    ctx.Update(u);
+                }
+                else
+                {
+                    ctx.Attach(u);
+                }
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_Mutate_ContextUpdate_ThenSave_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
