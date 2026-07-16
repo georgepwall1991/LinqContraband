@@ -16,6 +16,8 @@ namespace LinqContraband.Analyzers.LC034_AvoidExecuteSqlRawWithInterpolation;
 [Shared]
 public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer : CodeFixProvider
 {
+    private const string FixAllEquivalenceKey = "UseSafeExecuteSql";
+
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidExecuteSqlRawWithInterpolationAnalyzer.DiagnosticId);
 
@@ -53,7 +55,15 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer : CodeFixPr
         if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax interpolatedSql)
             return;
 
-        if (HasInterpolationInsideSqlStringLiteral(interpolatedSql))
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel is null ||
+            HasInterpolationWithoutProvenParameterType(interpolatedSql, semanticModel, context.CancellationToken))
+            return;
+
+        if (HasInterpolationInsideSqlStringLiteral(interpolatedSql) ||
+            HasInterpolationInsideDelimitedIdentifier(interpolatedSql) ||
+            ContainsAmbiguousSqlBoundary(interpolatedSql) ||
+            HasInterpolationOutsideLikelySqlValuePosition(interpolatedSql))
             return;
 
         if (invocation.ArgumentList.Arguments.Count != 1)
@@ -63,7 +73,7 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer : CodeFixPr
             CodeAction.Create(
                 $"Replace with {replacementName}",
                 cancellationToken => ApplyFixAsync(context.Document, memberAccess, replacementName, cancellationToken),
-                replacementName),
+                FixAllEquivalenceKey),
             diagnostic);
     }
 

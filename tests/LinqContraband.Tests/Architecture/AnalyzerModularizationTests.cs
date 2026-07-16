@@ -4088,7 +4088,7 @@ public sealed class AnalyzerModularizationTests
         Assert.DoesNotContain("private static bool HasInterpolationInsideSqlStringLiteral", fixerSource);
         Assert.DoesNotContain("private static bool HasInterpolationOutsideLikelySqlValuePosition", fixerSource);
         Assert.DoesNotContain("private static bool IsLikelySqlValuePosition", fixerSource);
-        Assert.DoesNotContain("private static bool ToggleSqlStringLiteralState", fixerSource);
+        Assert.DoesNotContain("private static void UpdateSqlDelimiterState", fixerSource);
 
         var sqlSafetySource = File.ReadAllText(sqlSafetyPath);
         Assert.Contains("private static bool HasInterpolationInsideSqlStringLiteral", sqlSafetySource);
@@ -6165,12 +6165,12 @@ public sealed class AnalyzerModularizationTests
         Assert.Contains("public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer", fixerSource);
         Assert.DoesNotContain("private static ArgumentSyntax? GetSqlArgument", fixerSource);
         Assert.DoesNotContain("private static bool HasInterpolationInsideSqlStringLiteral", fixerSource);
-        Assert.DoesNotContain("private static bool ToggleSqlStringLiteralState", fixerSource);
+        Assert.DoesNotContain("private static void UpdateSqlDelimiterState", fixerSource);
 
         var sqlArgumentSource = File.ReadAllText(sqlArgumentPath);
         Assert.Contains("private static ArgumentSyntax? GetSqlArgument", sqlArgumentSource);
         Assert.Contains("private static bool HasInterpolationInsideSqlStringLiteral", sqlArgumentSource);
-        Assert.Contains("private static bool ToggleSqlStringLiteralState", sqlArgumentSource);
+        Assert.Contains("private static void UpdateSqlDelimiterState", sqlArgumentSource);
         Assert.Contains("InterpolationSyntax when insideSqlStringLiteral", sqlArgumentSource);
     }
 

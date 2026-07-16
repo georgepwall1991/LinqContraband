@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `LC034` no longer offers the `ExecuteSql`/`ExecuteSqlAsync` rewrite when an interpolated hole occupies a structural SQL position, lies inside a bracketed, double-quoted, or backtick-delimited identifier, follows a provider-style backslash-escaped quote, is adjacent to another hole, uses a custom, generic, enum, or framework-type lookalike value, or belongs to provider-specific, commented, or multi-statement SQL. Quote tracking now ignores apostrophes inside delimited identifiers, and FixAll handles mixed synchronous/asynchronous calls; automatic fixes remain limited to proven core-library scalar values in unambiguous `UPDATE`/`DELETE`/`INSERT` value positions while the security diagnostic stays available for manual allow-listing or redesign.
+
 ## [5.6.45] - 2026-07-16
 
 ### Fixed
