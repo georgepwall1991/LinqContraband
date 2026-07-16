@@ -1726,7 +1726,7 @@ db.SaveChanges();
   still reports because another path can mutate and save the entity while it remains untracked.
   Explicit detach (`Entry(entity).State = Detached`) or `ChangeTracker.Clear()` before `SaveChanges` also keeps LC044 live.
 - Nested graph proof distinguishes constant indexer arguments without sentinel collisions and excludes unconfigured
-  field-only paths. Exception flow includes exact and implicit try-to-catch/finally saves plus calls, condition
+  field-only paths. Exception flow includes exact and implicit try-to-catch/finally saves plus calls before branch persistence, condition
   evaluations, property getters, and indexers that can bypass persistence into a handler that still reaches `SaveChanges`.
 - Ambiguous dataflow, mutations in branches that never reach `SaveChanges`, and entities that arrive as parameters are
   intentionally skipped to keep false positives at zero.

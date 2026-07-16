@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Collections.Generic;
 using System.Linq;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
@@ -109,7 +110,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 !reachesSave ||
                 (rejectCaughtThrow &&
                  (HasCaughtThrowSkippingRequired(mutation, entry.Operation, save) ||
-                  CatchContainsCaughtThrowSkippingRequired(entry, save))))
+                  CatchContainsCaughtThrowSkippingRequired(entry, save) ||
+                  BranchContainsImplicitTransferBeforeReattach(
+                      branch, entry.Operation, save))))
             {
                 continue;
             }
@@ -130,6 +133,33 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 .Any(statement => statement.SpanStart < entry.SpanStart &&
                                   statement is GotoStatementSyntax or BreakStatementSyntax or ContinueStatementSyntax);
             if (!hasBranchSkippingReattach)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool BranchContainsImplicitTransferBeforeReattach(
+        StatementSyntax branch,
+        IOperation reattach,
+        IOperation save)
+    {
+        var branchOperation = reattach.SemanticModel?.GetOperation(branch);
+        if (branchOperation == null) return false;
+
+        foreach (var operation in branchOperation.Descendants())
+        {
+            if (operation.Syntax.SpanStart >= reattach.Syntax.SpanStart ||
+                reattach.Syntax.Span.Contains(operation.Syntax.Span) ||
+                operation.Syntax.AncestorsAndSelf()
+                    .Any(syntax => syntax is ThrowStatementSyntax or ThrowExpressionSyntax) ||
+                !IsImplicitlyPotentiallyThrowingOperation(operation) ||
+                !reattach.SharesOwningExecutableRoot(operation))
+            {
+                continue;
+            }
+
+            if (CanTransferToFallThroughCatch(operation, save))
                 return true;
         }
 
