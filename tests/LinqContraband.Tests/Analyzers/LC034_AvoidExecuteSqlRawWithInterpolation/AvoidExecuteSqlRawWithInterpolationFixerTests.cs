@@ -168,6 +168,8 @@ namespace TestApp
     [InlineData(@"$""UPDATE {tableId} SET IsActive = 0""")]
     [InlineData(@"$""DELETE FROM Users WHERE {columnId} = 1""")]
     [InlineData(@"$""EXEC {procedureId} {id}""")]
+    [InlineData(@"$""INSERT INTO {tableId} (Id) VALUES (1)""")]
+    [InlineData(@"$""INSERT INTO Users ({columnId}) VALUES (1)""")]
     public async Task Fixer_ShouldNotRegister_WhenInterpolationIsSqlStructure(string sqlExpression)
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
@@ -276,6 +278,114 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldRegister_ForInsertValues()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:$""INSERT INTO Users (Id) VALUES ({id})""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSql($""INSERT INTO Users (Id) VALUES ({id})"");
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRegister_ForMultipleInsertValues()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id, int tenantId)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:$""INSERT INTO Users (Id, TenantId) VALUES ({id}, {tenantId})""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id, int tenantId)
+        {
+            var result = db.Database.ExecuteSql($""INSERT INTO Users (Id, TenantId) VALUES ({id}, {tenantId})"");
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldRegister_ForMultipleInsertRows()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int firstId, int secondId)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:$""INSERT INTO Users (Id) VALUES ({firstId}), ({secondId})""|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int firstId, int secondId)
+        {
+            var result = db.Database.ExecuteSql($""INSERT INTO Users (Id) VALUES ({firstId}), ({secondId})"");
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task Fixer_ShouldNotRegister_WhenInsertValueIsSqlExpression()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int id)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:$""INSERT INTO Users (Id) VALUES ({id} + 1)""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task Fixer_ShouldNotRegister_WhenValueTypeIsUserDefined()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
@@ -380,6 +490,66 @@ namespace TestApp
         public void Run(DbContext db, int value)
         {
             var result = db.Database.ExecuteSqlRaw({|LC034:$""UPDATE Users SET Value = {value}; DELETE FROM Audit""|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Theory]
+    [InlineData("$\"UPDATE Users SET Value = $tag$prefix={value}$tag$\"")]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationIsInsideDollarQuotedLiteral(string sqlExpression)
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int value)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:" + sqlExpression + @"|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Theory]
+    [InlineData("$\"UPDATE Users SET Value = {value:D}\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value,10}\"")]
+    public async Task Fixer_ShouldNotRegister_WhenInterpolationHasFormatOrAlignment(string sqlExpression)
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int value)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:" + sqlExpression + @"|});
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, test);
+    }
+
+    [Theory]
+    [InlineData("$\"UPDATE Users SET Value = {value}\\nDELETE FROM Audit\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value}\\nGO\\nSELECT 1\"")]
+    [InlineData("$\"UPDATE Users SET Value = {value} # provider comment\"")]
+    public async Task Fixer_ShouldNotRegister_ForAdditionalBatchOrProviderComment(string sqlExpression)
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db, int value)
+        {
+            var result = db.Database.ExecuteSqlRaw({|LC034:" + sqlExpression + @"|});
         }
     }
 }";

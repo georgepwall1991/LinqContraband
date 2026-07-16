@@ -80,7 +80,8 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
             }
         }
 
-        return false;
+        return StartsWithSqlCommand(sqlBeforeInterpolation, "INSERT") &&
+               !HasOnlyDirectInsertValues(sqlBeforeInterpolation);
     }
 
     private static bool HasInterpolationInsideDelimitedIdentifier(
@@ -119,6 +120,9 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
     {
         foreach (var interpolation in interpolatedSql.Contents.OfType<InterpolationSyntax>())
         {
+            if (interpolation.AlignmentClause is not null || interpolation.FormatClause is not null)
+                return true;
+
             var type = semanticModel.GetTypeInfo(interpolation.Expression, cancellationToken).Type;
             if (!IsProvenSqlParameterType(type, semanticModel.Compilation))
                 return true;
@@ -139,6 +143,9 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
         if (EndsWithSqlValueOperator(trimmed))
             return true;
 
+        if (IsLikelyInsertValuesPosition(trimmed))
+            return true;
+
         var words = trimmed.Split(
             new[] { ' ', '\t', '\r', '\n', '(', ')', ',', ';', '=' },
             System.StringSplitOptions.RemoveEmptyEntries);
@@ -150,6 +157,108 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
             return true;
 
         return false;
+    }
+
+    private static bool IsLikelyInsertValuesPosition(string sqlBeforeInterpolation)
+    {
+        if (!StartsWithSqlCommand(sqlBeforeInterpolation, "INSERT"))
+            return false;
+
+        var valuesIndex = LastIndexOfSqlWord(sqlBeforeInterpolation, "VALUES");
+        if (valuesIndex < 0)
+            return false;
+
+        var tail = sqlBeforeInterpolation.Substring(valuesIndex + "VALUES".Length);
+        var trimmedTail = tail.TrimEnd();
+        if (trimmedTail.Length == 0 ||
+            (trimmedTail[trimmedTail.Length - 1] != '(' && trimmedTail[trimmedTail.Length - 1] != ','))
+            return false;
+
+        return tail.All(character =>
+            char.IsWhiteSpace(character) || character is '(' or ')' or ',' or '?');
+    }
+
+    private static bool HasOnlyDirectInsertValues(string sql)
+    {
+        var valuesIndex = LastIndexOfSqlWord(sql, "VALUES");
+        if (valuesIndex < 0)
+            return false;
+
+        var tail = sql.Substring(valuesIndex + "VALUES".Length);
+        var index = 0;
+        SkipWhitespace(tail, ref index);
+
+        var hasRow = false;
+        while (index < tail.Length)
+        {
+            if (tail[index] != '(')
+                return false;
+
+            index++;
+            while (true)
+            {
+                SkipWhitespace(tail, ref index);
+                if (index >= tail.Length || tail[index] != '?')
+                    return false;
+
+                index++;
+                SkipWhitespace(tail, ref index);
+                if (index >= tail.Length)
+                    return false;
+
+                if (tail[index] == ')')
+                {
+                    index++;
+                    break;
+                }
+
+                if (tail[index] != ',')
+                    return false;
+
+                index++;
+            }
+
+            hasRow = true;
+            SkipWhitespace(tail, ref index);
+            if (index == tail.Length)
+                return hasRow;
+
+            if (tail[index] != ',')
+                return false;
+
+            index++;
+            SkipWhitespace(tail, ref index);
+        }
+
+        return false;
+    }
+
+    private static void SkipWhitespace(string text, ref int index)
+    {
+        while (index < text.Length && char.IsWhiteSpace(text[index]))
+            index++;
+    }
+
+    private static int LastIndexOfSqlWord(string sql, string word)
+    {
+        for (var index = sql.Length - word.Length; index >= 0; index--)
+        {
+            if (string.Compare(sql, index, word, 0, word.Length, System.StringComparison.OrdinalIgnoreCase) != 0)
+                continue;
+
+            var hasWordBefore = index > 0 && IsSqlWordCharacter(sql[index - 1]);
+            var afterIndex = index + word.Length;
+            var hasWordAfter = afterIndex < sql.Length && IsSqlWordCharacter(sql[afterIndex]);
+            if (!hasWordBefore && !hasWordAfter)
+                return index;
+        }
+
+        return -1;
+    }
+
+    private static bool IsSqlWordCharacter(char character)
+    {
+        return char.IsLetterOrDigit(character) || character == '_';
     }
 
     private static bool IsProvenSqlParameterType(ITypeSymbol? type, Compilation compilation)
@@ -188,6 +297,13 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
 
     private static bool StartsWithSupportedDmlCommand(string sql)
     {
+        return StartsWithSqlCommand(sql, "UPDATE") ||
+               StartsWithSqlCommand(sql, "DELETE") ||
+               StartsWithSqlCommand(sql, "INSERT");
+    }
+
+    private static bool StartsWithSqlCommand(string sql, string command)
+    {
         var trimmed = sql.TrimStart();
         var wordLength = 0;
         while (wordLength < trimmed.Length && char.IsLetter(trimmed[wordLength]))
@@ -196,24 +312,84 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationFixer
         if (wordLength == 0)
             return false;
 
-        var command = trimmed.Substring(0, wordLength);
-        return command.Equals("UPDATE", System.StringComparison.OrdinalIgnoreCase) ||
-               command.Equals("DELETE", System.StringComparison.OrdinalIgnoreCase) ||
-               command.Equals("INSERT", System.StringComparison.OrdinalIgnoreCase);
+        return trimmed.Substring(0, wordLength).Equals(command, System.StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsAmbiguousSqlBoundary(string sql)
     {
         return sql.IndexOf(';') >= 0 ||
                sql.IndexOf("--", System.StringComparison.Ordinal) >= 0 ||
-               sql.IndexOf("/*", System.StringComparison.Ordinal) >= 0;
+               sql.IndexOf("/*", System.StringComparison.Ordinal) >= 0 ||
+               sql.IndexOf('#') >= 0 ||
+               LastIndexOfSqlWord(sql, "GO") >= 0 ||
+               ContainsAdditionalDmlCommand(sql) ||
+               ContainsPostgreSqlDollarQuoteDelimiter(sql);
     }
 
     private static bool ContainsAmbiguousSqlBoundary(InterpolatedStringExpressionSyntax interpolatedSql)
     {
-        return interpolatedSql.Contents
-            .OfType<InterpolatedStringTextSyntax>()
-            .Any(text => ContainsAmbiguousSqlBoundary(text.TextToken.ValueText));
+        var sql = string.Empty;
+        foreach (var content in interpolatedSql.Contents)
+        {
+            sql += content is InterpolatedStringTextSyntax text
+                ? text.TextToken.ValueText
+                : "?";
+        }
+
+        return ContainsAmbiguousSqlBoundary(sql);
+    }
+
+    private static bool ContainsAdditionalDmlCommand(string sql)
+    {
+        return CountSqlWord(sql, "UPDATE") +
+               CountSqlWord(sql, "DELETE") +
+               CountSqlWord(sql, "INSERT") > 1;
+    }
+
+    private static int CountSqlWord(string sql, string word)
+    {
+        var count = 0;
+        for (var index = 0; index <= sql.Length - word.Length; index++)
+        {
+            if (string.Compare(sql, index, word, 0, word.Length, System.StringComparison.OrdinalIgnoreCase) != 0)
+                continue;
+
+            var hasWordBefore = index > 0 && IsSqlWordCharacter(sql[index - 1]);
+            var afterIndex = index + word.Length;
+            var hasWordAfter = afterIndex < sql.Length && IsSqlWordCharacter(sql[afterIndex]);
+            if (!hasWordBefore && !hasWordAfter)
+            {
+                count++;
+                index += word.Length - 1;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool ContainsPostgreSqlDollarQuoteDelimiter(string sql)
+    {
+        for (var index = 0; index < sql.Length; index++)
+        {
+            if (sql[index] != '$')
+                continue;
+
+            var tagIndex = index + 1;
+            if (tagIndex < sql.Length && sql[tagIndex] == '$')
+                return true;
+
+            if (tagIndex >= sql.Length || (!char.IsLetter(sql[tagIndex]) && sql[tagIndex] != '_'))
+                continue;
+
+            tagIndex++;
+            while (tagIndex < sql.Length && IsSqlWordCharacter(sql[tagIndex]))
+                tagIndex++;
+
+            if (tagIndex < sql.Length && sql[tagIndex] == '$')
+                return true;
+        }
+
+        return false;
     }
 
     private static bool EndsWithSqlValueOperator(string text)

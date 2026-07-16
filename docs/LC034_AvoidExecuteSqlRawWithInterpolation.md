@@ -51,14 +51,18 @@ The fixer is also withheld for SQL structure that database parameters cannot rep
 stored-procedure identifiers such as `DELETE FROM {tableName}`, `WHERE {columnName} = 1`, or `EXEC {procedureName}`.
 String, object, dynamic, and collection holes stay manual even after a comparison operator because the fixer cannot prove
 whether they represent a scalar value or a structural fragment. User-defined structs, enums, and generic type parameters
-also stay manual because the fixer cannot prove provider mappings or formatting behaviour. Adjacent holes and
-provider-specific, commented, or multi-statement SQL stay manual rather than reusing an earlier value-position
-assumption. Framework-scalar lookalikes declared by application source are not treated as framework types.
+also stay manual because the fixer cannot prove provider mappings or formatting behaviour. Formatted or aligned holes,
+adjacent holes, PostgreSQL dollar-quoted literals, provider comments such as MySQL `#`, batch separators such as `GO`,
+and other multi-statement SQL stay manual rather than reusing an earlier value-position assumption. Framework-scalar
+lookalikes declared by application source are not treated as framework types.
 Provider-style backslash-escaped quotes are treated as
 remaining inside the SQL literal. Interpolation inside bracketed, double-quoted, or backtick-delimited SQL identifiers
 also remains manual, including identifiers that use doubled closing delimiters; apostrophes inside those identifiers do
 not alter later SQL-string tracking. FixAll uses one shared action identity for mixed `ExecuteSqlRaw` and
 `ExecuteSqlRawAsync` diagnostics while preserving the correct safe sibling for each call.
+For `INSERT`, the fixer recognises direct scalar holes in complete `VALUES (...)` rows, including multiple parameters and
+multiple rows, but keeps interpolated table names, column names, SQL expressions around a hole, and other ambiguous
+INSERT shapes manual.
 Keep the diagnostic and redesign the query around constant SQL, or select the structural fragment from a strict
 application-owned allow-list before constructing the command.
 
