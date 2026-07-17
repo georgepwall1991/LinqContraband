@@ -355,6 +355,63 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
     }
 
+    [Theory]
+    [InlineData("DisableCustomerMutator ignored; ignored = builder;")]
+    [InlineData("DisableCustomerMutator ignored = builder;")]
+    public async Task TestCrime_AppliedConfigurationBuilderUserDefinedConversion_DoesNotSuppress(
+        string conversion
+    )
+    {
+        var test =
+            Usings
+            + @"
+class DisableCustomerMutator
+{
+    public static implicit operator DisableCustomerMutator(
+        Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude(false);
+        return new DisableCustomerMutator();
+    }
+}
+
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude();
+        "
+            + conversion
+            + @"
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
     [Fact]
     public async Task TestCrime_AppliedConfigurationBuilderFieldEscape_DoesNotSuppress()
     {

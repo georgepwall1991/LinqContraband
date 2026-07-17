@@ -184,18 +184,64 @@ public sealed partial class MissingIncludeAnalyzer
             if (
                 semanticModel.GetOperation(assignmentSyntax, cancellationToken)
                     is IAssignmentOperation assignment
-                && assignment.Target.UnwrapConversions()
-                    is not (ILocalReferenceOperation or IDiscardOperation)
-                && (ReferencesParameter(
-                        assignment.Value,
+            )
+            {
+                if (
+                    assignment.Value is IConversionOperation
+                    {
+                        OperatorMethod: not null,
+                    } conversion
+                    && ReferencesParameter(
+                        conversion.Operand,
                         builderParameter,
                         cancellationToken
                     )
-                    || ReferencesParameter(
-                        assignment.Target,
-                        builderParameter,
-                        cancellationToken
-                    ))
+                )
+                {
+                    return true;
+                }
+
+                if (
+                    assignment.Target.UnwrapConversions()
+                        is not (ILocalReferenceOperation or IDiscardOperation)
+                    && (ReferencesParameter(
+                            assignment.Value,
+                            builderParameter,
+                            cancellationToken
+                        )
+                        || ReferencesParameter(
+                            assignment.Target,
+                            builderParameter,
+                            cancellationToken
+                        ))
+                )
+                {
+                    return true;
+                }
+            }
+        }
+
+        foreach (
+            var variableSyntax in configureSyntax
+                .DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+        )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                semanticModel.GetOperation(variableSyntax, cancellationToken)
+                    is IVariableDeclaratorOperation
+                {
+                    Initializer.Value: IConversionOperation
+                    {
+                        OperatorMethod: not null,
+                    } conversion,
+                }
+                && ReferencesParameter(
+                    conversion.Operand,
+                    builderParameter,
+                    cancellationToken
+                )
             )
             {
                 return true;
