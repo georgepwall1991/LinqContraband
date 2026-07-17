@@ -48,6 +48,7 @@ public sealed partial class MissingIncludeAnalyzer
                 entityType,
                 out var configureMethod
             )
+            || configureMethod.IsAsync
             || configureMethod.Parameters.Length != 1
             || configureMethod.Parameters[0].Type is not INamedTypeSymbol builderType
             || !IsEfBuilderType(builderType, "EntityTypeBuilder")
@@ -218,6 +219,28 @@ public sealed partial class MissingIncludeAnalyzer
                         cancellationToken
                     )
                     || IsEfConfigurationBuilderType(argument.Value.Type)
+                )
+            )
+            {
+                return true;
+            }
+        }
+
+        foreach (
+            var elementAccessSyntax in configureSyntax
+                .DescendantNodes()
+                .OfType<ElementAccessExpressionSyntax>()
+        )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                semanticModel.GetOperation(elementAccessSyntax, cancellationToken)
+                    is IPropertyReferenceOperation propertyReference
+                && propertyReference.Property.IsIndexer
+                && ReferencesParameter(
+                    propertyReference,
+                    builderParameter,
+                    cancellationToken
                 )
             )
             {
