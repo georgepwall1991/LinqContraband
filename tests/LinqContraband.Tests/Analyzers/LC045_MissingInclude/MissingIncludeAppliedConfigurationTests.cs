@@ -195,6 +195,20 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_AppliedConfigurationCapturedBuilderAlias_DoesNotSuppress()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"var alias = builder;
+        void Disable() => alias.Navigation(o => o.Customer).AutoInclude(false);
+        builder.Navigation(o => o.Customer).AutoInclude();
+        Disable();",
+            "Console.WriteLine({|#0:order.Customer|}.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
     public async Task TestInnocent_AppliedConfigurationUnrelatedLocalHelper_NoDiagnostic()
     {
         var test = CreateAppliedConfigurationTest(

@@ -78,11 +78,12 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (
                     IsNestedConfigurationExecutable(invocationSyntax, syntax)
-                    && ReferencesParameter(
-                        configurationInvocation,
-                        configureMethod.Parameters[0],
-                        cancellationToken
-                    )
+                    && (ReferencesParameter(
+                            configurationInvocation,
+                            configureMethod.Parameters[0],
+                            cancellationToken
+                        )
+                        || UsesEfConfigurationBuilder(configurationInvocation))
                 )
                 {
                     return false;
@@ -165,6 +166,21 @@ public sealed partial class MissingIncludeAnalyzer
             .Any(ancestor =>
                 ancestor is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax
             );
+    }
+
+    private static bool UsesEfConfigurationBuilder(IInvocationOperation invocation)
+    {
+        return IsEfConfigurationBuilderType(invocation.TargetMethod.ContainingType)
+            || IsEfConfigurationBuilderType(invocation.Instance?.Type)
+            || invocation.Arguments.Any(argument =>
+                IsEfConfigurationBuilderType(argument.Value.Type)
+            );
+    }
+
+    private static bool IsEfConfigurationBuilderType(ITypeSymbol? type)
+    {
+        return type?.ContainingNamespace.ToDisplayString()
+            == "Microsoft.EntityFrameworkCore.Metadata.Builders";
     }
 
     private static bool TryGetExactConfigureMethod(
