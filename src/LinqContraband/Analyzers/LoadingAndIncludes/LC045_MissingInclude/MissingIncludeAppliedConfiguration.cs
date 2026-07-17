@@ -76,6 +76,18 @@ public sealed partial class MissingIncludeAnalyzer
                     return false;
                 }
 
+                if (
+                    IsNestedConfigurationExecutable(invocationSyntax, syntax)
+                    && ReferencesParameter(
+                        configurationInvocation,
+                        configureMethod.Parameters[0],
+                        cancellationToken
+                    )
+                )
+                {
+                    return false;
+                }
+
                 var isTopLevel = TryGetTopLevelConfigurationExecution(
                     configurationInvocation,
                     semanticModel,
@@ -140,6 +152,19 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return true;
+    }
+
+    private static bool IsNestedConfigurationExecutable(
+        SyntaxNode invocationSyntax,
+        SyntaxNode configureSyntax
+    )
+    {
+        return invocationSyntax
+            .Ancestors()
+            .TakeWhile(ancestor => ancestor != configureSyntax)
+            .Any(ancestor =>
+                ancestor is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax
+            );
     }
 
     private static bool TryGetExactConfigureMethod(

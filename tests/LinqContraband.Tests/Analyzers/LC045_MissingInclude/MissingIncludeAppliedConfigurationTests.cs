@@ -182,6 +182,32 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_AppliedConfigurationLocalHelperExecutionOrder_DoesNotSuppress()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"void Disable() => builder.Navigation(o => o.Customer).AutoInclude(false);
+        builder.Navigation(o => o.Customer).AutoInclude();
+        Disable();",
+            "Console.WriteLine({|#0:order.Customer|}.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_AppliedConfigurationUnrelatedLocalHelper_NoDiagnostic()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"void Log() => Console.WriteLine(""Configuring Order"");
+        Log();
+        builder.Navigation(o => o.Customer).AutoInclude();",
+            "Console.WriteLine(order.Customer.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_SourceDefinedEfNamespaceHelper_DoesNotSuppress()
     {
         var test =
