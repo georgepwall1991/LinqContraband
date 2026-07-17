@@ -28,6 +28,18 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
+    public async Task TestCrime_IgnoreAfterAutoInclude_DoesNotSuppress()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"builder.Navigation(o => o.Customer).AutoInclude();
+        builder.Ignore(o => o.Customer);",
+            "Console.WriteLine({|#0:order.Customer|}.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
     public async Task TestInnocent_RelationalBuilderExtensionBeforeAutoInclude_NoDiagnostic()
     {
         var test = CreateAppliedConfigurationTest(

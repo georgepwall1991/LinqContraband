@@ -268,19 +268,8 @@ public sealed partial class MissingIncludeAnalyzer
                 containingType.ContainingAssembly,
                 builderAssembly
             )
-            && containingType.Name
-                is "EntityTypeBuilder"
-                    or "KeyBuilder"
-                    or "IndexBuilder"
-                    or "PropertyBuilder"
-                    or "PrimitiveCollectionBuilder"
-                    or "ComplexPropertyBuilder"
-                    or "DiscriminatorBuilder"
-                    or "ReferenceNavigationBuilder"
-                    or "ReferenceCollectionBuilder"
-                    or "CollectionNavigationBuilder"
-                    or "OwnedNavigationBuilder"
-            && method.Name is not ("AutoInclude" or "SetIsEagerLoaded")
+            && containingType.Name == "EntityTypeBuilder"
+            && method.Name == "HasKey"
         )
         {
             return true;

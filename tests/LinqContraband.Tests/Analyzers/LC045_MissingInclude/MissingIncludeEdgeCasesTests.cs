@@ -68,6 +68,9 @@ namespace Microsoft.EntityFrameworkCore
             public EntityTypeBuilder<TEntity> HasKey<TProperty>(
                 System.Linq.Expressions.Expression<Func<TEntity, TProperty>> keyExpression) => this;
 
+            public EntityTypeBuilder<TEntity> Ignore<TProperty>(
+                System.Linq.Expressions.Expression<Func<TEntity, TProperty>> propertyExpression) => this;
+
             public NavigationBuilder<TEntity, TProperty> Navigation<TProperty>(
                 System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationExpression) => null;
         }
