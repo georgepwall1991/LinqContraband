@@ -62,6 +62,17 @@ public sealed partial class MissingIncludeAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             var syntax = syntaxReference.GetSyntax(cancellationToken);
             var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (
+                HasEscapedConfigurationBuilder(
+                    syntax,
+                    semanticModel,
+                    configureMethod.Parameters[0],
+                    cancellationToken
+                )
+            )
+            {
+                return false;
+            }
 
             foreach (
                 var invocationSyntax in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>()
@@ -153,6 +164,39 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return true;
+    }
+
+    private static bool HasEscapedConfigurationBuilder(
+        SyntaxNode configureSyntax,
+        SemanticModel semanticModel,
+        IParameterSymbol builderParameter,
+        CancellationToken cancellationToken
+    )
+    {
+        foreach (
+            var assignmentSyntax in configureSyntax
+                .DescendantNodes()
+                .OfType<AssignmentExpressionSyntax>()
+        )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                semanticModel.GetOperation(assignmentSyntax, cancellationToken)
+                    is IAssignmentOperation assignment
+                && assignment.Target.UnwrapConversions()
+                    is not (ILocalReferenceOperation or IDiscardOperation)
+                && ReferencesParameter(
+                    assignment.Value,
+                    builderParameter,
+                    cancellationToken
+                )
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsNestedConfigurationExecutable(

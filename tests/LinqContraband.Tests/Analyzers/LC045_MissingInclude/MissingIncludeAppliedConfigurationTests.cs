@@ -209,6 +209,55 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_AppliedConfigurationBuilderFieldEscape_DoesNotSuppress()
+    {
+        var test =
+            Usings
+            + @"
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    private Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> _saved;
+
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        _saved = builder;
+        builder.Navigation(o => o.Customer).AutoInclude();
+        Disable();
+    }
+
+    private void Disable()
+    {
+        _saved.Navigation(o => o.Customer).AutoInclude(false);
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
     public async Task TestInnocent_AppliedConfigurationUnrelatedLocalHelper_NoDiagnostic()
     {
         var test = CreateAppliedConfigurationTest(
