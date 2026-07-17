@@ -7511,6 +7511,36 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_PreGuardNestedWriteKeepsInverseGuardsExclusive_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool enabled)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            Disable();
+            if (enabled) handler = () => exception = null;
+            void Disable() => enabled = false;
+            if (!enabled) handler();
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the nested write ran before the first guard"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MandatoryCatchPriorAttach_ConditionalThrowCanEscapeTerminatingTry_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -7671,6 +7701,135 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_SingleStatementLoopReachesForIterator_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (var i = 0; i < 2; i++, handler = () => exception = null)
+                handler();
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the iterator installs the writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_IncrementorInvokedCounterWriterCanRepeatLoop_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset = () => { };
+            var iterations = 0;
+            for (var i = 0; i < 1;
+                 i++, handler = () => exception = null, reset())
+            {
+                handler();
+                if (++iterations == 2) break;
+                reset = () => i = -1;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the incrementor invokes the counter writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_IncrementorInvokesBeforeCounterWriterInstall_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset = () => { };
+            for (var i = 0; i < 1;
+                 i++, handler = () => exception = null, reset(), reset = () => i = -1)
+            {
+                handler();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the incrementor invoked the old binding"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_IncrementorInvokedReplacedCounterWriterDoesNotRepeatLoop_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset = () => { };
+            for (var i = 0; i < 1;
+                 i++, handler = () => exception = null, reset())
+            {
+                handler();
+                reset = () => i = -1;
+                reset = () => { };
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the counter writer was replaced before the incrementor"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MandatoryCatchPriorAttach_IncompatibleInnerCatchDoesNotReachForIterator_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
@@ -7812,6 +7971,74 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantFalseGuardedCounterWriterDoesNotRepeatLoop_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                void ResetCounter() => i = -1;
+#pragma warning disable CS0162
+                if (false) ResetCounter();
+#pragma warning restore CS0162
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the counter writer is unreachable"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantTrueGuardedCounterWriterCanRepeatLoop_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            var iterations = 0;
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                if (++iterations == 2) break;
+                void ResetCounter() => i = -1;
+                if (true) ResetCounter();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the reachable guarded writer repeats the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_MandatoryCatchPriorAttach_InvokedCounterWriterCanReachInstalledWriter_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -7838,6 +8065,108 @@ namespace Test
             catch (System.NullReferenceException) { }
             catch (System.InvalidOperationException) { ctx.Attach(u); }
             {|LC044:u.Name|} = ""lost after the invoked counter writer repeats the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_LaterAssignedCounterWriterDoesNotRepeatLoop_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset = () => { };
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                reset();
+                reset = () => i = -1;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the counter writer was not installed when invoked"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_EarlierAssignedCounterWriterCanRepeatLoop_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset = () => { };
+            var iterations = 0;
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                if (++iterations == 2) break;
+                reset = () => i = -1;
+                reset();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the installed counter writer repeats the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ReplacedCounterWriterDoesNotRepeatLoop_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            System.Action reset;
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                reset = () => i = -1;
+                reset = () => { };
+                reset();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the counter writer was replaced before invocation"";
             ctx.SaveChanges();
         }
     }
@@ -7873,6 +8202,79 @@ namespace Test
             catch (System.NullReferenceException) { }
             catch (System.InvalidOperationException) { ctx.Attach(u); }
             {|LC044:u.Name|} = ""lost after the transitive counter writer repeats the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_InvokedNestedRefAliasCounterWriterCanRepeatLoop_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            var iterations = 0;
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                if (++iterations == 2) break;
+                void ResetCounter()
+                {
+                    ref var alias = ref i;
+                    alias = -1;
+                }
+                ResetCounter();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the invoked nested ref alias repeats the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UninvokedNestedRefAliasCounterWriterDoesNotRepeatLoop_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (var i = 0; i < 1; i++, handler = () => exception = null)
+            {
+                handler();
+                void ResetCounter()
+                {
+                    ref var alias = ref i;
+                    alias = -1;
+                }
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the nested alias writer is uninvoked"";
             ctx.SaveChanges();
         }
     }
@@ -7979,6 +8381,655 @@ namespace Test
             catch (System.NullReferenceException) { }
             catch (System.InvalidOperationException) { ctx.Attach(u); }
             u.Name = ""persisted because the ref alias is read only"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_MaxValueIncrementLeavesLoopAfterWrap_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (var i = int.MaxValue; i >= 0; i++, handler = () => exception = null)
+            {
+                handler();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because wrapping exits the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_MinValueDecrementLeavesLoopAfterWrap_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (var i = int.MinValue; i <= 0; i--, handler = () => exception = null)
+            {
+                handler();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because underflow exits the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UnsignedMaxValueIncrementLeavesLoopAfterWrap_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            for (uint i = uint.MaxValue; i > 0; i++, handler = () => exception = null)
+            {
+                handler();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because unsigned wrapping exits the loop"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_CheckedOverflowStopsBeforeNextIteration_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            try
+            {
+                checked
+                {
+                    for (var i = int.MaxValue; i <= int.MaxValue; handler = () => exception = null, i++)
+                    {
+                        handler();
+                    }
+                }
+            }
+            catch (System.OverflowException) { }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because checked overflow stops before another invocation"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_LoopCarriedDelegateAliasInvokesPriorIterationWriter_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost after the carried writer runs"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_SingleIterationCannotCarryDelegateAlias_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 1; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because no back-edge exists"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NextIterationReplacementBeforeAlias_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                writer = () => { };
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the carried writer is replaced first"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_TrailingReplacementPreventsLoopCarriedAlias_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                writer = () => { };
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the dangerous writer is replaced before the back-edge"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantFalseGuardedLocalFunctionDoesNotChangeOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            void Overwrite() => exception = null;
+#pragma warning disable CS0162
+            if (false) Overwrite();
+#pragma warning restore CS0162
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the local function is unreachable"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantTrueElseNestedWriteKeepsInverseGuardsExclusive_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool enabled)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action handler = () => { };
+            if (enabled) handler = () => exception = null;
+            void Disable() => enabled = false;
+#pragma warning disable CS0162
+            if (true) { } else Disable();
+#pragma warning restore CS0162
+            if (!enabled) handler();
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because inverse guards remain exclusive"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConditionalDelegateAliasCanInvokeWriter_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool chooseWriter)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => exception = null;
+            System.Action noop = () => { };
+            System.Action alias = chooseWriter ? writer : noop;
+            alias();
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost when the conditional alias selects the writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ConstantFalseConditionalAliasCannotInvokeWriter_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => exception = null;
+            System.Action noop = () => { };
+#pragma warning disable CS0429
+            System.Action alias = false ? writer : noop;
+#pragma warning restore CS0429
+            alias();
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the writer arm is unreachable"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_FalseAndGuardedLocalFunctionDoesNotChangeOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            bool Overwrite() { exception = null; return true; }
+#pragma warning disable CS0429
+            _ = false && Overwrite();
+#pragma warning restore CS0429
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because short-circuit and skips the writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_TrueOrGuardedLocalFunctionDoesNotChangeOperand_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            bool Overwrite() { exception = null; return false; }
+#pragma warning disable CS0429
+            _ = true || Overwrite();
+#pragma warning restore CS0429
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because short-circuit or skips the writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UncalledCounterWriterDoesNotBlockLoopCarriedAlias_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void NeverCalled() => i = 42;
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost because the uncalled writer cannot stop the back-edge"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_CalledCounterWriterBlocksLoopCarriedAlias_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void StopLoop() => i = 42;
+                StopLoop();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the called writer prevents another invocation"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ImmediatelyInvokedLambdaCallsCounterWriter_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void StopLoop() => i = 42;
+                ((System.Action)(() => StopLoop()))();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because the invoked lambda calls the counter writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_ExplicitInvokeLambdaCallsCounterWriter_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void StopLoop() => i = 42;
+                ((System.Action)(() => StopLoop())).Invoke();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because explicit Invoke calls the counter writer"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_NullForgivingLambdaCallsCounterWriter_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void StopLoop() => i = 42;
+                ((System.Action)(() => StopLoop()))!();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            u.Name = ""persisted because null forgiveness preserves delegate invocation"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MandatoryCatchPriorAttach_UninvokedLambdaCallsCounterWriter_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            var exception = new System.InvalidOperationException();
+            System.Action writer = () => { };
+            System.Action alias = () => { };
+            for (var i = 0; i < 2; i++)
+            {
+                alias = writer;
+                alias();
+                writer = () => exception = null;
+                void NeverCalled() => i = 42;
+                System.Action wrapper = () => NeverCalled();
+            }
+            try { throw exception; }
+            catch (System.NullReferenceException) { }
+            catch (System.InvalidOperationException) { ctx.Attach(u); }
+            {|LC044:u.Name|} = ""lost because the wrapper is never invoked"";
             ctx.SaveChanges();
         }
     }

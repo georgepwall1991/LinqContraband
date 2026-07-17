@@ -677,7 +677,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         IOperation executableRoot,
         SemanticModel semanticModel,
         int beforeSpanStart,
-        HashSet<SyntaxNode>? activeExecutables = null)
+        HashSet<SyntaxNode>? activeExecutables = null,
+        int afterSpanEnd = int.MinValue)
     {
         var nestedExecutable = nestedOperation.Syntax.Ancestors().FirstOrDefault(syntax =>
             syntax is LocalFunctionStatementSyntax or
@@ -697,7 +698,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 executableRoot,
                 semanticModel,
                 beforeSpanStart,
-                activeExecutables);
+                activeExecutables,
+                afterSpanEnd);
         }
         finally
         {
@@ -710,7 +712,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         IOperation executableRoot,
         SemanticModel semanticModel,
         int beforeSpanStart,
-        HashSet<SyntaxNode> activeExecutables)
+        HashSet<SyntaxNode> activeExecutables,
+        int afterSpanEnd)
     {
         var bindings = nestedExecutable switch
         {
@@ -753,8 +756,14 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             var sharesExecutableRoot = invocationOperation != null &&
                                        executableRoot.SharesOwningExecutableRoot(invocationOperation);
             if (invocation.SpanStart >= beforeSpanStart ||
+                invocation.SpanStart <= afterSpanEnd ||
                 invocationOperation == null ||
                 !hasMatchingBinding ||
+                !ConstantGuardsAllowInvocation(
+                    invocation,
+                    executableRoot.Syntax,
+                    owningForStatement: null,
+                    semanticModel) ||
                 !(sharesExecutableRoot
                     ? SyntaxMayReach(
                         invocationOperation.Syntax,
@@ -765,7 +774,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                         executableRoot,
                         semanticModel,
                         beforeSpanStart,
-                        activeExecutables)))
+                        activeExecutables,
+                        afterSpanEnd)))
             {
                 continue;
             }
@@ -852,11 +862,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 forEachVariableStatement.Statement,
             _ => null,
         };
-        if (body is not BlockSyntax block)
+        if (body == null)
             return false;
 
-        var invocationStatement = block.Statements.FirstOrDefault(statement =>
-            statement.Span.Contains(invocation.SpanStart));
+        var block = body as BlockSyntax;
+        var invocationStatement = block?.Statements.FirstOrDefault(statement =>
+                                      statement.Span.Contains(invocation.SpanStart)) ??
+                                  (body.Span.Contains(invocation.SpanStart) ? body : null);
         if (invocationStatement == null)
         {
             return false;
@@ -872,7 +884,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 return false;
             }
 
-            foreach (var statement in block.Statements)
+            foreach (var statement in block?.Statements ?? Enumerable.Empty<StatementSyntax>())
             {
                 if (statement.SpanStart > invocationStatement.SpanStart &&
                     StatementDefinitelyPreventsNextIteration(
@@ -887,6 +899,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             return !ForLoopRunsAtMostOnce(loopForStatement, semanticModel) &&
                    semanticModel.GetOperation(invocation) != null;
         }
+
+        if (block == null)
+            return false;
 
         var sourceStatement = block.Statements.FirstOrDefault(statement =>
             statement.Span.Contains(sourceSyntax.SpanStart));
@@ -955,9 +970,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 semanticModel) ||
             !TryGetIntegralBounds(loopLocal.Type, out var minimum, out var maximum) ||
             initialValue < minimum ||
-            initialValue > maximum ||
-            initialValue == maximum && step > 0 ||
-            initialValue == minimum && step < 0)
+            initialValue > maximum)
         {
             return false;
         }
@@ -975,10 +988,31 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (!initiallyTrue)
             return true;
 
+        var wraps = initialValue == maximum && step > 0 ||
+                    initialValue == minimum && step < 0;
+        long nextValue;
+        if (wraps)
+        {
+            if (semanticModel.GetOperation(stepSyntax) is not
+                    IIncrementOrDecrementOperation stepOperation)
+            {
+                return false;
+            }
+
+            if (stepOperation.IsChecked)
+                return true;
+
+            nextValue = step > 0 ? minimum : maximum;
+        }
+        else
+        {
+            nextValue = initialValue + step;
+        }
+
         return EvaluateIntegralCondition(
                    condition,
                    loopLocal,
-                   initialValue + step,
+                   nextValue,
                    semanticModel,
                    out var trueAfterFirstIteration) &&
                !trueAfterFirstIteration;
@@ -1132,8 +1166,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (bindings.Count == 0)
             return false;
 
-        foreach (var invocation in forStatement.Statement.DescendantNodes()
-                     .OfType<InvocationExpressionSyntax>())
+        var invocations = forStatement.Statement.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Concat(forStatement.Incrementors.SelectMany(incrementor =>
+                incrementor.DescendantNodesAndSelf()
+                    .OfType<InvocationExpressionSyntax>()));
+        foreach (var invocation in invocations)
         {
             if (semanticModel.GetOperation(invocation) is not IInvocationOperation invocationOperation ||
                 !InvocationMayRunWithinOwningExecutable(
@@ -1149,20 +1187,54 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 invocation,
                 invocationOperation,
                 semanticModel);
-            if (bindings.Any(binding => SymbolEqualityComparer.Default.Equals(
-                    binding.Symbol is IMethodSymbol ? methodCandidate : delegateCandidate,
-                    binding.Symbol)))
+            foreach (var binding in bindings)
             {
-                if (loopOperation.SharesOwningExecutableRoot(invocationOperation) ||
-                    NestedExecutableMayBeInvokedInLoop(
+                var candidate = binding.Symbol is IMethodSymbol
+                    ? methodCandidate
+                    : delegateCandidate;
+                if (!SymbolEqualityComparer.Default.Equals(candidate, binding.Symbol) ||
+                    !(loopOperation.SharesOwningExecutableRoot(invocationOperation) ||
+                      NestedExecutableMayBeInvokedInLoop(
                         invocationOperation,
                         forStatement,
                         loopOperation,
                         semanticModel,
-                        activeExecutables))
+                        activeExecutables)))
                 {
-                    return true;
+                    continue;
                 }
+
+                if (binding.SourceSyntax is not { } sourceSyntax)
+                    return true;
+
+                var sourceRunsBeforeIncrementorInvocation =
+                    forStatement.Statement.Span.Contains(sourceSyntax.SpanStart) &&
+                    forStatement.Incrementors.Any(incrementor =>
+                        incrementor.Span.Contains(invocation.SpanStart));
+                if (sourceSyntax.Span.End >= invocation.SpanStart &&
+                    !sourceRunsBeforeIncrementorInvocation ||
+                    SequentialBooleanGuardsAreMutuallyExclusive(
+                        sourceSyntax,
+                        invocation,
+                        semanticModel) ||
+                    semanticModel.GetOperation(sourceSyntax) is not { } sourceOperation ||
+                    !sourceRunsBeforeIncrementorInvocation && !SyntaxMayReach(
+                        sourceOperation.Syntax,
+                        invocationOperation.Syntax,
+                        semanticModel) ||
+                    binding.Symbol is ILocalSymbol delegateLocal &&
+                    HasDefiniteDelegateReplacementBetween(
+                        loopOperation,
+                        delegateLocal,
+                        semanticModel,
+                        sourceOperation,
+                        invocationOperation,
+                        forStatement))
+                {
+                    continue;
+                }
+
+                return true;
             }
         }
 
@@ -1179,6 +1251,15 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                                LambdaExpressionSyntax or
                                AnonymousMethodExpressionSyntax) ??
                        forStatement.Statement;
+        if (!ConstantGuardsAllowInvocation(
+                invocation,
+                boundary,
+                forStatement,
+                semanticModel))
+        {
+            return false;
+        }
+
         var currentStatement = invocation.AncestorsAndSelf()
             .OfType<StatementSyntax>()
             .FirstOrDefault();
@@ -1208,6 +1289,80 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return true;
     }
 
+    private static bool ConstantGuardsAllowInvocation(
+        InvocationExpressionSyntax invocation,
+        SyntaxNode boundary,
+        ForStatementSyntax? owningForStatement,
+        SemanticModel semanticModel)
+    {
+        foreach (var ancestor in invocation.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case IfStatementSyntax ifStatement
+                    when semanticModel.GetConstantValue(ifStatement.Condition) is
+                    { HasValue: true, Value: bool conditionValue }:
+                    if (!conditionValue &&
+                        ifStatement.Statement.Span.Contains(invocation.SpanStart) ||
+                        conditionValue &&
+                        ifStatement.Else?.Statement.Span.Contains(invocation.SpanStart) == true)
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case ConditionalExpressionSyntax conditional
+                    when semanticModel.GetConstantValue(conditional.Condition) is
+                    { HasValue: true, Value: bool conditionValue }:
+                    if (!conditionValue &&
+                        conditional.WhenTrue.Span.Contains(invocation.SpanStart) ||
+                        conditionValue &&
+                        conditional.WhenFalse.Span.Contains(invocation.SpanStart))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case BinaryExpressionSyntax binary
+                    when binary.Right.Span.Contains(invocation.SpanStart) &&
+                         semanticModel.GetConstantValue(binary.Left) is
+                         { HasValue: true, Value: bool leftValue }:
+                    if (binary.IsKind(SyntaxKind.LogicalAndExpression) && !leftValue ||
+                        binary.IsKind(SyntaxKind.LogicalOrExpression) && leftValue)
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case WhileStatementSyntax whileStatement
+                    when whileStatement.Statement.Span.Contains(invocation.SpanStart) &&
+                         semanticModel.GetConstantValue(whileStatement.Condition) is
+                         { HasValue: true, Value: false }:
+                    return false;
+
+                case ForStatementSyntax forStatement
+                    when (forStatement.Statement.Span.Contains(invocation.SpanStart) ||
+                          forStatement.Incrementors.Any(incrementor =>
+                              incrementor.Span.Contains(invocation.SpanStart))) &&
+                         forStatement.Condition != null &&
+                         semanticModel.GetConstantValue(forStatement.Condition) is
+                         { HasValue: true, Value: false }:
+                    return false;
+            }
+
+            if (ReferenceEquals(ancestor, boundary) ||
+                ReferenceEquals(ancestor, owningForStatement))
+            {
+                break;
+            }
+        }
+
+        return true;
+    }
+
     private static HashSet<ILocalSymbol> GetLoopCounterAliases(
         ForStatementSyntax forStatement,
         ILocalSymbol loopLocal,
@@ -1229,7 +1384,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     semanticModel.GetDeclaredSymbol(variable) is not ILocalSymbol alias ||
                     semanticModel.GetOperation(variable) is not { } variableOperation ||
                     loopOperation != null &&
-                    !loopOperation.SharesOwningExecutableRoot(variableOperation) ||
+                    !loopOperation.SharesOwningExecutableRoot(variableOperation) &&
+                    !NestedExecutableMayBeInvokedInLoop(
+                        variableOperation,
+                        forStatement,
+                        loopOperation,
+                        semanticModel) ||
                     !ExpressionReferencesAnyLocal(
                         refExpression.Expression,
                         aliases,
@@ -1880,7 +2040,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     targetOperation,
                     executableRoot,
                     semanticModel,
-                    beforeSpanStart))
+                    beforeSpanStart,
+                    afterSpanEnd: afterSpanEnd))
             {
                 continue;
             }
@@ -2035,7 +2196,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         ILocalSymbol local,
         SemanticModel semanticModel,
         IOperation source,
-        IOperation invocation)
+        IOperation invocation,
+        ForStatementSyntax? loopWithIncrementorInvocation = null)
     {
         foreach (var node in executableRoot.Syntax.DescendantNodes())
         {
@@ -2090,7 +2252,14 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (executableRoot.SharesOwningExecutableRoot(targetOperation))
             {
                 var replacementOperation = semanticModel.GetOperation(node) ?? targetOperation;
-                if (IsRequiredOnPathFrom(source, replacementOperation, invocation) &&
+                if ((IsRequiredOnPathFrom(source, replacementOperation, invocation) ||
+                     loopWithIncrementorInvocation != null &&
+                     IsDirectReplacementRequiredBeforeIncrementor(
+                         source,
+                         replacementOperation,
+                         invocation,
+                         loopWithIncrementorInvocation,
+                         semanticModel)) &&
                     !DelegateReplacementCanTransferBeforeCompletion(
                         replacementOperation,
                         invocation))
@@ -2110,6 +2279,56 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsDirectReplacementRequiredBeforeIncrementor(
+        IOperation source,
+        IOperation replacement,
+        IOperation invocation,
+        ForStatementSyntax forStatement,
+        SemanticModel semanticModel)
+    {
+        if (!forStatement.Statement.Span.Contains(source.Syntax.SpanStart) ||
+            !forStatement.Statement.Span.Contains(replacement.Syntax.SpanStart) ||
+            !forStatement.Incrementors.Any(incrementor =>
+                incrementor.Span.Contains(invocation.Syntax.SpanStart)) ||
+            forStatement.Statement is not BlockSyntax body)
+        {
+            return false;
+        }
+
+        var sourceStatement = source.Syntax.AncestorsAndSelf()
+            .OfType<StatementSyntax>()
+            .FirstOrDefault(statement => ReferenceEquals(statement.Parent, body));
+        var replacementStatement = replacement.Syntax.AncestorsAndSelf()
+            .OfType<StatementSyntax>()
+            .FirstOrDefault(statement => ReferenceEquals(statement.Parent, body));
+        if (sourceStatement == null ||
+            replacementStatement == null ||
+            replacementStatement is not ExpressionStatementSyntax ||
+            sourceStatement.SpanStart >= replacementStatement.SpanStart)
+        {
+            return false;
+        }
+
+        foreach (var statement in body.Statements)
+        {
+            if (statement.SpanStart <= sourceStatement.SpanStart ||
+                statement.SpanStart >= replacementStatement.SpanStart)
+            {
+                continue;
+            }
+
+            if (StatementDefinitelySkipsLater(
+                    statement,
+                    replacementStatement,
+                    semanticModel))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool DelegateReplacementCanTransferBeforeCompletion(
@@ -2291,6 +2510,40 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return bindings;
     }
 
+    private static InvocationExpressionSyntax? GetDirectDelegateInvocation(
+        SyntaxNode nestedExecutable,
+        SemanticModel semanticModel)
+    {
+        if (nestedExecutable is not (LambdaExpressionSyntax or AnonymousMethodExpressionSyntax))
+            return null;
+
+        var expression = nestedExecutable;
+        while (expression.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax ||
+               expression.Parent is PostfixUnaryExpressionSyntax postfix &&
+               postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression))
+        {
+            expression = expression.Parent;
+        }
+
+        var invocation = expression.Parent switch
+        {
+            InvocationExpressionSyntax directInvocation
+                when ReferenceEquals(directInvocation.Expression, expression) =>
+                directInvocation,
+            MemberAccessExpressionSyntax memberAccess
+                when ReferenceEquals(memberAccess.Expression, expression) &&
+                     memberAccess.Parent is InvocationExpressionSyntax explicitInvocation &&
+                     ReferenceEquals(explicitInvocation.Expression, memberAccess) =>
+                explicitInvocation,
+            _ => null,
+        };
+        return invocation != null &&
+               semanticModel.GetOperation(invocation) is
+                   IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke }
+            ? invocation
+            : null;
+    }
+
     private static void ExpandNestedDelegateAliases(
         List<NestedExecutableBinding> bindings,
         IOperation executableRoot,
@@ -2326,57 +2579,418 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                         continue;
                 }
 
-                var valueOperation = semanticModel.GetOperation(value)?.UnwrapConversions();
-                ISymbol? sourceSymbol = valueOperation switch
-                {
-                    ILocalReferenceOperation localReference => localReference.Local,
-                    IMethodReferenceOperation methodReference => methodReference.Method,
-                    _ => null,
-                };
-                if (sourceSymbol == null ||
-                    SymbolEqualityComparer.Default.Equals(alias, sourceSymbol) ||
+                var sourceSymbols = GetPossibleDelegateSourceSymbols(
+                        semanticModel.GetOperation(value))
+                    .Distinct(SymbolEqualityComparer.Default)
+                    .ToArray();
+                if (sourceSymbols.Length == 0 ||
                     semanticModel.GetOperation(node) is not { } aliasSourceOperation ||
                     !executableRoot.SharesOwningExecutableRoot(aliasSourceOperation))
                 {
                     continue;
                 }
 
-                var existingBindings = bindings.ToArray();
-                foreach (var binding in existingBindings)
+                foreach (var sourceSymbol in sourceSymbols)
                 {
-                    if (!SymbolEqualityComparer.Default.Equals(binding.Symbol, sourceSymbol) ||
-                        bindings.Any(candidate =>
-                            SymbolEqualityComparer.Default.Equals(candidate.Symbol, alias) &&
-                            candidate.SourceSyntax?.Span == node.Span))
+                    if (SymbolEqualityComparer.Default.Equals(alias, sourceSymbol))
                     {
                         continue;
                     }
 
-                    if (binding.SourceSyntax is { } bindingSource)
+                    var existingBindings = bindings.ToArray();
+                    foreach (var binding in existingBindings)
                     {
-                        if (bindingSource.Span.End >= node.SpanStart ||
-                            semanticModel.GetOperation(bindingSource) is not { } bindingSourceOperation ||
-                            !SyntaxMayReach(
-                                bindingSourceOperation.Syntax,
-                                aliasSourceOperation.Syntax,
-                                semanticModel) ||
-                            binding.Symbol is ILocalSymbol sourceLocal &&
-                            HasDefiniteDelegateReplacementBetween(
-                                executableRoot,
-                                sourceLocal,
-                                semanticModel,
-                                bindingSourceOperation,
-                                aliasSourceOperation))
+                        if (!SymbolEqualityComparer.Default.Equals(binding.Symbol, sourceSymbol) ||
+                            bindings.Any(candidate =>
+                                SymbolEqualityComparer.Default.Equals(candidate.Symbol, alias) &&
+                                candidate.SourceSyntax?.Span == node.Span))
                         {
                             continue;
                         }
-                    }
 
-                    bindings.Add(new NestedExecutableBinding(alias, node));
-                    added = true;
+                        if (binding.SourceSyntax is { } bindingSource)
+                        {
+                            if (semanticModel.GetOperation(bindingSource) is not { } bindingSourceOperation ||
+                                !(bindingSource.Span.End < node.SpanStart
+                                    ? SyntaxMayReach(
+                                        bindingSourceOperation.Syntax,
+                                        aliasSourceOperation.Syntax,
+                                        semanticModel)
+                                    : BindingSourceMayReachAliasOnLaterIteration(
+                                        bindingSource,
+                                        node,
+                                        bindingSourceOperation,
+                                        aliasSourceOperation,
+                                        binding.Symbol,
+                                        semanticModel)) ||
+                                binding.Symbol is ILocalSymbol sourceLocal &&
+                                HasDefiniteDelegateReplacementBetween(
+                                    executableRoot,
+                                    sourceLocal,
+                                    semanticModel,
+                                    bindingSourceOperation,
+                                    aliasSourceOperation))
+                            {
+                                continue;
+                            }
+                        }
+
+                        bindings.Add(new NestedExecutableBinding(alias, node));
+                        added = true;
+                    }
                 }
             }
         } while (added);
+    }
+
+    private static IEnumerable<ISymbol> GetPossibleDelegateSourceSymbols(IOperation? operation)
+    {
+        operation = operation?.UnwrapConversions();
+        switch (operation)
+        {
+            case ILocalReferenceOperation localReference:
+                yield return localReference.Local;
+                yield break;
+
+            case IMethodReferenceOperation methodReference:
+                yield return methodReference.Method;
+                yield break;
+
+            case IConditionalOperation conditional:
+                var selectedBranch = conditional.Condition.ConstantValue is
+                { HasValue: true, Value: bool conditionValue }
+                        ? conditionValue ? conditional.WhenTrue : conditional.WhenFalse
+                        : null;
+                if (selectedBranch != null)
+                {
+                    foreach (var symbol in GetPossibleDelegateSourceSymbols(selectedBranch))
+                        yield return symbol;
+                    yield break;
+                }
+
+                foreach (var symbol in GetPossibleDelegateSourceSymbols(conditional.WhenTrue))
+                    yield return symbol;
+                foreach (var symbol in GetPossibleDelegateSourceSymbols(conditional.WhenFalse))
+                    yield return symbol;
+                yield break;
+        }
+    }
+
+    private static bool BindingSourceMayReachAliasOnLaterIteration(
+        SyntaxNode bindingSource,
+        SyntaxNode aliasSource,
+        IOperation bindingSourceOperation,
+        IOperation aliasSourceOperation,
+        ISymbol sourceSymbol,
+        SemanticModel semanticModel)
+    {
+        if (sourceSymbol is not ILocalSymbol sourceLocal)
+            return false;
+
+        var forStatement = aliasSource.Ancestors().OfType<ForStatementSyntax>()
+            .FirstOrDefault(candidate =>
+                candidate.Statement.Span.Contains(bindingSource.SpanStart));
+        if (forStatement?.Statement is not BlockSyntax body ||
+            body.Statements.FirstOrDefault(statement =>
+                statement.Span.Contains(aliasSource.SpanStart)) is not { } aliasStatement ||
+            body.Statements.FirstOrDefault(statement =>
+                statement.Span.Contains(bindingSource.SpanStart)) is not { } sourceStatement ||
+            aliasStatement.SpanStart >= sourceStatement.SpanStart ||
+            !SyntaxMayReach(
+                aliasSourceOperation.Syntax,
+                bindingSourceOperation.Syntax,
+                semanticModel) ||
+            SequentialBooleanGuardsAreMutuallyExclusive(
+                aliasSource,
+                bindingSource,
+                semanticModel) ||
+            !ForLoopDefinitelyReachesSecondIteration(forStatement, semanticModel))
+        {
+            return false;
+        }
+
+        foreach (var statement in body.Statements)
+        {
+            if (statement.SpanStart > sourceStatement.SpanStart &&
+                StatementDefinitelyPreventsNextIteration(
+                    statement,
+                    forStatement,
+                    semanticModel))
+            {
+                return false;
+            }
+        }
+
+        return !LoopBackEdgeMayReplaceLocal(
+            forStatement,
+            sourceLocal,
+            bindingSource,
+            aliasSource,
+            semanticModel);
+    }
+
+    private static bool ForLoopDefinitelyReachesSecondIteration(
+        ForStatementSyntax forStatement,
+        SemanticModel semanticModel)
+    {
+        if (forStatement.Declaration is not { Variables.Count: 1 } declaration ||
+            declaration.Variables[0] is not { Initializer.Value: { } initializer } variable ||
+            semanticModel.GetDeclaredSymbol(variable) is not ILocalSymbol loopLocal ||
+            !TryGetIntegralConstant(initializer, semanticModel, out var initialValue) ||
+            forStatement.Condition is not BinaryExpressionSyntax condition ||
+            !TryGetForLoopUnitStep(
+                forStatement,
+                loopLocal,
+                semanticModel,
+                out var step,
+                out var stepSyntax) ||
+            !TryGetIntegralBounds(loopLocal.Type, out var minimum, out var maximum) ||
+            initialValue < minimum ||
+            initialValue > maximum ||
+            HasAnySyntacticLoopLocalWrite(
+                forStatement,
+                loopLocal,
+                stepSyntax,
+                semanticModel) ||
+            !EvaluateIntegralCondition(
+                condition,
+                loopLocal,
+                initialValue,
+                semanticModel,
+                out var initiallyTrue) ||
+            !initiallyTrue)
+        {
+            return false;
+        }
+
+        var wraps = initialValue == maximum && step > 0 ||
+                    initialValue == minimum && step < 0;
+        if (wraps &&
+            semanticModel.GetOperation(stepSyntax) is
+                IIncrementOrDecrementOperation { IsChecked: true })
+        {
+            return false;
+        }
+
+        var nextValue = wraps
+            ? step > 0 ? minimum : maximum
+            : initialValue + step;
+        return EvaluateIntegralCondition(
+                   condition,
+                   loopLocal,
+                   nextValue,
+                   semanticModel,
+                   out var trueAfterFirstIteration) &&
+               trueAfterFirstIteration;
+    }
+
+    private static bool HasAnySyntacticLoopLocalWrite(
+        ForStatementSyntax forStatement,
+        ILocalSymbol loopLocal,
+        ExpressionSyntax stepSyntax,
+        SemanticModel semanticModel)
+    {
+        var loopOperation = semanticModel.GetOperation(forStatement);
+        var nodes = forStatement.Statement.DescendantNodesAndSelf()
+            .Concat(forStatement.Incrementors.SelectMany(incrementor =>
+                incrementor.DescendantNodesAndSelf()));
+        foreach (var node in nodes)
+        {
+            if (ReferenceEquals(node, stepSyntax))
+                continue;
+
+            var nodeOperation = semanticModel.GetOperation(node);
+            var nestedExecutable = node.Ancestors().FirstOrDefault(syntax =>
+                syntax is LocalFunctionStatementSyntax or
+                    LambdaExpressionSyntax or
+                    AnonymousMethodExpressionSyntax);
+            if (loopOperation != null &&
+                nodeOperation != null &&
+                !loopOperation.SharesOwningExecutableRoot(nodeOperation) &&
+                nestedExecutable is LocalFunctionStatementSyntax localFunction &&
+                !LocalFunctionMayBeInvokedInLoop(
+                    localFunction,
+                    forStatement,
+                    semanticModel))
+            {
+                continue;
+            }
+
+            ExpressionSyntax? target = node switch
+            {
+                AssignmentExpressionSyntax assignment => assignment.Left,
+                PrefixUnaryExpressionSyntax prefix when
+                    prefix.IsKind(SyntaxKind.PreIncrementExpression) ||
+                    prefix.IsKind(SyntaxKind.PreDecrementExpression) => prefix.Operand,
+                PostfixUnaryExpressionSyntax postfix when
+                    postfix.IsKind(SyntaxKind.PostIncrementExpression) ||
+                    postfix.IsKind(SyntaxKind.PostDecrementExpression) => postfix.Operand,
+                ArgumentSyntax argument when
+                    argument.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) ||
+                    argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword) => argument.Expression,
+                _ => null,
+            };
+            if (target != null &&
+                target.DescendantNodesAndSelf().OfType<ExpressionSyntax>().Any(expression =>
+                    semanticModel.GetOperation(expression)?.UnwrapConversions() is
+                        ILocalReferenceOperation localReference &&
+                    SymbolEqualityComparer.Default.Equals(localReference.Local, loopLocal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LocalFunctionMayBeInvokedInLoop(
+        LocalFunctionStatementSyntax localFunction,
+        ForStatementSyntax forStatement,
+        SemanticModel semanticModel,
+        HashSet<SyntaxNode>? activeExecutables = null)
+    {
+        if (semanticModel.GetDeclaredSymbol(localFunction) is not { } functionSymbol)
+            return false;
+
+        activeExecutables ??= new HashSet<SyntaxNode>();
+        if (!activeExecutables.Add(localFunction))
+            return false;
+
+        try
+        {
+            var invocations = forStatement.Statement.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Concat(forStatement.Incrementors.SelectMany(incrementor =>
+                    incrementor.DescendantNodesAndSelf()
+                        .OfType<InvocationExpressionSyntax>()));
+            foreach (var invocation in invocations)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(
+                        semanticModel.GetSymbolInfo(invocation).Symbol,
+                        functionSymbol) ||
+                    !InvocationMayRunWithinOwningExecutable(
+                        invocation,
+                        forStatement,
+                        semanticModel))
+                {
+                    continue;
+                }
+
+                var enclosingExecutable = invocation.Ancestors().FirstOrDefault(syntax =>
+                    syntax is LocalFunctionStatementSyntax or
+                        LambdaExpressionSyntax or
+                        AnonymousMethodExpressionSyntax);
+                if (enclosingExecutable == null)
+                    return true;
+                if (enclosingExecutable is LocalFunctionStatementSyntax enclosingFunction &&
+                    LocalFunctionMayBeInvokedInLoop(
+                        enclosingFunction,
+                        forStatement,
+                        semanticModel,
+                        activeExecutables))
+                {
+                    return true;
+                }
+
+                if (enclosingExecutable is LambdaExpressionSyntax or AnonymousMethodExpressionSyntax &&
+                    DirectDelegateInvocationMayRunInLoop(
+                        enclosingExecutable,
+                        forStatement,
+                        semanticModel,
+                        activeExecutables))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            activeExecutables.Remove(localFunction);
+        }
+    }
+
+    private static bool DirectDelegateInvocationMayRunInLoop(
+        SyntaxNode nestedExecutable,
+        ForStatementSyntax forStatement,
+        SemanticModel semanticModel,
+        HashSet<SyntaxNode> activeExecutables)
+    {
+        if (!activeExecutables.Add(nestedExecutable))
+            return false;
+
+        try
+        {
+            if (GetDirectDelegateInvocation(nestedExecutable, semanticModel) is not { } invocation ||
+                !InvocationMayRunWithinOwningExecutable(
+                    invocation,
+                    forStatement,
+                    semanticModel))
+            {
+                return false;
+            }
+
+            var enclosingExecutable = invocation.Ancestors().FirstOrDefault(syntax =>
+                syntax is LocalFunctionStatementSyntax or
+                    LambdaExpressionSyntax or
+                    AnonymousMethodExpressionSyntax);
+            return enclosingExecutable switch
+            {
+                null => true,
+                LocalFunctionStatementSyntax enclosingFunction =>
+                    LocalFunctionMayBeInvokedInLoop(
+                        enclosingFunction,
+                        forStatement,
+                        semanticModel,
+                        activeExecutables),
+                LambdaExpressionSyntax or AnonymousMethodExpressionSyntax =>
+                    DirectDelegateInvocationMayRunInLoop(
+                        enclosingExecutable,
+                        forStatement,
+                        semanticModel,
+                        activeExecutables),
+                _ => false,
+            };
+        }
+        finally
+        {
+            activeExecutables.Remove(nestedExecutable);
+        }
+    }
+
+    private static bool LoopBackEdgeMayReplaceLocal(
+        ForStatementSyntax forStatement,
+        ILocalSymbol local,
+        SyntaxNode bindingSource,
+        SyntaxNode aliasSource,
+        SemanticModel semanticModel)
+    {
+        var nodes = forStatement.Statement.DescendantNodes()
+            .Concat(forStatement.Incrementors.SelectMany(incrementor =>
+                incrementor.DescendantNodesAndSelf()));
+        foreach (var assignment in nodes.OfType<AssignmentExpressionSyntax>())
+        {
+            if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) ||
+                assignment.Span == bindingSource.Span ||
+                semanticModel.GetOperation(assignment.Left)?.UnwrapConversions() is not
+                    ILocalReferenceOperation localReference ||
+                !SymbolEqualityComparer.Default.Equals(localReference.Local, local))
+            {
+                continue;
+            }
+
+            var inIncrementor = forStatement.Incrementors.Any(incrementor =>
+                incrementor.Span.Contains(assignment.SpanStart));
+            if (inIncrementor ||
+                assignment.SpanStart > bindingSource.Span.End ||
+                assignment.Span.End < aliasSource.SpanStart)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDelegateCreationPart(
