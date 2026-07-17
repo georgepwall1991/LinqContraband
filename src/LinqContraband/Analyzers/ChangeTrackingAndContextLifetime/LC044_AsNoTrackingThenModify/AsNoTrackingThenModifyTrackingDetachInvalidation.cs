@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -9,9 +10,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
         ISymbol saveContext,
-        int afterSpan,
+        ImmutableArray<MemberPathSegment> receiverPath,
+        IOperation after,
         IOperation save)
     {
+        var afterSpan = after.Syntax.SpanStart;
         var saveSpan = save.Syntax.SpanStart;
         if (scan.DetachesByLocal.TryGetValue(local, out var detaches))
         {
@@ -19,9 +22,15 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             {
                 var entry = detaches[i];
                 if (entry.SpanStart <= afterSpan || entry.SpanStart >= saveSpan) continue;
+                if (entry.TargetPath.Length != receiverPath.Length ||
+                    !MemberPathIsPrefix(entry.TargetPath, receiverPath))
+                {
+                    continue;
+                }
 
                 if (entry.ContextSymbol != null &&
                     SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                    BlockReaches(after, entry.Operation) &&
                     BlockReaches(entry.Operation, save))
                 {
                     return true;
@@ -37,6 +46,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
             if (entry.ContextSymbol != null &&
                 SymbolEqualityComparer.Default.Equals(entry.ContextSymbol, saveContext) &&
+                BlockReaches(after, entry.Operation) &&
                 BlockReaches(entry.Operation, save))
             {
                 return true;

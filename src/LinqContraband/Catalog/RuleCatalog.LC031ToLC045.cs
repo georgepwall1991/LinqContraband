@@ -203,7 +203,7 @@ public static partial class RuleCatalog
                 samplePath: "samples/LinqContraband.Sample/Samples/LC044_AsNoTrackingThenModify/AsNoTrackingThenModifySample.cs",
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC044_AsNoTrackingThenModify",
                 hasCodeFix: false,
-                noCodeFixRationale: "No automatic fix: the right resolution depends on intent — either remove AsNoTracking() so the entity is tracked from origin, or call Update/Attach (or set Entry.State = Modified) before SaveChanges. Both are semantically valid depending on context."),
+                noCodeFixRationale: "No automatic fix: the right resolution depends on intent — remove AsNoTracking() so the entity is tracked from origin, call Update (or set Entry.State = Modified) for an existing detached mutation, or Attach before mutating. These choices have different state-management semantics."),
             new RuleCatalogEntry(
                 id: "LC045",
                 slug: "LC045_MissingInclude",

@@ -7,43 +7,46 @@ namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
 internal sealed partial class AsNoTrackingThenModifyRootScan
 {
-    private static readonly ImmutableHashSet<string> ReattachMethodNames = ImmutableHashSet.Create(
-        "Update", "UpdateRange", "Attach", "AttachRange");
+    private static readonly ImmutableHashSet<string> UpdateMethodNames = ImmutableHashSet.Create(
+        "Update", "UpdateRange");
+
+    private static readonly ImmutableHashSet<string> AttachMethodNames = ImmutableHashSet.Create(
+        "Attach", "AttachRange");
 
     private static readonly ImmutableHashSet<string> TrackingStates = ImmutableHashSet.Create(
         "Modified", "Added");
 
     private static bool TryParseReattachInvocation(
         IInvocationOperation invocation,
-        out ILocalSymbol local,
-        out ISymbol? contextSymbol)
+        out ISymbol? contextSymbol,
+        out bool persistsExistingMutation)
     {
-        local = null!;
         contextSymbol = null;
+        persistsExistingMutation = false;
 
-        if (!ReattachMethodNames.Contains(invocation.TargetMethod.Name)) return false;
+        var methodName = invocation.TargetMethod.Name;
+        if (!UpdateMethodNames.Contains(methodName) && !AttachMethodNames.Contains(methodName))
+            return false;
 
         var container = invocation.TargetMethod.ContainingType;
         if (!container.IsDbContext() && !container.IsDbSet()) return false;
 
-        if (invocation.Arguments.Length == 0) return false;
-        if (invocation.Arguments[0].Value.UnwrapConversions() is not ILocalReferenceOperation argLocal)
-            return false;
-
         if (!TryResolveInvocationContext(invocation, out contextSymbol)) return false;
 
-        local = argLocal.Local;
-        return true;
+        persistsExistingMutation = UpdateMethodNames.Contains(methodName);
+        return invocation.Arguments.Length > 0;
     }
 
     private static bool TryParseEntryStateAssignment(
         ISimpleAssignmentOperation assignment,
         out ILocalSymbol local,
         out ISymbol? contextSymbol,
+        out ImmutableArray<MemberPathSegment> targetPath,
         out string stateName)
     {
         local = null!;
         contextSymbol = null;
+        targetPath = ImmutableArray<MemberPathSegment>.Empty;
         stateName = "";
 
         if (assignment.Target is not IPropertyReferenceOperation targetProp) return false;
@@ -55,7 +58,8 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         if (!entryInv.TargetMethod.ContainingType.IsDbContext()) return false;
 
         if (entryInv.Arguments.Length == 0) return false;
-        if (entryInv.Arguments[0].Value.UnwrapConversions() is not ILocalReferenceOperation argLocal) return false;
+        if (!TryGetRootLocalAndMemberPath(entryInv.Arguments[0].Value, out local, out targetPath))
+            return false;
 
         if (!TryGetSymbol(entryInv.Instance, out contextSymbol)) return false;
 
@@ -64,7 +68,6 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         if (fieldRef.Field.ContainingType?.Name != "EntityState") return false;
         if (!TrackingStates.Contains(fieldRef.Field.Name) && fieldRef.Field.Name != "Detached") return false;
 
-        local = argLocal.Local;
         stateName = fieldRef.Field.Name;
         return true;
     }
