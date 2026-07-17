@@ -16,6 +16,17 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
+    public async Task TestInnocent_AppliedConfigurationStringAutoInclude_NoDiagnostic()
+    {
+        var test = CreateAppliedConfigurationTest(
+            "builder.Navigation(\"Customer\").AutoInclude();",
+            "Console.WriteLine(order.Customer.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_UnrelatedEfBuilderCallsBeforeAutoInclude_NoDiagnostic()
     {
         var test = CreateAppliedConfigurationTest(
@@ -56,6 +67,29 @@ public partial class MissingIncludeEdgeCasesTests
     {
         var test = CreateAppliedConfigurationTest(
             "builder.Navigation(o => o.BillingCustomer).AutoInclude();",
+            "Console.WriteLine({|#0:order.Customer|}.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_AppliedConfigurationDifferentStringNavigation_DoesNotSuppress()
+    {
+        var test = CreateAppliedConfigurationTest(
+            "builder.Navigation(\"BillingCustomer\").AutoInclude();",
+            "Console.WriteLine({|#0:order.Customer|}.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_AppliedConfigurationRuntimeStringNavigation_DoesNotSuppress()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"var navigationName = DateTime.UtcNow.Ticks > 0 ? ""Customer"" : ""BillingCustomer"";
+        builder.Navigation(navigationName).AutoInclude();",
             "Console.WriteLine({|#0:order.Customer|}.Name);"
         );
 

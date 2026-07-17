@@ -73,9 +73,14 @@ namespace Microsoft.EntityFrameworkCore
 
             public NavigationBuilder<TEntity, TProperty> Navigation<TProperty>(
                 System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationExpression) => null;
+
+            public NavigationBuilder Navigation(string navigationName) => null;
         }
 
-        public class NavigationBuilder { }
+        public class NavigationBuilder
+        {
+            public virtual NavigationBuilder AutoInclude(bool autoInclude = true) => this;
+        }
 
         public class NavigationBuilder<TSource, TTarget> : NavigationBuilder
             where TSource : class
