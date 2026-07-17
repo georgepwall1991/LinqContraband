@@ -358,6 +358,12 @@ class Program
     [Theory]
     [InlineData("DisableCustomerMutator ignored; ignored = builder;")]
     [InlineData("DisableCustomerMutator ignored = builder;")]
+    [InlineData(
+        "DisableCustomerMutator ignored; ignored = true ? (DisableCustomerMutator)builder : new DisableCustomerMutator();"
+    )]
+    [InlineData(
+        "DisableCustomerMutator ignored = true ? (DisableCustomerMutator)builder : new DisableCustomerMutator();"
+    )]
     public async Task TestCrime_AppliedConfigurationBuilderUserDefinedConversion_DoesNotSuppress(
         string conversion
     )

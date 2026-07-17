@@ -187,12 +187,8 @@ public sealed partial class MissingIncludeAnalyzer
             )
             {
                 if (
-                    assignment.Value is IConversionOperation
-                    {
-                        OperatorMethod: not null,
-                    } conversion
-                    && ReferencesParameter(
-                        conversion.Operand,
+                    ContainsBuilderConsumingUserDefinedConversion(
+                        assignment.Value,
                         builderParameter,
                         cancellationToken
                     )
@@ -230,15 +226,9 @@ public sealed partial class MissingIncludeAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             if (
                 semanticModel.GetOperation(variableSyntax, cancellationToken)
-                    is IVariableDeclaratorOperation
-                {
-                    Initializer.Value: IConversionOperation
-                    {
-                        OperatorMethod: not null,
-                    } conversion,
-                }
-                && ReferencesParameter(
-                    conversion.Operand,
+                    is IVariableDeclaratorOperation { Initializer.Value: var initializer }
+                && ContainsBuilderConsumingUserDefinedConversion(
+                    initializer,
                     builderParameter,
                     cancellationToken
                 )
@@ -295,6 +285,34 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return false;
+    }
+
+    private static bool ContainsBuilderConsumingUserDefinedConversion(
+        IOperation operation,
+        IParameterSymbol builderParameter,
+        CancellationToken cancellationToken
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (
+            operation is IConversionOperation { OperatorMethod: not null } conversion
+            && ReferencesParameter(
+                conversion.Operand,
+                builderParameter,
+                cancellationToken
+            )
+        )
+        {
+            return true;
+        }
+
+        return operation.ChildOperations.Any(child =>
+            ContainsBuilderConsumingUserDefinedConversion(
+                child,
+                builderParameter,
+                cancellationToken
+            )
+        );
     }
 
     private static bool IsNestedConfigurationExecutable(
