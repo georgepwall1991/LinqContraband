@@ -258,6 +258,117 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_AppliedConfigurationBuilderConstructorBoundary_DoesNotSuppress()
+    {
+        var test =
+            Usings
+            + @"
+class DisableCustomer
+{
+    public DisableCustomer(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude(false);
+    }
+}
+
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude();
+        _ = new DisableCustomer(builder);
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_AppliedConfigurationBuilderAliasConstructorBoundary_DoesNotSuppress()
+    {
+        var test =
+            Usings
+            + @"
+class DisableCustomer
+{
+    public DisableCustomer(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude(false);
+    }
+}
+
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        var alias = builder;
+        builder.Navigation(o => o.Customer).AutoInclude();
+        _ = new DisableCustomer(alias);
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_AppliedConfigurationUnrelatedConstructor_NoDiagnostic()
+    {
+        var test = CreateAppliedConfigurationTest(
+            @"_ = new object();
+        builder.Navigation(o => o.Customer).AutoInclude();",
+            "Console.WriteLine(order.Customer.Name);"
+        );
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_AppliedConfigurationUnrelatedLocalHelper_NoDiagnostic()
     {
         var test = CreateAppliedConfigurationTest(

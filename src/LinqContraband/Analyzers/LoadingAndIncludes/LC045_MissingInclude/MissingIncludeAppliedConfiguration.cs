@@ -196,6 +196,30 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+        foreach (
+            var objectCreationSyntax in configureSyntax
+                .DescendantNodes()
+                .OfType<BaseObjectCreationExpressionSyntax>()
+        )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                semanticModel.GetOperation(objectCreationSyntax, cancellationToken)
+                    is IObjectCreationOperation objectCreation
+                && objectCreation.Arguments.Any(argument =>
+                    ReferencesParameter(
+                        argument.Value,
+                        builderParameter,
+                        cancellationToken
+                    )
+                    || IsEfConfigurationBuilderType(argument.Value.Type)
+                )
+            )
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
