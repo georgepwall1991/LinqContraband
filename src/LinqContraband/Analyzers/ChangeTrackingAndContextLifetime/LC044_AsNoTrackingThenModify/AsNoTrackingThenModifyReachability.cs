@@ -191,14 +191,18 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         foreach (var operation in tryOperation.Descendants())
         {
             var containingThrow = operation.Syntax.Ancestors()
-                .OfType<ThrowStatementSyntax>()
-                .FirstOrDefault();
-            var isThrowOperandOperation = containingThrow?.Expression?.Span.Contains(
+                .FirstOrDefault(syntax =>
+                    syntax is ThrowStatementSyntax or ThrowExpressionSyntax);
+            var throwOperand = containingThrow switch
+            {
+                ThrowStatementSyntax throwStatement => throwStatement.Expression,
+                ThrowExpressionSyntax throwExpression => throwExpression.Expression,
+                _ => null
+            };
+            var isThrowOperandOperation = throwOperand?.Span.Contains(
                 operation.Syntax.Span) == true;
             if (operation.Syntax.SpanStart <= start.Syntax.SpanStart ||
                 start.Syntax.Span.Contains(operation.Syntax.Span) ||
-                operation.Syntax.AncestorsAndSelf()
-                    .Any(syntax => syntax is ThrowExpressionSyntax) ||
                 containingThrow != null &&
                 (!isThrowOperandOperation ||
                  !PotentialOperationCanReachCatch(

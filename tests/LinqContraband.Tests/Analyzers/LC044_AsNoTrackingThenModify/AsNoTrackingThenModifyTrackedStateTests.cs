@@ -9076,6 +9076,76 @@ namespace Test
     }
 
     [Fact]
+    public async Task AsNoTracking_MutateThenThrowExpressionOperandFailsIntoSavingCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class CustomException : System.Exception
+    {
+        public CustomException(int value) { }
+    }
+    public class C
+    {
+        private static int Risk() => 0;
+
+        public void M(TestCtx ctx, int? value)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                {|LC044:u.Name|} = ""lost when throw-expression operand evaluation reaches the saving catch"";
+                _ = value ?? throw new CustomException(Risk());
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.SaveChanges();
+            }
+            catch (CustomException)
+            {
+                ctx.Attach(u);
+            }
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MutateThenSystemThrowExpressionCannotReachSavingCatch_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, int? value)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                u.Name = ""persisted because the exact throw-expression catch attaches"";
+                _ = value ?? throw new System.InvalidOperationException();
+            }
+            catch (System.ArgumentException)
+            {
+                ctx.SaveChanges();
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.Attach(u);
+            }
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsNoTracking_UpdateConcreteNavigationThenDetachInterfaceNavigation_StillTriggers()
     {
         var test = Preamble + EfCoreMock + @"
@@ -9097,6 +9167,69 @@ namespace Test
             ctx.Update(user.Address);
             ctx.Entry(((IHasAddress)user).Address).State = EntityState.Detached;
             {|LC044:user.Address.City|} = ""lost after the equivalent interface path is detached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateOneInterfaceNavigationThenDetachSiblingInterfaceNavigation_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public interface IFirstAddress { Address Address { get; } }
+    public interface ISecondAddress { Address Address { get; } }
+    public class User : IFirstAddress, ISecondAddress
+    {
+        public int Id { get; set; }
+        public Address Address { get; set; }
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(((IFirstAddress)user).Address);
+            ctx.Entry(((ISecondAddress)user).Address).State = EntityState.Detached;
+            {|LC044:((IFirstAddress)user).Address.City|} = ""lost after the same implementation is detached through another interface"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateOneExplicitInterfaceNavigationThenDetachDistinctInterfaceNavigation_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public interface IFirstAddress { Address Address { get; } }
+    public interface ISecondAddress { Address Address { get; } }
+    public class User : IFirstAddress, ISecondAddress
+    {
+        public int Id { get; set; }
+        public Address FirstAddress { get; set; }
+        public Address SecondAddress { get; set; }
+        Address IFirstAddress.Address => FirstAddress;
+        Address ISecondAddress.Address => SecondAddress;
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(((IFirstAddress)user).Address);
+            ctx.Entry(((ISecondAddress)user).Address).State = EntityState.Detached;
+            ((IFirstAddress)user).Address.City = ""persisted through the independently tracked interface path"";
             ctx.SaveChanges();
         }
     }

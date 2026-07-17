@@ -3057,7 +3057,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         IOperation operation,
         CatchClauseSyntax catchClause,
         TryStatementSyntax targetTry,
-        ThrowStatementSyntax terminalThrow,
+        SyntaxNode terminalThrow,
         IOperation mutation)
     {
         var semanticModel = operation.SemanticModel ?? mutation.SemanticModel;
@@ -3133,7 +3133,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
     private static bool IsTopLevelSystemExceptionConstruction(
         IObjectCreationOperation creation,
-        ThrowStatementSyntax terminalThrow,
+        SyntaxNode terminalThrow,
         SemanticModel semanticModel)
     {
         var exceptionType = semanticModel.Compilation
@@ -3221,21 +3221,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             return false;
         }
 
-        if (SymbolEqualityComparer.Default.Equals(
-                GetBaseProperty(leftProperty),
-                GetBaseProperty(rightProperty)))
-        {
-            return true;
-        }
-
-        return PropertyImplementsInterfaceMember(
-                   leftProperty,
-                   rightProperty,
-                   left.ReceiverType) ||
-               PropertyImplementsInterfaceMember(
-                   rightProperty,
-                   leftProperty,
-                   right.ReceiverType);
+        var resolvedLeft = ResolveInterfaceProperty(
+            leftProperty, left.ReceiverType);
+        var resolvedRight = ResolveInterfaceProperty(
+            rightProperty, right.ReceiverType);
+        return SymbolEqualityComparer.Default.Equals(
+            GetBaseProperty(resolvedLeft),
+            GetBaseProperty(resolvedRight));
     }
 
     private static IPropertySymbol GetBaseProperty(IPropertySymbol property)
@@ -3246,23 +3238,21 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return property;
     }
 
-    private static bool PropertyImplementsInterfaceMember(
-        IPropertySymbol implementation,
-        IPropertySymbol interfaceMember,
+    private static IPropertySymbol ResolveInterfaceProperty(
+        IPropertySymbol property,
         ITypeSymbol? receiverType)
     {
-        if (interfaceMember.ContainingType.TypeKind != TypeKind.Interface ||
+        if (property.ContainingType.TypeKind != TypeKind.Interface ||
             receiverType is not INamedTypeSymbol effectiveReceiverType ||
             effectiveReceiverType.TypeKind == TypeKind.Interface)
         {
-            return false;
+            return property;
         }
 
-        return effectiveReceiverType.FindImplementationForInterfaceMember(interfaceMember) is
-                   IPropertySymbol resolvedImplementation &&
-               SymbolEqualityComparer.Default.Equals(
-                   GetBaseProperty(resolvedImplementation),
-                   GetBaseProperty(implementation));
+        return effectiveReceiverType.FindImplementationForInterfaceMember(property) is
+            IPropertySymbol resolvedImplementation
+                ? resolvedImplementation
+                : property;
     }
 
     private static bool ReattachCoversPath(
