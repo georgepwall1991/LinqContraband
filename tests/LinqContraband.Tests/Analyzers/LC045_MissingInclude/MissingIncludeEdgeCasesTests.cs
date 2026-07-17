@@ -51,12 +51,23 @@ namespace Microsoft.EntityFrameworkCore
     public class ModelBuilder
     {
         public Metadata.Builders.EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => null;
+
+        public void ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration)
+            where TEntity : class { }
+    }
+
+    public interface IEntityTypeConfiguration<TEntity> where TEntity : class
+    {
+        void Configure(Metadata.Builders.EntityTypeBuilder<TEntity> builder);
     }
 
     namespace Metadata.Builders
     {
         public class EntityTypeBuilder<TEntity> where TEntity : class
         {
+            public EntityTypeBuilder<TEntity> HasKey<TProperty>(
+                System.Linq.Expressions.Expression<Func<TEntity, TProperty>> keyExpression) => this;
+
             public NavigationBuilder<TEntity, TProperty> Navigation<TProperty>(
                 System.Linq.Expressions.Expression<Func<TEntity, TProperty>> navigationExpression) => null;
         }
@@ -71,6 +82,13 @@ namespace Microsoft.EntityFrameworkCore
     }
 
     public class EntityEntry<T> where T : class { }
+
+    public static class RelationalEntityTypeBuilderExtensions
+    {
+        public static Metadata.Builders.EntityTypeBuilder<TEntity> ToTable<TEntity>(
+            this Metadata.Builders.EntityTypeBuilder<TEntity> builder,
+            string name) where TEntity : class => builder;
+    }
 
     public class DbSet<T> : IQueryable<T> where T : class
     {
