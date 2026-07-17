@@ -104,15 +104,28 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
 
     private static MemberPathSegment CreateMemberPathSegment(IPropertyReferenceOperation propertyReference)
     {
+        var receiverType = propertyReference.Instance?.UnwrapConversions().Type;
         if (!propertyReference.Property.IsIndexer)
-            return new MemberPathSegment(propertyReference.Property, isIndexer: false, indexKey: null);
+        {
+            return new MemberPathSegment(
+                propertyReference.Property,
+                receiverType,
+                isIndexer: false,
+                indexKey: null);
+        }
 
         var keyParts = new List<string>(propertyReference.Arguments.Length);
         foreach (var argument in propertyReference.Arguments)
         {
             var constant = argument.Value.ConstantValue;
             if (!constant.HasValue)
-                return new MemberPathSegment(propertyReference.Property, isIndexer: true, indexKey: null);
+            {
+                return new MemberPathSegment(
+                    propertyReference.Property,
+                    receiverType,
+                    isIndexer: true,
+                    indexKey: null);
+            }
 
             var typeName = argument.Value.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
             var valueText = constant.Value switch
@@ -126,6 +139,7 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
 
         return new MemberPathSegment(
             propertyReference.Property,
+            receiverType,
             isIndexer: true,
             indexKey: string.Join("|", keyParts));
     }

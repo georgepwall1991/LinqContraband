@@ -9036,4 +9036,130 @@ namespace Test
 }";
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task AsNoTracking_MutateThenThrowOperandFailsIntoSavingCatch_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class CustomException : System.Exception
+    {
+        public CustomException(int value) { }
+    }
+    public class C
+    {
+        private static int Risk() => 0;
+
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            try
+            {
+                {|LC044:u.Name|} = ""lost when operand evaluation reaches the saving catch"";
+                throw new CustomException(Risk());
+            }
+            catch (System.InvalidOperationException)
+            {
+                ctx.SaveChanges();
+            }
+            catch (CustomException)
+            {
+                ctx.Attach(u);
+            }
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateConcreteNavigationThenDetachInterfaceNavigation_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public interface IHasAddress { Address Address { get; } }
+    public class User : IHasAddress
+    {
+        public int Id { get; set; }
+        public Address Address { get; set; }
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(user.Address);
+            ctx.Entry(((IHasAddress)user).Address).State = EntityState.Detached;
+            {|LC044:user.Address.City|} = ""lost after the equivalent interface path is detached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateOverrideNavigationThenDetachBaseNavigation_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public class BaseUser { public virtual Address Address { get; set; } }
+    public class User : BaseUser
+    {
+        public int Id { get; set; }
+        public override Address Address { get; set; }
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(user.Address);
+            ctx.Entry(((BaseUser)user).Address).State = EntityState.Detached;
+            {|LC044:user.Address.City|} = ""lost after the equivalent base path is detached"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_UpdateReimplementedInterfaceNavigationThenDetachHiddenBaseNavigation_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class Address { public string City { get; set; } }
+    public interface IHasAddress { Address Address { get; } }
+    public class BaseUser : IHasAddress { public Address Address { get; set; } }
+    public class User : BaseUser, IHasAddress
+    {
+        public int Id { get; set; }
+        public new Address Address { get; set; }
+    }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Update(((IHasAddress)user).Address);
+            ctx.Entry(((BaseUser)user).Address).State = EntityState.Detached;
+            ((IHasAddress)user).Address.City = ""persisted through the reimplemented interface path"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

@@ -7,14 +7,20 @@ namespace LinqContraband.Analyzers.LC044_AsNoTrackingThenModify;
 
 internal readonly struct MemberPathSegment
 {
-    public MemberPathSegment(ISymbol member, bool isIndexer, string? indexKey)
+    public MemberPathSegment(
+        ISymbol member,
+        ITypeSymbol? receiverType,
+        bool isIndexer,
+        string? indexKey)
     {
         Member = member;
+        ReceiverType = receiverType;
         IsIndexer = isIndexer;
         IndexKey = indexKey;
     }
 
     public ISymbol Member { get; }
+    public ITypeSymbol? ReceiverType { get; }
     public bool IsIndexer { get; }
     public string? IndexKey { get; }
 }

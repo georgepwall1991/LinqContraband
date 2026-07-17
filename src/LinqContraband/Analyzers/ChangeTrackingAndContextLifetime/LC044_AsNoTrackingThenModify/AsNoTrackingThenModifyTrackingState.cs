@@ -3192,7 +3192,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         for (var i = 0; i < candidatePrefix.Length; i++)
         {
-            if (!SymbolEqualityComparer.Default.Equals(candidatePrefix[i].Member, path[i].Member))
+            if (!MemberPathSymbolsAreEquivalent(candidatePrefix[i], path[i]))
                 return false;
 
             if (candidatePrefix[i].IsIndexer != path[i].IsIndexer)
@@ -3206,6 +3206,63 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         return true;
+    }
+
+    private static bool MemberPathSymbolsAreEquivalent(
+        MemberPathSegment left,
+        MemberPathSegment right)
+    {
+        if (SymbolEqualityComparer.Default.Equals(left.Member, right.Member))
+            return true;
+
+        if (left.Member is not IPropertySymbol leftProperty ||
+            right.Member is not IPropertySymbol rightProperty)
+        {
+            return false;
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(
+                GetBaseProperty(leftProperty),
+                GetBaseProperty(rightProperty)))
+        {
+            return true;
+        }
+
+        return PropertyImplementsInterfaceMember(
+                   leftProperty,
+                   rightProperty,
+                   left.ReceiverType) ||
+               PropertyImplementsInterfaceMember(
+                   rightProperty,
+                   leftProperty,
+                   right.ReceiverType);
+    }
+
+    private static IPropertySymbol GetBaseProperty(IPropertySymbol property)
+    {
+        while (property.OverriddenProperty is { } overriddenProperty)
+            property = overriddenProperty;
+
+        return property;
+    }
+
+    private static bool PropertyImplementsInterfaceMember(
+        IPropertySymbol implementation,
+        IPropertySymbol interfaceMember,
+        ITypeSymbol? receiverType)
+    {
+        if (interfaceMember.ContainingType.TypeKind != TypeKind.Interface ||
+            receiverType is not INamedTypeSymbol effectiveReceiverType ||
+            effectiveReceiverType.TypeKind == TypeKind.Interface)
+        {
+            return false;
+        }
+
+        return effectiveReceiverType.FindImplementationForInterfaceMember(interfaceMember) is
+                   IPropertySymbol resolvedImplementation &&
+               SymbolEqualityComparer.Default.Equals(
+                   GetBaseProperty(resolvedImplementation),
+                   GetBaseProperty(implementation));
     }
 
     private static bool ReattachCoversPath(
