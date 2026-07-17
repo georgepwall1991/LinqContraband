@@ -185,11 +185,16 @@ public sealed partial class MissingIncludeAnalyzer
                     is IAssignmentOperation assignment
                 && assignment.Target.UnwrapConversions()
                     is not (ILocalReferenceOperation or IDiscardOperation)
-                && ReferencesParameter(
-                    assignment.Value,
-                    builderParameter,
-                    cancellationToken
-                )
+                && (ReferencesParameter(
+                        assignment.Value,
+                        builderParameter,
+                        cancellationToken
+                    )
+                    || ReferencesParameter(
+                        assignment.Target,
+                        builderParameter,
+                        cancellationToken
+                    ))
             )
             {
                 return true;

@@ -209,6 +209,57 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_AppliedConfigurationBuilderIndexerSetter_DoesNotSuppress()
+    {
+        var test =
+            Usings
+            + @"
+class DisableCustomerMutator
+{
+    public bool this[Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder]
+    {
+        set => builder.Navigation(o => o.Customer).AutoInclude(false);
+    }
+}
+
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    private readonly DisableCustomerMutator _mutator = new();
+
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude();
+        _mutator[builder] = true;
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
     public async Task TestCrime_AppliedConfigurationBuilderFieldEscape_DoesNotSuppress()
     {
         var test =
