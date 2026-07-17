@@ -42,6 +42,7 @@ public sealed partial class MissingIncludeAnalyzer
         if (
             configurationArgument?.Value.UnwrapConversions()
                 is not IObjectCreationOperation configurationCreation
+            || configurationCreation.Arguments.Length != 0
             || configurationCreation.Type is not INamedTypeSymbol configurationType
             || !TryGetExactConfigureMethod(
                 configurationType,
@@ -63,7 +64,22 @@ public sealed partial class MissingIncludeAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             var syntax = syntaxReference.GetSyntax(cancellationToken);
             var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+            var configureOperation = syntax switch
+            {
+                MethodDeclarationSyntax { Body: not null } method =>
+                    semanticModel.GetOperation(method.Body, cancellationToken),
+                MethodDeclarationSyntax { ExpressionBody.Expression: var expression } =>
+                    semanticModel.GetOperation(expression, cancellationToken),
+                _ => null,
+            };
             if (
+                configureOperation == null
+                || ContainsBuilderConsumingUserDefinedConversion(
+                    configureOperation,
+                    configureMethod.Parameters[0],
+                    cancellationToken
+                )
+                ||
                 HasEscapedConfigurationBuilder(
                     syntax,
                     semanticModel,
@@ -187,17 +203,6 @@ public sealed partial class MissingIncludeAnalyzer
             )
             {
                 if (
-                    ContainsBuilderConsumingUserDefinedConversion(
-                        assignment.Value,
-                        builderParameter,
-                        cancellationToken
-                    )
-                )
-                {
-                    return true;
-                }
-
-                if (
                     assignment.Target.UnwrapConversions()
                         is not (ILocalReferenceOperation or IDiscardOperation)
                     && (ReferencesParameter(
@@ -214,27 +219,6 @@ public sealed partial class MissingIncludeAnalyzer
                 {
                     return true;
                 }
-            }
-        }
-
-        foreach (
-            var variableSyntax in configureSyntax
-                .DescendantNodes()
-                .OfType<VariableDeclaratorSyntax>()
-        )
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (
-                semanticModel.GetOperation(variableSyntax, cancellationToken)
-                    is IVariableDeclaratorOperation { Initializer.Value: var initializer }
-                && ContainsBuilderConsumingUserDefinedConversion(
-                    initializer,
-                    builderParameter,
-                    cancellationToken
-                )
-            )
-            {
-                return true;
             }
         }
 

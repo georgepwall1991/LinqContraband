@@ -364,6 +364,7 @@ class Program
     [InlineData(
         "DisableCustomerMutator ignored = true ? (DisableCustomerMutator)builder : new DisableCustomerMutator();"
     )]
+    [InlineData("if ((DisableCustomerMutator)builder != null) { }")]
     public async Task TestCrime_AppliedConfigurationBuilderUserDefinedConversion_DoesNotSuppress(
         string conversion
     )
@@ -397,6 +398,56 @@ class AutoIncludeDbContext : MyDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new OrderConfiguration());
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_AppliedConfigurationConstructorConsumesModelBuilder_DoesNotSuppress()
+    {
+        var test =
+            Usings
+            + @"
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    private readonly Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> _saved;
+
+    public OrderConfiguration(
+        Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> saved)
+    {
+        _saved = saved;
+    }
+
+    public void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<Order> builder)
+    {
+        builder.Navigation(o => o.Customer).AutoInclude();
+        _saved.Navigation(o => o.Customer).AutoInclude(false);
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(
+            new OrderConfiguration(modelBuilder.Entity<Order>()));
     }
 }
 
