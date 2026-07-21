@@ -58,7 +58,8 @@ location. It recognises async query materializers and aggregates, `FindAsync`, `
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
 `Task.WhenAll(items.Select(...))` when the selector captures one outer context and the source can contain multiple
-items.
+items. Instance context members are matched by both the member and its proven receiver, so the same member on two
+different holder objects is not conflated.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
@@ -66,7 +67,10 @@ custom lookalike APIs, query construction, `AsAsyncEnumerable()` alone, and per-
 to own `Task.Run`, `Parallel`, `Thread`, thread-pool, and timer capture diagnostics.
 
 An await or task escape suppresses the diagnostic only when it is guaranteed to execute before the later EF Core
-operation. A conditional await still reports because another reaching path can leave the first operation active.
+operation. A conditional await or an exception path that can bypass an await still reports because another reaching
+path can leave the first operation active. Each independently drained and restarted overlap group receives its own
+diagnostic. Selector analysis inspects only code executed by the selector itself, not uninvoked nested lambdas or
+local functions.
 
 ## Why There Is No Code Fix
 

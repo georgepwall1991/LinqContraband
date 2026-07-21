@@ -39,32 +39,41 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             .OrderBy(operation => operation.Invocation.Syntax.SpanStart)
             .ToArray();
 
-        var reportedOrigins = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var reportedOrigins = new HashSet<ContextOrigin>(ContextOriginComparer.Instance);
         for (var currentIndex = 0; currentIndex < operations.Length; currentIndex++)
         {
             var current = operations[currentIndex];
-            if (reportedOrigins.Contains(current.Origin.Symbol))
-                continue;
+            EfOperation? activePrevious = null;
 
             for (var previousIndex = currentIndex - 1; previousIndex >= 0; previousIndex--)
             {
                 var previous = operations[previousIndex];
-                if (!SymbolEqualityComparer.Default.Equals(previous.Origin.Symbol, current.Origin.Symbol) ||
+                if (!ContextOriginComparer.Instance.Equals(previous.Origin, current.Origin) ||
                     !IsDefinitelyActiveBefore(previous.Invocation, current.Invocation, executableRoot))
                 {
                     continue;
                 }
 
-                context.ReportDiagnostic(
-                    Diagnostic.Create(
-                        Rule,
-                        current.Invocation.Syntax.GetLocation(),
-                        new[] { previous.Invocation.Syntax.GetLocation() },
-                        properties: null,
-                        current.Origin.DisplayName));
-                reportedOrigins.Add(current.Origin.Symbol);
+                activePrevious = previous;
                 break;
             }
+
+            if (!activePrevious.HasValue)
+            {
+                reportedOrigins.Remove(current.Origin);
+                continue;
+            }
+
+            if (!reportedOrigins.Add(current.Origin))
+                continue;
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Rule,
+                    current.Invocation.Syntax.GetLocation(),
+                    new[] { activePrevious.Value.Invocation.Syntax.GetLocation() },
+                    properties: null,
+                    current.Origin.DisplayName));
         }
     }
 
@@ -116,18 +125,29 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             taskEndReferences.Add(localReference.Syntax);
-            if (IsDefinitelyExecutedBefore(localReference.Syntax, current.Syntax))
+            if (IsDefinitelyExecutedBefore(localReference.Syntax, current.Syntax) &&
+                !TaskEndCanBeBypassedByContinuingHandler(
+                    previous.Syntax,
+                    localReference.Syntax,
+                    current.Syntax,
+                    executableRoot))
             {
                 return false;
             }
         }
 
-        return !TaskEndsOnEveryBranch(taskEndReferences, current.Syntax);
+        return !TaskEndsOnEveryBranch(
+            taskEndReferences,
+            previous.Syntax,
+            current.Syntax,
+            executableRoot);
     }
 
     private static bool TaskEndsOnEveryBranch(
         IReadOnlyCollection<SyntaxNode> taskEndReferences,
-        SyntaxNode current)
+        SyntaxNode taskStart,
+        SyntaxNode current,
+        IOperation executableRoot)
     {
         var visitedConditionals = new HashSet<SyntaxNode>();
         foreach (var reference in taskEndReferences)
@@ -143,16 +163,72 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
                 var thenEndsTask = taskEndReferences.Any(candidate =>
                     ifStatement.Statement.Span.Contains(candidate.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Statement));
+                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Statement) &&
+                    !TaskEndCanBeBypassedByContinuingHandler(
+                        taskStart,
+                        candidate,
+                        current,
+                        executableRoot));
                 var elseEndsTask = taskEndReferences.Any(candidate =>
                     ifStatement.Else.Statement.Span.Contains(candidate.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Else.Statement));
+                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Else.Statement) &&
+                    !TaskEndCanBeBypassedByContinuingHandler(
+                        taskStart,
+                        candidate,
+                        current,
+                        executableRoot));
                 if (thenEndsTask && elseEndsTask)
                     return true;
             }
         }
 
         return false;
+    }
+
+    private static bool TaskEndCanBeBypassedByContinuingHandler(
+        SyntaxNode taskStart,
+        SyntaxNode taskEnd,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        foreach (var tryStatement in taskEnd.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(taskEnd.Span) ||
+                tryStatement.Block.Span.Contains(current.Span))
+            {
+                continue;
+            }
+
+            var currentIsInHandler = tryStatement.Catches.Any(catchClause =>
+                    catchClause.Span.Contains(current.Span)) ||
+                tryStatement.Finally?.Span.Contains(current.Span) == true;
+            var handlerCanReachFollowingOperation =
+                tryStatement.Span.End <= current.SpanStart &&
+                tryStatement.Catches.Any(catchClause => !BranchAlwaysExits(catchClause.Block));
+            if (!currentIsInHandler && !handlerCanReachFollowingOperation)
+                continue;
+
+            if (EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                    operation.Syntax.SpanStart >= taskStart.Span.End &&
+                    operation.Syntax.Span.End <= taskEnd.SpanStart &&
+                    tryStatement.Block.Span.Contains(operation.Syntax.Span) &&
+                    CanThrowBeforeTaskEnd(operation)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool CanThrowBeforeTaskEnd(IOperation operation)
+    {
+        return operation is IInvocationOperation or
+            IObjectCreationOperation or
+            IThrowOperation or
+            IAwaitOperation or
+            IPropertyReferenceOperation or
+            IArrayElementReferenceOperation;
     }
 
     private static bool IsUnconditionallyExecutedWithin(
@@ -539,14 +615,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             EfOperation? capturedOperation = null;
-            foreach (var invocation in selector.Body.Descendants().OfType<IInvocationOperation>())
+            foreach (var invocation in EnumerateOutsideNestedExecutables(selector.Body)
+                         .OfType<IInvocationOperation>())
             {
                 if (!TryClassifyEfAsyncOperation(
                         invocation,
                         executableRoot,
                         context.CancellationToken,
                         out var operation) ||
-                    IsSymbolDeclaredInside(operation.Origin.Symbol, selector.Syntax))
+                    IsOriginDeclaredInside(operation.Origin, selector.Syntax))
                 {
                     continue;
                 }
@@ -645,5 +722,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsOriginDeclaredInside(ContextOrigin origin, SyntaxNode container)
+    {
+        return IsSymbolDeclaredInside(origin.Symbol, container) ||
+               origin.ReceiverSymbol != null &&
+               IsSymbolDeclaredInside(origin.ReceiverSymbol, container);
     }
 }

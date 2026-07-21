@@ -332,14 +332,56 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             case IFieldReferenceOperation fieldReference
                 when fieldReference.Field.Type.IsDbContext() &&
                      fieldReference.Field.IsReadOnly:
-                origin = new ContextOrigin(fieldReference.Field, fieldReference.Field.Name);
-                return true;
+                if (fieldReference.Field.IsStatic)
+                {
+                    origin = new ContextOrigin(fieldReference.Field, fieldReference.Field.Name);
+                    return true;
+                }
+
+                if (fieldReference.Instance != null &&
+                    TryResolveReceiverOrigin(
+                        fieldReference.Instance,
+                        executableRoot,
+                        beforePosition,
+                        cancellationToken,
+                        new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+                        out var fieldReceiver))
+                {
+                    origin = new ContextOrigin(
+                        fieldReference.Field,
+                        fieldReceiver,
+                        fieldReference.Field.Name);
+                    return true;
+                }
+
+                break;
 
             case IPropertyReferenceOperation propertyReference
                 when propertyReference.Property.Type.IsDbContext() &&
                      IsStableAutoProperty(propertyReference.Property):
-                origin = new ContextOrigin(propertyReference.Property, propertyReference.Property.Name);
-                return true;
+                if (propertyReference.Property.IsStatic)
+                {
+                    origin = new ContextOrigin(propertyReference.Property, propertyReference.Property.Name);
+                    return true;
+                }
+
+                if (propertyReference.Instance != null &&
+                    TryResolveReceiverOrigin(
+                        propertyReference.Instance,
+                        executableRoot,
+                        beforePosition,
+                        cancellationToken,
+                        new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+                        out var propertyReceiver))
+                {
+                    origin = new ContextOrigin(
+                        propertyReference.Property,
+                        propertyReceiver,
+                        propertyReference.Property.Name);
+                    return true;
+                }
+
+                break;
 
             case IInstanceReferenceOperation instanceReference
                 when instanceReference.Type.IsDbContext():
@@ -348,6 +390,58 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         origin = default;
+        return false;
+    }
+
+    private static bool TryResolveReceiverOrigin(
+        IOperation expression,
+        IOperation executableRoot,
+        int beforePosition,
+        CancellationToken cancellationToken,
+        HashSet<ISymbol> visitedLocals,
+        out ISymbol receiver)
+    {
+        expression = expression.UnwrapConversions();
+
+        switch (expression)
+        {
+            case IParameterReferenceOperation parameterReference:
+                receiver = parameterReference.Parameter;
+                return true;
+
+            case ILocalReferenceOperation localReference:
+                if (!visitedLocals.Add(localReference.Local) ||
+                    !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition,
+                        out var assignedValue,
+                        cancellationToken))
+                {
+                    receiver = null!;
+                    return false;
+                }
+
+                if (assignedValue.UnwrapConversions() is IObjectCreationOperation)
+                {
+                    receiver = localReference.Local;
+                    return true;
+                }
+
+                return TryResolveReceiverOrigin(
+                    assignedValue,
+                    executableRoot,
+                    localReference.Syntax.SpanStart,
+                    cancellationToken,
+                    visitedLocals,
+                    out receiver);
+
+            case IInstanceReferenceOperation instanceReference when instanceReference.Type != null:
+                receiver = instanceReference.Type;
+                return true;
+        }
+
+        receiver = null!;
         return false;
     }
 
@@ -520,12 +614,45 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         public ContextOrigin(ISymbol symbol, string displayName)
         {
             Symbol = symbol;
+            ReceiverSymbol = null;
+            DisplayName = displayName;
+        }
+
+        public ContextOrigin(ISymbol symbol, ISymbol receiverSymbol, string displayName)
+        {
+            Symbol = symbol;
+            ReceiverSymbol = receiverSymbol;
             DisplayName = displayName;
         }
 
         public ISymbol Symbol { get; }
 
+        public ISymbol? ReceiverSymbol { get; }
+
         public string DisplayName { get; }
+    }
+
+    private sealed class ContextOriginComparer : IEqualityComparer<ContextOrigin>
+    {
+        public static readonly ContextOriginComparer Instance = new();
+
+        public bool Equals(ContextOrigin x, ContextOrigin y)
+        {
+            return SymbolEqualityComparer.Default.Equals(x.Symbol, y.Symbol) &&
+                   SymbolEqualityComparer.Default.Equals(x.ReceiverSymbol, y.ReceiverSymbol);
+        }
+
+        public int GetHashCode(ContextOrigin origin)
+        {
+            unchecked
+            {
+                var hashCode = SymbolEqualityComparer.Default.GetHashCode(origin.Symbol);
+                return (hashCode * 397) ^
+                       (origin.ReceiverSymbol == null
+                           ? 0
+                           : SymbolEqualityComparer.Default.GetHashCode(origin.ReceiverSymbol));
+            }
+        }
     }
 
     private readonly struct EfOperation
