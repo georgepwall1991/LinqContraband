@@ -18,6 +18,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         "AnyAsync",
         "AverageAsync",
         "CountAsync",
+        "ElementAtAsync",
+        "ElementAtOrDefaultAsync",
         "ExecuteDeleteAsync",
         "ExecuteUpdateAsync",
         "FirstAsync",

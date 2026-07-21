@@ -52,8 +52,9 @@ Each helper must create and dispose its own context.
 ### Severity: `Warning`
 
 LC046 reports the second proven overlapping EF Core invocation and points back to the first operation as an additional
-location. It recognises async query materializers and aggregates, `FindAsync`, `SaveChangesAsync`, `LoadAsync`,
-`ExecuteUpdateAsync`, `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
+location. It recognises async query terminals, including `ElementAtAsync` and `ElementAtOrDefaultAsync`, plus
+`FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`, `ExecuteDeleteAsync`, and relational
+`ExecuteSql*Async` commands.
 
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
@@ -64,7 +65,7 @@ different holder objects is not conflated.
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
 custom lookalike APIs, query construction, `AsAsyncEnumerable()` alone, per-item context factories, and selector
-fan-out over statically empty or singleton sources. LC036 continues to own `Task.Run`, `Parallel`, `Thread`,
+fan-out over statically empty or singleton sources, including fixed-size arrays. LC036 continues to own `Task.Run`, `Parallel`, `Thread`,
 thread-pool, and timer capture diagnostics.
 
 An await or task escape suppresses the diagnostic only when it is guaranteed to execute before the later EF Core

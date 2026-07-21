@@ -768,10 +768,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     private static bool SourceIsAtMostOne(IOperation source)
     {
         source = source.UnwrapConversions();
-        if (source is IArrayCreationOperation arrayCreation &&
-            arrayCreation.Initializer != null)
+        if (source is IArrayCreationOperation arrayCreation)
         {
-            return arrayCreation.Initializer.ElementValues.Length <= 1;
+            if (arrayCreation.Initializer != null)
+                return arrayCreation.Initializer.ElementValues.Length <= 1;
+
+            return arrayCreation.DimensionSizes.Length == 1 &&
+                   IsConstantArrayLengthAtMostOne(arrayCreation.DimensionSizes[0]);
         }
 
         if (source is IInvocationOperation invocation &&
@@ -794,6 +797,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsConstantArrayLengthAtMostOne(IOperation dimension)
+    {
+        if (!dimension.ConstantValue.HasValue)
+            return false;
+
+        return dimension.ConstantValue.Value switch
+        {
+            int value => value is 0 or 1,
+            uint value => value <= 1,
+            long value => value is 0 or 1,
+            ulong value => value <= 1,
+            _ => false
+        };
     }
 
     private static bool IsSymbolDeclaredInside(ISymbol symbol, SyntaxNode container)

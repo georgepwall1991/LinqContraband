@@ -126,6 +126,93 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_SelectOverFixedSizeSingletonArray_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await Task.WhenAll(
+                new int[1].Select(_ => db.Users.AnyAsync()));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_SelectOverIntegralSingletonArrayBounds_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await Task.WhenAll(new int[1U].Select(_ => db.Users.AnyAsync()));
+            await Task.WhenAll(new int[1L].Select(_ => db.Users.AnyAsync()));
+            await Task.WhenAll(new int[1UL].Select(_ => db.Users.AnyAsync()));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_SelectOverFixedSizeTwoElementArray_ShouldTriggerAtFanOut()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await {|#1:Task.WhenAll(
+                new int[2].Select(_ => {|#0:db.Users.AnyAsync()|}))|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_ReorderedNamedStaticSelect_ShouldTriggerAtFanOut()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

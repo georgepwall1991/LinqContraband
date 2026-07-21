@@ -68,6 +68,38 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ElementAtTerminals_OnSameContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await Task.WhenAll(
+                {|#0:db.Users.ElementAtAsync(0)|},
+                {|#1:db.Users.ElementAtOrDefaultAsync(1)|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task RawCommandAndQuery_OnSameContext_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

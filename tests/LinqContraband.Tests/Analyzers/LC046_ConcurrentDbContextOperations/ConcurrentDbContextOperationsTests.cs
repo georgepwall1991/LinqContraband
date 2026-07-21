@@ -46,6 +46,18 @@ namespace Microsoft.EntityFrameworkCore
             CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
 
+        public static Task<TEntity> ElementAtAsync<TEntity>(
+            this IQueryable<TEntity> source,
+            int index,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(default(TEntity));
+
+        public static Task<TEntity> ElementAtOrDefaultAsync<TEntity>(
+            this IQueryable<TEntity> source,
+            int index,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(default(TEntity));
+
         public static Task LoadAsync<TEntity>(
             this IQueryable<TEntity> source,
             CancellationToken cancellationToken = default) =>
