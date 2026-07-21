@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `LC046` detects overlapping EF Core async queries, saves, finds, loads, set-based commands, and relational raw commands that are proven to share one `DbContext`, including direct task overlap and `Task.WhenAll(Enumerable.Select(...))` fan-out, while keeping sequential awaits, separate or per-item contexts, branch-exclusive flow, escaped or reassigned state, repository queries, and custom lookalikes quiet.
+
 ## [5.6.47] - 2026-07-17
 
 ### Fixed

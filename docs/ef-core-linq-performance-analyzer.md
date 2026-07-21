@@ -30,6 +30,7 @@ dotnet add package LinqContraband
 - Sync-over-async EF Core calls inside async methods
 - Missing cancellation tokens on async EF Core queries and saves
 - Async stream buffering before a single `await foreach`
+- Concurrent async EF Core operations on one `DbContext`
 - DbContext lifetime mismatches, disposed query leaks, and cross-thread context capture
 - `SaveChanges` or `SaveChangesAsync` inside loops
 - Missing `AsNoTracking()` in read-only paths
@@ -69,7 +70,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 
 ## Browse the Rules
 
-The full catalog contains 45 rules grouped by domain:
+The full catalog contains 46 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
@@ -90,6 +91,7 @@ The full catalog contains 45 rules grouped by domain:
 - [EF Core query analyzer for CI](/LinqContraband/ef-core-query-analyzer-ci/)
 - [LC007: N+1 query loops](/LinqContraband/LC007_NPlusOneLooper.html)
 - [LC045: missing include](/LinqContraband/LC045_MissingInclude.html)
+- [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html)
 - [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html)
 - [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html)
 - [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html)

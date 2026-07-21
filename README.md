@@ -66,7 +66,7 @@ The analyzer will immediately start scanning your code for contraband.
 
 ## 👮‍♂️ The Rules
 
-> **45 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **46 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ## 🗺️ Rule Neighborhoods
 
@@ -77,7 +77,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | Query Shape & Translation | LC001, LC004, LC005, LC014, LC015, LC016, LC020, LC024 |
 | Materialization & Projection | LC002, LC003, LC017, LC022, LC023, LC029, LC031, LC033, LC041 |
 | Loading & Includes | LC006, LC019, LC028, LC038, LC042, LC045 |
-| Execution & Async | LC007, LC008, LC026, LC036, LC043 |
+| Execution & Async | LC007, LC008, LC026, LC036, LC043, LC046 |
 | Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044 |
 | Bulk Operations & Set-Based Writes | LC012, LC032, LC035 |
 | Schema & Modeling | LC011, LC027 |
@@ -1795,6 +1795,37 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   Regrouped conditional paths such as
   `(order?.Customer)?.Address?.City` report the full `Customer.Address` navigation, including inline materializer
   and inherited-navigation forms, while conditional method-call results stay outside the queried receiver path.
+
+---
+
+### LC046: Concurrent DbContext Operations
+
+Starting a second EF Core operation before the first finishes can use one `DbContext` concurrently. EF Core does not
+support that overlap.
+
+**❌ The Crime:**
+
+```csharp
+var users = db.Users.ToListAsync(cancellationToken);
+var roles = db.Roles.ToListAsync(cancellationToken); // LC046
+await Task.WhenAll(users, roles);
+```
+
+**✅ The Fix:**
+Await the operations sequentially, or create a separate context for each genuinely parallel operation.
+
+```csharp
+var users = await db.Users.ToListAsync(cancellationToken);
+var roles = await db.Roles.ToListAsync(cancellationToken);
+```
+
+**🛡️ Reliability Notes:**
+- LC046 reports only when both async EF Core operations and their shared context origin are provable.
+- Sequential awaits, separate contexts, per-item factories, branch-exclusive flow, custom lookalikes, and ambiguous
+  repository query origins stay quiet.
+- `Task.Run`, `Parallel`, thread-pool, `Thread`, and timer context capture remains LC036's responsibility.
+- There is no automatic fix because sequential execution and separate contexts have different transaction, tracking,
+  lifetime, and consistency semantics.
 
 ---
 

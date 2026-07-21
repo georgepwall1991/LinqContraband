@@ -11,8 +11,8 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>45</strong><span>rules</span></div>
-    <div class="metric"><strong>27</strong><span>warnings</span></div>
+    <div class="metric"><strong>46</strong><span>rules</span></div>
+    <div class="metric"><strong>28</strong><span>warnings</span></div>
     <div class="metric"><strong>30</strong><span>code fixes</span></div>
   </div>
 </section>
@@ -234,6 +234,18 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC043_AsyncEnumerableBuffering/</span>
+    </a>
+    <a class="rule-card" href="./LC046_ConcurrentDbContextOperations.html">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC046</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>Concurrent EF Core operations on the same DbContext</h3>
+      <span class="rule-card__meta">
+        <span>Safety</span>
+        <span class="pill pill--manual">Manual only</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC046_ConcurrentDbContextOperations/</span>
     </a>
   </div>
 </section>

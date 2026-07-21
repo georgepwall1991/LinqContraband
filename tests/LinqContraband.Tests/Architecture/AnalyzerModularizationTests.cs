@@ -8,6 +8,32 @@ public sealed class AnalyzerModularizationTests
     private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
 
     [Fact]
+    public void LC046_FlowAndClassification_LiveInDedicatedPartials()
+    {
+        var analyzerDir = Path.Combine(
+            _repoRoot,
+            "src",
+            "LinqContraband",
+            "Analyzers",
+            "ExecutionAndAsync",
+            "LC046_ConcurrentDbContextOperations");
+        var analyzerPath = Path.Combine(analyzerDir, "ConcurrentDbContextOperationsAnalyzer.cs");
+        var flowPath = Path.Combine(analyzerDir, "ConcurrentDbContextOperationsFlowAnalysis.cs");
+        var classificationPath = Path.Combine(analyzerDir, "ConcurrentDbContextOperationsClassification.cs");
+
+        Assert.True(File.Exists(flowPath), "LC046 overlap flow should live in a focused partial file.");
+        Assert.True(File.Exists(classificationPath), "LC046 EF operation classification should live in a focused partial file.");
+
+        var analyzerSource = File.ReadAllText(analyzerPath);
+        Assert.Contains("public sealed partial class ConcurrentDbContextOperationsAnalyzer", analyzerSource);
+        Assert.DoesNotContain("private static void AnalyzeDirectOverlaps", analyzerSource);
+        Assert.DoesNotContain("private static bool TryClassifyEfAsyncOperation", analyzerSource);
+
+        Assert.Contains("private static void AnalyzeDirectOverlaps", File.ReadAllText(flowPath));
+        Assert.Contains("private static bool TryClassifyEfAsyncOperation", File.ReadAllText(classificationPath));
+    }
+
+    [Fact]
     public void LC044_RootScanEntries_LiveInDedicatedPartial()
     {
         var analyzerDir = Path.Combine(

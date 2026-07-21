@@ -56,6 +56,7 @@ public sealed class Worker : BackgroundService
 | --- | --- | --- |
 | [LC030: DbContext lifetime mismatch](/LinqContraband/LC030_DbContextInSingleton.html) | DbContexts stored in hosted services, singleton services, middleware-like long-lived types, or singleton DI registrations. | A context can leak tracked state, cross request boundaries, or be used concurrently. |
 | [LC036: DbContext captured across threads](/LinqContraband/LC036_DbContextCapturedAcrossThreads.html) | DbContext locals, fields, properties, or parameters captured into `Task.Run`, `Parallel.ForEach`, `Thread`, timer, or thread-pool callbacks. | The same context can be used after its owning scope or concurrently on another thread. |
+| [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html) | Async EF Core queries, saves, or commands overlap on one provable context origin. | EF Core does not support multiple parallel operations on one context. |
 | [LC013: disposed context query leak](/LinqContraband/LC013_DisposedContextQuery.html) | Deferred `IQueryable` or `IAsyncEnumerable` values returned after the context that built them is disposed. | Callers get an `ObjectDisposedException` when enumeration finally happens. |
 | [LC044: no-tracking entity mutated then saved](/LinqContraband/LC044_AsNoTrackingThenModifySilentWrite.html) | `AsNoTracking` entities mutated before `SaveChanges` without re-attaching. | EF Core can silently persist nothing. |
 | [LC040: mixed tracking modes](/LinqContraband/LC040_MixedTrackingAndNoTracking.html) | Tracked and no-tracking materialization from the same context in one scope. | Later update behaviour can become unclear or inconsistent. |
@@ -108,6 +109,7 @@ public async Task<List<User>> ActiveUsersAsync()
 - Keep a `DbContext` scoped to one request, job step, command handler, or explicit unit of work.
 - Inject `IDbContextFactory<TContext>` into hosted services, timers, queue processors, and parallel workers.
 - Create a new context or scope inside background delegates.
+- Await operations sequentially on one context, or create a separate context for each parallel operation.
 - Materialize deferred queries before a locally created context is disposed.
 - Keep read-only no-tracking flows separate from write flows, or make the tracking boundary explicit.
 - Use explicit re-attach calls only when a reviewer accepts the wider update semantics.
@@ -119,6 +121,7 @@ public async Task<List<User>> ActiveUsersAsync()
 3. Does any method return `IQueryable` or `IAsyncEnumerable` from a `using` or locally disposed context?
 4. Are `AsNoTracking` entities later mutated or passed back into EF write APIs?
 5. Would separate scopes, `IDbContextFactory<TContext>`, or a scoped collaborator make the lifetime clearer?
+6. Can two async EF Core operations overlap on the same context before either task completes?
 
 ## CI Severity Starter
 
@@ -134,6 +137,7 @@ dotnet_diagnostic.LC036.severity = warning
 dotnet_diagnostic.LC013.severity = warning
 dotnet_diagnostic.LC044.severity = warning
 dotnet_diagnostic.LC040.severity = suggestion
+dotnet_diagnostic.LC046.severity = warning
 ```
 
 Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) when these diagnostics should run

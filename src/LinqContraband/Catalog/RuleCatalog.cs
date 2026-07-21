@@ -8,7 +8,8 @@ public static partial class RuleCatalog
 {
     public static ImmutableArray<RuleCatalogEntry> All { get; } = CreateLC001ToLC015Entries()
         .AddRange(CreateLC016ToLC030Entries())
-        .AddRange(CreateLC031ToLC045Entries());
+        .AddRange(CreateLC031ToLC045Entries())
+        .AddRange(CreateLC046ToLC060Entries());
 
     public static RuleCatalogEntry GetById(string id)
     {
