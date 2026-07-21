@@ -353,6 +353,166 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ThrowingImmediateAwaitWrapperArgument_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static bool GetFlag() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                await {|#0:db.Users.ToListAsync()|}.ConfigureAwait(GetFlag());
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ThrowingTaskLocalAwaitWrapperArgument_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static bool GetFlag() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            var first = {|#0:db.Users.ToListAsync()|};
+            try
+            {
+                await first.ConfigureAwait(GetFlag());
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ThrowingWhenAllAwaitWrapperArgument_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static bool GetFlag() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                await Task.WhenAll(
+                    {|#0:db.Users.ToListAsync()|},
+                    Task.CompletedTask).ConfigureAwait(GetFlag());
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ConstantImmediateAwaitWrapperArgument_WithContinuingCatch_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                await db.Users.ToListAsync().ConfigureAwait(false);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AwaitFirstInTry_WithContinuingCatch_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

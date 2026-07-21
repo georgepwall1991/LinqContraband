@@ -68,9 +68,10 @@ to own `Task.Run`, `Parallel`, `Thread`, thread-pool, and timer capture diagnost
 
 An await or task escape suppresses the diagnostic only when it is guaranteed to execute before the later EF Core
 operation. A conditional await or an exception path that can bypass an await still reports because another reaching
-path can leave the first operation active. Each independently drained and restarted overlap group receives its own
-diagnostic. Selector analysis inspects only code executed by the selector itself, not uninvoked nested lambdas or
-local functions.
+path can leave the first operation active, including when argument evaluation throws after the EF task starts but
+before an immediate, task-local, or `Task.WhenAll` wrapper reaches the await. Each independently drained and restarted
+overlap group receives its own diagnostic. Selector analysis inspects only code executed by the selector itself, not
+uninvoked nested lambdas or local functions.
 
 ## Why There Is No Code Fix
 

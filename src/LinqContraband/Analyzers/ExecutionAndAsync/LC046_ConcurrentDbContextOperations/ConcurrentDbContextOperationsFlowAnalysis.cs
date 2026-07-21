@@ -83,14 +83,33 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot)
     {
         if (previous.Syntax.SpanStart >= current.Syntax.SpanStart ||
-            IsImmediatelyAwaited(previous) ||
             !IsDefinitelyExecutedBefore(previous.Syntax, current.Syntax))
         {
             return false;
         }
 
-        if (TryGetContainingAwaitedWhenAll(previous, out var completedWhenAll) &&
-            completedWhenAll.Syntax.Span.End <= current.Syntax.SpanStart)
+        if (TryGetImmediateAwait(previous, out var immediateAwait) &&
+            !CompletionCanBeBypassedByContinuingHandler(
+                previous.Syntax,
+                immediateAwait.Syntax,
+                immediateAwait.Operation.Syntax.Span.End,
+                current.Syntax,
+                executableRoot))
+        {
+            return false;
+        }
+
+        if (TryGetContainingAwaitedWhenAll(
+                previous,
+                out var completedWhenAll,
+                out var whenAllAwait) &&
+            completedWhenAll.Syntax.Span.End <= current.Syntax.SpanStart &&
+            !CompletionCanBeBypassedByContinuingHandler(
+                previous.Syntax,
+                whenAllAwait.Syntax,
+                whenAllAwait.Operation.Syntax.Span.End,
+                current.Syntax,
+                executableRoot))
         {
             return false;
         }
@@ -106,7 +125,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (assignmentsBeforeCurrent != 1)
             return false;
 
-        var taskEndReferences = new List<SyntaxNode>();
+        var taskEndReferences = new List<ILocalReferenceOperation>();
         foreach (var operation in executableRoot.Descendants())
         {
             if (operation is not ILocalReferenceOperation localReference ||
@@ -124,11 +143,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            taskEndReferences.Add(localReference.Syntax);
+            taskEndReferences.Add(localReference);
             if (IsDefinitelyExecutedBefore(localReference.Syntax, current.Syntax) &&
                 !TaskEndCanBeBypassedByContinuingHandler(
                     previous.Syntax,
-                    localReference.Syntax,
+                    localReference,
                     current.Syntax,
                     executableRoot))
             {
@@ -144,7 +163,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool TaskEndsOnEveryBranch(
-        IReadOnlyCollection<SyntaxNode> taskEndReferences,
+        IReadOnlyCollection<ILocalReferenceOperation> taskEndReferences,
         SyntaxNode taskStart,
         SyntaxNode current,
         IOperation executableRoot)
@@ -152,7 +171,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         var visitedConditionals = new HashSet<SyntaxNode>();
         foreach (var reference in taskEndReferences)
         {
-            foreach (var ifStatement in reference.Ancestors().OfType<IfStatementSyntax>())
+            foreach (var ifStatement in reference.Syntax.Ancestors().OfType<IfStatementSyntax>())
             {
                 if (!visitedConditionals.Add(ifStatement) ||
                     ifStatement.Else == null ||
@@ -162,16 +181,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 }
 
                 var thenEndsTask = taskEndReferences.Any(candidate =>
-                    ifStatement.Statement.Span.Contains(candidate.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Statement) &&
+                    ifStatement.Statement.Span.Contains(candidate.Syntax.Span) &&
+                    IsUnconditionallyExecutedWithin(candidate.Syntax, ifStatement.Statement) &&
                     !TaskEndCanBeBypassedByContinuingHandler(
                         taskStart,
                         candidate,
                         current,
                         executableRoot));
                 var elseEndsTask = taskEndReferences.Any(candidate =>
-                    ifStatement.Else.Statement.Span.Contains(candidate.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate, ifStatement.Else.Statement) &&
+                    ifStatement.Else.Statement.Span.Contains(candidate.Syntax.Span) &&
+                    IsUnconditionallyExecutedWithin(candidate.Syntax, ifStatement.Else.Statement) &&
                     !TaskEndCanBeBypassedByContinuingHandler(
                         taskStart,
                         candidate,
@@ -187,13 +206,51 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
     private static bool TaskEndCanBeBypassedByContinuingHandler(
         SyntaxNode taskStart,
-        SyntaxNode taskEnd,
+        ILocalReferenceOperation taskEnd,
         SyntaxNode current,
         IOperation executableRoot)
     {
-        foreach (var tryStatement in taskEnd.Ancestors().OfType<TryStatementSyntax>())
+        if (TryGetImmediateAwait(taskEnd, out var immediateAwait))
         {
-            if (!tryStatement.Block.Span.Contains(taskEnd.Span) ||
+            return CompletionCanBeBypassedByContinuingHandler(
+                taskStart,
+                immediateAwait.Syntax,
+                immediateAwait.Operation.Syntax.Span.End,
+                current,
+                executableRoot);
+        }
+
+        if (TryGetContainingAwaitedWhenAll(
+                taskEnd,
+                out _,
+                out var whenAllAwait))
+        {
+            return CompletionCanBeBypassedByContinuingHandler(
+                taskStart,
+                whenAllAwait.Syntax,
+                whenAllAwait.Operation.Syntax.Span.End,
+                current,
+                executableRoot);
+        }
+
+        return CompletionCanBeBypassedByContinuingHandler(
+            taskStart,
+            taskEnd.Syntax,
+            taskEnd.Syntax.SpanStart,
+            current,
+            executableRoot);
+    }
+
+    private static bool CompletionCanBeBypassedByContinuingHandler(
+        SyntaxNode taskStart,
+        SyntaxNode completion,
+        int throwingPrefixEnd,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        foreach (var tryStatement in completion.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(completion.Span) ||
                 tryStatement.Block.Span.Contains(current.Span))
             {
                 continue;
@@ -210,7 +267,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if (EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
                     operation.Syntax.SpanStart >= taskStart.Span.End &&
-                    operation.Syntax.Span.End <= taskEnd.SpanStart &&
+                    operation.Syntax.Span.End <= throwingPrefixEnd &&
+                    !operation.Syntax.Span.Equals(completion.Span) &&
                     tryStatement.Block.Span.Contains(operation.Syntax.Span) &&
                     CanThrowBeforeTaskEnd(operation)))
             {
@@ -299,11 +357,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
     private static bool IsImmediatelyAwaited(IInvocationOperation invocation)
     {
-        IOperation current = invocation;
+        return TryGetImmediateAwait(invocation, out _);
+    }
+
+    private static bool TryGetImmediateAwait(
+        IOperation operation,
+        out IAwaitOperation awaitOperation)
+    {
+        IOperation current = operation;
         while (current.Parent != null)
         {
-            if (current.Parent is IAwaitOperation)
+            if (current.Parent is IAwaitOperation parentAwait)
+            {
+                awaitOperation = parentAwait;
                 return true;
+            }
 
             if (current.Parent is IConversionOperation or IParenthesizedOperation)
             {
@@ -326,9 +394,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
+            awaitOperation = null!;
             return false;
         }
 
+        awaitOperation = null!;
         return false;
     }
 
@@ -431,15 +501,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool TryGetContainingAwaitedWhenAll(
-        IInvocationOperation operation,
-        out IInvocationOperation whenAll)
+        IOperation operation,
+        out IInvocationOperation whenAll,
+        out IAwaitOperation awaitOperation)
     {
         for (IOperation? current = operation.Parent; current != null; current = current.Parent)
         {
-            if (current is IInvocationOperation invocation && IsTaskWhenAll(invocation))
+            if (current is IInvocationOperation invocation &&
+                IsTaskWhenAll(invocation) &&
+                TryGetImmediateAwait(invocation, out awaitOperation))
             {
                 whenAll = invocation;
-                return IsImmediatelyAwaited(invocation);
+                return true;
             }
 
             if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
@@ -447,6 +520,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         whenAll = null!;
+        awaitOperation = null!;
         return false;
     }
 
