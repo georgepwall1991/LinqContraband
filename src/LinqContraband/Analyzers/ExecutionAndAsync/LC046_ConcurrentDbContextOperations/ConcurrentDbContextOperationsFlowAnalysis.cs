@@ -155,7 +155,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             if (!IsReferenceAwaited(localReference) &&
-                !IsReferenceInAwaitedWhenAll(localReference) &&
+                !IsReferenceInAwaitedWhenAll(localReference, executableRoot) &&
                 !IsReferenceInAwaitedSingleTaskWhenAny(localReference) &&
                 !TryGetSynchronousTaskCompletion(localReference, out _) &&
                 !EscapesToUnknownConsumer(localReference))
@@ -188,40 +188,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         SyntaxNode current,
         IOperation executableRoot)
     {
-        var visitedConditionals = new HashSet<SyntaxNode>();
-        foreach (var reference in taskEndReferences)
-        {
-            foreach (var ifStatement in reference.Syntax.Ancestors().OfType<IfStatementSyntax>())
-            {
-                if (!visitedConditionals.Add(ifStatement) ||
-                    ifStatement.Else == null ||
-                    !IsDefinitelyExecutedBefore(ifStatement, current))
-                {
-                    continue;
-                }
-
-                var thenEndsTask = taskEndReferences.Any(candidate =>
-                    ifStatement.Statement.Span.Contains(candidate.Syntax.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate.Syntax, ifStatement.Statement) &&
-                    !TaskEndCanBeBypassedByContinuingHandler(
-                        taskStart,
-                        candidate,
-                        current,
-                        executableRoot));
-                var elseEndsTask = taskEndReferences.Any(candidate =>
-                    ifStatement.Else.Statement.Span.Contains(candidate.Syntax.Span) &&
-                    IsUnconditionallyExecutedWithin(candidate.Syntax, ifStatement.Else.Statement) &&
-                    !TaskEndCanBeBypassedByContinuingHandler(
-                        taskStart,
-                        candidate,
-                        current,
-                        executableRoot));
-                if (thenEndsTask && elseEndsTask)
-                    return true;
-            }
-        }
-
-        return false;
+        var completionPoints = taskEndReferences
+            .SelectMany(reference => GetTaskCompletionPoints(reference, executableRoot))
+            .ToImmutableArray();
+        return TaskCompletionPointsEndOnEveryBranch(
+            completionPoints,
+            taskStart,
+            current,
+            executableRoot);
     }
 
     private static bool TaskEndCanBeBypassedByContinuingHandler(
@@ -250,10 +224,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 executableRoot);
         }
 
-        if (TryGetContainingAwaitedWhenAll(
-                taskEnd,
-                out _,
-                out var whenAllAwait))
+        if (TryGetContainingAwaitedWhenAll(taskEnd, out _, out var whenAllAwait))
         {
             return CompletionCanBeBypassedByContinuingHandler(
                 taskStart,
@@ -261,6 +232,43 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 whenAllAwait.Operation.Syntax.Span.End,
                 current,
                 executableRoot);
+        }
+
+        if (taskEnd is ILocalReferenceOperation arrayElementReference)
+        {
+            var arrayWhenAllAwaits = GetAwaitedWhenAllForStableArrayElement(
+                arrayElementReference,
+                executableRoot);
+            if (!arrayWhenAllAwaits.IsDefaultOrEmpty)
+            {
+                foreach (var arrayWhenAllAwait in arrayWhenAllAwaits)
+                {
+                    if (arrayWhenAllAwait.Syntax.SpanStart >= current.SpanStart ||
+                        !IsDefinitelyExecutedBefore(arrayWhenAllAwait.Syntax, current) ||
+                        CompletionCanBeBypassedByContinuingHandler(
+                            taskStart,
+                            arrayWhenAllAwait.Syntax,
+                            arrayWhenAllAwait.Operation.Syntax.Span.End,
+                            current,
+                            executableRoot))
+                    {
+                        continue;
+                    }
+
+                    return false;
+                }
+
+                var completionPoints = arrayWhenAllAwaits
+                    .Select(completion => (
+                        Completion: (SyntaxNode)completion.Syntax,
+                        ThrowingPrefixEnd: completion.Operation.Syntax.Span.End))
+                    .ToImmutableArray();
+                return !TaskCompletionPointsEndOnEveryBranch(
+                    completionPoints,
+                    taskStart,
+                    current,
+                    executableRoot);
+            }
         }
 
         if (TryGetContainingAwaitedSingleTaskWhenAny(
@@ -284,6 +292,59 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             executableRoot);
     }
 
+    private static ImmutableArray<(SyntaxNode Completion, int ThrowingPrefixEnd)>
+        GetTaskCompletionPoints(
+            ILocalReferenceOperation taskEnd,
+            IOperation executableRoot)
+    {
+        if (TryGetSynchronousTaskCompletion(taskEnd, out var synchronousCompletion))
+        {
+            return ImmutableArray.Create((
+                Completion: (SyntaxNode)synchronousCompletion.Syntax,
+                ThrowingPrefixEnd: synchronousCompletion.Syntax.SpanStart));
+        }
+
+        if (TryGetImmediateAwait(taskEnd, out var immediateAwait))
+        {
+            return ImmutableArray.Create((
+                Completion: (SyntaxNode)immediateAwait.Syntax,
+                ThrowingPrefixEnd: immediateAwait.Operation.Syntax.Span.End));
+        }
+
+        if (TryGetContainingAwaitedWhenAll(taskEnd, out _, out var whenAllAwait))
+        {
+            return ImmutableArray.Create((
+                Completion: (SyntaxNode)whenAllAwait.Syntax,
+                ThrowingPrefixEnd: whenAllAwait.Operation.Syntax.Span.End));
+        }
+
+        var arrayWhenAllAwaits = GetAwaitedWhenAllForStableArrayElement(
+            taskEnd,
+            executableRoot);
+        if (!arrayWhenAllAwaits.IsDefaultOrEmpty)
+        {
+            return arrayWhenAllAwaits
+                .Select(completion => (
+                    Completion: (SyntaxNode)completion.Syntax,
+                    ThrowingPrefixEnd: completion.Operation.Syntax.Span.End))
+                .ToImmutableArray();
+        }
+
+        if (TryGetContainingAwaitedSingleTaskWhenAny(
+                taskEnd,
+                out _,
+                out var whenAnyAwait))
+        {
+            return ImmutableArray.Create((
+                Completion: (SyntaxNode)whenAnyAwait.Syntax,
+                ThrowingPrefixEnd: whenAnyAwait.Operation.Syntax.Span.End));
+        }
+
+        return ImmutableArray.Create((
+            Completion: (SyntaxNode)taskEnd.Syntax,
+            ThrowingPrefixEnd: taskEnd.Syntax.SpanStart));
+    }
+
     private static bool CompletionCanBeBypassedByContinuingHandler(
         SyntaxNode taskStart,
         SyntaxNode completion,
@@ -299,14 +360,23 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            var currentIsInHandler = tryStatement.Catches.Any(catchClause =>
-                    catchClause.Span.Contains(current.Span)) ||
-                tryStatement.Finally?.Span.Contains(current.Span) == true;
+            var currentCatch = tryStatement.Catches.FirstOrDefault(catchClause =>
+                catchClause.Span.Contains(current.Span));
+            var currentIsInFinally = tryStatement.Finally?.Span.Contains(current.Span) == true;
             var handlerCanReachFollowingOperation =
                 tryStatement.Span.End <= current.SpanStart &&
                 tryStatement.Catches.Any(catchClause => !BranchAlwaysExits(catchClause.Block));
-            if (!currentIsInHandler && !handlerCanReachFollowingOperation)
+            if (currentCatch == null &&
+                !currentIsInFinally &&
+                !handlerCanReachFollowingOperation)
+            {
                 continue;
+            }
+
+            var eligibleCatches = currentCatch != null
+                ? new[] { currentCatch }
+                : tryStatement.Catches
+                    .Where(catchClause => !BranchAlwaysExits(catchClause.Block));
 
             if (EnumerateOutsideNestedExecutables(executableRoot)
                 .OfType<IInvocationOperation>()
@@ -314,7 +384,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     tryStatement.Block.Span.Contains(invocation.Syntax.Span) &&
                     completion.Span.Contains(invocation.Syntax.Span) &&
                     IsTaskWhenAll(invocation) &&
-                    !TaskWhenAllInputsAreDefinitelyNonNull(invocation, executableRoot)))
+                    !TaskCombinatorInputsAreDefinitelyNonNull(invocation, executableRoot) &&
+                    (currentIsInFinally || eligibleCatches.Any(catchClause =>
+                        OperationCanReachCatch(
+                            invocation,
+                            catchClause,
+                            tryStatement,
+                            executableRoot)))))
             {
                 return true;
             }
@@ -324,7 +400,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     operation.Syntax.Span.End <= throwingPrefixEnd &&
                     !operation.Syntax.Span.Equals(completion.Span) &&
                     tryStatement.Block.Span.Contains(operation.Syntax.Span) &&
-                    CanThrowBeforeTaskEnd(operation, executableRoot)))
+                    CanThrowBeforeTaskEnd(operation, executableRoot) &&
+                    (currentIsInFinally || eligibleCatches.Any(catchClause =>
+                        OperationCanReachCatch(
+                            operation,
+                            catchClause,
+                            tryStatement,
+                            executableRoot)))))
             {
                 return true;
             }
@@ -340,7 +422,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (operation is IInvocationOperation invocation)
         {
             if (IsTaskWhenAll(invocation))
-                return !TaskWhenAllInputsAreDefinitelyNonNull(invocation, executableRoot);
+                return !TaskCombinatorInputsAreDefinitelyNonNull(invocation, executableRoot);
+
+            if (IsTaskWhenAny(invocation))
+            {
+                return !TaskWhenAnyHasExactlyOneInput(invocation) ||
+                       !TaskCombinatorInputsAreDefinitelyNonNull(invocation, executableRoot);
+            }
 
             if (IsTaskCompletionWrapper(invocation))
                 return false;
@@ -368,20 +456,285 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var tryStatement in taskStart.Syntax.Ancestors().OfType<TryStatementSyntax>())
         {
-            if (!tryStatement.Block.Span.Contains(taskStart.Syntax.Span) ||
-                !tryStatement.Catches.Any(catchClause =>
-                    catchClause.Span.Contains(current.Syntax.Span)))
+            if (!tryStatement.Block.Span.Contains(taskStart.Syntax.Span))
             {
                 continue;
             }
 
+            var currentCatch = tryStatement.Catches.FirstOrDefault(catchClause =>
+                catchClause.Span.Contains(current.Syntax.Span));
+            if (currentCatch == null)
+                continue;
+
             return EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
                 operation.Syntax.SpanStart >= taskStart.Syntax.Span.End &&
                 operation.Syntax.Span.End <= tryStatement.Block.Span.End &&
-                CanThrowBeforeTaskEnd(operation, executableRoot));
+                CanThrowBeforeTaskEnd(operation, executableRoot) &&
+                OperationCanReachCatch(
+                    operation,
+                    currentCatch,
+                    tryStatement,
+                    executableRoot));
         }
 
         return true;
+    }
+
+    private static bool OperationCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        IOperation executableRoot,
+        ITypeSymbol? knownExceptionType = null,
+        bool knownExceptionTypeIsExact = false)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        if (GetCatchFilterConstantValue(targetCatch, semanticModel) == false)
+            return false;
+
+        if (operation is IObjectCreationOperation &&
+            IsDirectExceptionConstruction(operation))
+        {
+            return false;
+        }
+
+        var inputFaultCombinator = operation switch
+        {
+            IInvocationOperation invocation => invocation,
+            IAwaitOperation awaitOperation => GetAwaitedInputFaultCombinator(awaitOperation),
+            _ => null
+        };
+        if (knownExceptionType == null &&
+            inputFaultCombinator != null &&
+            (IsTaskWhenAll(inputFaultCombinator) || IsTaskWhenAny(inputFaultCombinator)) &&
+            !TaskCombinatorInputsAreDefinitelyNonNull(inputFaultCombinator, executableRoot) &&
+            TryGetTaskCombinatorInputException(
+                inputFaultCombinator,
+                executableRoot,
+                out var inferredExceptionType,
+                out var inferredExceptionTypeIsExact))
+        {
+            knownExceptionType = inferredExceptionType;
+            knownExceptionTypeIsExact = inferredExceptionTypeIsExact;
+        }
+
+        if (knownExceptionType != null &&
+            !(knownExceptionTypeIsExact
+                ? CatchDefinitelyHandlesException(
+                    targetCatch,
+                    knownExceptionType,
+                    semanticModel)
+                : CatchMayHandleException(
+                    targetCatch,
+                    knownExceptionType,
+                    semanticModel)))
+        {
+            return false;
+        }
+
+        if (operation is not IThrowOperation throwOperation)
+            return true;
+
+        var thrownType = GetThrownExceptionType(throwOperation, executableRoot);
+        return CatchMayHandleException(targetCatch, thrownType, semanticModel) &&
+               !ThrowIsDefinitelyIntercepted(
+                   throwOperation,
+                   thrownType,
+                   targetTry,
+                   semanticModel);
+    }
+
+    private static ITypeSymbol? GetThrownExceptionType(
+        IThrowOperation throwOperation,
+        IOperation executableRoot)
+    {
+        var exception = throwOperation.Exception?.UnwrapConversions();
+        if (exception is ILocalReferenceOperation localReference &&
+            LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                throwOperation.Syntax.SpanStart,
+                out var assignedValue,
+                default) &&
+            assignedValue.UnwrapConversions() is IObjectCreationOperation objectCreation &&
+            objectCreation.Type != null)
+        {
+            return objectCreation.Type;
+        }
+
+        return exception?.Type;
+    }
+
+    private static bool TryGetTaskCombinatorInputException(
+        IInvocationOperation combinator,
+        IOperation executableRoot,
+        out ITypeSymbol exceptionType,
+        out bool exceptionTypeIsExact)
+    {
+        var inputs = combinator.Arguments
+            .Select(argument => ResolveStableTaskCombinatorInput(
+                argument.Value,
+                executableRoot,
+                combinator.Syntax.SpanStart))
+            .ToArray();
+        var hasNullCollection = inputs.Any(IsDefinitelyNullTaskInput);
+        var hasNullElement = inputs.Any(input =>
+            input is IArrayCreationOperation
+            {
+                Initializer: { } initializer
+            } && initializer.ElementValues.Any(IsDefinitelyNullTaskInput));
+
+        exceptionType = executableRoot.SemanticModel?.Compilation.GetTypeByMetadataName(
+            hasNullCollection
+                ? "System.ArgumentNullException"
+                : "System.ArgumentException")!;
+        exceptionTypeIsExact = hasNullCollection || hasNullElement;
+
+        return exceptionType != null;
+    }
+
+    private static IInvocationOperation? GetAwaitedInputFaultCombinator(
+        IAwaitOperation awaitOperation)
+    {
+        var current = awaitOperation.Operation.UnwrapConversions();
+        while (current is IInvocationOperation wrapper && IsTaskCompletionWrapper(wrapper))
+        {
+            var receiver = wrapper.GetInvocationReceiver(false);
+            if (receiver == null)
+                return null;
+
+            current = receiver.UnwrapConversions();
+        }
+
+        return current as IInvocationOperation;
+    }
+
+    private static IOperation ResolveStableTaskCombinatorInput(
+        IOperation value,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        value = value.UnwrapConversions();
+        if (value is ILocalReferenceOperation localReference)
+        {
+            if (LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                    executableRoot,
+                    localReference.Local,
+                    beforePosition,
+                    out var assignedValue,
+                    default))
+            {
+                return assignedValue.UnwrapConversions();
+            }
+        }
+
+        return value;
+    }
+
+    private static bool IsDefinitelyNullTaskInput(IOperation value)
+    {
+        value = value.UnwrapConversions();
+        return value.ConstantValue is { HasValue: true, Value: null };
+    }
+
+    private static bool IsDirectExceptionConstruction(IOperation operation)
+    {
+        IOperation current = operation;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        return current.Parent is IThrowOperation;
+    }
+
+    private static bool ThrowIsDefinitelyIntercepted(
+        IThrowOperation throwOperation,
+        ITypeSymbol? thrownType,
+        TryStatementSyntax targetTry,
+        SemanticModel? semanticModel)
+    {
+        foreach (var nestedTry in throwOperation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (ReferenceEquals(nestedTry, targetTry))
+                break;
+
+            if (!nestedTry.Block.Span.Contains(throwOperation.Syntax.Span))
+                continue;
+
+            foreach (var catchClause in nestedTry.Catches)
+            {
+                if (!CatchDefinitelyHandlesException(catchClause, thrownType, semanticModel))
+                    continue;
+
+                var filterValue = GetCatchFilterConstantValue(catchClause, semanticModel);
+                if (filterValue == true)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool CatchMayHandleException(
+        CatchClauseSyntax catchClause,
+        ITypeSymbol? thrownType,
+        SemanticModel? semanticModel)
+    {
+        if (catchClause.Declaration?.Type == null ||
+            thrownType == null ||
+            semanticModel == null)
+        {
+            return true;
+        }
+
+        var catchType = semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+        if (catchType == null || catchType.TypeKind == TypeKind.Error)
+            return true;
+
+        return TypeIsSameOrDerivedFrom(thrownType, catchType) ||
+               TypeIsSameOrDerivedFrom(catchType, thrownType);
+    }
+
+    private static bool CatchDefinitelyHandlesException(
+        CatchClauseSyntax catchClause,
+        ITypeSymbol? thrownType,
+        SemanticModel? semanticModel)
+    {
+        if (catchClause.Declaration?.Type == null)
+            return true;
+
+        if (thrownType == null || semanticModel == null)
+            return false;
+
+        var catchType = semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+        return catchType != null &&
+               catchType.TypeKind != TypeKind.Error &&
+               TypeIsSameOrDerivedFrom(thrownType, catchType);
+    }
+
+    private static bool TypeIsSameOrDerivedFrom(
+        ITypeSymbol type,
+        ITypeSymbol possibleBaseType)
+    {
+        for (var current = type as INamedTypeSymbol;
+             current != null;
+             current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, possibleBaseType))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool? GetCatchFilterConstantValue(
+        CatchClauseSyntax catchClause,
+        SemanticModel? semanticModel)
+    {
+        if (catchClause.Filter == null)
+            return true;
+
+        var constant = semanticModel?.GetConstantValue(catchClause.Filter.FilterExpression);
+        return constant is { HasValue: true, Value: bool value } ? value : null;
     }
 
     private static bool IsUnconditionallyExecutedWithin(
@@ -390,9 +743,6 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         for (SyntaxNode? current = operation; current != null; current = current.Parent)
         {
-            if (ReferenceEquals(current, branch))
-                return true;
-
             if (current is IfStatementSyntax or
                 ConditionalExpressionSyntax or
                 SwitchSectionSyntax or
@@ -407,6 +757,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             {
                 return false;
             }
+
+            if (ReferenceEquals(current, branch))
+                return true;
         }
 
         return false;
@@ -505,10 +858,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation current = invocation;
         for (var ancestor = invocation.Parent; ancestor != null; ancestor = ancestor.Parent)
         {
-            if (ancestor is IInvocationOperation containingWhenAll &&
-                IsTaskWhenAll(containingWhenAll))
+            if (ancestor is IInvocationOperation containingCombinator &&
+                (IsTaskWhenAll(containingCombinator) ||
+                 IsTaskWhenAny(containingCombinator) &&
+                 TaskWhenAnyHasExactlyOneInput(containingCombinator)))
             {
-                current = containingWhenAll;
+                current = containingCombinator;
             }
 
             if (ancestor is IAnonymousFunctionOperation or ILocalFunctionOperation)
@@ -557,8 +912,24 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         out IInvocationOperation completion)
     {
         IOperation current = reference;
-        while (current.Parent is IConversionOperation or IParenthesizedOperation)
-            current = current.Parent;
+        while (current.Parent != null)
+        {
+            if (current.Parent is IConversionOperation or IParenthesizedOperation)
+            {
+                current = current.Parent;
+                continue;
+            }
+
+            if (current.Parent is IInvocationOperation wrapper &&
+                IsTaskCompletionWrapper(wrapper) &&
+                IsTaskWrapper(wrapper, current))
+            {
+                current = wrapper;
+                continue;
+            }
+
+            break;
+        }
 
         if (current.Parent is not IInvocationOperation taskInvocation ||
             !ReferenceEquals(taskInvocation.GetInvocationReceiver(false), current))
@@ -604,7 +975,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         var method = invocation.TargetMethod;
         return method.Name == methodName &&
-               method.ContainingType.Name == "Task" &&
+               method.ContainingType.Name is "Task" or "ValueTask" &&
                method.ContainingNamespace?.ToString() == "System.Threading.Tasks";
     }
 
@@ -635,18 +1006,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool IsReferenceInAwaitedWhenAll(ILocalReferenceOperation reference)
+    private static bool IsReferenceInAwaitedWhenAll(
+        ILocalReferenceOperation reference,
+        IOperation executableRoot)
     {
-        for (IOperation? current = reference; current != null; current = current.Parent)
-        {
-            if (current is IInvocationOperation invocation && IsTaskWhenAll(invocation))
-                return IsImmediatelyAwaited(invocation);
-
-            if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
-                return false;
-        }
-
-        return false;
+        return TryGetContainingAwaitedWhenAll(reference, out _, out _) ||
+               !GetAwaitedWhenAllForStableArrayElement(reference, executableRoot)
+                   .IsDefaultOrEmpty;
     }
 
     private static bool IsReferenceInAwaitedSingleTaskWhenAny(
@@ -696,6 +1062,155 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         whenAll = null!;
         awaitOperation = null!;
+        return false;
+    }
+
+    private static ImmutableArray<IAwaitOperation> GetAwaitedWhenAllForStableArrayElement(
+        ILocalReferenceOperation elementReference,
+        IOperation executableRoot)
+    {
+        var isArrayElement = false;
+        IVariableDeclaratorOperation? declarator = null;
+        for (IOperation? current = elementReference; current != null; current = current.Parent)
+        {
+            if (current is IArrayCreationOperation)
+                isArrayElement = true;
+
+            if (current is IVariableDeclaratorOperation variableDeclarator)
+            {
+                declarator = variableDeclarator;
+                break;
+            }
+
+            if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
+                break;
+        }
+
+        if (!isArrayElement ||
+            declarator == null ||
+            !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                declarator.Symbol,
+                int.MaxValue,
+                out var assignedValue,
+            default) ||
+            assignedValue.UnwrapConversions() is not IArrayCreationOperation)
+        {
+            return ImmutableArray<IAwaitOperation>.Empty;
+        }
+
+        if (executableRoot.Descendants()
+            .OfType<ILocalReferenceOperation>()
+            .Any(candidate =>
+                SymbolEqualityComparer.Default.Equals(
+                    candidate.Local,
+                    declarator.Symbol) &&
+                IsInsideNestedExecutable(candidate, executableRoot)))
+        {
+            return ImmutableArray<IAwaitOperation>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<IAwaitOperation>();
+        var contentsAreStable = true;
+        foreach (var candidate in EnumerateOutsideNestedExecutables(executableRoot)
+                     .OfType<ILocalReferenceOperation>()
+                     .Where(candidate =>
+                         candidate.Syntax.SpanStart > declarator.Syntax.SpanStart &&
+                         SymbolEqualityComparer.Default.Equals(
+                             candidate.Local,
+                             declarator.Symbol))
+                     .OrderBy(candidate => candidate.Syntax.SpanStart))
+        {
+            if (!contentsAreStable)
+                continue;
+
+            if (!TryGetDirectTaskWhenAllInput(candidate, out var awaitOperation))
+            {
+                contentsAreStable = false;
+                continue;
+            }
+
+            if (awaitOperation != null)
+                builder.Add(awaitOperation);
+        }
+
+        return builder.ToImmutable();
+    }
+
+    private static bool TryGetDirectTaskWhenAllInput(
+        ILocalReferenceOperation reference,
+        out IAwaitOperation? awaitOperation)
+    {
+        IOperation current = reference;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        if (current.Parent is not IArgumentOperation argument ||
+            argument.Parent is not IInvocationOperation invocation ||
+            !IsTaskWhenAll(invocation))
+        {
+            awaitOperation = null;
+            return false;
+        }
+
+        if (!TryGetImmediateAwait(invocation, out var immediateAwait))
+        {
+            awaitOperation = null;
+            return true;
+        }
+
+        awaitOperation = immediateAwait;
+        return true;
+    }
+
+    private static bool TaskCompletionPointsEndOnEveryBranch(
+        ImmutableArray<(SyntaxNode Completion, int ThrowingPrefixEnd)> completions,
+        SyntaxNode taskStart,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        var visitedConditionals = new HashSet<SyntaxNode>();
+        foreach (var completion in completions)
+        {
+            foreach (var ifStatement in completion.Completion.Ancestors().OfType<IfStatementSyntax>())
+            {
+                if (!visitedConditionals.Add(ifStatement) ||
+                    ifStatement.Else == null ||
+                    ifStatement.SpanStart >= current.SpanStart ||
+                    !IsDefinitelyExecutedBefore(ifStatement, current))
+                {
+                    continue;
+                }
+
+                var thenEndsTask = completions.Any(candidate =>
+                    candidate.Completion.SpanStart < current.SpanStart &&
+                    ifStatement.Statement.Span.Contains(candidate.Completion.Span) &&
+                    IsUnconditionallyExecutedWithin(
+                        candidate.Completion,
+                        ifStatement.Statement) &&
+                    !CompletionCanBeBypassedByContinuingHandler(
+                        taskStart,
+                        candidate.Completion,
+                        candidate.ThrowingPrefixEnd,
+                        current,
+                        executableRoot));
+                var elseEndsTask = completions.Any(candidate =>
+                    candidate.Completion.SpanStart < current.SpanStart &&
+                    ifStatement.Else.Statement.Span.Contains(candidate.Completion.Span) &&
+                    IsUnconditionallyExecutedWithin(
+                        candidate.Completion,
+                        ifStatement.Else.Statement) &&
+                    !CompletionCanBeBypassedByContinuingHandler(
+                        taskStart,
+                        candidate.Completion,
+                        candidate.ThrowingPrefixEnd,
+                        current,
+                        executableRoot));
+                if (thenEndsTask && elseEndsTask)
+                    return true;
+            }
+        }
+
         return false;
     }
 
@@ -787,16 +1302,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                property.ContainingNamespace?.ToString() == "System.Threading.Tasks";
     }
 
-    private static bool TaskWhenAllInputsAreDefinitelyNonNull(
-        IInvocationOperation whenAll,
+    private static bool TaskCombinatorInputsAreDefinitelyNonNull(
+        IInvocationOperation combinator,
         IOperation executableRoot)
     {
         var visitedLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        return whenAll.Arguments.All(argument =>
+        return combinator.Arguments.All(argument =>
             IsDefinitelyNonNullTaskInput(
                 argument.Value,
                 executableRoot,
-                whenAll.Syntax.SpanStart,
+                combinator.Syntax.SpanStart,
                 visitedLocals));
     }
 
@@ -848,6 +1363,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     return true;
                 }
 
+                if (IsTaskCompletionWrapper(invocation) &&
+                    invocation.TargetMethod.Name == "AsTask")
+                {
+                    return true;
+                }
+
                 return ReturnsTaskLike(invocation.Type) &&
                        invocation.TargetMethod.ContainingType.Name == "Task" &&
                        invocation.TargetMethod.ContainingNamespace?.ToString() ==
@@ -855,6 +1376,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             case IPropertyReferenceOperation propertyReference:
                 return IsTaskCompletedTaskProperty(propertyReference);
+
+            case IObjectCreationOperation objectCreation:
+                return ReturnsTaskLike(objectCreation.Type);
 
             default:
                 return false;

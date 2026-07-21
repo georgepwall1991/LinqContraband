@@ -71,9 +71,11 @@ fan-out over statically empty or singleton sources, including fixed-size arrays.
 An await or task escape suppresses the diagnostic only when it is guaranteed to execute before the later EF Core
 operation. A conditional await or an exception path that can bypass an await still reports because another reaching
 path can leave the first operation active, including when argument evaluation throws after the EF task starts but
-before an immediate, task-local, or `Task.WhenAll` wrapper reaches the await. Each independently drained and restarted
-overlap group receives its own diagnostic. Awaiting a stored `Task.WhenAll`, a single-input `Task.WhenAny`, calling
-parameterless `Wait()`, or calling `GetAwaiter().GetResult()` ends a proven task lifetime; a timed wait or multi-input
+before an immediate, task-local, or `Task.WhenAll` wrapper reaches the await. Explicit throws reach a handler only
+when its type and constant filter permit it, and a compatible nested catch can intercept that transfer. Each
+independently drained and restarted overlap group receives its own diagnostic. Awaiting a stored `Task.WhenAll`, a
+stored single-input `Task.WhenAny`, calling parameterless `Wait()`, or calling `GetAwaiter().GetResult()` directly or
+after the framework `ValueTask.AsTask()` wrapper ends a proven task lifetime; a timed wait or multi-input
 `Task.WhenAny` does not. Selector analysis inspects only code executed by the selector itself, not uninvoked nested
 lambdas or local functions. Explicitly discarding an EF task or a local that stores it does not end its active lifetime.
 
