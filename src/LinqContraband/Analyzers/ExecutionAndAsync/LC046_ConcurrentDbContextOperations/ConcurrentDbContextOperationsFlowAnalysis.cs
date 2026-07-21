@@ -535,8 +535,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (operation is not IThrowOperation throwOperation)
             return true;
 
-        var thrownType = GetThrownExceptionType(throwOperation, executableRoot);
-        return CatchMayHandleException(targetCatch, thrownType, semanticModel) &&
+        var thrownType = GetThrownExceptionType(
+            throwOperation,
+            executableRoot,
+            out var thrownTypeIsExact);
+        var catchCanHandleThrownType = thrownTypeIsExact
+            ? CatchDefinitelyHandlesException(targetCatch, thrownType, semanticModel)
+            : CatchMayHandleException(targetCatch, thrownType, semanticModel);
+        return catchCanHandleThrownType &&
                !ThrowIsDefinitelyIntercepted(
                    throwOperation,
                    thrownType,
@@ -546,7 +552,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
     private static ITypeSymbol? GetThrownExceptionType(
         IThrowOperation throwOperation,
-        IOperation executableRoot)
+        IOperation executableRoot,
+        out bool isExact)
     {
         var exception = throwOperation.Exception?.UnwrapConversions();
         if (exception is ILocalReferenceOperation localReference &&
@@ -559,10 +566,54 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             assignedValue.UnwrapConversions() is IObjectCreationOperation objectCreation &&
             objectCreation.Type != null)
         {
+            isExact = LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                throwOperation.Syntax.SpanStart);
             return objectCreation.Type;
         }
 
+        isExact = exception is IObjectCreationOperation;
         return exception?.Type;
+    }
+
+    private static bool LocalHasNoUntrackedWritesBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition)
+    {
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (operation.Syntax.SpanStart >= beforePosition &&
+                !IsInsideNestedExecutable(operation, executableRoot))
+            {
+                continue;
+            }
+
+            if (operation is IAssignmentOperation assignment &&
+                assignment.Target.ReferencesLocal(local) &&
+                (operation is not ISimpleAssignmentOperation ||
+                 IsInsideNestedExecutable(operation, executableRoot)))
+            {
+                return false;
+            }
+
+            if (operation is IVariableDeclaratorOperation declarator &&
+                declarator.Symbol.RefKind != RefKind.None &&
+                declarator.Initializer?.Value.ReferencesLocal(local) == true)
+            {
+                return false;
+            }
+
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesLocal(local))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool TryGetTaskCombinatorInputException(
@@ -739,10 +790,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
     private static bool IsUnconditionallyExecutedWithin(
         SyntaxNode operation,
-        StatementSyntax branch)
+        SyntaxNode branch)
     {
         for (SyntaxNode? current = operation; current != null; current = current.Parent)
         {
+            if (ReferenceEquals(current, branch) && current is SwitchSectionSyntax)
+                return true;
+
             if (current is IfStatementSyntax or
                 ConditionalExpressionSyntax or
                 SwitchSectionSyntax or
@@ -1207,6 +1261,36 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         current,
                         executableRoot));
                 if (thenEndsTask && elseEndsTask)
+                    return true;
+            }
+
+            foreach (var switchStatement in completion.Completion.Ancestors()
+                         .OfType<SwitchStatementSyntax>())
+            {
+                if (!visitedConditionals.Add(switchStatement) ||
+                    !switchStatement.Sections.Any(section =>
+                        section.Labels.Any(label => label.IsKind(
+                            Microsoft.CodeAnalysis.CSharp.SyntaxKind.DefaultSwitchLabel))) ||
+                    switchStatement.SpanStart >= current.SpanStart ||
+                    !IsDefinitelyExecutedBefore(switchStatement, current))
+                {
+                    continue;
+                }
+
+                var everySectionEndsTask = switchStatement.Sections.All(section =>
+                    completions.Any(candidate =>
+                        candidate.Completion.SpanStart < current.SpanStart &&
+                        section.Span.Contains(candidate.Completion.Span) &&
+                        IsUnconditionallyExecutedWithin(
+                            candidate.Completion,
+                            section) &&
+                        !CompletionCanBeBypassedByContinuingHandler(
+                            taskStart,
+                            candidate.Completion,
+                            candidate.ThrowingPrefixEnd,
+                            current,
+                            executableRoot)));
+                if (everySectionEndsTask)
                     return true;
             }
         }

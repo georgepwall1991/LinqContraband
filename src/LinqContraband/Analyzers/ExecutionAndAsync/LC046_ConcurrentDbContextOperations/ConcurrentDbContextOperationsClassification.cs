@@ -195,6 +195,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         {
             case ILocalReferenceOperation localReference:
                 if (!visitedLocals.Add(localReference.Local) ||
+                    !LocalHasNoUntrackedWritesBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition) ||
                     !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                         executableRoot,
                         localReference.Local,
@@ -299,13 +303,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         switch (expression)
         {
             case IParameterReferenceOperation parameterReference
-                when parameterReference.Parameter.Type.IsDbContext():
+                when parameterReference.Parameter.Type.IsDbContext() &&
+                     ParameterHasNoWritesBefore(
+                         executableRoot,
+                         parameterReference.Parameter,
+                         beforePosition):
                 origin = new ContextOrigin(parameterReference.Parameter, parameterReference.Parameter.Name);
                 return true;
 
             case ILocalReferenceOperation localReference
                 when localReference.Local.Type.IsDbContext():
                 if (!visitedLocals.Add(localReference.Local) ||
+                    !LocalHasNoUntrackedWritesBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition) ||
                     !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                         executableRoot,
                         localReference.Local,
@@ -396,6 +408,43 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool ParameterHasNoWritesBefore(
+        IOperation executableRoot,
+        IParameterSymbol parameter,
+        int beforePosition)
+    {
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (operation.Syntax.SpanStart >= beforePosition &&
+                !IsInsideNestedExecutable(operation, executableRoot))
+            {
+                continue;
+            }
+
+            if (operation is IAssignmentOperation assignment &&
+                assignment.Target.ReferencesParameter(parameter))
+            {
+                return false;
+            }
+
+            if (operation is IVariableDeclaratorOperation declarator &&
+                declarator.Symbol.RefKind != RefKind.None &&
+                declarator.Initializer?.Value.ReferencesParameter(parameter) == true)
+            {
+                return false;
+            }
+
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesParameter(parameter))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool TryResolveReceiverOrigin(
         IOperation expression,
         IOperation executableRoot,
@@ -408,12 +457,20 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         switch (expression)
         {
-            case IParameterReferenceOperation parameterReference:
+            case IParameterReferenceOperation parameterReference
+                when ParameterHasNoWritesBefore(
+                    executableRoot,
+                    parameterReference.Parameter,
+                    beforePosition):
                 receiver = parameterReference.Parameter;
                 return true;
 
             case ILocalReferenceOperation localReference:
                 if (!visitedLocals.Add(localReference.Local) ||
+                    !LocalHasNoUntrackedWritesBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition) ||
                     !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                         executableRoot,
                         localReference.Local,
@@ -476,6 +533,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         if (expression is ILocalReferenceOperation localReference &&
             visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
             LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                 executableRoot,
                 localReference.Local,
