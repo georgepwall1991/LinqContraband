@@ -88,6 +88,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return false;
         }
 
+        if (!TaskStartCanReachCurrentHandler(previous, current, executableRoot))
+            return false;
+
         if (TryGetImmediateAwait(previous, out var immediateAwait) &&
             !CompletionCanBeBypassedByContinuingHandler(
                 previous.Syntax,
@@ -108,6 +111,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 previous.Syntax,
                 whenAllAwait.Syntax,
                 whenAllAwait.Operation.Syntax.Span.End,
+                current.Syntax,
+                executableRoot))
+        {
+            return false;
+        }
+
+        if (TryGetContainingAwaitedSingleTaskWhenAny(
+                previous,
+                out var completedWhenAny,
+                out var whenAnyAwait) &&
+            completedWhenAny.Syntax.Span.End <= current.Syntax.SpanStart &&
+            !CompletionCanBeBypassedByContinuingHandler(
+                previous.Syntax,
+                whenAnyAwait.Syntax,
+                whenAnyAwait.Operation.Syntax.Span.End,
                 current.Syntax,
                 executableRoot))
         {
@@ -138,6 +156,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if (!IsReferenceAwaited(localReference) &&
                 !IsReferenceInAwaitedWhenAll(localReference) &&
+                !IsReferenceInAwaitedSingleTaskWhenAny(localReference) &&
+                !TryGetSynchronousTaskCompletion(localReference, out _) &&
                 !EscapesToUnknownConsumer(localReference))
             {
                 continue;
@@ -210,6 +230,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         SyntaxNode current,
         IOperation executableRoot)
     {
+        if (TryGetSynchronousTaskCompletion(taskEnd, out var synchronousCompletion))
+        {
+            return CompletionCanBeBypassedByContinuingHandler(
+                taskStart,
+                synchronousCompletion.Syntax,
+                synchronousCompletion.Syntax.SpanStart,
+                current,
+                executableRoot);
+        }
+
         if (TryGetImmediateAwait(taskEnd, out var immediateAwait))
         {
             return CompletionCanBeBypassedByContinuingHandler(
@@ -229,6 +259,19 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 taskStart,
                 whenAllAwait.Syntax,
                 whenAllAwait.Operation.Syntax.Span.End,
+                current,
+                executableRoot);
+        }
+
+        if (TryGetContainingAwaitedSingleTaskWhenAny(
+                taskEnd,
+                out _,
+                out var whenAnyAwait))
+        {
+            return CompletionCanBeBypassedByContinuingHandler(
+                taskStart,
+                whenAnyAwait.Syntax,
+                whenAnyAwait.Operation.Syntax.Span.End,
                 current,
                 executableRoot);
         }
@@ -265,12 +308,23 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (!currentIsInHandler && !handlerCanReachFollowingOperation)
                 continue;
 
+            if (EnumerateOutsideNestedExecutables(executableRoot)
+                .OfType<IInvocationOperation>()
+                .Any(invocation =>
+                    tryStatement.Block.Span.Contains(invocation.Syntax.Span) &&
+                    completion.Span.Contains(invocation.Syntax.Span) &&
+                    IsTaskWhenAll(invocation) &&
+                    !TaskWhenAllInputsAreDefinitelyNonNull(invocation, executableRoot)))
+            {
+                return true;
+            }
+
             if (EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
                     operation.Syntax.SpanStart >= taskStart.Span.End &&
                     operation.Syntax.Span.End <= throwingPrefixEnd &&
                     !operation.Syntax.Span.Equals(completion.Span) &&
                     tryStatement.Block.Span.Contains(operation.Syntax.Span) &&
-                    CanThrowBeforeTaskEnd(operation)))
+                    CanThrowBeforeTaskEnd(operation, executableRoot)))
             {
                 return true;
             }
@@ -279,14 +333,55 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool CanThrowBeforeTaskEnd(IOperation operation)
+    private static bool CanThrowBeforeTaskEnd(
+        IOperation operation,
+        IOperation executableRoot)
     {
-        return operation is IInvocationOperation or
-            IObjectCreationOperation or
+        if (operation is IInvocationOperation invocation)
+        {
+            if (IsTaskWhenAll(invocation))
+                return !TaskWhenAllInputsAreDefinitelyNonNull(invocation, executableRoot);
+
+            if (IsTaskCompletionWrapper(invocation))
+                return false;
+
+            return true;
+        }
+
+        if (operation is IPropertyReferenceOperation propertyReference &&
+            IsTaskCompletedTaskProperty(propertyReference))
+        {
+            return false;
+        }
+
+        return operation is IObjectCreationOperation or
             IThrowOperation or
             IAwaitOperation or
             IPropertyReferenceOperation or
             IArrayElementReferenceOperation;
+    }
+
+    private static bool TaskStartCanReachCurrentHandler(
+        IInvocationOperation taskStart,
+        IInvocationOperation current,
+        IOperation executableRoot)
+    {
+        foreach (var tryStatement in taskStart.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(taskStart.Syntax.Span) ||
+                !tryStatement.Catches.Any(catchClause =>
+                    catchClause.Span.Contains(current.Syntax.Span)))
+            {
+                continue;
+            }
+
+            return EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                operation.Syntax.SpanStart >= taskStart.Syntax.Span.End &&
+                operation.Syntax.Span.End <= tryStatement.Block.Span.End &&
+                CanThrowBeforeTaskEnd(operation, executableRoot));
+        }
+
+        return true;
     }
 
     private static bool IsUnconditionallyExecutedWithin(
@@ -338,7 +433,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (current.Parent is IArgumentOperation argument &&
                 argument.Parent is IInvocationOperation consumer)
             {
-                return !IsTaskWhenAll(consumer);
+                return !IsTaskWhenAll(consumer) && !IsTaskWhenAny(consumer);
             }
 
             if (current.Parent is IReturnOperation)
@@ -408,6 +503,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         out ILocalSymbol local)
     {
         IOperation current = invocation;
+        for (var ancestor = invocation.Parent; ancestor != null; ancestor = ancestor.Parent)
+        {
+            if (ancestor is IInvocationOperation containingWhenAll &&
+                IsTaskWhenAll(containingWhenAll))
+            {
+                current = containingWhenAll;
+            }
+
+            if (ancestor is IAnonymousFunctionOperation or ILocalFunctionOperation)
+                break;
+        }
+
         while (current.Parent != null)
         {
             if (current.Parent is IConversionOperation or IParenthesizedOperation)
@@ -443,6 +550,62 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         local = null!;
         return false;
+    }
+
+    private static bool TryGetSynchronousTaskCompletion(
+        ILocalReferenceOperation reference,
+        out IInvocationOperation completion)
+    {
+        IOperation current = reference;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        if (current.Parent is not IInvocationOperation taskInvocation ||
+            !ReferenceEquals(taskInvocation.GetInvocationReceiver(false), current))
+        {
+            completion = null!;
+            return false;
+        }
+
+        if (IsTaskInstanceMethod(taskInvocation, "Wait") &&
+            taskInvocation.TargetMethod.Parameters.Length == 0)
+        {
+            completion = taskInvocation;
+            return true;
+        }
+
+        if (!IsTaskInstanceMethod(taskInvocation, "GetAwaiter") ||
+            taskInvocation.TargetMethod.Parameters.Length != 0)
+        {
+            completion = null!;
+            return false;
+        }
+
+        current = taskInvocation;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        if (current.Parent is IInvocationOperation getResult &&
+            ReferenceEquals(getResult.GetInvocationReceiver(false), current) &&
+            getResult.TargetMethod.Name == "GetResult" &&
+            getResult.TargetMethod.Parameters.Length == 0)
+        {
+            completion = getResult;
+            return true;
+        }
+
+        completion = null!;
+        return false;
+    }
+
+    private static bool IsTaskInstanceMethod(
+        IInvocationOperation invocation,
+        string methodName)
+    {
+        var method = invocation.TargetMethod;
+        return method.Name == methodName &&
+               method.ContainingType.Name == "Task" &&
+               method.ContainingNamespace?.ToString() == "System.Threading.Tasks";
     }
 
     private static bool IsReferenceAwaited(ILocalReferenceOperation reference)
@@ -486,6 +649,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool IsReferenceInAwaitedSingleTaskWhenAny(
+        ILocalReferenceOperation reference)
+    {
+        return TryGetContainingAwaitedSingleTaskWhenAny(reference, out _, out _);
+    }
+
     private static bool EscapesToUnknownConsumer(ILocalReferenceOperation reference)
     {
         IOperation current = reference;
@@ -495,10 +664,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (current.Parent is IArgumentOperation argument &&
             argument.Parent is IInvocationOperation invocation)
         {
-            return !IsTaskWhenAll(invocation) && !IsTaskWrapper(invocation, current);
+            return !IsTaskWhenAll(invocation) &&
+                   !IsTaskWhenAny(invocation) &&
+                   !IsTaskWrapper(invocation, current);
         }
 
-        return current.Parent is IReturnOperation or ISimpleAssignmentOperation;
+        if (current.Parent is ISimpleAssignmentOperation assignment)
+            return assignment.Target.UnwrapConversions() is not IDiscardOperation;
+
+        return current.Parent is IReturnOperation;
     }
 
     private static bool TryGetContainingAwaitedWhenAll(
@@ -525,6 +699,31 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool TryGetContainingAwaitedSingleTaskWhenAny(
+        IOperation operation,
+        out IInvocationOperation whenAny,
+        out IAwaitOperation awaitOperation)
+    {
+        for (IOperation? current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is IInvocationOperation invocation &&
+                IsTaskWhenAny(invocation) &&
+                TaskWhenAnyHasExactlyOneInput(invocation) &&
+                TryGetImmediateAwait(invocation, out awaitOperation))
+            {
+                whenAny = invocation;
+                return true;
+            }
+
+            if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
+                break;
+        }
+
+        whenAny = null!;
+        awaitOperation = null!;
+        return false;
+    }
+
     private static bool IsTaskWrapper(IInvocationOperation invocation, IOperation wrapped)
     {
         if (invocation.TargetMethod.Name is not ("ConfigureAwait" or "AsTask"))
@@ -541,6 +740,125 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return invocation.TargetMethod.Name == "WhenAll" &&
                invocation.TargetMethod.ContainingType.Name == "Task" &&
                invocation.TargetMethod.ContainingNamespace?.ToString() == "System.Threading.Tasks";
+    }
+
+    private static bool IsTaskWhenAny(IInvocationOperation invocation)
+    {
+        return invocation.TargetMethod.Name == "WhenAny" &&
+               invocation.TargetMethod.ContainingType.Name == "Task" &&
+               invocation.TargetMethod.ContainingNamespace?.ToString() == "System.Threading.Tasks";
+    }
+
+    private static bool TaskWhenAnyHasExactlyOneInput(IInvocationOperation whenAny)
+    {
+        if (whenAny.Arguments.Length != 1)
+            return false;
+
+        var argument = whenAny.Arguments[0];
+        var value = argument.Value.UnwrapConversions();
+        if (value is IArrayCreationOperation arrayCreation &&
+            arrayCreation.Initializer != null)
+        {
+            return arrayCreation.Initializer.ElementValues.Length == 1;
+        }
+
+        return argument.Parameter?.IsParams == true && ReturnsTaskLike(value.Type);
+    }
+
+    private static bool IsTaskCompletionWrapper(IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod;
+        if (method.ContainingNamespace?.ToString() != "System.Threading.Tasks")
+            return false;
+
+        return method.Name switch
+        {
+            "ConfigureAwait" => method.ContainingType.Name is "Task" or "ValueTask",
+            "AsTask" => method.ContainingType.Name == "ValueTask",
+            _ => false
+        };
+    }
+
+    private static bool IsTaskCompletedTaskProperty(IPropertyReferenceOperation propertyReference)
+    {
+        var property = propertyReference.Property;
+        return property.Name == "CompletedTask" &&
+               property.ContainingType.Name == "Task" &&
+               property.ContainingNamespace?.ToString() == "System.Threading.Tasks";
+    }
+
+    private static bool TaskWhenAllInputsAreDefinitelyNonNull(
+        IInvocationOperation whenAll,
+        IOperation executableRoot)
+    {
+        var visitedLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        return whenAll.Arguments.All(argument =>
+            IsDefinitelyNonNullTaskInput(
+                argument.Value,
+                executableRoot,
+                whenAll.Syntax.SpanStart,
+                visitedLocals));
+    }
+
+    private static bool IsDefinitelyNonNullTaskInput(
+        IOperation value,
+        IOperation executableRoot,
+        int beforePosition,
+        HashSet<ISymbol> visitedLocals)
+    {
+        value = value.UnwrapConversions();
+        switch (value)
+        {
+            case IArrayCreationOperation arrayCreation
+                when arrayCreation.Initializer != null:
+                return arrayCreation.Initializer.ElementValues.All(element =>
+                    IsDefinitelyNonNullTaskInput(
+                        element,
+                        executableRoot,
+                        beforePosition,
+                        visitedLocals));
+
+            case ILocalReferenceOperation localReference:
+                if (!visitedLocals.Add(localReference.Local) ||
+                    !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition,
+                        out var assignedValue,
+                        default))
+                {
+                    return false;
+                }
+
+                var isDefinitelyNonNull = IsDefinitelyNonNullTaskInput(
+                    assignedValue,
+                    executableRoot,
+                    localReference.Syntax.SpanStart,
+                    visitedLocals);
+                visitedLocals.Remove(localReference.Local);
+                return isDefinitelyNonNull;
+
+            case IInvocationOperation invocation:
+                if (TryClassifyEfAsyncOperation(
+                        invocation,
+                        executableRoot,
+                        default,
+                        out _))
+                {
+                    return true;
+                }
+
+                return ReturnsTaskLike(invocation.Type) &&
+                       invocation.TargetMethod.ContainingType.Name == "Task" &&
+                       invocation.TargetMethod.ContainingNamespace?.ToString() ==
+                       "System.Threading.Tasks";
+
+            case IPropertyReferenceOperation propertyReference:
+                return IsTaskCompletedTaskProperty(propertyReference);
+
+            default:
+                return false;
+        }
     }
 
     private static bool IsDefinitelyExecutedBefore(SyntaxNode previous, SyntaxNode current)

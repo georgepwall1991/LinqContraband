@@ -52,9 +52,9 @@ Each helper must create and dispose its own context.
 ### Severity: `Warning`
 
 LC046 reports the second proven overlapping EF Core invocation and points back to the first operation as an additional
-location. It recognises async query terminals, including `ElementAtAsync` and `ElementAtOrDefaultAsync`, plus
-`FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`, `ExecuteDeleteAsync`, and relational
-`ExecuteSql*Async` commands.
+location. It recognises async query terminals, including `ContainsAsync`, `ElementAtAsync`, and
+`ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
+`ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
 
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
@@ -65,15 +65,17 @@ different holder objects is not conflated.
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
 custom lookalike APIs, query construction, `AsAsyncEnumerable()` alone, per-item context factories, and selector
-fan-out over statically empty or singleton sources, including fixed-size arrays. LC036 continues to own `Task.Run`, `Parallel`, `Thread`,
-thread-pool, and timer capture diagnostics.
+fan-out over statically empty or singleton sources, including fixed-size arrays. LC036 continues to own `Task.Run`,
+`Parallel`, `Thread`, thread-pool, and timer capture diagnostics.
 
 An await or task escape suppresses the diagnostic only when it is guaranteed to execute before the later EF Core
 operation. A conditional await or an exception path that can bypass an await still reports because another reaching
 path can leave the first operation active, including when argument evaluation throws after the EF task starts but
 before an immediate, task-local, or `Task.WhenAll` wrapper reaches the await. Each independently drained and restarted
-overlap group receives its own diagnostic. Selector analysis inspects only code executed by the selector itself, not
-uninvoked nested lambdas or local functions. Explicitly discarding an EF task does not end its active lifetime.
+overlap group receives its own diagnostic. Awaiting a stored `Task.WhenAll`, a single-input `Task.WhenAny`, calling
+parameterless `Wait()`, or calling `GetAwaiter().GetResult()` ends a proven task lifetime; a timed wait or multi-input
+`Task.WhenAny` does not. Selector analysis inspects only code executed by the selector itself, not uninvoked nested
+lambdas or local functions. Explicitly discarding an EF task or a local that stores it does not end its active lifetime.
 
 ## Why There Is No Code Fix
 

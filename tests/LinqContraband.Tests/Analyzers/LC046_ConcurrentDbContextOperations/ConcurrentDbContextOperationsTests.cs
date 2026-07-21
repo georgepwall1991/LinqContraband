@@ -46,6 +46,12 @@ namespace Microsoft.EntityFrameworkCore
             CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
 
+        public static Task<bool> ContainsAsync<TEntity>(
+            this IQueryable<TEntity> source,
+            TEntity item,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
         public static Task<TEntity> ElementAtAsync<TEntity>(
             this IQueryable<TEntity> source,
             int index,

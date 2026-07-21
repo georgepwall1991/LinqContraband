@@ -271,6 +271,621 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task AwaitedWhenAny_MayLeaveEfTaskActive_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, int timeout)
+        {
+            await Task.WhenAny(
+                {|#0:db.Users.ToListAsync()|},
+                Task.Delay(timeout));
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task StoredTaskAwaitedWhenAny_MayLeaveEfTaskActive_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, int timeout)
+        {
+            var first = {|#0:db.Users.ToListAsync()|};
+            await Task.WhenAny(first, Task.Delay(timeout));
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task StoredTaskAwaitedSingleInputWhenAny_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            await Task.WhenAny(first);
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StoredWhenAll_AwaitedBeforeSecondOperation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var all = Task.WhenAll(db.Users.ToListAsync());
+            await all;
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StoredWhenAll_NotAwaitedBeforeSecondOperation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var all = Task.WhenAll({|#0:db.Users.ToListAsync()|});
+            await {|#1:db.Users.AnyAsync()|};
+            await all;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ThrowingStoredWhenAllArgument_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static Task ThrowBeforeReturningTask() =>
+            throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                var all = Task.WhenAll(
+                    {|#0:db.Users.ToListAsync()|},
+                    ThrowBeforeReturningTask());
+                await all;
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TaskLocalWait_BeforeSecondOperation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            first.Wait();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskLocalGetAwaiterGetResult_BeforeSecondOperation_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            first.GetAwaiter().GetResult();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskLocalTimedWait_BeforeSecondOperation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, int timeout)
+        {
+            var first = {|#0:db.Users.ToListAsync()|};
+            first.Wait(timeout);
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ThrowBeforeTaskLocalWait_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static void MightThrow() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            var first = {|#0:db.Users.ToListAsync()|};
+            try
+            {
+                MightThrow();
+                first.Wait();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TaskLocalConfigureAwaitInTry_WithContinuingCatch_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            try
+            {
+                await first.ConfigureAwait(false);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskLocalWhenAllInTry_WithContinuingCatch_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            try
+            {
+                await Task.WhenAll(first);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RepeatedTaskLocalWhenAllInTry_WithContinuingCatch_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            try
+            {
+                await Task.WhenAll(first, first);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskLocalWhenAllWithCompletedTaskInTry_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = db.Users.ToListAsync();
+            try
+            {
+                await Task.WhenAll(first, Task.CompletedTask);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NullWhenAllInput_WithContinuingCatch_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                await Task.WhenAll(
+                    {|#0:db.Users.ToListAsync()|},
+                    (Task)null);
+            }
+            catch (ArgumentException)
+            {
+            }
+
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DiscardedTaskLocal_ThenSameContextOperation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var first = {|#0:db.Users.ToListAsync()|};
+            _ = first;
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TryStartAndCatchOperation_WithoutPostStartThrow_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static void MightThrow() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                MightThrow();
+                _ = db.Users.ToListAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                await db.Users.AnyAsync();
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TryStartAndCatchOperation_AfterPostStartThrow_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static void MightThrow() => throw new InvalidOperationException();
+
+        public async Task Run(AppDbContext db)
+        {
+            try
+            {
+                _ = {|#0:db.Users.ToListAsync()|};
+                MightThrow();
+            }
+            catch (InvalidOperationException)
+            {
+                await {|#1:db.Users.AnyAsync()|};
+            }
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TwoSequentialOverlapGroups_ShouldReportEachGroup()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
