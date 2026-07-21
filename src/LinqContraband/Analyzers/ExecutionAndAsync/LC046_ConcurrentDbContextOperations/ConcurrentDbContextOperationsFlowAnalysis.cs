@@ -346,7 +346,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if (current.Parent is ISimpleAssignmentOperation assignment)
             {
-                return assignment.Target.UnwrapConversions() is not ILocalReferenceOperation;
+                var target = assignment.Target.UnwrapConversions();
+                return target is not ILocalReferenceOperation and not IDiscardOperation;
             }
 
             return false;
@@ -774,14 +775,22 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         if (source is IInvocationOperation invocation &&
-            invocation.TargetMethod.Name == "Take" &&
             invocation.TargetMethod.ContainingType.Name == "Enumerable" &&
-            invocation.TargetMethod.ContainingNamespace?.ToString() == "System.Linq" &&
-            invocation.Arguments.Length >= 2 &&
-            TryGetArgumentValue(invocation, 1, out var countValue) &&
-            countValue.ConstantValue is { HasValue: true, Value: int count })
+            invocation.TargetMethod.ContainingNamespace?.ToString() == "System.Linq")
         {
-            return count <= 1;
+            if (invocation.TargetMethod.Name == "Empty" &&
+                invocation.Arguments.Length == 0)
+            {
+                return true;
+            }
+
+            if ((invocation.TargetMethod.Name is "Repeat" or "Take") &&
+                invocation.Arguments.Length >= 2 &&
+                TryGetArgumentValue(invocation, 1, out var countValue) &&
+                countValue.ConstantValue is { HasValue: true, Value: int count })
+            {
+                return count <= 1;
+            }
         }
 
         return false;

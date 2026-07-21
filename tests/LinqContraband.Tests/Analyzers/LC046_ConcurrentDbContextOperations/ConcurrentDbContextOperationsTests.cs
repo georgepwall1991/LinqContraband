@@ -150,6 +150,37 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task DiscardedTask_ThenSameContextOperation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task UnawaitedQuery_ThenAwaitedSaveChanges_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
