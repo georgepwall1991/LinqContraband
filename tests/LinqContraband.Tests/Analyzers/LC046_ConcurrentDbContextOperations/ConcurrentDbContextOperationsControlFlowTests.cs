@@ -62,6 +62,82 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExhaustiveBranchTaskLocalAssignments_BeforeLaterOperation_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Runtime.CompilerServices;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = {|#0:db.Users.ToListAsync()|};
+            else
+                pending = {|#1:db.Users.AnyAsync()|};
+
+            await {|#2:db.Users.ToListAsync()|};
+            await pending;
+        }
+
+        public async Task WrappedFind(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = {|#3:db.FindAsync<User>(1)|}.AsTask();
+            else
+                pending = {|#4:db.FindAsync<User>(2)|}.AsTask();
+
+            await {|#5:db.SaveChangesAsync()|};
+            await pending;
+        }
+
+        public async Task ConfiguredAwaitable(AppDbContext db, bool useFirst)
+        {
+            ConfiguredTaskAwaitable<List<User>> pending;
+            if (useFirst)
+                pending = {|#6:db.Users.ToListAsync()|}.ConfigureAwait(false);
+            else
+                pending = {|#7:db.Users.ToListAsync()|}.ConfigureAwait(false);
+
+            await {|#8:db.Users.AnyAsync()|};
+            await pending;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(2)
+            .WithLocation(0)
+            .WithLocation(1)
+            .WithArguments("db");
+
+        var wrappedFind = VerifyCS.Diagnostic()
+            .WithLocation(5)
+            .WithLocation(3)
+            .WithLocation(4)
+            .WithArguments("db");
+
+        var configuredAwaitable = VerifyCS.Diagnostic()
+            .WithLocation(8)
+            .WithLocation(6)
+            .WithLocation(7)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected, wrappedFind, configuredAwaitable);
+    }
+
+    [Fact]
     public async Task ExhaustiveBranchesWithoutSameActiveOrigin_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
@@ -129,6 +205,142 @@ namespace TestApp
                 break;
             }
         }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExhaustiveBranchTaskLocalCompletedMutatedOrEscaped_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public static class TaskExtensions
+    {
+        public static Task AsTask<T>(this Task<T> task)
+        {
+            task.GetAwaiter().GetResult();
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class User { }
+
+    public sealed class CompletionSink
+    {
+        public static implicit operator CompletionSink(Task<List<User>> task)
+        {
+            task.GetAwaiter().GetResult();
+            return new CompletionSink();
+        }
+
+        public static implicit operator CompletionSink(Task<bool> task)
+        {
+            task.GetAwaiter().GetResult();
+            return new CompletionSink();
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Completed(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync();
+            else
+                pending = db.Users.AnyAsync();
+
+            await pending;
+            await db.Users.ToListAsync();
+        }
+
+        public async Task Reassigned(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync();
+            else
+                pending = db.Users.AnyAsync();
+
+            pending = Task.CompletedTask;
+            await db.Users.ToListAsync();
+        }
+
+        public async Task Escaped(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync();
+            else
+                pending = db.Users.AnyAsync();
+
+            Observe(pending);
+            await db.Users.ToListAsync();
+        }
+
+        public async Task ByRefMutation(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync();
+            else
+                pending = db.Users.AnyAsync();
+
+            Reset(ref pending);
+            await db.Users.ToListAsync();
+        }
+
+        public async Task ChainedAliasCompleted(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            Task alias;
+            if (useFirst)
+                alias = pending = db.Users.ToListAsync();
+            else
+                alias = pending = db.Users.AnyAsync();
+
+            await alias;
+            await db.Users.ToListAsync();
+        }
+
+        public async Task CustomAsTaskCompletesOperation(AppDbContext db, bool useFirst)
+        {
+            Task pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync().AsTask();
+            else
+                pending = db.Users.AnyAsync().AsTask();
+
+            await db.Users.ToListAsync();
+            await pending;
+        }
+
+        public async Task UserDefinedConversionCompletesOperation(
+            AppDbContext db,
+            bool useFirst)
+        {
+            CompletionSink pending;
+            if (useFirst)
+                pending = db.Users.ToListAsync();
+            else
+                pending = db.Users.AnyAsync();
+
+            await db.Users.ToListAsync();
+            _ = pending;
+        }
+
+        private static void Observe(Task task) { }
+        private static void Reset(ref Task task) => task = Task.CompletedTask;
     }
 }";
 
@@ -213,6 +425,105 @@ namespace TestApp
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SiblingBranchTransfer_ShouldNotRouteBranchLocalStartIntoCatch()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task ExplicitThrow(AppDbContext db, bool start)
+        {
+            try
+            {
+                if (start)
+                    _ = db.Users.ToListAsync();
+                else
+                    throw new InvalidOperationException();
+            }
+            catch (InvalidOperationException)
+            {
+                await db.Users.AnyAsync();
+            }
+        }
+
+        public async Task ThrowingCall(AppDbContext db, bool start)
+        {
+            try
+            {
+                if (start)
+                    _ = db.Users.ToListAsync();
+                else
+                    MayThrow();
+            }
+            catch (InvalidOperationException)
+            {
+                await db.Users.AnyAsync();
+            }
+        }
+
+        private static void MayThrow() => throw new InvalidOperationException();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SameBranchThrowAfterBranchLocalStart_ShouldTriggerInCatch()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, bool start)
+        {
+            try
+            {
+                if (start)
+                {
+                    _ = {|#0:db.Users.ToListAsync()|};
+                    throw new InvalidOperationException();
+                }
+                else
+                {
+                    return;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                await {|#1:db.Users.AnyAsync()|};
+            }
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]

@@ -129,6 +129,19 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 priorOperations,
                 current.Origin,
                 ifStatement.Else.Statement);
+            if ((!thenStart.HasValue || !elseStart.HasValue) &&
+                !TryGetExhaustiveAssignedBranchStarts(
+                    priorOperations,
+                    current,
+                    executableRoot,
+                    ifStatement.Statement,
+                    ifStatement.Else.Statement,
+                    out thenStart,
+                    out elseStart))
+            {
+                continue;
+            }
+
             if (!thenStart.HasValue ||
                 !elseStart.HasValue ||
                 StartCanBeBypassedByTry(thenStart.Value, current.Invocation.Syntax) ||
@@ -168,6 +181,164 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return null;
+    }
+
+    private static bool TryGetExhaustiveAssignedBranchStarts(
+        IReadOnlyList<EfOperation> operations,
+        EfOperation current,
+        IOperation executableRoot,
+        StatementSyntax thenBranch,
+        StatementSyntax elseBranch,
+        out EfOperation? thenStart,
+        out EfOperation? elseStart)
+    {
+        if (!TryFindUnconditionalAssignedBranchStart(
+                operations,
+                current.Origin,
+                thenBranch,
+                out var resolvedThenStart,
+                out var thenAssignment,
+                out var thenLocal) ||
+            !TryFindUnconditionalAssignedBranchStart(
+                operations,
+                current.Origin,
+                elseBranch,
+                out var resolvedElseStart,
+                out var elseAssignment,
+                out var elseLocal) ||
+            !SymbolEqualityComparer.Default.Equals(thenLocal, elseLocal))
+        {
+            thenStart = null;
+            elseStart = null;
+            return false;
+        }
+
+        var assignments = LocalAssignmentCache.GetAssignments(executableRoot, thenLocal)
+            .Where(assignment => assignment.SpanStart < current.Invocation.Syntax.SpanStart)
+            .ToArray();
+        if (assignments.Length != 2 ||
+            !assignments.Any(assignment =>
+                assignment.SpanStart == thenAssignment.Syntax.SpanStart) ||
+            !assignments.Any(assignment =>
+                assignment.SpanStart == elseAssignment.Syntax.SpanStart) ||
+            !LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                thenLocal,
+                current.Invocation.Syntax.SpanStart) ||
+            EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                operation.Syntax.SpanStart < current.Invocation.Syntax.SpanStart &&
+                operation is IDynamicInvocationOperation dynamicInvocation &&
+                dynamicInvocation.ReferencesLocal(thenLocal)))
+        {
+            thenStart = null;
+            elseStart = null;
+            return false;
+        }
+
+        var earliestAssignment = System.Math.Min(
+            thenAssignment.Syntax.SpanStart,
+            elseAssignment.Syntax.SpanStart);
+        if (executableRoot.Descendants().OfType<ILocalReferenceOperation>().Any(reference =>
+                SymbolEqualityComparer.Default.Equals(reference.Local, thenLocal) &&
+                reference.Syntax.SpanStart > earliestAssignment &&
+                reference.Syntax.SpanStart < current.Invocation.Syntax.SpanStart &&
+                !thenAssignment.Target.Syntax.Span.Contains(reference.Syntax.Span) &&
+                !elseAssignment.Target.Syntax.Span.Contains(reference.Syntax.Span)))
+        {
+            thenStart = null;
+            elseStart = null;
+            return false;
+        }
+
+        thenStart = resolvedThenStart;
+        elseStart = resolvedElseStart;
+        return true;
+    }
+
+    private static bool TryFindUnconditionalAssignedBranchStart(
+        IEnumerable<EfOperation> operations,
+        ContextOrigin origin,
+        StatementSyntax branch,
+        out EfOperation start,
+        out ISimpleAssignmentOperation assignment,
+        out ILocalSymbol local)
+    {
+        foreach (var operation in operations)
+        {
+            if (!ContextOriginComparer.Instance.Equals(operation.Origin, origin) ||
+                !branch.Span.Contains(operation.Invocation.Syntax.Span) ||
+                !IsUnconditionallyExecutedWithin(operation.Invocation.Syntax, branch) ||
+                !TryGetDirectAssignedTaskLocal(
+                    operation.Invocation,
+                    out assignment,
+                    out local))
+            {
+                continue;
+            }
+
+            start = operation;
+            return true;
+        }
+
+        start = default;
+        assignment = null!;
+        local = null!;
+        return false;
+    }
+
+    private static bool TryGetDirectAssignedTaskLocal(
+        IInvocationOperation invocation,
+        out ISimpleAssignmentOperation assignment,
+        out ILocalSymbol local)
+    {
+        IOperation current = invocation;
+        while (current.Parent != null)
+        {
+            if (current.Parent is IParenthesizedOperation)
+            {
+                current = current.Parent;
+                continue;
+            }
+
+            if (current.Parent is IConversionOperation conversion &&
+                conversion.OperatorMethod == null)
+            {
+                current = conversion;
+                continue;
+            }
+
+            if (current.Parent is IInvocationOperation wrapper &&
+                IsTaskWrapper(wrapper, current))
+            {
+                current = wrapper;
+                continue;
+            }
+
+            break;
+        }
+
+        if (current.Parent is ISimpleAssignmentOperation simpleAssignment &&
+            ReferenceEquals(simpleAssignment.Value, current) &&
+            simpleAssignment.Target.UnwrapConversions() is ILocalReferenceOperation target &&
+            IsStandaloneAssignment(simpleAssignment))
+        {
+            assignment = simpleAssignment;
+            local = target.Local;
+            return true;
+        }
+
+        assignment = null!;
+        local = null!;
+        return false;
+    }
+
+    private static bool IsStandaloneAssignment(ISimpleAssignmentOperation assignment)
+    {
+        IOperation current = assignment;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        return current.Parent is IExpressionStatementOperation;
     }
 
     private static bool StartCanBeBypassedByTry(
@@ -606,6 +777,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
                 operation.Syntax.SpanStart >= taskStart.Syntax.Span.End &&
                 operation.Syntax.Span.End <= tryStatement.Block.Span.End &&
+                IsDefinitelyExecutedBefore(
+                    taskStart.Syntax,
+                    operation.Syntax,
+                    executableRoot.Syntax) &&
                 CanThrowBeforeTaskEnd(operation, executableRoot) &&
                 OperationCanReachCatch(
                     operation,
@@ -3186,7 +3361,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 !IsEnumerableSelect(select) ||
                 !TryGetArgumentValue(select, 0, out var source) ||
                 !TryGetArgumentValue(select, 1, out var selectorValue) ||
-                SourceIsAtMostOne(source) ||
+                SourceIsAtMostOne(
+                    source,
+                    executableRoot,
+                    select.Syntax.SpanStart,
+                    context.CancellationToken,
+                    new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default)) ||
                 !TryGetAnonymousFunction(selectorValue, out var selector))
             {
                 continue;
@@ -3271,9 +3451,41 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool SourceIsAtMostOne(IOperation source)
+    private static bool SourceIsAtMostOne(
+        IOperation source,
+        IOperation executableRoot,
+        int beforePosition,
+        System.Threading.CancellationToken cancellationToken,
+        ISet<ILocalSymbol> visitedLocals)
     {
-        source = source.UnwrapConversions();
+        if (!TryUnwrapCardinalityPreservingOperations(source, out source))
+            return false;
+
+        if (source is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            TryGetSingleCardinalityAssignmentBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                cancellationToken,
+                out var assignedValue) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
+            !EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                operation.Syntax.SpanStart < beforePosition &&
+                operation is IDynamicInvocationOperation dynamicInvocation &&
+                dynamicInvocation.ReferencesLocal(localReference.Local)))
+        {
+            return SourceIsAtMostOne(
+                assignedValue,
+                executableRoot,
+                beforePosition,
+                cancellationToken,
+                visitedLocals);
+        }
+
         if (source is IArrayCreationOperation arrayCreation)
         {
             if (arrayCreation.Initializer != null)
@@ -3303,6 +3515,60 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static bool TryGetSingleCardinalityAssignmentBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition,
+        System.Threading.CancellationToken cancellationToken,
+        out IOperation value)
+    {
+        var assignments = LocalAssignmentCache.GetAssignments(
+                executableRoot,
+                local,
+                cancellationToken)
+            .Where(assignment => assignment.SpanStart < beforePosition)
+            .ToArray();
+        if (assignments.Length == 1)
+        {
+            value = assignments[0].Value;
+            return true;
+        }
+
+        value = null!;
+        return false;
+    }
+
+    private static bool TryUnwrapCardinalityPreservingOperations(
+        IOperation source,
+        out IOperation unwrapped)
+    {
+        while (true)
+        {
+            if (source is IParenthesizedOperation parenthesized)
+            {
+                source = parenthesized.Operand;
+                continue;
+            }
+
+            if (source is IConversionOperation conversion)
+            {
+                if (conversion.OperatorMethod != null ||
+                    conversion.Operand.Type?.TypeKind == TypeKind.Dynamic ||
+                    conversion.Type?.TypeKind == TypeKind.Dynamic)
+                {
+                    unwrapped = source;
+                    return false;
+                }
+
+                source = conversion.Operand;
+                continue;
+            }
+
+            unwrapped = source;
+            return true;
+        }
     }
 
     private static bool IsConstantArrayLengthAtMostOne(IOperation dimension)

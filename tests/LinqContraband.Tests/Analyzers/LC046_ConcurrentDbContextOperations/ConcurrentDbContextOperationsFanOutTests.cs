@@ -209,6 +209,113 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_SelectOverStableSingletonArrayLocal_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var ids = new[] { 1 };
+            await Task.WhenAll(ids.Select(_ => db.Users.AnyAsync()));
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_SelectOverReassignedSingletonArrayLocal_ShouldStillTriggerAtFanOut()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var ids = new[] { 1 };
+            ids = new[] { 1, 2 };
+            await {|#1:Task.WhenAll(ids.Select(_ => {|#0:db.Users.AnyAsync()|}))|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_UserDefinedConversionFromSingletonArray_ShouldStillTriggerAtFanOut()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Many : IEnumerable<int>
+    {
+        public static implicit operator Many(int[] source) => new Many();
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            yield return 1;
+            yield return 2;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            Many ids = new[] { 1 };
+            await {|#1:Task.WhenAll(ids.Select(_ => {|#0:db.Users.AnyAsync()|}))|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_SelectOverIntegralSingletonArrayBounds_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
