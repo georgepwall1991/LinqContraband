@@ -265,10 +265,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             assignment.Syntax.SpanStart);
         return !executableRoot.Descendants().OfType<ILocalReferenceOperation>().Any(reference =>
             SymbolEqualityComparer.Default.Equals(reference.Local, local) &&
-            reference.Syntax.SpanStart > earliestAssignment &&
-            reference.Syntax.SpanStart < beforePosition &&
             !branchAssignments.Any(assignment =>
-                assignment.Target.Syntax.Span.Contains(reference.Syntax.Span)));
+                assignment.Target.Syntax.Span.Contains(reference.Syntax.Span)) &&
+            CanOperationOrNestedExecutableRunBetween(
+                reference,
+                executableRoot,
+                earliestAssignment,
+                beforePosition));
     }
 
     private static bool TryFindUnconditionalAssignedBranchStart(
@@ -3544,13 +3547,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var operation in selectorBody.Descendants())
         {
-            if (!CanOperationRunBetween(
-                    operation,
-                    selectorBody,
-                    afterPosition,
-                    beforePosition,
-                    useStableStorageReceiver: false) &&
-                !CanNestedSelectorOperationRunBetween(
+            if (!CanOperationOrNestedExecutableRunBetween(
                     operation,
                     selectorBody,
                     afterPosition,
@@ -3589,15 +3586,36 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return true;
     }
 
-    private static bool CanNestedSelectorOperationRunBetween(
+    private static bool CanOperationOrNestedExecutableRunBetween(
         IOperation operation,
-        IOperation selectorBody,
+        IOperation executableRoot,
         int afterPosition,
         int beforePosition)
     {
+        return CanOperationRunBetween(
+                   operation,
+                   executableRoot,
+                   afterPosition,
+                   beforePosition,
+                   useStableStorageReceiver: false) ||
+               CanNestedExecutableOperationRunBetween(
+                   operation,
+                   executableRoot,
+                   afterPosition,
+                   beforePosition,
+                   new HashSet<SyntaxNode>());
+    }
+
+    private static bool CanNestedExecutableOperationRunBetween(
+        IOperation operation,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        ISet<SyntaxNode> visitedExecutables)
+    {
         IOperation? nestedExecutable = null;
         for (var parent = operation.Parent;
-             parent != null && !ReferenceEquals(parent, selectorBody);
+             parent != null && !ReferenceEquals(parent, executableRoot);
              parent = parent.Parent)
         {
             if (parent is IAnonymousFunctionOperation or ILocalFunctionOperation)
@@ -3607,64 +3625,187 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
         }
 
-        if (nestedExecutable is ILocalFunctionOperation localFunction)
-        {
-            return EnumerateOutsideNestedExecutables(selectorBody).Any(candidate =>
-                (candidate is IInvocationOperation invocation &&
-                 SymbolEqualityComparer.Default.Equals(
-                     invocation.TargetMethod.OriginalDefinition,
-                     localFunction.Symbol.OriginalDefinition) ||
-                 candidate is IMethodReferenceOperation methodReference &&
-                 SymbolEqualityComparer.Default.Equals(
-                     methodReference.Method.OriginalDefinition,
-                     localFunction.Symbol.OriginalDefinition)) &&
-                SelectorCallbackTriggerCrossesPosition(
-                    candidate,
-                    afterPosition,
-                    beforePosition));
-        }
+        return nestedExecutable != null &&
+               CanNestedExecutableRunBetween(
+                   nestedExecutable,
+                   executableRoot,
+                   afterPosition,
+                   beforePosition,
+                   visitedExecutables);
+    }
 
-        if (nestedExecutable is not IAnonymousFunctionOperation)
+    private static bool CanNestedExecutableRunBetween(
+        IOperation nestedExecutable,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        ISet<SyntaxNode> visitedExecutables)
+    {
+        if (!visitedExecutables.Add(nestedExecutable.Syntax))
             return false;
 
-        for (var current = nestedExecutable.Parent;
-             current != null && !ReferenceEquals(current, selectorBody);
-             current = current.Parent)
+        try
         {
-            if (IsSelectorCallbackTrigger(current))
+            if (nestedExecutable is ILocalFunctionOperation localFunction)
             {
-                return SelectorCallbackTriggerCrossesPosition(
-                    current,
-                    afterPosition,
-                    beforePosition);
+                return executableRoot.Descendants().Any(candidate =>
+                    candidate is IInvocationOperation invocation &&
+                     SymbolEqualityComparer.Default.Equals(
+                         invocation.TargetMethod.OriginalDefinition,
+                         localFunction.Symbol.OriginalDefinition) &&
+                     NestedExecutableTriggerCanRunBetween(
+                         candidate,
+                         executableRoot,
+                         afterPosition,
+                         beforePosition,
+                         visitedExecutables) ||
+                    candidate is IMethodReferenceOperation methodReference &&
+                     SymbolEqualityComparer.Default.Equals(
+                         methodReference.Method.OriginalDefinition,
+                         localFunction.Symbol.OriginalDefinition) &&
+                     SelectorCallbackValueCanRunBetween(
+                        candidate,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables));
             }
 
-            if (current is IVariableDeclaratorOperation declarator)
+            if (nestedExecutable is not IAnonymousFunctionOperation)
+                return false;
+
+            return SelectorCallbackValueCanRunBetween(
+                nestedExecutable,
+                executableRoot,
+                afterPosition,
+                beforePosition,
+                visitedExecutables);
+        }
+        finally
+        {
+            visitedExecutables.Remove(nestedExecutable.Syntax);
+        }
+    }
+
+    private static bool SelectorCallbackValueCanRunBetween(
+        IOperation callbackValue,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        ISet<SyntaxNode> visitedExecutables)
+    {
+        var alreadyGuardedExecutable = callbackValue is IAnonymousFunctionOperation;
+        if (!alreadyGuardedExecutable && !visitedExecutables.Add(callbackValue.Syntax))
+            return false;
+
+        try
+        {
+            for (var current = callbackValue.Parent;
+                 current != null && !ReferenceEquals(current, executableRoot);
+                 current = current.Parent)
             {
-                return EnumerateOutsideNestedExecutables(selectorBody).Any(reference =>
-                    reference is ILocalReferenceOperation localReference &&
-                    SymbolEqualityComparer.Default.Equals(
-                        localReference.Local,
-                        declarator.Symbol) &&
-                    SelectorCallbackTriggerCrossesPosition(
-                        reference,
+                if (current is IInvocationOperation invocation &&
+                    !SelectorCallbackInvocationCanExecuteValue(invocation, callbackValue))
+                {
+                    return false;
+                }
+
+                if (IsSelectorCallbackTrigger(current))
+                {
+                    return NestedExecutableTriggerCanRunBetween(
+                        current,
+                        executableRoot,
                         afterPosition,
-                        beforePosition));
+                        beforePosition,
+                        visitedExecutables);
+                }
+
+                if (current is IVariableDeclaratorOperation declarator)
+                {
+                    return SelectorCallbackStorageCanRunBetween(
+                        declarator.Symbol,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables);
+                }
+
+                if (current is ISimpleAssignmentOperation assignment &&
+                    assignment.Value.Syntax.Span.Contains(callbackValue.Syntax.Span) &&
+                    TryGetSelectorCallbackStorageSymbol(assignment.Target, out var storage))
+                {
+                    return SelectorCallbackStorageCanRunBetween(
+                        storage,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables);
+                }
             }
 
-            if (current is ISimpleAssignmentOperation assignment &&
-                TryGetSelectorCallbackStorageSymbol(assignment.Target, out var storage))
-            {
-                return EnumerateOutsideNestedExecutables(selectorBody).Any(reference =>
-                    ReferencesSelectorCallbackStorage(reference, storage) &&
-                    SelectorCallbackTriggerCrossesPosition(
-                        reference,
-                        afterPosition,
-                        beforePosition));
-            }
+            return false;
+        }
+        finally
+        {
+            if (!alreadyGuardedExecutable)
+                visitedExecutables.Remove(callbackValue.Syntax);
+        }
+    }
+
+    private static bool SelectorCallbackInvocationCanExecuteValue(
+        IInvocationOperation invocation,
+        IOperation callbackValue)
+    {
+        if (invocation.Instance == null ||
+            !invocation.Instance.Syntax.Span.Contains(callbackValue.Syntax.Span))
+        {
+            return true;
         }
 
-        return false;
+        return invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke ||
+               invocation.TargetMethod.Name is "DynamicInvoke" or "BeginInvoke";
+    }
+
+    private static bool SelectorCallbackStorageCanRunBetween(
+        ISymbol storage,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        ISet<SyntaxNode> visitedExecutables)
+    {
+        return executableRoot.Descendants().Any(reference =>
+            ReferencesSelectorCallbackStorage(reference, storage) &&
+            SelectorCallbackValueCanRunBetween(
+                reference,
+                executableRoot,
+                afterPosition,
+                beforePosition,
+                visitedExecutables));
+    }
+
+    private static bool NestedExecutableTriggerCanRunBetween(
+        IOperation trigger,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        ISet<SyntaxNode> visitedExecutables)
+    {
+        if (!IsInsideNestedExecutable(trigger, executableRoot))
+        {
+            return trigger.Syntax.SpanStart > afterPosition &&
+                   trigger.Syntax.SpanStart < beforePosition ||
+                   SelectorCallbackTriggerCrossesPosition(
+                       trigger,
+                       afterPosition,
+                       beforePosition);
+        }
+
+        return CanNestedExecutableOperationRunBetween(
+            trigger,
+            executableRoot,
+            afterPosition,
+            beforePosition,
+            visitedExecutables);
     }
 
     private static bool SelectorCallbackTriggerCrossesPosition(

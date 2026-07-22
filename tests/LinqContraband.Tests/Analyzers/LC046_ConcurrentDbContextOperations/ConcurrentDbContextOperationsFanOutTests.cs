@@ -573,6 +573,11 @@ namespace TestApp
         }
     }
 
+    public static class CallbackExtensions
+    {
+        public static void Execute(this Action callback) => callback();
+    }
+
     public sealed class Program
     {
         public async Task Wait(AppDbContext db)
@@ -785,6 +790,58 @@ namespace TestApp
             }))|};
         }
 
+        public async Task TransitiveLocalFunctionReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#21:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#20:db.Users.AnyAsync()|};
+                void Inner() => task = Task.FromResult(true);
+                void Outer() => Inner();
+                Outer();
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task MethodGroupCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#23:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#22:db.Users.AnyAsync()|};
+                void ReplaceTask() => task = Task.FromResult(true);
+                Invoke(task, ReplaceTask);
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task ExtensionCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#25:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#24:db.Users.AnyAsync()|};
+                void ReplaceTask() => task = Task.FromResult(true);
+                Action replace = ReplaceTask;
+                replace.Execute();
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task UninvokedLocalFunctionMethodGroupPreservesCompletion(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                void Inner() => task = Task.FromResult(true);
+                void Outer() => Inner();
+                Action unused = Outer;
+                _ = unused.GetHashCode();
+                task.Wait();
+                return Task.CompletedTask;
+            }));
+        }
+
         private static void Replace(ref Task<bool> task) => task = Task.FromResult(true);
         private static void Invoke(Task<bool> active, Action replace) => replace();
     }
@@ -840,6 +897,21 @@ namespace TestApp
             .WithLocation(18)
             .WithArguments("db");
 
+        var transitiveLocalFunctionReplacement = VerifyCS.Diagnostic()
+            .WithLocation(21)
+            .WithLocation(20)
+            .WithArguments("db");
+
+        var methodGroupCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(23)
+            .WithLocation(22)
+            .WithArguments("db");
+
+        var extensionCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(25)
+            .WithLocation(24)
+            .WithArguments("db");
+
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             laterOperation,
@@ -851,7 +923,10 @@ namespace TestApp
             constructorCallbackReplacement,
             laterConstructorCallbackReplacement,
             propertySetterCallbackReplacement,
-            coalescingPropertySetterCallbackReplacement);
+            coalescingPropertySetterCallbackReplacement,
+            transitiveLocalFunctionReplacement,
+            methodGroupCallbackReplacement,
+            extensionCallbackReplacement);
     }
 
     [Fact]

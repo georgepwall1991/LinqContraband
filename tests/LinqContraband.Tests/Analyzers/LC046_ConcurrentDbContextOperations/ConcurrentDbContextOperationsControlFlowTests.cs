@@ -125,6 +125,23 @@ namespace TestApp
 
             await {|#11:db.Users.ToListAsync()|};
         }
+
+        public async Task DistinctLocalsWithUninvokedRead(AppDbContext db, bool useFirst)
+        {
+            Task first;
+            Task second;
+            if (useFirst)
+            {
+                first = {|#12:db.Users.ToListAsync()|};
+                System.Func<bool> inspect = () => first.IsCompleted;
+            }
+            else
+            {
+                second = {|#13:db.Users.AnyAsync()|};
+            }
+
+            await {|#14:db.Users.ToListAsync()|};
+        }
     }
 }";
 
@@ -152,12 +169,19 @@ namespace TestApp
             .WithLocation(10)
             .WithArguments("db");
 
+        var uninvokedRead = VerifyCS.Diagnostic()
+            .WithLocation(14)
+            .WithLocation(12)
+            .WithLocation(13)
+            .WithArguments("db");
+
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             expected,
             wrappedFind,
             configuredAwaitable,
-            distinctLocals);
+            distinctLocals,
+            uninvokedRead);
     }
 
     [Fact]
