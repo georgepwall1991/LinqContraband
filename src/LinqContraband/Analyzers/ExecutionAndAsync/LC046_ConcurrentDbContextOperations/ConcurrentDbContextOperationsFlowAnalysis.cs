@@ -4273,6 +4273,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (loopCount == 0)
                 return 0;
 
+            if (OperationIsImmediatelyFollowedByLoopBreak(operation, forStatement))
+                loopCount = 1;
+
             executionCount = executionCount > int.MaxValue / loopCount
                 ? int.MaxValue
                 : executionCount * loopCount;
@@ -4309,6 +4312,24 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return executionCount;
+    }
+
+    private static bool OperationIsImmediatelyFollowedByLoopBreak(
+        IOperation operation,
+        ForStatementSyntax forStatement)
+    {
+        if (forStatement.Statement is not BlockSyntax block)
+            return false;
+
+        var containingStatement = block.Statements.FirstOrDefault(statement =>
+            statement.Span.Contains(operation.Syntax.Span));
+        if (containingStatement == null)
+            return false;
+
+        var statementIndex = block.Statements.IndexOf(containingStatement);
+        return statementIndex >= 0 &&
+               statementIndex + 1 < block.Statements.Count &&
+               block.Statements[statementIndex + 1] is BreakStatementSyntax;
     }
 
     private static bool TryGetSimpleForLoopIterationCount(
