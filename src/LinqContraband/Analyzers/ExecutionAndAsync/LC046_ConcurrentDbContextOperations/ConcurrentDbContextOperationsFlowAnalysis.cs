@@ -16,14 +16,20 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var executableRoot in context.OperationBlocks)
         {
-            AnalyzeDirectOverlaps(executableRoot, context);
+            var directlyReportedInvocations = new HashSet<int>();
+            AnalyzeDirectOverlaps(executableRoot, context, directlyReportedInvocations);
+            AnalyzeProvablyRepeatedLoopOperations(
+                executableRoot,
+                context,
+                directlyReportedInvocations);
             AnalyzeSelectorFanOut(executableRoot, context);
         }
     }
 
     private static void AnalyzeDirectOverlaps(
         IOperation executableRoot,
-        OperationBlockAnalysisContext context)
+        OperationBlockAnalysisContext context,
+        ISet<int> reportedInvocations)
     {
         var operations = EnumerateOutsideNestedExecutables(executableRoot)
             .OfType<IInvocationOperation>()
@@ -59,7 +65,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 break;
             }
 
-            if (!activePrevious.HasValue)
+            var activeStarts = activePrevious.HasValue
+                ? ImmutableArray.Create(activePrevious.Value)
+                : ImmutableArray<EfOperation>.Empty;
+            if (activeStarts.IsEmpty &&
+                !TryGetExhaustiveBranchStarts(
+                    operations,
+                    currentIndex,
+                    current,
+                    executableRoot,
+                    out activeStarts))
             {
                 reportedOrigins.Remove(current.Origin);
                 continue;
@@ -68,14 +83,129 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (!reportedOrigins.Add(current.Origin))
                 continue;
 
+            reportedInvocations.Add(current.Invocation.Syntax.SpanStart);
             context.ReportDiagnostic(
                 Diagnostic.Create(
                     Rule,
                     current.Invocation.Syntax.GetLocation(),
-                    new[] { activePrevious.Value.Invocation.Syntax.GetLocation() },
+                    activeStarts.Select(start => start.Invocation.Syntax.GetLocation()),
                     properties: null,
                     current.Origin.DisplayName));
         }
+
+    }
+
+    private static bool TryGetExhaustiveBranchStarts(
+        IReadOnlyList<EfOperation> operations,
+        int currentIndex,
+        EfOperation current,
+        IOperation executableRoot,
+        out ImmutableArray<EfOperation> starts)
+    {
+        var priorOperations = operations.Take(currentIndex).ToArray();
+        foreach (var ifStatement in priorOperations
+                     .SelectMany(operation => operation.Invocation.Syntax.Ancestors()
+                         .OfType<IfStatementSyntax>())
+                     .Distinct()
+                     .OrderByDescending(candidate => candidate.SpanStart))
+        {
+            if (ifStatement.Else == null ||
+                ifStatement.Span.Contains(current.Invocation.Syntax.Span) ||
+                BranchAlwaysExits(ifStatement.Statement) ||
+                BranchAlwaysExits(ifStatement.Else.Statement) ||
+                !IsDefinitelyExecutedBefore(
+                    ifStatement,
+                    current.Invocation.Syntax,
+                    executableRoot.Syntax))
+            {
+                continue;
+            }
+
+            var thenStart = FindUnconditionalDiscardedBranchStart(
+                priorOperations,
+                current.Origin,
+                ifStatement.Statement);
+            var elseStart = FindUnconditionalDiscardedBranchStart(
+                priorOperations,
+                current.Origin,
+                ifStatement.Else.Statement);
+            if (!thenStart.HasValue ||
+                !elseStart.HasValue ||
+                StartCanBeBypassedByTry(thenStart.Value, current.Invocation.Syntax) ||
+                StartCanBeBypassedByTry(elseStart.Value, current.Invocation.Syntax) ||
+                BranchHasControlTransferAfterStart(
+                    ifStatement.Statement,
+                    thenStart.Value.Invocation.Syntax) ||
+                BranchHasControlTransferAfterStart(
+                    ifStatement.Else.Statement,
+                    elseStart.Value.Invocation.Syntax))
+            {
+                continue;
+            }
+
+            starts = ImmutableArray.Create(thenStart.Value, elseStart.Value);
+            return true;
+        }
+
+        starts = ImmutableArray<EfOperation>.Empty;
+        return false;
+    }
+
+    private static EfOperation? FindUnconditionalDiscardedBranchStart(
+        IEnumerable<EfOperation> operations,
+        ContextOrigin origin,
+        StatementSyntax branch)
+    {
+        foreach (var operation in operations)
+        {
+            if (ContextOriginComparer.Instance.Equals(operation.Origin, origin) &&
+                branch.Span.Contains(operation.Invocation.Syntax.Span) &&
+                IsDirectUnobservedStart(operation.Invocation) &&
+                IsUnconditionallyExecutedWithin(operation.Invocation.Syntax, branch))
+            {
+                return operation;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool StartCanBeBypassedByTry(
+        EfOperation start,
+        SyntaxNode current)
+    {
+        return start.Invocation.Syntax.Ancestors().OfType<TryStatementSyntax>().Any(tryStatement =>
+            tryStatement.Block.Span.Contains(start.Invocation.Syntax.Span) &&
+            !tryStatement.Block.Span.Contains(current.Span) &&
+            (tryStatement.Catches.Count > 0 ||
+             tryStatement.Finally?.Span.Contains(current.Span) == true));
+    }
+
+    private static bool BranchHasControlTransferAfterStart(
+        StatementSyntax branch,
+        SyntaxNode start)
+    {
+        return branch.DescendantNodes().Any(candidate =>
+            candidate.SpanStart > start.SpanStart &&
+            !IsInsideNestedExecutableSyntax(candidate, branch) &&
+            candidate is ReturnStatementSyntax or
+                ThrowStatementSyntax or
+                ThrowExpressionSyntax or
+                GotoStatementSyntax or
+                YieldStatementSyntax or
+                BreakStatementSyntax or
+                ContinueStatementSyntax);
+    }
+
+    private static bool IsDirectUnobservedStart(IInvocationOperation invocation)
+    {
+        IOperation current = invocation;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        return current.Parent is IExpressionStatementOperation ||
+               current.Parent is ISimpleAssignmentOperation assignment &&
+               assignment.Target.UnwrapConversions() is IDiscardOperation;
     }
 
     private static bool IsDefinitelyActiveBefore(
@@ -84,7 +214,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot)
     {
         if (previous.Syntax.SpanStart >= current.Syntax.SpanStart ||
-            !IsDefinitelyExecutedBefore(previous.Syntax, current.Syntax))
+            !IsDefinitelyExecutedBefore(previous.Syntax, current.Syntax, executableRoot.Syntax))
         {
             return false;
         }
@@ -165,7 +295,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             taskEndReferences.Add(localReference);
-            if (IsDefinitelyExecutedBefore(localReference.Syntax, current.Syntax) &&
+            if (IsDefinitelyExecutedBefore(
+                    localReference.Syntax,
+                    current.Syntax,
+                    executableRoot.Syntax) &&
                 !TaskEndCanBeBypassedByContinuingHandler(
                     previous.Syntax,
                     localReference,
@@ -245,7 +378,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 foreach (var arrayWhenAllAwait in arrayWhenAllAwaits)
                 {
                     if (arrayWhenAllAwait.Syntax.SpanStart >= current.SpanStart ||
-                        !IsDefinitelyExecutedBefore(arrayWhenAllAwait.Syntax, current) ||
+                        !IsDefinitelyExecutedBefore(
+                            arrayWhenAllAwait.Syntax,
+                            current,
+                            executableRoot.Syntax) ||
                         CompletionCanBeBypassedByContinuingHandler(
                             taskStart,
                             arrayWhenAllAwait.Syntax,
@@ -1369,7 +1505,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 if (!visitedConditionals.Add(ifStatement) ||
                     ifStatement.Else == null ||
                     ifStatement.SpanStart >= current.SpanStart ||
-                    !IsDefinitelyExecutedBefore(ifStatement, current))
+                    !IsDefinitelyExecutedBefore(ifStatement, current, executableRoot.Syntax))
                 {
                     continue;
                 }
@@ -1410,7 +1546,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         section.Labels.Any(label => label.IsKind(
                             Microsoft.CodeAnalysis.CSharp.SyntaxKind.DefaultSwitchLabel))) ||
                     switchStatement.SpanStart >= current.SpanStart ||
-                    !IsDefinitelyExecutedBefore(switchStatement, current))
+                    !IsDefinitelyExecutedBefore(switchStatement, current, executableRoot.Syntax))
                 {
                     continue;
                 }
@@ -1610,8 +1746,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
     }
 
-    private static bool IsDefinitelyExecutedBefore(SyntaxNode previous, SyntaxNode current)
+    private static bool IsDefinitelyExecutedBefore(
+        SyntaxNode previous,
+        SyntaxNode current,
+        SyntaxNode executableRoot)
     {
+        if (CanForwardGotoBypass(previous, current, executableRoot))
+            return false;
+
         foreach (var ancestor in previous.Ancestors())
         {
             if (ancestor is IfStatementSyntax ifStatement)
@@ -1690,6 +1832,39 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static bool CanForwardGotoBypass(
+        SyntaxNode previous,
+        SyntaxNode current,
+        SyntaxNode executableRoot)
+    {
+        var labels = executableRoot.DescendantNodes()
+            .OfType<LabeledStatementSyntax>()
+            .Where(label => !IsInsideNestedExecutableSyntax(label, executableRoot))
+            .ToArray();
+
+        foreach (var gotoStatement in executableRoot.DescendantNodes()
+                     .OfType<GotoStatementSyntax>())
+        {
+            if (gotoStatement.SpanStart >= previous.SpanStart ||
+                !gotoStatement.IsKind(SyntaxKind.GotoStatement) ||
+                gotoStatement.Expression is not IdentifierNameSyntax identifier ||
+                IsInsideNestedExecutableSyntax(gotoStatement, executableRoot))
+            {
+                continue;
+            }
+
+            if (labels.Any(label =>
+                    label.Identifier.ValueText == identifier.Identifier.ValueText &&
+                    label.SpanStart > previous.SpanStart &&
+                    label.SpanStart <= current.SpanStart))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static SyntaxNode? GetIfBranch(IfStatementSyntax ifStatement, SyntaxNode node)
