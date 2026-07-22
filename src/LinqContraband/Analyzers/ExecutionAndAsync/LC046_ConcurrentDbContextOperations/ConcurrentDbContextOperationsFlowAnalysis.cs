@@ -1320,6 +1320,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 if (argument.Parent is IObjectCreationOperation objectCreation)
                 {
                     return !objectCreation.Arguments.Any(candidate =>
+                        !candidate.IsImplicit &&
                         candidate.Syntax.Span.Contains(laterInvocation.Syntax.Span));
                 }
             }

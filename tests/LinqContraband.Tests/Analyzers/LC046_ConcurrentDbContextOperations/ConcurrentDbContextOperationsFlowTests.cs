@@ -2602,7 +2602,41 @@ namespace TestApp
 
     public sealed class TaskHolder
     {
-        public TaskHolder(Task task) { }
+        public TaskHolder(Task task, bool observe = true) { }
+        public Task Later { get; set; } = Task.CompletedTask;
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            _ = new TaskHolder(db.Users.ToListAsync())
+            {
+                Later = db.Users.AnyAsync()
+            };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ObjectInitializerRunsAfterEmptyParamsConstructorArgumentEscape()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class TaskHolder
+    {
+        public TaskHolder(Task task, params object[] rest) { }
         public Task Later { get; set; } = Task.CompletedTask;
     }
 
