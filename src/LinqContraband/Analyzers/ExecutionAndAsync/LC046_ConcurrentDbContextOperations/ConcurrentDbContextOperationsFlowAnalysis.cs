@@ -584,11 +584,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var operation in executableRoot.Descendants())
         {
-            if (operation.Syntax.SpanStart >= beforePosition &&
-                !IsInsideNestedExecutable(operation, executableRoot))
-            {
+            if (!CanOperationRunBefore(operation, executableRoot, beforePosition))
                 continue;
-            }
 
             if (operation is IAssignmentOperation assignment &&
                 assignment.Target.ReferencesLocal(local) &&
@@ -797,14 +794,76 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (ReferenceEquals(current, branch) && current is SwitchSectionSyntax)
                 return true;
 
-            if (current is IfStatementSyntax or
-                ConditionalExpressionSyntax or
-                SwitchSectionSyntax or
+            if (current is BinaryExpressionSyntax binary &&
+                (binary.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.CoalesceExpression) ||
+                 binary.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.LogicalAndExpression) ||
+                 binary.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.LogicalOrExpression)) &&
+                binary.Right.Span.Contains(operation.Span))
+            {
+                return false;
+            }
+
+            if (current is AssignmentExpressionSyntax assignment &&
+                assignment.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.CoalesceAssignmentExpression) &&
+                assignment.Right.Span.Contains(operation.Span))
+            {
+                return false;
+            }
+
+            if (current is IfStatementSyntax ifStatement)
+            {
+                if (!ifStatement.Condition.Span.Contains(operation.Span))
+                    return false;
+
+                continue;
+            }
+
+            if (current is ConditionalExpressionSyntax conditionalExpression)
+            {
+                if (!conditionalExpression.Condition.Span.Contains(operation.Span))
+                    return false;
+
+                continue;
+            }
+
+            if (current is WhileStatementSyntax whileStatement)
+            {
+                if (!whileStatement.Condition.Span.Contains(operation.Span))
+                    return false;
+
+                continue;
+            }
+
+            if (current is ForStatementSyntax forStatement)
+            {
+                var isInitialExecution =
+                    forStatement.Declaration?.Span.Contains(operation.Span) == true ||
+                    forStatement.Initializers.Any(initializer => initializer.Span.Contains(operation.Span)) ||
+                    forStatement.Condition?.Span.Contains(operation.Span) == true;
+                if (!isInitialExecution)
+                    return false;
+
+                continue;
+            }
+
+            if (current is ForEachStatementSyntax forEachStatement)
+            {
+                if (!forEachStatement.Expression.Span.Contains(operation.Span))
+                    return false;
+
+                continue;
+            }
+
+            if (current is ForEachVariableStatementSyntax forEachVariableStatement)
+            {
+                if (!forEachVariableStatement.Expression.Span.Contains(operation.Span))
+                    return false;
+
+                continue;
+            }
+
+            if (current is SwitchSectionSyntax or
                 SwitchExpressionArmSyntax or
-                WhileStatementSyntax or
-                ForStatementSyntax or
-                ForEachStatementSyntax or
-                ForEachVariableStatementSyntax or
                 CatchClauseSyntax or
                 AnonymousFunctionExpressionSyntax or
                 LocalFunctionStatementSyntax)
@@ -1419,12 +1478,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             case ILocalReferenceOperation localReference:
                 if (!visitedLocals.Add(localReference.Local) ||
-                    !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                    !LocalHasNoUntrackedWritesBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition) ||
+                    !TryGetLatestDefiniteStorageReceiverValueBefore(
                         executableRoot,
                         localReference.Local,
                         beforePosition,
-                        out var assignedValue,
-                        default))
+                        out var assignedValue))
                 {
                     return false;
                 }
@@ -1596,6 +1658,1249 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool CanOperationRunBefore(
+        IOperation operation,
+        IOperation executableRoot,
+        int beforePosition,
+        bool useStableStorageReceiver = true)
+    {
+        return CanOperationRunBetween(
+            operation,
+            executableRoot,
+            int.MinValue,
+            beforePosition,
+            useStableStorageReceiver);
+    }
+
+    private static bool CanOperationRunBetween(
+        IOperation operation,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        bool useStableStorageReceiver)
+    {
+        IOperation? nestedExecutable = null;
+        for (var parent = operation.Parent;
+             parent != null && !ReferenceEquals(parent, executableRoot);
+             parent = parent.Parent)
+        {
+            if (parent is IAnonymousFunctionOperation or ILocalFunctionOperation)
+            {
+                nestedExecutable = parent;
+                break;
+            }
+        }
+
+        if (nestedExecutable == null)
+        {
+            return operation.Syntax.SpanStart > afterPosition &&
+                   operation.Syntax.SpanStart < beforePosition;
+        }
+
+        if (nestedExecutable is ILocalFunctionOperation localFunction)
+        {
+            return EnumerateOutsideNestedExecutables(executableRoot).Any(candidate =>
+                candidate.Syntax.SpanStart > afterPosition &&
+                candidate.Syntax.SpanStart < beforePosition &&
+                (candidate is IInvocationOperation invocation &&
+                 SymbolEqualityComparer.Default.Equals(
+                     invocation.TargetMethod.OriginalDefinition,
+                     localFunction.Symbol.OriginalDefinition) ||
+                 candidate is IMethodReferenceOperation methodReference &&
+                 SymbolEqualityComparer.Default.Equals(
+                     methodReference.Method.OriginalDefinition,
+                     localFunction.Symbol.OriginalDefinition)));
+        }
+
+        for (IOperation? current = nestedExecutable.Parent;
+             current != null && !ReferenceEquals(current, executableRoot);
+             current = current.Parent)
+        {
+            if (current is IInvocationOperation directInvocation)
+            {
+                return directInvocation.Syntax.SpanStart > afterPosition &&
+                       directInvocation.Syntax.SpanStart < beforePosition;
+            }
+
+            if (current is IVariableDeclaratorOperation declarator)
+            {
+                return EnumerateOutsideNestedExecutables(executableRoot)
+                    .OfType<ILocalReferenceOperation>()
+                    .Any(reference =>
+                        reference.Syntax.SpanStart > afterPosition &&
+                        reference.Syntax.SpanStart < beforePosition &&
+                        SymbolEqualityComparer.Default.Equals(
+                            reference.Local,
+                            declarator.Symbol));
+            }
+
+            if (current is ISimpleAssignmentOperation assignment)
+            {
+                if (!useStableStorageReceiver &&
+                    TryGetStorageSymbol(assignment.Target, out var storageSymbol))
+                {
+                    return EnumerateOutsideNestedExecutables(executableRoot)
+                        .OfType<IInvocationOperation>()
+                        .Any(invocation =>
+                            invocation.Syntax.SpanStart > assignment.Syntax.SpanStart &&
+                            invocation.Syntax.SpanStart > afterPosition &&
+                            invocation.Syntax.SpanStart < beforePosition &&
+                            invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                            InvocationReceiverMatchesStorageSymbol(invocation, storageSymbol));
+                }
+
+                if (!TryGetStorageOrigin(
+                        assignment.Target,
+                        executableRoot,
+                        assignment.Syntax.SpanStart,
+                        out var storage))
+                {
+                    continue;
+                }
+
+                return EnumerateOutsideNestedExecutables(executableRoot)
+                    .OfType<IInvocationOperation>()
+                    .Any(invocation =>
+                        invocation.Syntax.SpanStart > assignment.Syntax.SpanStart &&
+                        invocation.Syntax.SpanStart > afterPosition &&
+                        invocation.Syntax.SpanStart < beforePosition &&
+                        invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                        InvocationReceiverMatchesStorage(
+                            invocation,
+                            executableRoot,
+                            storage) &&
+                        !StorageIsOverwrittenBetween(
+                            executableRoot,
+                            storage,
+                            assignment.Syntax.SpanStart,
+                            invocation.Syntax.SpanStart));
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetStorageSymbol(
+        IOperation target,
+        out ISymbol storage)
+    {
+        target = target.UnwrapConversions();
+        if (target is IFieldReferenceOperation fieldReference)
+        {
+            storage = fieldReference.Field;
+            return true;
+        }
+
+        if (target is IPropertyReferenceOperation propertyReference)
+        {
+            storage = propertyReference.Property;
+            return true;
+        }
+
+        storage = null!;
+        return false;
+    }
+
+    private static bool InvocationReceiverMatchesStorageSymbol(
+        IInvocationOperation invocation,
+        ISymbol storage)
+    {
+        var receiver = invocation.Instance?.UnwrapConversions();
+        return receiver is IFieldReferenceOperation fieldReference &&
+               SymbolEqualityComparer.Default.Equals(fieldReference.Field, storage) ||
+               receiver is IPropertyReferenceOperation propertyReference &&
+               SymbolEqualityComparer.Default.Equals(propertyReference.Property, storage);
+    }
+
+    private static bool TryGetStorageOrigin(
+        IOperation target,
+        IOperation executableRoot,
+        int beforePosition,
+        out ContextOrigin storage)
+    {
+        target = target.UnwrapConversions();
+        if (target is IFieldReferenceOperation fieldReference)
+        {
+            return TryCreateStorageOrigin(
+                fieldReference.Field,
+                fieldReference.Instance,
+                executableRoot,
+                beforePosition,
+                out storage);
+        }
+
+        if (target is IPropertyReferenceOperation propertyReference)
+        {
+            return TryCreateStorageOrigin(
+                propertyReference.Property,
+                propertyReference.Instance,
+                executableRoot,
+                beforePosition,
+                out storage);
+        }
+
+        storage = default;
+        return false;
+    }
+
+    private static bool TryCreateStorageOrigin(
+        ISymbol symbol,
+        IOperation? instance,
+        IOperation executableRoot,
+        int beforePosition,
+        out ContextOrigin storage)
+    {
+        if (instance == null)
+        {
+            storage = new ContextOrigin(symbol, symbol.Name);
+            return true;
+        }
+
+        if (TryResolveStorageReceiverSymbol(
+                instance,
+                executableRoot,
+                beforePosition,
+                new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+                out var receiver))
+        {
+            storage = new ContextOrigin(symbol, receiver, symbol.Name);
+            return true;
+        }
+
+        storage = default;
+        return false;
+    }
+
+    private static bool TryResolveStorageReceiverSymbol(
+        IOperation instance,
+        IOperation executableRoot,
+        int beforePosition,
+        HashSet<ISymbol> visitedLocals,
+        out ISymbol receiver)
+    {
+        instance = instance.UnwrapConversions();
+        switch (instance)
+        {
+            case IParameterReferenceOperation parameterReference:
+                if (StorageReceiverParameterHasNoWritesBefore(
+                        executableRoot,
+                        parameterReference.Parameter,
+                        beforePosition))
+                {
+                    receiver = parameterReference.Parameter;
+                    return true;
+                }
+
+                if (!TryGetLatestDefiniteStorageReceiverValueBefore(
+                        executableRoot,
+                        parameterReference.Parameter,
+                        beforePosition,
+                        out var parameterValue,
+                        out var parameterAssignmentPosition))
+                {
+                    receiver = null!;
+                    return false;
+                }
+
+                return TryResolveStorageReceiverSymbol(
+                    parameterValue,
+                    executableRoot,
+                    parameterAssignmentPosition,
+                    visitedLocals,
+                    out receiver);
+
+            case ILocalReferenceOperation localReference:
+                if (localReference.Local.RefKind != RefKind.None ||
+                    !visitedLocals.Add(localReference.Local))
+                {
+                    receiver = null!;
+                    return false;
+                }
+
+                if (!StorageReceiverLocalHasNoUntrackedWritesBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition) ||
+                    !TryGetLatestDefiniteStorageReceiverValueBefore(
+                        executableRoot,
+                        localReference.Local,
+                        beforePosition,
+                        out var assignedValue,
+                        out var localAssignmentPosition))
+                {
+                    visitedLocals.Remove(localReference.Local);
+                    receiver = null!;
+                    return false;
+                }
+
+                visitedLocals.Remove(localReference.Local);
+                if (assignedValue.UnwrapConversions() is IObjectCreationOperation)
+                {
+                    receiver = localReference.Local;
+                    return true;
+                }
+
+                return TryResolveStorageReceiverSymbol(
+                    assignedValue,
+                    executableRoot,
+                    localAssignmentPosition,
+                    visitedLocals,
+                    out receiver);
+
+            case IInstanceReferenceOperation instanceReference when instanceReference.Type != null:
+                receiver = instanceReference.Type;
+                return true;
+        }
+
+        receiver = null!;
+        return false;
+    }
+
+    private static bool TryGetLatestDefiniteStorageReceiverValueBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition,
+        out IOperation value)
+    {
+        return TryGetLatestDefiniteStorageReceiverValueBefore(
+            executableRoot,
+            local,
+            beforePosition,
+            out value,
+            out _);
+    }
+
+    private static bool TryGetLatestDefiniteStorageReceiverValueBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition,
+        out IOperation value,
+        out int assignmentPosition)
+    {
+        value = null!;
+        assignmentPosition = -1;
+        LocalAssignment? latest = null;
+        foreach (var assignment in LocalAssignmentCache.GetAssignments(executableRoot, local))
+        {
+            if (assignment.SpanStart < beforePosition &&
+                (latest == null || assignment.SpanStart > latest.Value.SpanStart))
+            {
+                latest = assignment;
+            }
+        }
+
+        if (latest == null ||
+            !IsUnconditionallyExecutedWithin(latest.Value.Value.Syntax, executableRoot.Syntax))
+        {
+            return false;
+        }
+
+        value = latest.Value.Value.UnwrapConversions();
+        assignmentPosition = latest.Value.SpanStart;
+        return true;
+    }
+
+    private static bool StorageReceiverParameterHasNoWritesBefore(
+        IOperation executableRoot,
+        IParameterSymbol parameter,
+        int beforePosition)
+    {
+        return !executableRoot.Descendants().Any(operation =>
+            CanOperationRunBefore(operation, executableRoot, beforePosition, false) &&
+            (operation is IAssignmentOperation assignment &&
+             assignment.Target.UnwrapConversions() is not IFieldReferenceOperation &&
+             assignment.Target.UnwrapConversions() is not IPropertyReferenceOperation &&
+             assignment.Target.ReferencesParameter(parameter) ||
+             operation is IVariableDeclaratorOperation declarator &&
+             declarator.Symbol.RefKind != RefKind.None &&
+             declarator.Initializer?.Value.ReferencesParameter(parameter) == true ||
+             operation is IArgumentOperation argument &&
+             argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+             argument.Value.ReferencesParameter(parameter)));
+    }
+
+    private static bool TryGetLatestDefiniteStorageReceiverValueBefore(
+        IOperation executableRoot,
+        IParameterSymbol parameter,
+        int beforePosition,
+        out IOperation value,
+        out int assignmentPosition)
+    {
+        value = null!;
+        assignmentPosition = -1;
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (!CanOperationRunBefore(operation, executableRoot, beforePosition, false))
+                continue;
+
+            if (operation is ISimpleAssignmentOperation assignment &&
+                assignment.Target.UnwrapConversions() is IParameterReferenceOperation target &&
+                SymbolEqualityComparer.Default.Equals(target.Parameter, parameter))
+            {
+                if (!IsUnconditionallyExecutedWithin(assignment.Syntax, executableRoot.Syntax))
+                    return false;
+
+                if (assignment.Syntax.SpanStart > assignmentPosition)
+                {
+                    value = assignment.Value.UnwrapConversions();
+                    assignmentPosition = assignment.Syntax.SpanStart;
+                }
+
+                continue;
+            }
+
+            if (operation is IAssignmentOperation otherAssignment &&
+                otherAssignment.Target.UnwrapConversions() is not IFieldReferenceOperation &&
+                otherAssignment.Target.UnwrapConversions() is not IPropertyReferenceOperation &&
+                otherAssignment.Target.ReferencesParameter(parameter) ||
+                operation is IVariableDeclaratorOperation declarator &&
+                declarator.Symbol.RefKind != RefKind.None &&
+                declarator.Initializer?.Value.ReferencesParameter(parameter) == true ||
+                operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesParameter(parameter))
+            {
+                return false;
+            }
+        }
+
+        return assignmentPosition >= 0;
+    }
+
+    private static bool StorageReceiverLocalHasNoUntrackedWritesBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition)
+    {
+        return !executableRoot.Descendants().Any(operation =>
+            CanOperationRunBefore(operation, executableRoot, beforePosition, false) &&
+            (operation is ISimpleAssignmentOperation assignment &&
+             IsInsideNestedExecutable(assignment, executableRoot) &&
+             assignment.Target.UnwrapConversions() is not IFieldReferenceOperation &&
+             assignment.Target.UnwrapConversions() is not IPropertyReferenceOperation &&
+             assignment.Target.ReferencesLocal(local) ||
+             operation is IAssignmentOperation nonSimpleAssignment &&
+             operation is not ISimpleAssignmentOperation &&
+             nonSimpleAssignment.Target.ReferencesLocal(local) ||
+             operation is IVariableDeclaratorOperation declarator &&
+             declarator.Symbol.RefKind != RefKind.None &&
+             declarator.Initializer?.Value.ReferencesLocal(local) == true ||
+             operation is IArgumentOperation argument &&
+             argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+             argument.Value.ReferencesLocal(local)));
+    }
+
+    private static bool InvocationReceiverMatchesStorage(
+        IInvocationOperation invocation,
+        IOperation executableRoot,
+        ContextOrigin storage)
+    {
+        var receiver = invocation.Instance?.UnwrapConversions();
+        if (receiver == null)
+            return false;
+
+        if (TryGetStorageOrigin(
+                receiver,
+                executableRoot,
+                invocation.Syntax.SpanStart,
+                out var invokedStorage))
+        {
+            return ContextOriginComparer.Instance.Equals(storage, invokedStorage);
+        }
+
+        var instance = receiver switch
+        {
+            IFieldReferenceOperation fieldReference => fieldReference.Instance,
+            IPropertyReferenceOperation propertyReference => propertyReference.Instance,
+            _ => null
+        };
+        return storage.ReceiverSymbol != null &&
+               TryGetStorageSymbol(receiver, out var invokedSymbol) &&
+               SymbolEqualityComparer.Default.Equals(storage.Symbol, invokedSymbol) &&
+               instance?.UnwrapConversions() is ILocalReferenceOperation localReference &&
+               StorageReceiverLocalMayMatchOriginBefore(
+                   executableRoot,
+                   localReference.Local,
+                   invocation.Syntax.SpanStart,
+                   storage.ReceiverSymbol);
+    }
+
+    private static bool StorageReceiverLocalMayMatchOriginBefore(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int beforePosition,
+        ISymbol expectedReceiver)
+    {
+        if (local.RefKind != RefKind.None)
+            return true;
+
+        if (!StorageReceiverLocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                local,
+                beforePosition))
+        {
+            return true;
+        }
+
+        var hasReachingValue = false;
+        foreach (var assignment in LocalAssignmentCache.GetAssignments(executableRoot, local)
+                     .Where(candidate => candidate.SpanStart < beforePosition)
+                     .OrderBy(candidate => candidate.SpanStart))
+        {
+            var canMatch = !TryResolveStorageReceiverSymbol(
+                               assignment.Value,
+                               executableRoot,
+                               assignment.SpanStart,
+                               new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+                               out var receiver) ||
+                           SymbolEqualityComparer.Default.Equals(expectedReceiver, receiver);
+            if (IsUnconditionallyExecutedWithin(
+                    assignment.Value.Syntax,
+                    executableRoot.Syntax))
+            {
+                hasReachingValue = canMatch;
+            }
+            else if (canMatch)
+            {
+                hasReachingValue = true;
+            }
+        }
+
+        return hasReachingValue;
+    }
+
+    private static bool IsOperationDefinitelyExecutedBetween(
+        IOperation operation,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition)
+    {
+        return TryGetDefiniteExecutionPosition(
+            operation,
+            executableRoot,
+            afterPosition,
+            beforePosition,
+            new HashSet<SyntaxNode>(),
+            out _);
+    }
+
+    private static bool TryGetDefiniteExecutionPosition(
+        IOperation operation,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        HashSet<SyntaxNode> visitedExecutables,
+        out int executionPosition)
+    {
+        IOperation? nestedExecutable = null;
+        for (var parent = operation.Parent;
+             parent != null && !ReferenceEquals(parent, executableRoot);
+             parent = parent.Parent)
+        {
+            if (parent is IAnonymousFunctionOperation or ILocalFunctionOperation)
+            {
+                nestedExecutable = parent;
+                break;
+            }
+        }
+
+        if (nestedExecutable == null)
+        {
+            executionPosition = operation.Syntax.SpanStart;
+            return executionPosition > afterPosition &&
+                   executionPosition < beforePosition &&
+                   IsUnconditionallyExecutedWithin(operation.Syntax, executableRoot.Syntax);
+        }
+
+        var nestedBody = nestedExecutable switch
+        {
+            ILocalFunctionOperation localFunction => localFunction.Body?.Syntax ?? localFunction.Syntax,
+            IAnonymousFunctionOperation anonymousFunction => anonymousFunction.Body.Syntax,
+            _ => nestedExecutable.Syntax
+        };
+        var isAsync = nestedExecutable is ILocalFunctionOperation { Symbol.IsAsync: true } or
+            IAnonymousFunctionOperation { Symbol.IsAsync: true };
+        if (isAsync ||
+            nestedExecutable.Syntax.DescendantNodes().Any(node => node is YieldStatementSyntax) ||
+            !IsUnconditionallyExecutedWithin(operation.Syntax, nestedBody) ||
+            EnumerateOutsideNestedExecutables(nestedExecutable).Any(candidate =>
+                !candidate.IsImplicit &&
+                candidate.Syntax.SpanStart < operation.Syntax.SpanStart &&
+                candidate is IReturnOperation or IThrowOperation))
+        {
+            executionPosition = -1;
+            return false;
+        }
+
+        if (!visitedExecutables.Add(nestedExecutable.Syntax))
+        {
+            executionPosition = -1;
+            return false;
+        }
+
+        try
+        {
+            if (nestedExecutable is ILocalFunctionOperation localFunction)
+            {
+                foreach (var invocation in executableRoot.Descendants().OfType<IInvocationOperation>())
+                {
+                    if (SymbolEqualityComparer.Default.Equals(
+                            invocation.TargetMethod.OriginalDefinition,
+                            localFunction.Symbol.OriginalDefinition) &&
+                        TryGetDefiniteExecutionPosition(
+                            invocation,
+                            executableRoot,
+                            afterPosition,
+                            beforePosition,
+                            visitedExecutables,
+                            out executionPosition))
+                    {
+                        return true;
+                    }
+                }
+
+                foreach (var methodReference in executableRoot.Descendants()
+                             .OfType<IMethodReferenceOperation>())
+                {
+                    if (SymbolEqualityComparer.Default.Equals(
+                            methodReference.Method.OriginalDefinition,
+                            localFunction.Symbol.OriginalDefinition) &&
+                        TryGetDelegateValueExecutionPosition(
+                            methodReference,
+                            executableRoot,
+                            afterPosition,
+                            beforePosition,
+                            visitedExecutables,
+                            out executionPosition))
+                    {
+                        return true;
+                    }
+                }
+
+                executionPosition = -1;
+                return false;
+            }
+
+            return TryGetDelegateValueExecutionPosition(
+                nestedExecutable,
+                executableRoot,
+                afterPosition,
+                beforePosition,
+                visitedExecutables,
+                out executionPosition);
+        }
+        finally
+        {
+            visitedExecutables.Remove(nestedExecutable.Syntax);
+        }
+    }
+
+    private static bool TryGetDelegateValueExecutionPosition(
+        IOperation delegateValue,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        HashSet<SyntaxNode> visitedExecutables,
+        out int executionPosition)
+    {
+        if (!IsDelegateValueDefinitelySelected(delegateValue, executableRoot))
+        {
+            executionPosition = -1;
+            return false;
+        }
+
+        for (IOperation? current = delegateValue.Parent;
+             current != null && !ReferenceEquals(current, executableRoot);
+             current = current.Parent)
+        {
+            if (current is IInvocationOperation currentInvocation)
+            {
+                if (currentInvocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                    currentInvocation.Instance?.Syntax.Span.Contains(delegateValue.Syntax.Span) == true)
+                {
+                    return TryGetDefiniteExecutionPosition(
+                        currentInvocation,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables,
+                        out executionPosition);
+                }
+
+                executionPosition = -1;
+                return false;
+            }
+
+            if (current is IVariableDeclaratorOperation declarator)
+            {
+                if (!TryGetDefiniteExecutionPosition(
+                        declarator,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables,
+                        out var assignmentExecutionPosition))
+                {
+                    executionPosition = -1;
+                    return false;
+                }
+
+                return TryGetLocalDelegateExecutionPosition(
+                    declarator.Symbol,
+                    assignmentExecutionPosition,
+                    executableRoot,
+                    afterPosition,
+                    beforePosition,
+                    visitedExecutables,
+                    out executionPosition);
+            }
+
+            if (current is ISimpleAssignmentOperation assignment)
+            {
+                if (!TryGetDefiniteExecutionPosition(
+                        assignment,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables,
+                        out var assignmentExecutionPosition))
+                {
+                    executionPosition = -1;
+                    return false;
+                }
+
+                var target = assignment.Target.UnwrapConversions();
+                if (target is ILocalReferenceOperation localReference)
+                {
+                    return TryGetLocalDelegateExecutionPosition(
+                        localReference.Local,
+                        assignmentExecutionPosition,
+                        executableRoot,
+                        afterPosition,
+                        beforePosition,
+                        visitedExecutables,
+                        out executionPosition);
+                }
+
+                if (StorageReceiverIsMutatedEarlierInNestedExecutable(
+                        target,
+                        assignment,
+                        executableRoot))
+                {
+                    executionPosition = -1;
+                    return false;
+                }
+
+                if (TryGetStorageOrigin(
+                        target,
+                        executableRoot,
+                        assignmentExecutionPosition,
+                        out var storage))
+                {
+                    foreach (var invocation in executableRoot.Descendants()
+                                 .OfType<IInvocationOperation>())
+                    {
+                        if (invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                            InvocationReceiverMatchesStorage(
+                                invocation,
+                                executableRoot,
+                                storage) &&
+                            TryGetDefiniteExecutionPosition(
+                                invocation,
+                                executableRoot,
+                                afterPosition > assignmentExecutionPosition
+                                    ? afterPosition
+                                    : assignmentExecutionPosition,
+                                beforePosition,
+                                visitedExecutables,
+                                out executionPosition) &&
+                            !StorageIsOverwrittenBetween(
+                                executableRoot,
+                                storage,
+                                assignmentExecutionPosition,
+                                executionPosition))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                executionPosition = -1;
+                return false;
+            }
+        }
+
+        executionPosition = -1;
+        return false;
+    }
+
+    private static bool IsDelegateValueDefinitelySelected(
+        IOperation delegateValue,
+        IOperation executableRoot)
+    {
+        var valueSpan = delegateValue.Syntax.Span;
+        for (var current = delegateValue.Syntax.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            if (ReferenceEquals(current, executableRoot.Syntax))
+                return true;
+
+            if (current is BinaryExpressionSyntax binary &&
+                binary.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.CoalesceExpression) &&
+                binary.Right.Span.Contains(valueSpan) ||
+                current is AssignmentExpressionSyntax assignment &&
+                assignment.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.CoalesceAssignmentExpression) &&
+                assignment.Right.Span.Contains(valueSpan) ||
+                current is ConditionalExpressionSyntax conditional &&
+                !conditional.Condition.Span.Contains(valueSpan) ||
+                current is SwitchExpressionArmSyntax or SwitchSectionSyntax or CatchClauseSyntax)
+            {
+                return false;
+            }
+
+            if (current is IfStatementSyntax ifStatement &&
+                !ifStatement.Condition.Span.Contains(valueSpan) ||
+                current is WhileStatementSyntax whileStatement &&
+                !whileStatement.Condition.Span.Contains(valueSpan) ||
+                current is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetLocalDelegateExecutionPosition(
+        ILocalSymbol local,
+        int assignmentPosition,
+        IOperation executableRoot,
+        int afterPosition,
+        int beforePosition,
+        HashSet<SyntaxNode> visitedExecutables,
+        out int executionPosition)
+    {
+        foreach (var invocation in executableRoot.Descendants().OfType<IInvocationOperation>())
+        {
+            if (invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                invocation.Instance?.UnwrapConversions() is ILocalReferenceOperation localReference &&
+                SymbolEqualityComparer.Default.Equals(localReference.Local, local) &&
+                TryGetDefiniteExecutionPosition(
+                    invocation,
+                    executableRoot,
+                    afterPosition > assignmentPosition
+                        ? afterPosition
+                        : assignmentPosition,
+                    beforePosition,
+                    visitedExecutables,
+                    out executionPosition) &&
+                !LocalDelegateIsOverwrittenBetween(
+                    executableRoot,
+                    local,
+                    assignmentPosition,
+                    executionPosition))
+            {
+                return true;
+            }
+        }
+
+        executionPosition = -1;
+        return false;
+    }
+
+    private static bool LocalDelegateIsOverwrittenBetween(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int assignmentPosition,
+        int invocationPosition)
+    {
+        return executableRoot.Descendants().Any(operation =>
+            IsOperationDefinitelyExecutedBetween(
+                operation,
+                executableRoot,
+                assignmentPosition,
+                invocationPosition) &&
+            (operation is IAssignmentOperation assignment &&
+             assignment.Target.UnwrapConversions() is ILocalReferenceOperation localReference &&
+             SymbolEqualityComparer.Default.Equals(localReference.Local, local) ||
+             operation is IArgumentOperation argument &&
+             argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+             argument.Value.UnwrapConversions() is ILocalReferenceOperation argumentLocal &&
+             SymbolEqualityComparer.Default.Equals(argumentLocal.Local, local)));
+    }
+
+    private static bool StorageIsOverwrittenBetween(
+        IOperation executableRoot,
+        ContextOrigin storage,
+        int assignmentPosition,
+        int invocationPosition)
+    {
+        foreach (var assignment in executableRoot.Descendants().OfType<IAssignmentOperation>())
+        {
+            if (!AssignmentDefinitelyReplacesDelegate(assignment))
+                continue;
+
+            var searchAfter = assignmentPosition;
+            while (TryGetDefiniteExecutionPosition(
+                       assignment,
+                       executableRoot,
+                       searchAfter,
+                       invocationPosition,
+                       new HashSet<SyntaxNode>(),
+                       out var executionPosition))
+            {
+                if (!StorageReceiverIsMutatedEarlierInNestedExecutable(
+                        assignment.Target,
+                        assignment,
+                        executableRoot) &&
+                    StorageExpressionMatchesOriginAtPosition(
+                        assignment.Target,
+                        executableRoot,
+                        executionPosition,
+                        storage) &&
+                    !StorageMayBeWrittenBetween(
+                        executableRoot,
+                        storage,
+                        executionPosition,
+                        invocationPosition))
+                {
+                    return true;
+                }
+
+                if (executionPosition <= searchAfter)
+                    break;
+
+                searchAfter = executionPosition;
+            }
+        }
+
+        foreach (var argument in executableRoot.Descendants().OfType<IArgumentOperation>())
+        {
+            if (argument.Parameter?.RefKind is not (RefKind.Ref or RefKind.Out))
+                continue;
+
+            if (!RefArgumentDefinitelyReplacesDelegate(argument))
+                continue;
+
+            var searchAfter = assignmentPosition;
+            while (TryGetDefiniteExecutionPosition(
+                       argument,
+                       executableRoot,
+                       searchAfter,
+                       invocationPosition,
+                       new HashSet<SyntaxNode>(),
+                       out var executionPosition))
+            {
+                if (!StorageReceiverIsMutatedEarlierInNestedExecutable(
+                        argument.Value,
+                        argument,
+                        executableRoot) &&
+                    TryGetStorageOrigin(
+                        argument.Value,
+                        executableRoot,
+                        executionPosition,
+                        out var passedStorage) &&
+                    ContextOriginComparer.Instance.Equals(storage, passedStorage) &&
+                    !StorageMayBeWrittenBetween(
+                        executableRoot,
+                        storage,
+                        executionPosition,
+                        invocationPosition))
+                {
+                    return true;
+                }
+
+                if (executionPosition <= searchAfter)
+                    break;
+
+                searchAfter = executionPosition;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool StorageMayBeWrittenBetween(
+        IOperation executableRoot,
+        ContextOrigin storage,
+        int afterPosition,
+        int beforePosition)
+    {
+        if (executableRoot.Descendants().Any(operation =>
+                OperationMayExecuteUserCode(operation) &&
+                CanOperationRunBetween(
+                    operation,
+                    executableRoot,
+                    afterPosition,
+                    beforePosition,
+                    true)))
+        {
+            return true;
+        }
+
+        foreach (var assignment in executableRoot.Descendants().OfType<IAssignmentOperation>())
+        {
+            if (CanOperationRunBetween(
+                    assignment,
+                    executableRoot,
+                    afterPosition,
+                    beforePosition,
+                    true) &&
+                (StorageExpressionMatchesOriginAtPosition(
+                     assignment.Target,
+                     executableRoot,
+                     assignment.Syntax.SpanStart,
+                     storage) ||
+                 TryGetStorageSymbol(assignment.Target, out var writtenSymbol) &&
+                 SymbolEqualityComparer.Default.Equals(storage.Symbol, writtenSymbol)))
+            {
+                return true;
+            }
+        }
+
+        foreach (var argument in executableRoot.Descendants().OfType<IArgumentOperation>())
+        {
+            if (argument.Parameter?.RefKind is not (RefKind.Ref or RefKind.Out) ||
+                !CanOperationRunBetween(
+                    argument,
+                    executableRoot,
+                    afterPosition,
+                    beforePosition,
+                    true) ||
+                !(TryGetStorageOrigin(
+                      argument.Value,
+                      executableRoot,
+                      argument.Syntax.SpanStart,
+                      out var passedStorage) &&
+                  ContextOriginComparer.Instance.Equals(storage, passedStorage) ||
+                  TryGetStorageSymbol(argument.Value, out var passedSymbol) &&
+                  SymbolEqualityComparer.Default.Equals(storage.Symbol, passedSymbol)))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool OperationMayExecuteUserCode(IOperation operation)
+    {
+        return operation is IInvocationOperation ||
+               operation is IPropertyReferenceOperation ||
+               operation is IEventAssignmentOperation ||
+               operation is IObjectCreationOperation ||
+               operation is IDynamicInvocationOperation ||
+               operation is IConversionOperation { OperatorMethod: not null } ||
+               operation is IBinaryOperation { OperatorMethod: not null } ||
+               operation is IUnaryOperation { OperatorMethod: not null } ||
+               operation is IIncrementOrDecrementOperation { OperatorMethod: not null } ||
+               operation is ICompoundAssignmentOperation { OperatorMethod: not null };
+    }
+
+    private static bool AssignmentDefinitelyReplacesDelegate(
+        IAssignmentOperation assignment)
+    {
+        if (!StorageTargetHasReliableDirectSetter(assignment.Target))
+            return false;
+
+        var value = assignment.Value.UnwrapConversions();
+        if (value.ConstantValue is { HasValue: true, Value: null })
+            return true;
+
+        var anonymousFunction = value switch
+        {
+            IAnonymousFunctionOperation anonymous => anonymous,
+            IDelegateCreationOperation { Target: IAnonymousFunctionOperation anonymous } => anonymous,
+            _ => null
+        };
+        return anonymousFunction?.Syntax is AnonymousFunctionExpressionSyntax syntax &&
+               syntax.ChildNodes()
+                   .OfType<BlockSyntax>()
+                   .Any(block => block.Statements.Count == 0);
+    }
+
+    private static bool StorageTargetHasReliableDirectSetter(IOperation target)
+    {
+        target = target.UnwrapConversions();
+        if (target is IFieldReferenceOperation)
+            return true;
+
+        if (target is not IPropertyReferenceOperation propertyReference)
+            return false;
+
+        if (propertyReference.Property.ContainingType.TypeKind != TypeKind.Class ||
+            propertyReference.Property.IsAbstract ||
+            propertyReference.Property.IsVirtual ||
+            propertyReference.Property.IsOverride)
+        {
+            return false;
+        }
+
+        foreach (var syntaxReference in propertyReference.Property.DeclaringSyntaxReferences)
+        {
+            if (syntaxReference.GetSyntax() is not PropertyDeclarationSyntax declaration ||
+                declaration.AccessorList == null)
+            {
+                continue;
+            }
+
+            foreach (var accessor in declaration.AccessorList.Accessors)
+            {
+                if ((accessor.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.SetAccessorDeclaration) ||
+                     accessor.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.InitAccessorDeclaration)) &&
+                    accessor.Body == null &&
+                    accessor.ExpressionBody == null)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool RefArgumentDefinitelyReplacesDelegate(
+        IArgumentOperation argument)
+    {
+        if (argument.Parent is not IInvocationOperation invocation ||
+            argument.Parameter == null)
+        {
+            return false;
+        }
+
+        foreach (var syntaxReference in invocation.TargetMethod.DeclaringSyntaxReferences)
+        {
+            if (syntaxReference.GetSyntax() is not MethodDeclarationSyntax declaration)
+                continue;
+
+            if (declaration.ExpressionBody?.Expression is AssignmentExpressionSyntax assignment &&
+                assignment.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.SimpleAssignmentExpression) &&
+                assignment.Left is IdentifierNameSyntax identifier &&
+                identifier.Identifier.ValueText == argument.Parameter.Name &&
+                assignment.Right is AnonymousFunctionExpressionSyntax anonymousFunction &&
+                anonymousFunction.ChildNodes()
+                    .OfType<BlockSyntax>()
+                    .Any(block => block.Statements.Count == 0))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool StorageExpressionMatchesOriginAtPosition(
+        IOperation storageExpression,
+        IOperation executableRoot,
+        int executionPosition,
+        ContextOrigin expectedStorage)
+    {
+        if (TryGetStorageOrigin(
+                storageExpression,
+                executableRoot,
+                executionPosition,
+                out var storage) &&
+            ContextOriginComparer.Instance.Equals(expectedStorage, storage))
+        {
+            return true;
+        }
+
+        storageExpression = storageExpression.UnwrapConversions();
+        var instance = storageExpression switch
+        {
+            IFieldReferenceOperation fieldReference => fieldReference.Instance,
+            IPropertyReferenceOperation propertyReference => propertyReference.Instance,
+            _ => null
+        };
+        var symbol = storageExpression switch
+        {
+            IFieldReferenceOperation fieldReference => (ISymbol)fieldReference.Field,
+            IPropertyReferenceOperation propertyReference => propertyReference.Property,
+            _ => null
+        };
+        if (symbol != null &&
+            instance?.UnwrapConversions() is ILocalReferenceOperation localReference &&
+            StorageReceiverLocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                executionPosition) &&
+            TryGetLatestDefiniteStorageReceiverValueBefore(
+                executableRoot,
+                localReference.Local,
+                executionPosition,
+                out var assignedValue) &&
+            TryResolveStorageReceiverSymbol(
+                assignedValue,
+                executableRoot,
+                executionPosition,
+                new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+                out var receiver))
+        {
+            var candidate = new ContextOrigin(symbol, receiver, symbol.Name);
+            return ContextOriginComparer.Instance.Equals(expectedStorage, candidate);
+        }
+
+        return false;
+    }
+
+    private static bool StorageReceiverIsMutatedEarlierInNestedExecutable(
+        IOperation storageExpression,
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        storageExpression = storageExpression.UnwrapConversions();
+        var instance = storageExpression switch
+        {
+            IFieldReferenceOperation fieldReference => fieldReference.Instance,
+            IPropertyReferenceOperation propertyReference => propertyReference.Instance,
+            _ => null
+        };
+        instance = instance?.UnwrapConversions();
+        ISymbol? receiver = instance switch
+        {
+            ILocalReferenceOperation localReference => localReference.Local,
+            IParameterReferenceOperation parameterReference => parameterReference.Parameter,
+            _ => null
+        };
+        if (receiver == null)
+            return false;
+
+        IOperation? nestedExecutable = null;
+        for (var parent = operation.Parent;
+             parent != null && !ReferenceEquals(parent, executableRoot);
+             parent = parent.Parent)
+        {
+            if (parent is IAnonymousFunctionOperation or ILocalFunctionOperation)
+            {
+                nestedExecutable = parent;
+                break;
+            }
+        }
+
+        if (nestedExecutable == null)
+            return false;
+
+        return EnumerateOutsideNestedExecutables(nestedExecutable).Any(candidate =>
+            candidate.Syntax.SpanStart < operation.Syntax.SpanStart &&
+            (receiver is ILocalSymbol local &&
+             (candidate is IAssignmentOperation assignment &&
+              assignment.Target.UnwrapConversions() is ILocalReferenceOperation writtenLocal &&
+              SymbolEqualityComparer.Default.Equals(writtenLocal.Local, local) ||
+              candidate is IArgumentOperation argument &&
+              argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+              argument.Value.ReferencesLocal(local)) ||
+             receiver is IParameterSymbol parameter &&
+             (candidate is IAssignmentOperation parameterAssignment &&
+              parameterAssignment.Target.UnwrapConversions() is IParameterReferenceOperation writtenParameter &&
+              SymbolEqualityComparer.Default.Equals(writtenParameter.Parameter, parameter) ||
+              candidate is IArgumentOperation parameterArgument &&
+              parameterArgument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+              parameterArgument.Value.ReferencesParameter(parameter))));
+    }
+
     private static void AnalyzeSelectorFanOut(
         IOperation executableRoot,
         OperationBlockAnalysisContext context)
@@ -1624,6 +2929,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         executableRoot,
                         context.CancellationToken,
                         out var operation) ||
+                    !IsUnconditionallyExecutedWithin(
+                        invocation.Syntax,
+                        selector.Body.Syntax) ||
                     IsOriginDeclaredInside(operation.Origin, selector.Syntax))
                 {
                     continue;

@@ -221,6 +221,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             case IPropertyReferenceOperation propertyReference
                 when propertyReference.Property.Type.IsDbSet() &&
                      IsSourceVisibleAutoProperty(propertyReference.Property) &&
+                     PropertyHasNoWritesBefore(
+                         executableRoot,
+                         propertyReference.Property,
+                         beforePosition) &&
                      propertyReference.Instance != null:
                 return TryResolveContextOrigin(
                     propertyReference.Instance,
@@ -346,7 +350,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             case IFieldReferenceOperation fieldReference
                 when fieldReference.Field.Type.IsDbContext() &&
-                     fieldReference.Field.IsReadOnly:
+                     fieldReference.Field.IsReadOnly &&
+                     StableStorageHasAtMostOneWriteBefore(
+                         executableRoot,
+                         fieldReference.Field,
+                         beforePosition):
                 if (fieldReference.Field.IsStatic)
                 {
                     origin = new ContextOrigin(fieldReference.Field, fieldReference.Field.Name);
@@ -373,7 +381,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             case IPropertyReferenceOperation propertyReference
                 when propertyReference.Property.Type.IsDbContext() &&
-                     IsStableAutoProperty(propertyReference.Property):
+                     IsStableAutoProperty(propertyReference.Property) &&
+                     StableStorageHasAtMostOneWriteBefore(
+                         executableRoot,
+                         propertyReference.Property,
+                         beforePosition):
                 if (propertyReference.Property.IsStatic)
                 {
                     origin = new ContextOrigin(propertyReference.Property, propertyReference.Property.Name);
@@ -415,11 +427,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var operation in executableRoot.Descendants())
         {
-            if (operation.Syntax.SpanStart >= beforePosition &&
-                !IsInsideNestedExecutable(operation, executableRoot))
-            {
+            if (!CanOperationRunBefore(operation, executableRoot, beforePosition))
                 continue;
-            }
 
             if (operation is IAssignmentOperation assignment &&
                 assignment.Target.ReferencesParameter(parameter))
@@ -443,6 +452,53 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static bool PropertyHasNoWritesBefore(
+        IOperation executableRoot,
+        IPropertySymbol property,
+        int beforePosition)
+    {
+        return !executableRoot.Descendants().Any(operation =>
+            CanOperationRunBefore(operation, executableRoot, beforePosition) &&
+            OperationWritesStorage(operation, property));
+    }
+
+    private static bool StableStorageHasAtMostOneWriteBefore(
+        IOperation executableRoot,
+        ISymbol storage,
+        int beforePosition)
+    {
+        return executableRoot.Descendants().Count(operation =>
+            CanOperationRunBefore(operation, executableRoot, beforePosition) &&
+            OperationWritesStorage(operation, storage)) <= 1;
+    }
+
+    private static bool OperationWritesStorage(
+        IOperation operation,
+        ISymbol storage)
+    {
+        if (operation is not IAssignmentOperation assignment)
+            return false;
+
+        var target = assignment.Target.UnwrapConversions();
+        if (target is IPropertyReferenceOperation propertyReference &&
+            SymbolEqualityComparer.Default.Equals(propertyReference.Property, storage))
+        {
+            return true;
+        }
+
+        if (target is IFieldReferenceOperation fieldReference &&
+            SymbolEqualityComparer.Default.Equals(fieldReference.Field, storage))
+        {
+            return true;
+        }
+
+        return target.Descendants().Any(candidate =>
+            candidate is IPropertyReferenceOperation nestedProperty &&
+            SymbolEqualityComparer.Default.Equals(nestedProperty.Property, storage) ||
+            candidate is IFieldReferenceOperation nestedField &&
+            SymbolEqualityComparer.Default.Equals(nestedField.Field, storage));
     }
 
     private static bool TryResolveReceiverOrigin(

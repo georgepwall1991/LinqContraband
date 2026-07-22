@@ -3044,6 +3044,2046 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task RefMutatedTaskInput_NullBeforeWhenAll_ShouldKeepFirstTaskActive()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static void Clear(ref Task task) => task = null;
+
+        public async Task Run(AppDbContext db)
+        {
+            Task other = Task.CompletedTask;
+            Clear(ref other);
+            var first = {|#0:db.Users.ToListAsync()|};
+            try
+            {
+                await Task.WhenAll(first, other);
+            }
+            catch (ArgumentException)
+            {
+                await {|#1:db.Users.AnyAsync()|};
+            }
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task UnusedCapturedLambdaWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            Action unused = () => db = other;
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task UnusedLocalFunctionWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Replace() => db = other;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ReassignedMutableDbSet_BetweenContexts_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class Order { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; } = new DbSet<User>();
+        public DbSet<Order> Orders { get; set; } = new DbSet<Order>();
+
+        public async Task Run(AppDbContext other)
+        {
+            Users = other.Users;
+            _ = Users.ToListAsync();
+            await Orders.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConstructorReassignedGetOnlyContext_BetweenOperations_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Holder(AppDbContext first, AppDbContext second)
+        {
+            Context = first;
+            _ = Context.Users.ToListAsync();
+            Context = second;
+            _ = Context.Users.AnyAsync();
+        }
+
+        public AppDbContext Context { get; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InvokedFieldStoredWriter_ReassignsContextBeforeSecondOperation()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task WriterStoredOnDifferentReceiver_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            first.Writer = () => db = other;
+            second.Writer();
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task OverwrittenFieldStoredWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            _writer = () => db = other;
+            _writer = () => { };
+            _writer();
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task InvokedFieldStoredWriter_ThroughStableReceiverAlias_ReassignsContext()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first)
+        {
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            var alias = first;
+            alias.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RefReboundFieldStoredWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public void Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            first.Writer = () => db = other;
+            ref Holder alias = ref first;
+            alias = second;
+            first.Writer();
+            _ = {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ForwardDeclaredInvokedRebinder_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            first.Writer = () => db = other;
+            Rebind();
+            first.Writer();
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Rebind() => first = second;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task RefOverwrittenFieldStoredWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = {|#0:db.Users.ToListAsync()|};
+            _writer = () => db = other;
+            Clear(ref _writer);
+            _writer();
+            await {|#1:db.Users.AnyAsync()|};
+        }
+
+        private static void Clear(ref Action writer) => writer = () => { };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NestedOverwriteOfFieldStoredWriter_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _writer = () => db = other;
+            Clear();
+            _writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Clear() => _writer = () => { };
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task UninvokedOverwriteMethodReference_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Action clear = Clear;
+            _ = clear;
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear() => _writer = () => { };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task UninvokedReceiverRebinder_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            void Rebind() => first = second;
+            first.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TransitivelyInvokedNestedOverwrite_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _writer = () => db = other;
+            Outer();
+            _writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Outer() => Clear();
+            void Clear() => _writer = () => { };
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ConditionalNestedOverwrite_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Clear(false);
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear(bool apply)
+            {
+                if (apply)
+                    _writer = () => { };
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DelegateInvokedLocalFunctionOverwrite_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _writer = () => db = other;
+            Action clear = Clear;
+            clear();
+            _writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Clear() => _writer = () => { };
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task FieldStoredAnonymousOverwrite_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _clear = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _writer = () => db = other;
+            _clear = () => _writer = () => { };
+            _clear();
+            _writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NestedOverwriteUsesReceiverAtExecutionPosition()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = first;
+            first.Writer = () => db = other;
+            Clear();
+            target = second;
+            first.Writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Clear() => target.Writer = () => { };
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task OverwrittenClearDelegate_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _clear = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _clear = () => _writer = () => { };
+            _clear = () => { };
+            _clear();
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task LaterMatchingNestedOverwriteExecution_ShouldNotHideOverlap()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = second;
+            first.Writer = () => db = other;
+            Clear();
+            target = first;
+            Clear();
+            target = second;
+            first.Writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Clear() => target.Writer = () => { };
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task HelperReceiverMutation_ShouldNotClaimDifferentStorageOverwrite()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = first;
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            Clear();
+            first.Writer();
+            await db.Users.AnyAsync();
+
+            void Clear()
+            {
+                target = second;
+                target.Writer = () => { };
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task UnawaitedAsyncOverwrite_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _ = ClearAsync();
+            _writer();
+            await db.Users.AnyAsync();
+
+            async Task ClearAsync()
+            {
+                await Task.Yield();
+                _writer = () => { };
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedUnusedReturn_ShouldNotHideDefiniteOverwrite()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _writer = () => db = other;
+            Clear();
+            _writer();
+            _ = {|#0:db.Users.ToListAsync()|};
+            await {|#1:db.Users.AnyAsync()|};
+
+            void Clear()
+            {
+                Action unused = () => { return; };
+                _ = unused;
+                _writer = () => { };
+            }
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ReceiverMemberWrite_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+        public int Tag { get; set; }
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            var holder = new Holder();
+            _ = db.Users.ToListAsync();
+            holder.Writer = () => db = other;
+            holder.Tag = 1;
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReachingReceiverAssignment_ShouldNotUseHistoricalAlias()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = first;
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            target = second;
+            target.Writer = () => { };
+            first.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConditionalClearDelegate_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, bool useClear)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Action clear = useClear ? Clear : NoOp;
+            clear();
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear() => _writer = () => { };
+            void NoOp() { }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedDelegateInstallUsesReceiverAtExecutionPosition()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+        public Action Clear { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = first;
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            target = second;
+            Install();
+            first.Clear();
+            first.Writer();
+            await db.Users.AnyAsync();
+
+            void Install() => target.Clear = () => first.Writer = () => { };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DelegatePassedAsArgument_ShouldNotCountAsInvoked()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Consume(Clear);
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear() => _writer = () => { };
+        }
+
+        private static void Consume(Action action) { }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CoalesceSelectedClearDelegate_ShouldNotHideInvokedWriter()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, Action maybe)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Action clear = maybe ?? Clear;
+            clear();
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear() => _writer = () => { };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DeconstructedReceiverRebind_ShouldNotUseStaleAlias()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(
+            AppDbContext db,
+            AppDbContext other,
+            Holder first,
+            Holder second)
+        {
+            var target = first;
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            (target, _) = (second, 0);
+            target.Writer = () => { };
+            first.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RestoredSameDelegate_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            var saved = _writer;
+            _writer = saved;
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NoOpRefDelegateCall_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Touch(ref _writer);
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Touch(ref Action writer) { }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DelegateFactoryArgument_ShouldNotCountAsInvoked()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Action clear = ChooseNoOp(Clear);
+            clear();
+            _writer();
+            await db.Users.AnyAsync();
+
+            void Clear() => _writer = () => { };
+        }
+
+        private static Action ChooseNoOp(Action action) => () => { };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReplacementInvokingSavedWriter_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            var saved = _writer;
+            _writer = () => saved();
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EarlyReturnRefReplacement_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Clear(ref _writer, true);
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Clear(ref Action writer, bool skip)
+        {
+            if (skip)
+                return;
+
+            writer = () => { };
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SameOriginReceiverReassignment_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first)
+        {
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            var same = first;
+            first = same;
+            first.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RestoredWriterAfterIntermediateReplacement_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            var saved = _writer;
+            _writer = () => { };
+            _writer = saved;
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReplacementEscapingSavedWriter_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            var saved = _writer;
+            _writer = () => Invoke(saved);
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Invoke(Action action) => action();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SameOriginLocalReceiverReassignment_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first)
+        {
+            _ = db.Users.ToListAsync();
+            var holder = first;
+            holder.Writer = () => db = other;
+            var same = holder;
+            holder = same;
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReplacementEscapingDelegateParameter_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, Action saved)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            saved = _writer;
+            _writer = () => Invoke(saved);
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Invoke(Action action) => action();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RefReplacementEscapingSavedWriter_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            Replace(ref _writer, _writer);
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Replace(ref Action writer, Action saved) =>
+            writer = () => Invoke(saved);
+
+        private static void Invoke(Action action) => action();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedRestorationAfterReceiverRebinding_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first, Holder second)
+        {
+            _ = db.Users.ToListAsync();
+            first.Writer = () => db = other;
+            var saved = first.Writer;
+            var target = second;
+            void Restore() => target.Writer = saved;
+            target = first;
+            first.Writer = () => { };
+            Restore();
+            first.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConditionalSameOriginLocalReassignment_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first, bool flag)
+        {
+            _ = db.Users.ToListAsync();
+            var holder = first;
+            holder.Writer = () => db = other;
+            if (flag)
+                holder = first;
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RefExposedLocalReceiver_ShouldKeepWriterPotentiallyRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first)
+        {
+            _ = db.Users.ToListAsync();
+            var holder = first;
+            holder.Writer = () => db = other;
+            Touch(ref holder);
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+
+        private static void Touch(ref Holder holder) { }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedSameOriginLocalWrite_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        public Action Writer { get; set; } = () => { };
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder first)
+        {
+            _ = db.Users.ToListAsync();
+            var holder = first;
+            holder.Writer = () => db = other;
+            void Touch() => holder = first;
+            Touch();
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReplacementCallingSavedField_ShouldRemainRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _saved = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _saved = _writer;
+            _writer = () => InvokeSaved();
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private void InvokeSaved() => _saved();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task OrdinaryCallRestoringWriter_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _saved = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _saved = _writer;
+            _writer = () => { };
+            RestoreSaved();
+            _writer();
+            await db.Users.AnyAsync();
+        }
+
+        private void RestoreSaved() => _writer = _saved;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task PropertyGetterRestoringWriter_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _saved = () => { };
+
+        private int Restore
+        {
+            get
+            {
+                _writer = _saved;
+                return 0;
+            }
+        }
+
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _saved = _writer;
+            _writer = () => { };
+            _ = Restore;
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CustomSetterIgnoringReplacement_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Holder
+    {
+        private Action _writer = () => { };
+
+        public bool IgnoreReplacement { get; set; }
+
+        public Action Writer
+        {
+            get => _writer;
+            set
+            {
+                if (!IgnoreReplacement)
+                    _writer = value;
+            }
+        }
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder holder)
+        {
+            _ = db.Users.ToListAsync();
+            holder.Writer = () => db = other;
+            holder.IgnoreReplacement = true;
+            holder.Writer = () => { };
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task OpaqueDelegateBetweenReplacementAndInvocation_ShouldKeepWriterPotentiallyRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+        private Action _saved = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, Action restore)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            _saved = _writer;
+            _writer = () => { };
+            restore();
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InterfaceSetterIgnoringReplacement_ShouldKeepWriterRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public interface IHolder
+    {
+        Action Writer { get; set; }
+    }
+
+    public sealed class Holder : IHolder
+    {
+        private Action _writer = () => { };
+
+        public bool IgnoreReplacement { get; set; }
+
+        Action IHolder.Writer
+        {
+            get => _writer;
+            set
+            {
+                if (!IgnoreReplacement)
+                    _writer = value;
+            }
+        }
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, AppDbContext other, Holder concrete)
+        {
+            _ = db.Users.ToListAsync();
+            IHolder holder = concrete;
+            holder.Writer = () => db = other;
+            concrete.IgnoreReplacement = true;
+            holder.Writer = () => { };
+            holder.Writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SelfReferentialIncompleteQuery_DoesNotCrashAnalysis()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
