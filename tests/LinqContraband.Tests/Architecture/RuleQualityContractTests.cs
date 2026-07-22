@@ -14,6 +14,7 @@ namespace LinqContraband.Tests.Architecture;
 
 public sealed class RuleQualityContractTests
 {
+    private const string AuditedCommitMetadataPattern = @"^- Base audited commit: (?<commit>[0-9a-f]{40})\r?$";
     private const string RepositoryUrl = "https://github.com/georgepwall1991/LinqContraband";
     private const string ProjectUrl = "https://georgepwall1991.github.io/LinqContraband/";
     private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
@@ -75,7 +76,7 @@ public sealed class RuleQualityContractTests
                 failures.Add($"README.md should contain a section for {rule.Id}.");
         }
 
-        var relativeDestinations = ExtractInlineMarkdownDestinations(readme)
+        var relativeDestinations = ExtractMarkdownDestinations(readme)
             .Where(destination => !destination.StartsWith("#", StringComparison.Ordinal) &&
                                   !Uri.TryCreate(destination, UriKind.Absolute, out _))
             .Distinct(StringComparer.Ordinal)
@@ -98,7 +99,7 @@ public sealed class RuleQualityContractTests
 
             var auditedCommitMatch = Regex.Match(
                 health,
-                @"^- Base audited commit: (?<commit>[0-9a-f]{40})$",
+                AuditedCommitMetadataPattern,
                 RegexOptions.Multiline | RegexOptions.CultureInvariant);
             if (!auditedCommitMatch.Success ||
                 !baseline.Contains($"`{auditedCommitMatch.Groups["commit"].Value}`", StringComparison.Ordinal))
@@ -145,13 +146,42 @@ public sealed class RuleQualityContractTests
     }
 
     [Fact]
-    public void MarkdownDestinationExtraction_FindsNestedBadgeLinks()
+    public void AuditedCommitMetadataPattern_AcceptsCrLf()
     {
-        const string markdown = "[![Badge](https://example.test/image.svg)](relative.md)";
+        const string metadata = "- Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544\r\n";
 
-        var destinations = ExtractInlineMarkdownDestinations(markdown).ToArray();
+        var match = Regex.Match(
+            metadata,
+            AuditedCommitMetadataPattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
-        Assert.Contains("relative.md", destinations);
+        Assert.True(match.Success);
+    }
+
+    [Fact]
+    public void MarkdownDestinationExtraction_FindsNestedAndReferenceLinks()
+    {
+        const string markdown = """
+            [![Badge](https://example.test/image.svg)](relative-inline.md)
+            [Catalog][docs]
+
+            [docs]:
+            docs/rule-catalog.md
+            """;
+        const string invalidMarkdown = """
+            [blank]:
+
+            docs/rule-catalog.md
+            [prose]:
+            This is unrelated prose.
+            """;
+
+        var destinations = ExtractMarkdownDestinations(markdown).ToArray();
+        var invalidDestinations = ExtractMarkdownDestinations(invalidMarkdown).ToArray();
+
+        Assert.Contains("relative-inline.md", destinations);
+        Assert.Contains("docs/rule-catalog.md", destinations);
+        Assert.Empty(invalidDestinations);
     }
 
     [Fact]
@@ -322,7 +352,7 @@ public sealed class RuleQualityContractTests
         return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IEnumerable<string> ExtractInlineMarkdownDestinations(string markdown)
+    private static IEnumerable<string> ExtractMarkdownDestinations(string markdown)
     {
         var withoutFencedCode = Regex.Replace(
             markdown,
@@ -330,11 +360,19 @@ public sealed class RuleQualityContractTests
             string.Empty,
             RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
-        return Regex.Matches(
+        var inlineDestinations = Regex.Matches(
                 withoutFencedCode,
                 @"\]\((?<destination><[^>]+>|[^\s\)]+)",
                 RegexOptions.CultureInvariant)
-            .Cast<Match>()
+            .Cast<Match>();
+        var referenceDestinations = Regex.Matches(
+                withoutFencedCode,
+                @"^[ \t]{0,3}\[[^\]\r\n]+\]:(?:[ \t]*(?:\r\n|\r|\n)[ \t]*|[ \t]*)(?<destination><[^>\r\n]+>|[^\s]+)(?:[ \t]+(?:""[^""\r\n]*""|'[^'\r\n]*'|\([^\)\r\n]*\)))?[ \t]*\r?$",
+                RegexOptions.Multiline | RegexOptions.CultureInvariant)
+            .Cast<Match>();
+
+        return inlineDestinations
+            .Concat(referenceDestinations)
             .Select(match => match.Groups["destination"].Value.Trim('<', '>'));
     }
 
