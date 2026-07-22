@@ -15,6 +15,9 @@ namespace LinqContraband.Tests.Architecture;
 public sealed class RuleQualityContractTests
 {
     private const string AuditedCommitMetadataPattern = @"^- Base audited commit: (?<commit>[0-9a-f]{40})\r?$";
+    private const string BaselineAuditedCommitMetadataPattern = @"^Base audited commit:[^`\r\n]*`(?<commit>[0-9a-f]{40})`[^\r\n]*\r?$";
+    private const string ReleasePackageVersionMetadataPattern = @"^- Package version:[ \t]*(?<version>[^\r\n]+?)\r?$";
+    private const string BaselinePackageVersionMetadataPattern = @"^Package version:[ \t]*\*\*(?<version>[^*\r\n]+)\*\*[^\r\n]*\r?$";
     private const string RepositoryUrl = "https://github.com/georgepwall1991/LinqContraband";
     private const string ProjectUrl = "https://georgepwall1991.github.io/LinqContraband/";
     private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
@@ -77,7 +80,7 @@ public sealed class RuleQualityContractTests
         }
 
         var relativeDestinations = ExtractPotentialMarkdownDestinations(readme)
-            .Where(destination => !destination.StartsWith("#", StringComparison.Ordinal) &&
+            .Where(destination => !destination.StartsWith('#') &&
                                   !Uri.TryCreate(destination, UriKind.Absolute, out _))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(destination => destination, StringComparer.Ordinal)
@@ -85,24 +88,30 @@ public sealed class RuleQualityContractTests
         if (relativeDestinations.Length > 0)
             failures.Add($"README.md should avoid relative link-like destinations anywhere in its packaged source. Relative destinations: {string.Join(", ", relativeDestinations)}.");
 
+        var releaseMetadata = ExtractMarkdownSection(health, "Release metadata:");
+        if (releaseMetadata is null ||
+            !string.Equals(ExtractReleasePackageVersion(releaseMetadata), version, StringComparison.Ordinal))
+        {
+            failures.Add($"The release metadata should name package version {version}.");
+        }
+        var releaseAuditedCommit = releaseMetadata is null
+            ? null
+            : ExtractReleaseAuditedCommit(releaseMetadata);
+
         const string baselineMarker = "## Verification Baseline";
-        var baselineStart = health.IndexOf(baselineMarker, StringComparison.Ordinal);
-        if (baselineStart < 0)
+        var baseline = ExtractMarkdownSection(health, baselineMarker);
+        if (baseline is null)
         {
             failures.Add("docs/analyzer-health.md should contain a Verification Baseline section.");
         }
         else
         {
-            var baseline = health.Substring(baselineStart);
-            if (!baseline.Contains($"Package version: **{version}**", StringComparison.Ordinal))
+            if (!string.Equals(ExtractBaselinePackageVersion(baseline), version, StringComparison.Ordinal))
                 failures.Add($"The Verification Baseline should name package version {version}.");
 
-            var auditedCommitMatch = Regex.Match(
-                health,
-                AuditedCommitMetadataPattern,
-                RegexOptions.Multiline | RegexOptions.CultureInvariant);
-            if (!auditedCommitMatch.Success ||
-                !baseline.Contains($"`{auditedCommitMatch.Groups["commit"].Value}`", StringComparison.Ordinal))
+            var baselineAuditedCommit = ExtractBaselineAuditedCommit(baseline);
+            if (releaseAuditedCommit is null ||
+                !string.Equals(baselineAuditedCommit, releaseAuditedCommit, StringComparison.Ordinal))
             {
                 failures.Add("The Verification Baseline should repeat the current release metadata commit.");
             }
@@ -146,7 +155,7 @@ public sealed class RuleQualityContractTests
     }
 
     [Fact]
-    public void AuditedCommitMetadataPattern_AcceptsCrLf()
+    public void ReleaseMetadataPatterns_AcceptCrLfAndBindExactFields()
     {
         const string metadata = "- Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544\r\n";
 
@@ -156,6 +165,80 @@ public sealed class RuleQualityContractTests
             RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
         Assert.True(match.Success);
+        const string baseline = """
+            ## Verification Baseline
+
+            Base audited commit: master at `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (stale state).
+
+            Historical verification mentioned `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+
+        Assert.Equal(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ExtractBaselineAuditedCommit(baseline));
+
+        const string sameLineHistoricalMention = """
+            ## Verification Baseline
+
+            Base audited commit: master at `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (historical comparison: `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`).
+            """;
+        Assert.Equal(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ExtractBaselineAuditedCommit(sameLineHistoricalMention));
+
+        const string laterSectionOnly = """
+            ## Verification Baseline
+
+            Package version: **5.7.0**
+
+            ## Historical Appendix
+
+            Base audited commit: master at `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+        var boundedBaseline = ExtractMarkdownSection(laterSectionOnly, "## Verification Baseline");
+        Assert.NotNull(boundedBaseline);
+        Assert.Null(ExtractBaselineAuditedCommit(boundedBaseline!));
+
+        const string archiveOnly = """
+            ## Verification Baseline Archive
+
+            Package version: **5.7.0**
+            Base audited commit: master at `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+        Assert.Null(ExtractMarkdownSection(archiveOnly, "## Verification Baseline"));
+
+        const string releaseVersionBypass = """
+            Release metadata:
+
+            - Package version: 5.6.0
+            Historical comparison: - Package version: 5.7.0
+
+            ## Rubric
+            """;
+        var releaseMetadata = ExtractMarkdownSection(releaseVersionBypass, "Release metadata:");
+        Assert.NotNull(releaseMetadata);
+        Assert.Equal("5.6.0", ExtractReleasePackageVersion(releaseMetadata!));
+
+        const string releaseCommitBypass = """
+            Release metadata:
+
+            - Package version: 5.7.0
+
+            ## Historical Appendix
+
+            - Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544
+            """;
+        var releaseMetadataWithoutCommit = ExtractMarkdownSection(releaseCommitBypass, "Release metadata:");
+        Assert.NotNull(releaseMetadataWithoutCommit);
+        Assert.Null(ExtractReleaseAuditedCommit(releaseMetadataWithoutCommit!));
+
+        const string baselineVersionBypass = """
+            ## Verification Baseline
+
+            Package version: **5.6.0**
+            Historical comparison: Package version: **5.7.0**
+            """;
+        Assert.Equal("5.6.0", ExtractBaselinePackageVersion(baselineVersionBypass));
     }
 
     [Fact]
@@ -425,6 +508,53 @@ public sealed class RuleQualityContractTests
             .Concat(referenceDestinations)
             .Concat(attributeDestinations)
             .Select(match => match.Groups["destination"].Value.Trim('<', '>'));
+    }
+
+    private static string? ExtractBaselineAuditedCommit(string baseline)
+    {
+        var match = Regex.Match(
+            baseline,
+            BaselineAuditedCommitMetadataPattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["commit"].Value : null;
+    }
+
+    private static string? ExtractReleaseAuditedCommit(string releaseMetadata)
+    {
+        return ExtractMetadataValue(releaseMetadata, AuditedCommitMetadataPattern, "commit");
+    }
+
+    private static string? ExtractReleasePackageVersion(string releaseMetadata)
+    {
+        return ExtractMetadataValue(releaseMetadata, ReleasePackageVersionMetadataPattern, "version");
+    }
+
+    private static string? ExtractBaselinePackageVersion(string baseline)
+    {
+        return ExtractMetadataValue(baseline, BaselinePackageVersionMetadataPattern, "version");
+    }
+
+    private static string? ExtractMetadataValue(string section, string pattern, string groupName)
+    {
+        var match = Regex.Match(
+            section,
+            pattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[groupName].Value : null;
+    }
+
+    private static string? ExtractMarkdownSection(string markdown, string heading)
+    {
+        var headingMatch = Regex.Match(
+            markdown,
+            $"^{Regex.Escape(heading)}\r?$",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        if (!headingMatch.Success)
+            return null;
+
+        var start = headingMatch.Index;
+        var next = markdown.IndexOf("\n## ", start + headingMatch.Length, StringComparison.Ordinal);
+        return next < 0 ? markdown.Substring(start) : markdown.Substring(start, next - start);
     }
 
     private Dictionary<string, string> LoadPackageProperties()
