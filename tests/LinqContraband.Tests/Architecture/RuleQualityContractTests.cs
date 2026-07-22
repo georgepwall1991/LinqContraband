@@ -56,6 +56,105 @@ public sealed class RuleQualityContractTests
     }
 
     [Fact]
+    public void PublicDocumentation_MatchesCatalogAndPackageSurfaces()
+    {
+        var properties = LoadPackageProperties();
+        var version = properties["Version"];
+        var readme = File.ReadAllText(Path.Combine(_repoRoot, "README.md"));
+        var health = File.ReadAllText(Path.Combine(_repoRoot, "docs", "analyzer-health.md"));
+        var changelog = File.ReadAllText(Path.Combine(_repoRoot, "CHANGELOG.md"));
+        var currentEntry = ExtractChangelogEntry(changelog, version);
+        var failures = new List<string>();
+
+        if (!readme.Contains($"**{RuleCatalog.All.Length} rules**", StringComparison.Ordinal))
+            failures.Add($"README.md should declare the current {RuleCatalog.All.Length}-rule catalog size.");
+
+        foreach (var rule in RuleCatalog.All)
+        {
+            if (!readme.Contains($"### {rule.Id}:", StringComparison.Ordinal))
+                failures.Add($"README.md should contain a section for {rule.Id}.");
+        }
+
+        var relativeDestinations = ExtractInlineMarkdownDestinations(readme)
+            .Where(destination => !destination.StartsWith("#", StringComparison.Ordinal) &&
+                                  !Uri.TryCreate(destination, UriKind.Absolute, out _))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(destination => destination, StringComparer.Ordinal)
+            .ToArray();
+        if (relativeDestinations.Length > 0)
+            failures.Add($"README.md should use package-portable absolute links. Relative destinations: {string.Join(", ", relativeDestinations)}.");
+
+        const string baselineMarker = "## Verification Baseline";
+        var baselineStart = health.IndexOf(baselineMarker, StringComparison.Ordinal);
+        if (baselineStart < 0)
+        {
+            failures.Add("docs/analyzer-health.md should contain a Verification Baseline section.");
+        }
+        else
+        {
+            var baseline = health.Substring(baselineStart);
+            if (!baseline.Contains($"Package version: **{version}**", StringComparison.Ordinal))
+                failures.Add($"The Verification Baseline should name package version {version}.");
+
+            var auditedCommitMatch = Regex.Match(
+                health,
+                @"^- Base audited commit: (?<commit>[0-9a-f]{40})$",
+                RegexOptions.Multiline | RegexOptions.CultureInvariant);
+            if (!auditedCommitMatch.Success ||
+                !baseline.Contains($"`{auditedCommitMatch.Groups["commit"].Value}`", StringComparison.Ordinal))
+            {
+                failures.Add("The Verification Baseline should repeat the current release metadata commit.");
+            }
+
+            var currentVerification = baseline
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(line => line.StartsWith("Current verification (", StringComparison.Ordinal));
+            foreach (var ruleId in ExtractRuleIds(currentEntry))
+            {
+                if (currentVerification is null || !currentVerification.Contains(ruleId, StringComparison.Ordinal))
+                    failures.Add($"The current Verification Baseline heading should identify {ruleId}.");
+            }
+
+            var scorecardStart = health.IndexOf("## Scorecard", StringComparison.Ordinal);
+            var scorecardTableStart = health.IndexOf("| Rule |", scorecardStart, StringComparison.Ordinal);
+            var scorecardIntro = scorecardStart >= 0 && scorecardTableStart > scorecardStart
+                ? health.Substring(scorecardStart, scorecardTableStart - scorecardStart)
+                : string.Empty;
+            var scorecardSuiteTotal = Regex.Match(
+                scorecardIntro,
+                @"suite to \*\*(?<count>[\d,]+) tests\*\*",
+                RegexOptions.CultureInvariant);
+            var currentSuiteTotal = Regex.Matches(
+                    baseline,
+                    @"full local net10\.0 suite passes (?<count>[\d,]+) tests",
+                    RegexOptions.CultureInvariant)
+                .Cast<Match>()
+                .LastOrDefault();
+            if (!scorecardSuiteTotal.Success ||
+                currentSuiteTotal is null ||
+                !string.Equals(
+                    scorecardSuiteTotal.Groups["count"].Value,
+                    currentSuiteTotal.Groups["count"].Value,
+                    StringComparison.Ordinal))
+            {
+                failures.Add("The scorecard introduction and latest Verification Baseline should declare the same full-suite test total.");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
+    public void MarkdownDestinationExtraction_FindsNestedBadgeLinks()
+    {
+        const string markdown = "[![Badge](https://example.test/image.svg)](relative.md)";
+
+        var destinations = ExtractInlineMarkdownDestinations(markdown).ToArray();
+
+        Assert.Contains("relative.md", destinations);
+    }
+
+    [Fact]
     public void EditorConfig_ListsEveryCatalogRuleSeverity()
     {
         var editorConfig = File.ReadAllText(Path.Combine(_repoRoot, ".editorconfig"));
@@ -221,6 +320,22 @@ public sealed class RuleQualityContractTests
     private static bool ContainsAny(string value, params string[] terms)
     {
         return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<string> ExtractInlineMarkdownDestinations(string markdown)
+    {
+        var withoutFencedCode = Regex.Replace(
+            markdown,
+            @"```.*?```",
+            string.Empty,
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        return Regex.Matches(
+                withoutFencedCode,
+                @"\]\((?<destination><[^>]+>|[^\s\)]+)",
+                RegexOptions.CultureInvariant)
+            .Cast<Match>()
+            .Select(match => match.Groups["destination"].Value.Trim('<', '>'));
     }
 
     private Dictionary<string, string> LoadPackageProperties()

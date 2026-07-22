@@ -51,8 +51,8 @@ Each helper must create and dispose its own context.
 ### Category: `Safety`
 ### Severity: `Warning`
 
-LC046 reports the second proven overlapping EF Core invocation and points back to the first operation as an additional
-location. It recognises async query terminals, including `ContainsAsync`, `ElementAtAsync`, and
+For direct overlap, LC046 reports the second proven overlapping EF Core invocation and points back to the first
+operation as an additional location. It recognises async query terminals, including `ContainsAsync`, `ElementAtAsync`, and
 `ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
 `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
 
@@ -61,6 +61,11 @@ The analyzer follows stable locals, parameters, readonly fields, source-visible 
 `Task.WhenAll(items.Select(...))` when the selector captures one outer context and the source can contain multiple
 items. Instance context members are matched by both the member and its proven receiver, so the same member on two
 different holder objects is not conflated.
+
+A separate loop pass reports the loop-body invocation itself when a `foreach` iterates an inline array initializer with
+at least two elements and the discarded EF Core async invocation is the loop body's only statement. It does not report
+for an unknown, empty, or singleton source, a multi-statement or conditionally exited loop body, a context that can
+change between iterations, or an awaited result.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
