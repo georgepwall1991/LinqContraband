@@ -543,6 +543,318 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_SelectorSynchronousCompletion_DistinguishesActiveTasks()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public delegate void RefReplace(ref Task<bool> task);
+
+    public sealed class CallbackInvoker
+    {
+        public CallbackInvoker(Task<bool> active, Action replace) => replace();
+    }
+
+    public sealed class CallbackSetter
+    {
+        public Action Callback
+        {
+            get => null!;
+            set => value();
+        }
+    }
+
+    public sealed class Program
+    {
+        public async Task Wait(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.Wait();
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task GetResult(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.GetAwaiter().GetResult();
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task LaterOperationStillRunsConcurrently(AppDbContext db)
+        {
+            await {|#1:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.Wait();
+                return {|#0:db.Users.ToListAsync()|};
+            }))|};
+        }
+
+        public async Task TimedWaitDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#3:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#2:db.Users.AnyAsync()|};
+                task.Wait(0);
+                return task;
+            }))|};
+        }
+
+        public async Task CompletingDifferentTaskDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#5:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#4:db.Users.AnyAsync()|};
+                Task.CompletedTask.Wait();
+                return task;
+            }))|};
+        }
+
+        public async Task StableAliasCompletion(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                var alias = task;
+                alias.Wait();
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task StandaloneAssignmentCompletion(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                Task<bool> task;
+                task = db.Users.AnyAsync();
+                task.Wait();
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task StandaloneAliasCompletion(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                Task<bool> alias;
+                alias = task;
+                alias.Wait();
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task CompletionBeforeReassignment(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.Wait();
+                task = Task.FromResult(true);
+                return task;
+            }));
+        }
+
+        public async Task CompletionBeforeRefReplacement(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.Wait();
+                Replace(ref task);
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task CompletionBeforeDynamicRefReplacement(AppDbContext db)
+        {
+            await Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = db.Users.AnyAsync();
+                task.Wait();
+                dynamic replace = (RefReplace)Replace;
+                replace(ref task);
+                return Task.CompletedTask;
+            }));
+        }
+
+        public async Task DynamicRefReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#7:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#6:db.Users.AnyAsync()|};
+                dynamic replace = (RefReplace)Replace;
+                replace(ref task);
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task NestedDynamicRefReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#9:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#8:db.Users.AnyAsync()|};
+                void Swap()
+                {
+                    dynamic replace = (RefReplace)Replace;
+                    replace(ref task);
+                }
+
+                Swap();
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task InlineCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#11:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                Task<bool> task = Task.FromResult(true);
+                Invoke(
+                    task = {|#10:db.Users.AnyAsync()|},
+                    () => task = Task.FromResult(true));
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task ConstructorCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#13:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                Task<bool> task = Task.FromResult(true);
+                CallbackInvoker invoker = new CallbackInvoker(
+                    task = {|#12:db.Users.AnyAsync()|},
+                    () => task = Task.FromResult(true));
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task LaterConstructorCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#15:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#14:db.Users.AnyAsync()|};
+                CallbackInvoker invoker = new CallbackInvoker(
+                    task,
+                    () => task = Task.FromResult(true));
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task PropertySetterCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#17:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var setter = new CallbackSetter();
+                var task = {|#16:db.Users.AnyAsync()|};
+                setter.Callback = () => task = Task.FromResult(true);
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        public async Task CoalescingPropertySetterCallbackReplacementDoesNotProveCompletion(AppDbContext db)
+        {
+            await {|#19:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var setter = new CallbackSetter();
+                var task = {|#18:db.Users.AnyAsync()|};
+                setter.Callback ??= () => task = Task.FromResult(true);
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+
+        private static void Replace(ref Task<bool> task) => task = Task.FromResult(true);
+        private static void Invoke(Task<bool> active, Action replace) => replace();
+    }
+}";
+
+        var laterOperation = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        var timedWait = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        var differentTask = VerifyCS.Diagnostic()
+            .WithLocation(5)
+            .WithLocation(4)
+            .WithArguments("db");
+
+        var dynamicReplacement = VerifyCS.Diagnostic()
+            .WithLocation(7)
+            .WithLocation(6)
+            .WithArguments("db");
+
+        var nestedDynamicReplacement = VerifyCS.Diagnostic()
+            .WithLocation(9)
+            .WithLocation(8)
+            .WithArguments("db");
+
+        var inlineCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(11)
+            .WithLocation(10)
+            .WithArguments("db");
+
+        var constructorCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(13)
+            .WithLocation(12)
+            .WithArguments("db");
+
+        var laterConstructorCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(15)
+            .WithLocation(14)
+            .WithArguments("db");
+
+        var propertySetterCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(17)
+            .WithLocation(16)
+            .WithArguments("db");
+
+        var coalescingPropertySetterCallbackReplacement = VerifyCS.Diagnostic()
+            .WithLocation(19)
+            .WithLocation(18)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(
+            test,
+            laterOperation,
+            timedWait,
+            differentTask,
+            dynamicReplacement,
+            nestedDynamicReplacement,
+            inlineCallbackReplacement,
+            constructorCallbackReplacement,
+            laterConstructorCallbackReplacement,
+            propertySetterCallbackReplacement,
+            coalescingPropertySetterCallbackReplacement);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_SelectWithPerIterationContextProperty_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

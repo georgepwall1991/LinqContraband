@@ -113,6 +113,18 @@ namespace TestApp
             await {|#8:db.Users.AnyAsync()|};
             await pending;
         }
+
+        public async Task DistinctLocals(AppDbContext db, bool useFirst)
+        {
+            Task first;
+            Task second;
+            if (useFirst)
+                first = {|#9:db.Users.ToListAsync()|};
+            else
+                second = {|#10:db.Users.AnyAsync()|};
+
+            await {|#11:db.Users.ToListAsync()|};
+        }
     }
 }";
 
@@ -134,7 +146,18 @@ namespace TestApp
             .WithLocation(7)
             .WithArguments("db");
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected, wrappedFind, configuredAwaitable);
+        var distinctLocals = VerifyCS.Diagnostic()
+            .WithLocation(11)
+            .WithLocation(9)
+            .WithLocation(10)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(
+            test,
+            expected,
+            wrappedFind,
+            configuredAwaitable,
+            distinctLocals);
     }
 
     [Fact]
@@ -297,6 +320,40 @@ namespace TestApp
                 pending = db.Users.AnyAsync();
 
             Reset(ref pending);
+            await db.Users.ToListAsync();
+        }
+
+        public async Task DistinctLocalOneBranchCompleted(AppDbContext db, bool useFirst)
+        {
+            Task first;
+            Task second;
+            if (useFirst)
+            {
+                first = db.Users.ToListAsync();
+                await first;
+            }
+            else
+            {
+                second = db.Users.AnyAsync();
+            }
+
+            await db.Users.ToListAsync();
+        }
+
+        public async Task DistinctLocalOneBranchEscaped(AppDbContext db, bool useFirst)
+        {
+            Task first;
+            Task second;
+            if (useFirst)
+            {
+                first = db.Users.ToListAsync();
+                Observe(first);
+            }
+            else
+            {
+                second = db.Users.AnyAsync();
+            }
+
             await db.Users.ToListAsync();
         }
 

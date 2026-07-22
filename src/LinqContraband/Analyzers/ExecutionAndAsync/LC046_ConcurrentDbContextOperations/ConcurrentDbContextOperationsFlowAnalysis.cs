@@ -205,45 +205,30 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 elseBranch,
                 out var resolvedElseStart,
                 out var elseAssignment,
-                out var elseLocal) ||
-            !SymbolEqualityComparer.Default.Equals(thenLocal, elseLocal))
+                out var elseLocal))
         {
             thenStart = null;
             elseStart = null;
             return false;
         }
 
-        var assignments = LocalAssignmentCache.GetAssignments(executableRoot, thenLocal)
-            .Where(assignment => assignment.SpanStart < current.Invocation.Syntax.SpanStart)
-            .ToArray();
-        if (assignments.Length != 2 ||
-            !assignments.Any(assignment =>
-                assignment.SpanStart == thenAssignment.Syntax.SpanStart) ||
-            !assignments.Any(assignment =>
-                assignment.SpanStart == elseAssignment.Syntax.SpanStart) ||
-            !LocalHasNoUntrackedWritesBefore(
+        var sameLocal = SymbolEqualityComparer.Default.Equals(thenLocal, elseLocal);
+        var thenAssignments = sameLocal
+            ? new[] { thenAssignment, elseAssignment }
+            : new[] { thenAssignment };
+        var elseAssignments = sameLocal
+            ? thenAssignments
+            : new[] { elseAssignment };
+        if (!AssignedBranchLocalRemainsActive(
                 executableRoot,
                 thenLocal,
+                thenAssignments,
                 current.Invocation.Syntax.SpanStart) ||
-            EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
-                operation.Syntax.SpanStart < current.Invocation.Syntax.SpanStart &&
-                operation is IDynamicInvocationOperation dynamicInvocation &&
-                dynamicInvocation.ReferencesLocal(thenLocal)))
-        {
-            thenStart = null;
-            elseStart = null;
-            return false;
-        }
-
-        var earliestAssignment = System.Math.Min(
-            thenAssignment.Syntax.SpanStart,
-            elseAssignment.Syntax.SpanStart);
-        if (executableRoot.Descendants().OfType<ILocalReferenceOperation>().Any(reference =>
-                SymbolEqualityComparer.Default.Equals(reference.Local, thenLocal) &&
-                reference.Syntax.SpanStart > earliestAssignment &&
-                reference.Syntax.SpanStart < current.Invocation.Syntax.SpanStart &&
-                !thenAssignment.Target.Syntax.Span.Contains(reference.Syntax.Span) &&
-                !elseAssignment.Target.Syntax.Span.Contains(reference.Syntax.Span)))
+            !AssignedBranchLocalRemainsActive(
+                executableRoot,
+                elseLocal,
+                elseAssignments,
+                current.Invocation.Syntax.SpanStart))
         {
             thenStart = null;
             elseStart = null;
@@ -253,6 +238,37 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         thenStart = resolvedThenStart;
         elseStart = resolvedElseStart;
         return true;
+    }
+
+    private static bool AssignedBranchLocalRemainsActive(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        IReadOnlyList<ISimpleAssignmentOperation> branchAssignments,
+        int beforePosition)
+    {
+        var assignments = LocalAssignmentCache.GetAssignments(executableRoot, local)
+            .Where(assignment => assignment.SpanStart < beforePosition)
+            .ToArray();
+        if (assignments.Length != branchAssignments.Count ||
+            branchAssignments.Any(branchAssignment => !assignments.Any(assignment =>
+                assignment.SpanStart == branchAssignment.Syntax.SpanStart)) ||
+            !LocalHasNoUntrackedWritesBefore(executableRoot, local, beforePosition) ||
+            EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                operation.Syntax.SpanStart < beforePosition &&
+                operation is IDynamicInvocationOperation dynamicInvocation &&
+                dynamicInvocation.ReferencesLocal(local)))
+        {
+            return false;
+        }
+
+        var earliestAssignment = branchAssignments.Min(assignment =>
+            assignment.Syntax.SpanStart);
+        return !executableRoot.Descendants().OfType<ILocalReferenceOperation>().Any(reference =>
+            SymbolEqualityComparer.Default.Equals(reference.Local, local) &&
+            reference.Syntax.SpanStart > earliestAssignment &&
+            reference.Syntax.SpanStart < beforePosition &&
+            !branchAssignments.Any(assignment =>
+                assignment.Target.Syntax.Span.Contains(reference.Syntax.Span)));
     }
 
     private static bool TryFindUnconditionalAssignedBranchStart(
@@ -1411,7 +1427,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool TryGetSynchronousTaskCompletion(
-        ILocalReferenceOperation reference,
+        IOperation reference,
         out IInvocationOperation completion)
     {
         IOperation current = reference;
@@ -3384,7 +3400,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     !IsUnconditionallyExecutedWithin(
                         invocation.Syntax,
                         selector.Body.Syntax) ||
-                    IsOriginDeclaredInside(operation.Origin, selector.Syntax))
+                    IsOriginDeclaredInside(operation.Origin, selector.Syntax) ||
+                    IsSynchronouslyCompletedWithinSelector(
+                        invocation,
+                        selector))
                 {
                     continue;
                 }
@@ -3404,6 +3423,347 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     new[] { captured.Invocation.Syntax.GetLocation() },
                     properties: ImmutableDictionary<string, string?>.Empty,
                     captured.Origin.DisplayName));
+        }
+    }
+
+    private static bool IsSynchronouslyCompletedWithinSelector(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation selector)
+    {
+        if (TryGetSynchronousTaskCompletion(invocation, out _))
+            return true;
+
+        if (!TryGetAssignedTaskLocal(invocation, out var taskLocal))
+            return false;
+
+        return IsStableTaskLocalSynchronouslyCompleted(
+            taskLocal,
+            invocation.Syntax.SpanStart,
+            selector,
+            new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private static bool IsStableTaskLocalSynchronouslyCompleted(
+        ILocalSymbol taskLocal,
+        int afterPosition,
+        IAnonymousFunctionOperation selector,
+        ISet<ILocalSymbol> visited)
+    {
+        if (!visited.Add(taskLocal))
+            return false;
+
+        foreach (var reference in EnumerateOutsideNestedExecutables(selector.Body)
+                     .OfType<ILocalReferenceOperation>()
+                     .Where(reference =>
+                         SymbolEqualityComparer.Default.Equals(reference.Local, taskLocal) &&
+                         reference.Syntax.SpanStart > afterPosition))
+        {
+            if (TryGetSynchronousTaskCompletion(reference, out var completion) &&
+                IsUnconditionallyExecutedWithin(
+                    completion.Syntax,
+                    selector.Body.Syntax) &&
+                SelectorLocalRemainsStable(
+                    selector.Body,
+                    taskLocal,
+                    afterPosition,
+                    completion.Syntax.SpanStart))
+            {
+                return true;
+            }
+        }
+
+        foreach (var declarator in EnumerateOutsideNestedExecutables(selector.Body)
+                     .OfType<IVariableDeclaratorOperation>())
+        {
+            if (declarator.Syntax.SpanStart <= afterPosition ||
+                declarator.Initializer == null ||
+                !IsUnconditionallyExecutedWithin(
+                    declarator.Syntax,
+                    selector.Body.Syntax) ||
+                !TryGetStableLocalReference(
+                    declarator.Initializer.Value,
+                    out var sourceLocal) ||
+                !SymbolEqualityComparer.Default.Equals(sourceLocal, taskLocal) ||
+                !SelectorLocalRemainsStable(
+                    selector.Body,
+                    taskLocal,
+                    afterPosition,
+                    declarator.Syntax.SpanStart))
+            {
+                continue;
+            }
+
+            if (IsStableTaskLocalSynchronouslyCompleted(
+                    declarator.Symbol,
+                    declarator.Syntax.SpanStart,
+                    selector,
+                    visited))
+            {
+                return true;
+            }
+        }
+
+        foreach (var assignment in EnumerateOutsideNestedExecutables(selector.Body)
+                     .OfType<ISimpleAssignmentOperation>())
+        {
+            if (assignment.Syntax.SpanStart <= afterPosition ||
+                assignment.Target.UnwrapConversions() is not ILocalReferenceOperation target ||
+                !IsStandaloneAssignment(assignment) ||
+                !IsUnconditionallyExecutedWithin(
+                    assignment.Syntax,
+                    selector.Body.Syntax) ||
+                !TryGetStableLocalReference(assignment.Value, out var sourceLocal) ||
+                !SymbolEqualityComparer.Default.Equals(sourceLocal, taskLocal) ||
+                !SelectorLocalRemainsStable(
+                    selector.Body,
+                    taskLocal,
+                    afterPosition,
+                    assignment.Syntax.SpanStart))
+            {
+                continue;
+            }
+
+            if (IsStableTaskLocalSynchronouslyCompleted(
+                    target.Local,
+                    assignment.Syntax.SpanStart,
+                    selector,
+                    visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SelectorLocalRemainsStable(
+        IOperation selectorBody,
+        ILocalSymbol local,
+        int afterPosition,
+        int beforePosition)
+    {
+        foreach (var operation in selectorBody.Descendants())
+        {
+            if (!CanOperationRunBetween(
+                    operation,
+                    selectorBody,
+                    afterPosition,
+                    beforePosition,
+                    useStableStorageReceiver: false) &&
+                !CanNestedSelectorOperationRunBetween(
+                    operation,
+                    selectorBody,
+                    afterPosition,
+                    beforePosition))
+            {
+                continue;
+            }
+
+            if (operation is IDynamicInvocationOperation dynamicInvocation &&
+                dynamicInvocation.ReferencesLocal(local))
+            {
+                return false;
+            }
+
+            if (operation is IAssignmentOperation assignment &&
+                assignment.Target.ReferencesLocal(local))
+            {
+                return false;
+            }
+
+            if (operation is IVariableDeclaratorOperation declarator &&
+                declarator.Symbol.RefKind != RefKind.None &&
+                declarator.Initializer?.Value.ReferencesLocal(local) == true)
+            {
+                return false;
+            }
+
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesLocal(local))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool CanNestedSelectorOperationRunBetween(
+        IOperation operation,
+        IOperation selectorBody,
+        int afterPosition,
+        int beforePosition)
+    {
+        IOperation? nestedExecutable = null;
+        for (var parent = operation.Parent;
+             parent != null && !ReferenceEquals(parent, selectorBody);
+             parent = parent.Parent)
+        {
+            if (parent is IAnonymousFunctionOperation or ILocalFunctionOperation)
+            {
+                nestedExecutable = parent;
+                break;
+            }
+        }
+
+        if (nestedExecutable is ILocalFunctionOperation localFunction)
+        {
+            return EnumerateOutsideNestedExecutables(selectorBody).Any(candidate =>
+                (candidate is IInvocationOperation invocation &&
+                 SymbolEqualityComparer.Default.Equals(
+                     invocation.TargetMethod.OriginalDefinition,
+                     localFunction.Symbol.OriginalDefinition) ||
+                 candidate is IMethodReferenceOperation methodReference &&
+                 SymbolEqualityComparer.Default.Equals(
+                     methodReference.Method.OriginalDefinition,
+                     localFunction.Symbol.OriginalDefinition)) &&
+                SelectorCallbackTriggerCrossesPosition(
+                    candidate,
+                    afterPosition,
+                    beforePosition));
+        }
+
+        if (nestedExecutable is not IAnonymousFunctionOperation)
+            return false;
+
+        for (var current = nestedExecutable.Parent;
+             current != null && !ReferenceEquals(current, selectorBody);
+             current = current.Parent)
+        {
+            if (IsSelectorCallbackTrigger(current))
+            {
+                return SelectorCallbackTriggerCrossesPosition(
+                    current,
+                    afterPosition,
+                    beforePosition);
+            }
+
+            if (current is IVariableDeclaratorOperation declarator)
+            {
+                return EnumerateOutsideNestedExecutables(selectorBody).Any(reference =>
+                    reference is ILocalReferenceOperation localReference &&
+                    SymbolEqualityComparer.Default.Equals(
+                        localReference.Local,
+                        declarator.Symbol) &&
+                    SelectorCallbackTriggerCrossesPosition(
+                        reference,
+                        afterPosition,
+                        beforePosition));
+            }
+
+            if (current is ISimpleAssignmentOperation assignment &&
+                TryGetSelectorCallbackStorageSymbol(assignment.Target, out var storage))
+            {
+                return EnumerateOutsideNestedExecutables(selectorBody).Any(reference =>
+                    ReferencesSelectorCallbackStorage(reference, storage) &&
+                    SelectorCallbackTriggerCrossesPosition(
+                        reference,
+                        afterPosition,
+                        beforePosition));
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SelectorCallbackTriggerCrossesPosition(
+        IOperation trigger,
+        int afterPosition,
+        int beforePosition)
+    {
+        for (IOperation? current = trigger; current != null; current = current.Parent)
+        {
+            if (IsSelectorCallbackTrigger(current) &&
+                (current.Syntax.SpanStart > afterPosition &&
+                 current.Syntax.SpanStart < beforePosition ||
+                 current.Syntax.Span.Contains(afterPosition) &&
+                 current.Syntax.Span.End < beforePosition))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSelectorCallbackTrigger(IOperation operation)
+    {
+        if (operation is IAssignmentOperation assignment &&
+            assignment.Target.UnwrapConversions() is IPropertyReferenceOperation)
+        {
+            return true;
+        }
+
+        return operation is IInvocationOperation or
+            IDynamicInvocationOperation or
+            IObjectCreationOperation or
+            IDynamicObjectCreationOperation or
+            IEventAssignmentOperation or
+            IPropertyReferenceOperation { Property.IsIndexer: true };
+    }
+
+    private static bool TryGetSelectorCallbackStorageSymbol(
+        IOperation target,
+        out ISymbol storage)
+    {
+        target = target.UnwrapConversions();
+        switch (target)
+        {
+            case ILocalReferenceOperation localReference:
+                storage = localReference.Local;
+                return true;
+
+            case IFieldReferenceOperation fieldReference:
+                storage = fieldReference.Field;
+                return true;
+
+            case IPropertyReferenceOperation propertyReference:
+                storage = propertyReference.Property;
+                return true;
+
+            default:
+                storage = null!;
+                return false;
+        }
+    }
+
+    private static bool ReferencesSelectorCallbackStorage(
+        IOperation operation,
+        ISymbol storage)
+    {
+        return operation is ILocalReferenceOperation localReference &&
+               SymbolEqualityComparer.Default.Equals(localReference.Local, storage) ||
+               operation is IFieldReferenceOperation fieldReference &&
+               SymbolEqualityComparer.Default.Equals(fieldReference.Field, storage) ||
+               operation is IPropertyReferenceOperation propertyReference &&
+               SymbolEqualityComparer.Default.Equals(propertyReference.Property, storage);
+    }
+
+    private static bool TryGetStableLocalReference(
+        IOperation value,
+        out ILocalSymbol local)
+    {
+        while (true)
+        {
+            switch (value)
+            {
+                case IParenthesizedOperation parenthesized:
+                    value = parenthesized.Operand;
+                    continue;
+
+                case IConversionOperation { OperatorMethod: null } conversion:
+                    value = conversion.Operand;
+                    continue;
+
+                case ILocalReferenceOperation localReference:
+                    local = localReference.Local;
+                    return true;
+
+                default:
+                    local = null!;
+                    return false;
+            }
         }
     }
 
