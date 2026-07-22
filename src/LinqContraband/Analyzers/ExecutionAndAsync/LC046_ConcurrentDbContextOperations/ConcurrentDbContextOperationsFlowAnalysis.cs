@@ -1308,12 +1308,19 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            if (current.Parent is IArgumentOperation argument &&
-                argument.Parent is IInvocationOperation consumer)
+            if (current.Parent is IArgumentOperation argument)
             {
-                return !consumer.Syntax.Span.Contains(laterInvocation.Syntax.Span) &&
-                       !IsTaskWhenAll(consumer) &&
-                       !IsTaskWhenAny(consumer);
+                if (argument.Parent is IInvocationOperation consumer)
+                {
+                    return !consumer.Syntax.Span.Contains(laterInvocation.Syntax.Span) &&
+                           !IsTaskWhenAll(consumer) &&
+                           !IsTaskWhenAny(consumer);
+                }
+
+                if (argument.Parent is IObjectCreationOperation objectCreation)
+                {
+                    return !objectCreation.Syntax.Span.Contains(laterInvocation.Syntax.Span);
+                }
             }
 
             if (current.Parent is IReturnOperation)

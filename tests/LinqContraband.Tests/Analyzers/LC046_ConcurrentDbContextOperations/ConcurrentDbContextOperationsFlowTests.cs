@@ -2557,6 +2557,74 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task DirectConstructorArgumentEscape_DropsActiveState()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class TaskHolder
+    {
+        public TaskHolder(Task task) { }
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            _ = new TaskHolder(db.Users.ToListAsync());
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SiblingConstructorArgumentsOverlapBeforeDirectEscape()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class TaskHolder
+    {
+        public TaskHolder(Task first, Task second) { }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            _ = new TaskHolder(
+                {|#0:db.Users.ToListAsync()|},
+                {|#1:db.Users.AnyAsync()|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ReassignedContextAlias_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
