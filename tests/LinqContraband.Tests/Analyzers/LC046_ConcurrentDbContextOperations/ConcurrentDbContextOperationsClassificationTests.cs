@@ -335,4 +335,65 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task HiddenDbSetFindAsyncLookalike_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class CustomUserSet : DbSet<User>
+    {
+        public new ValueTask<User> FindAsync(params object[] keyValues) => default;
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public CustomUserSet Users { get; } = new CustomUserSet();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            _ = db.Users.FindAsync(1);
+            await db.Users.FindAsync(2);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task HiddenDbContextSetLookalike_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public new DbSet<TEntity> Set<TEntity>() where TEntity : class =>
+            new DbContext().Set<TEntity>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await Task.WhenAll(
+                db.Set<User>().ToListAsync(),
+                db.Set<User>().AnyAsync());
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

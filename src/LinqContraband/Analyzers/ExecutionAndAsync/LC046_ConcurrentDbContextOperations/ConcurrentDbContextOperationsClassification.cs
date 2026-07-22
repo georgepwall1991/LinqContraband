@@ -139,7 +139,23 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     private static bool IsDbSetFindAsync(IInvocationOperation invocation)
     {
         var method = invocation.TargetMethod;
-        return method.Name == "FindAsync" && method.ContainingType.IsDbSet();
+        return method.Name == "FindAsync" && IsEfDbSetMethod(method);
+    }
+
+    private static bool IsEfDbSetMethod(IMethodSymbol method)
+    {
+        for (IMethodSymbol? current = method;
+             current != null;
+             current = current.OverriddenMethod)
+        {
+            if (current.ContainingType.Name == "DbSet" &&
+                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsQueryableAsyncSink(IInvocationOperation invocation)
@@ -647,7 +663,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     private static bool IsDbContextSetInvocation(IInvocationOperation invocation)
     {
         return invocation.TargetMethod.Name == "Set" &&
-               invocation.TargetMethod.ContainingType.IsDbContext() &&
+               IsEfDbContextMethod(invocation.TargetMethod) &&
                invocation.Type.IsDbSet();
     }
 
