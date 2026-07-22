@@ -1927,6 +1927,59 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ContinueCanBypassFollowingBreakAndPreserveCallback()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            await {|#1:Task.WhenAll(new[] { 1, 2 }.Select(_ =>
+            {
+                var task = {|#0:db.Users.AnyAsync()|};
+                void ReplaceTask() => task = Task.FromResult(true);
+                Action callback = ReplaceTask;
+                Action combined = () => { };
+                for (var index = 0; index < 3; index++)
+                {
+                    if (index < 2)
+                    {
+                        combined += callback;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                combined -= callback;
+                combined();
+                task.Wait();
+                return Task.CompletedTask;
+            }))|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskRun_CapturedContextRemainsOwnedByLC036()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

@@ -4323,7 +4323,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         var containingStatement = block.Statements.FirstOrDefault(statement =>
             statement.Span.Contains(operation.Syntax.Span));
-        if (containingStatement == null)
+        if (containingStatement is not ExpressionStatementSyntax)
             return false;
 
         var statementIndex = block.Statements.IndexOf(containingStatement);
