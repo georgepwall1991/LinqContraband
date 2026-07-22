@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **46 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.6.47
-- Base audited commit: 6695bc235252a3a35b2acbb493c87973021995d5
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.6.47`
+- Package version: 5.7.0
+- Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.0`
 
 ## Rubric
 
