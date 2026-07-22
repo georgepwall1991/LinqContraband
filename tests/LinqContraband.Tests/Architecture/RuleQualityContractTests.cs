@@ -14,6 +14,10 @@ namespace LinqContraband.Tests.Architecture;
 
 public sealed class RuleQualityContractTests
 {
+    private const string AuditedCommitMetadataPattern = @"^- Base audited commit: (?<commit>[0-9a-f]{40})\r?$";
+    private const string BaselineAuditedCommitMetadataPattern = @"^Base audited commit:[^`\r\n]*`(?<commit>[0-9a-f]{40})`[^\r\n]*\r?$";
+    private const string ReleasePackageVersionMetadataPattern = @"^- Package version:[ \t]*(?<version>[^\r\n]+?)\r?$";
+    private const string BaselinePackageVersionMetadataPattern = @"^Package version:[ \t]*\*\*(?<version>[^*\r\n]+)\*\*[^\r\n]*\r?$";
     private const string RepositoryUrl = "https://github.com/georgepwall1991/LinqContraband";
     private const string ProjectUrl = "https://georgepwall1991.github.io/LinqContraband/";
     private readonly string _repoRoot = RepositoryLayout.GetRepositoryRoot();
@@ -53,6 +57,270 @@ public sealed class RuleQualityContractTests
         Assert.True(
             missingRuleIds.Length == 0 && staleRuleIds.Length == 0,
             $"PackageReleaseNotes should reference the same LC rule ids as CHANGELOG.md {version}. Missing: {FormatIds(missingRuleIds)}; stale: {FormatIds(staleRuleIds)}.");
+    }
+
+    [Fact]
+    public void PublicDocumentation_MatchesCatalogAndPackageSurfaces()
+    {
+        var properties = LoadPackageProperties();
+        var version = properties["Version"];
+        var readme = File.ReadAllText(Path.Combine(_repoRoot, "README.md"));
+        var health = File.ReadAllText(Path.Combine(_repoRoot, "docs", "analyzer-health.md"));
+        var changelog = File.ReadAllText(Path.Combine(_repoRoot, "CHANGELOG.md"));
+        var currentEntry = ExtractChangelogEntry(changelog, version);
+        var failures = new List<string>();
+
+        if (!readme.Contains($"**{RuleCatalog.All.Length} rules**", StringComparison.Ordinal))
+            failures.Add($"README.md should declare the current {RuleCatalog.All.Length}-rule catalog size.");
+
+        foreach (var rule in RuleCatalog.All)
+        {
+            if (!readme.Contains($"### {rule.Id}:", StringComparison.Ordinal))
+                failures.Add($"README.md should contain a section for {rule.Id}.");
+        }
+
+        var relativeDestinations = ExtractPotentialMarkdownDestinations(readme)
+            .Where(destination => !destination.StartsWith('#') &&
+                                  !Uri.TryCreate(destination, UriKind.Absolute, out _))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(destination => destination, StringComparer.Ordinal)
+            .ToArray();
+        if (relativeDestinations.Length > 0)
+            failures.Add($"README.md should avoid relative link-like destinations anywhere in its packaged source. Relative destinations: {string.Join(", ", relativeDestinations)}.");
+
+        var releaseMetadata = ExtractMarkdownSection(health, "Release metadata:");
+        if (releaseMetadata is null ||
+            !string.Equals(ExtractReleasePackageVersion(releaseMetadata), version, StringComparison.Ordinal))
+        {
+            failures.Add($"The release metadata should name package version {version}.");
+        }
+        var releaseAuditedCommit = releaseMetadata is null
+            ? null
+            : ExtractReleaseAuditedCommit(releaseMetadata);
+
+        const string baselineMarker = "## Verification Baseline";
+        var baseline = ExtractMarkdownSection(health, baselineMarker);
+        if (baseline is null)
+        {
+            failures.Add("docs/analyzer-health.md should contain a Verification Baseline section.");
+        }
+        else
+        {
+            if (!string.Equals(ExtractBaselinePackageVersion(baseline), version, StringComparison.Ordinal))
+                failures.Add($"The Verification Baseline should name package version {version}.");
+
+            var baselineAuditedCommit = ExtractBaselineAuditedCommit(baseline);
+            if (releaseAuditedCommit is null ||
+                !string.Equals(baselineAuditedCommit, releaseAuditedCommit, StringComparison.Ordinal))
+            {
+                failures.Add("The Verification Baseline should repeat the current release metadata commit.");
+            }
+
+            var currentVerification = baseline
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(line => line.StartsWith("Current verification (", StringComparison.Ordinal));
+            foreach (var ruleId in ExtractRuleIds(currentEntry))
+            {
+                if (currentVerification is null || !currentVerification.Contains(ruleId, StringComparison.Ordinal))
+                    failures.Add($"The current Verification Baseline heading should identify {ruleId}.");
+            }
+
+            var scorecardStart = health.IndexOf("## Scorecard", StringComparison.Ordinal);
+            var scorecardTableStart = health.IndexOf("| Rule |", scorecardStart, StringComparison.Ordinal);
+            var scorecardIntro = scorecardStart >= 0 && scorecardTableStart > scorecardStart
+                ? health.Substring(scorecardStart, scorecardTableStart - scorecardStart)
+                : string.Empty;
+            var scorecardSuiteTotal = Regex.Match(
+                scorecardIntro,
+                @"suite to \*\*(?<count>[\d,]+) tests\*\*",
+                RegexOptions.CultureInvariant);
+            var currentSuiteTotal = Regex.Matches(
+                    baseline,
+                    @"full local net10\.0 suite passes (?<count>[\d,]+) tests",
+                    RegexOptions.CultureInvariant)
+                .Cast<Match>()
+                .LastOrDefault();
+            if (!scorecardSuiteTotal.Success ||
+                currentSuiteTotal is null ||
+                !string.Equals(
+                    scorecardSuiteTotal.Groups["count"].Value,
+                    currentSuiteTotal.Groups["count"].Value,
+                    StringComparison.Ordinal))
+            {
+                failures.Add("The scorecard introduction and latest Verification Baseline should declare the same full-suite test total.");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
+    public void ReleaseMetadataPatterns_AcceptCrLfAndBindExactFields()
+    {
+        const string metadata = "- Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544\r\n";
+
+        var match = Regex.Match(
+            metadata,
+            AuditedCommitMetadataPattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+        Assert.True(match.Success);
+        const string baseline = """
+            ## Verification Baseline
+
+            Base audited commit: master at `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (stale state).
+
+            Historical verification mentioned `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+
+        Assert.Equal(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ExtractBaselineAuditedCommit(baseline));
+
+        const string sameLineHistoricalMention = """
+            ## Verification Baseline
+
+            Base audited commit: master at `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (historical comparison: `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`).
+            """;
+        Assert.Equal(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ExtractBaselineAuditedCommit(sameLineHistoricalMention));
+
+        const string laterSectionOnly = """
+            ## Verification Baseline
+
+            Package version: **5.7.0**
+
+            ## Historical Appendix
+
+            Base audited commit: master at `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+        var boundedBaseline = ExtractMarkdownSection(laterSectionOnly, "## Verification Baseline");
+        Assert.NotNull(boundedBaseline);
+        Assert.Null(ExtractBaselineAuditedCommit(boundedBaseline!));
+
+        const string archiveOnly = """
+            ## Verification Baseline Archive
+
+            Package version: **5.7.0**
+            Base audited commit: master at `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544`.
+            """;
+        Assert.Null(ExtractMarkdownSection(archiveOnly, "## Verification Baseline"));
+
+        const string releaseVersionBypass = """
+            Release metadata:
+
+            - Package version: 5.6.0
+            Historical comparison: - Package version: 5.7.0
+
+            ## Rubric
+            """;
+        var releaseMetadata = ExtractMarkdownSection(releaseVersionBypass, "Release metadata:");
+        Assert.NotNull(releaseMetadata);
+        Assert.Equal("5.6.0", ExtractReleasePackageVersion(releaseMetadata!));
+
+        const string releaseCommitBypass = """
+            Release metadata:
+
+            - Package version: 5.7.0
+
+            ## Historical Appendix
+
+            - Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544
+            """;
+        var releaseMetadataWithoutCommit = ExtractMarkdownSection(releaseCommitBypass, "Release metadata:");
+        Assert.NotNull(releaseMetadataWithoutCommit);
+        Assert.Null(ExtractReleaseAuditedCommit(releaseMetadataWithoutCommit!));
+
+        const string baselineVersionBypass = """
+            ## Verification Baseline
+
+            Package version: **5.6.0**
+            Historical comparison: Package version: **5.7.0**
+            """;
+        Assert.Equal("5.6.0", ExtractBaselinePackageVersion(baselineVersionBypass));
+    }
+
+    [Fact]
+    public void PotentialMarkdownDestinationExtraction_FindsEveryLinkLikeSourceForm()
+    {
+        const string markdown = """
+            [![Badge](https://example.test/image.svg)](relative-inline.md)
+            [Spaced](   spaced-inline.md)
+            [Line break](
+              line-break-inline.md)
+            [Catalog][docs]
+
+            [docs]:
+            docs/rule-catalog.md
+                [indented]: docs/indented-reference.md
+            > [quoted]: docs/quoted-reference.md
+            <!-- [commented]: docs/commented-reference.md -->
+            [Multiline
+              label]: docs/multiline-label-reference.md
+            [
+            multiline
+            label]: docs/unindented-multiline-reference.md
+            [
+            standalone close
+            ]: docs/standalone-close-reference.md
+            > [
+            > quoted standalone close
+            > ]: docs/quoted-standalone-close-reference.md
+            > [Quoted
+            > multiline]: docs/quoted-multiline-reference.md
+            [escaped\]]: docs/escaped-close-reference.md
+            <img src="relative-icon.png" alt="Icon">
+            <a href=
+              'relative-guide.md'>Guide</a>
+            <img SRC=relative-unquoted.png alt="Unquoted">
+            <img srcset="relative-small.png 1x, relative-large.png 2x" alt="Responsive">
+            Document href="prose-only.md" as an example.
+            \[literal](escaped-source-example.md)
+            `[code](inline-code-source-example.md)`
+            <!-- <a href="commented-source-example.md">Commented out</a> -->
+            [outer [inner](https://example.test/inner)](nested-link-source-example.md)
+            """;
+
+        var destinations = ExtractPotentialMarkdownDestinations(markdown).ToArray();
+
+        Assert.Contains("relative-inline.md", destinations);
+        Assert.Contains("spaced-inline.md", destinations);
+        Assert.Contains("line-break-inline.md", destinations);
+        Assert.Contains("docs/rule-catalog.md", destinations);
+        Assert.Contains("docs/indented-reference.md", destinations);
+        Assert.Contains("docs/quoted-reference.md", destinations);
+        Assert.Contains("docs/commented-reference.md", destinations);
+        Assert.Contains("docs/multiline-label-reference.md", destinations);
+        Assert.Contains("docs/unindented-multiline-reference.md", destinations);
+        Assert.Contains("docs/standalone-close-reference.md", destinations);
+        Assert.Contains("docs/quoted-standalone-close-reference.md", destinations);
+        Assert.Contains("docs/quoted-multiline-reference.md", destinations);
+        Assert.Contains("docs/escaped-close-reference.md", destinations);
+        Assert.Contains("relative-icon.png", destinations);
+        Assert.Contains("relative-guide.md", destinations);
+        Assert.Contains("relative-unquoted.png", destinations);
+        Assert.Contains("relative-small.png", destinations);
+        Assert.Contains("relative-large.png", destinations);
+        Assert.Contains("prose-only.md", destinations);
+        Assert.Contains("escaped-source-example.md", destinations);
+        Assert.Contains("inline-code-source-example.md", destinations);
+        Assert.Contains("commented-source-example.md", destinations);
+        Assert.Contains("nested-link-source-example.md", destinations);
+
+        const string absoluteContinuations = """
+            > [Guide](
+            >   https://example.test/guide)
+
+            > [docs]:
+            >   https://example.test/docs
+
+            <img srcset="data:image/png;base64,AAAA 1x, https://example.test/icon@2x.png 2x">
+            """;
+        var relativeContinuationDestinations = ExtractPotentialMarkdownDestinations(absoluteContinuations)
+            .Where(destination => !Uri.TryCreate(destination, UriKind.Absolute, out _))
+            .ToArray();
+        Assert.Empty(relativeContinuationDestinations);
     }
 
     [Fact]
@@ -221,6 +489,135 @@ public sealed class RuleQualityContractTests
     private static bool ContainsAny(string value, params string[] terms)
     {
         return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<string> ExtractPotentialMarkdownDestinations(string markdown)
+    {
+        var inlineDestinations = Regex.Matches(
+                markdown,
+                @"\]\([ \t]*(?:(?:\r\n|\r|\n)[ \t]*(?:>[ \t]*)*)?(?<destination><[^>]+>|[^\s\)]+)",
+                RegexOptions.CultureInvariant)
+            .Cast<Match>();
+        var referenceDestinations = Regex.Matches(
+                markdown,
+                @"\[(?:\\[^\r\n]|[^\]\\\r\n]|(?:\r\n|\r|\n)[ \t]*(?:>[ \t]*)*(?![ \t]*(?:\r\n|\r|\n)))*\]:[ \t]*(?:(?:\r\n|\r|\n)[ \t]*(?:>[ \t]*)*)?(?<destination><[^>\r\n]+>|[^\s]+)",
+                RegexOptions.CultureInvariant)
+            .Cast<Match>();
+        var attributeDestinations = Regex.Matches(
+                markdown,
+                @"\b(?:href|src)\s*=\s*(?:""(?<destination>[^""]+)""|'(?<destination>[^']+)'|(?<destination>[^\s>]+))",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            .Cast<Match>();
+        var srcSetDestinations = Regex.Matches(
+                markdown,
+                @"\bsrcset\s*=\s*(?:""(?<candidates>[^""]+)""|'(?<candidates>[^']+)'|(?<candidates>[^\s>]+))",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            .Cast<Match>()
+            .SelectMany(match => ExtractSrcSetDestinations(match.Groups["candidates"].Value));
+
+        return inlineDestinations
+            .Concat(referenceDestinations)
+            .Concat(attributeDestinations)
+            .Select(match => match.Groups["destination"].Value.Trim('<', '>'))
+            .Concat(srcSetDestinations);
+    }
+
+    private static IEnumerable<string> ExtractSrcSetDestinations(string candidates)
+    {
+        var position = 0;
+        while (position < candidates.Length)
+        {
+            while (position < candidates.Length &&
+                   (char.IsWhiteSpace(candidates[position]) || candidates[position] == ','))
+            {
+                position++;
+            }
+
+            if (position >= candidates.Length)
+                yield break;
+
+            var urlStart = position;
+            while (position < candidates.Length && !char.IsWhiteSpace(candidates[position]))
+                position++;
+
+            var url = candidates.Substring(urlStart, position - urlStart);
+            if (url.EndsWith(','))
+            {
+                url = url.TrimEnd(',');
+            }
+            else
+            {
+                var parentheses = 0;
+                while (position < candidates.Length)
+                {
+                    switch (candidates[position])
+                    {
+                        case '(':
+                            parentheses++;
+                            break;
+                        case ')' when parentheses > 0:
+                            parentheses--;
+                            break;
+                        case ',' when parentheses == 0:
+                            position++;
+                            goto CandidateComplete;
+                    }
+
+                    position++;
+                }
+            }
+
+        CandidateComplete:
+            if (url.Length > 0)
+                yield return url;
+        }
+    }
+
+    private static string? ExtractBaselineAuditedCommit(string baseline)
+    {
+        var match = Regex.Match(
+            baseline,
+            BaselineAuditedCommitMetadataPattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["commit"].Value : null;
+    }
+
+    private static string? ExtractReleaseAuditedCommit(string releaseMetadata)
+    {
+        return ExtractMetadataValue(releaseMetadata, AuditedCommitMetadataPattern, "commit");
+    }
+
+    private static string? ExtractReleasePackageVersion(string releaseMetadata)
+    {
+        return ExtractMetadataValue(releaseMetadata, ReleasePackageVersionMetadataPattern, "version");
+    }
+
+    private static string? ExtractBaselinePackageVersion(string baseline)
+    {
+        return ExtractMetadataValue(baseline, BaselinePackageVersionMetadataPattern, "version");
+    }
+
+    private static string? ExtractMetadataValue(string section, string pattern, string groupName)
+    {
+        var match = Regex.Match(
+            section,
+            pattern,
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[groupName].Value : null;
+    }
+
+    private static string? ExtractMarkdownSection(string markdown, string heading)
+    {
+        var headingMatch = Regex.Match(
+            markdown,
+            $"^{Regex.Escape(heading)}\r?$",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        if (!headingMatch.Success)
+            return null;
+
+        var start = headingMatch.Index;
+        var next = markdown.IndexOf("\n## ", start + headingMatch.Length, StringComparison.Ordinal);
+        return next < 0 ? markdown.Substring(start) : markdown.Substring(start, next - start);
     }
 
     private Dictionary<string, string> LoadPackageProperties()

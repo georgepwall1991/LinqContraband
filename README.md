@@ -2,13 +2,13 @@
 
 <div align="center">
 
-![LinqContraband Icon](icon.png)
+![LinqContraband Icon](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/icon.png)
 
 ### Stop Smuggling Bad Queries into Production
 
 [![NuGet](https://img.shields.io/nuget/v/LinqContraband.svg)](https://www.nuget.org/packages/LinqContraband)
 [![Downloads](https://img.shields.io/nuget/dt/LinqContraband.svg)](https://www.nuget.org/packages/LinqContraband)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/georgepwall1991/LinqContraband/dotnet.yml?label=build)](https://github.com/georgepwall1991/LinqContraband/actions/workflows/dotnet.yml)
 [![Coverage](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/.github/badges/coverage.svg)](https://github.com/georgepwall1991/LinqContraband/actions/workflows/dotnet.yml)
 
@@ -96,7 +96,8 @@ For tracking mode guidance, see the [EF Core AsNoTracking analyzer guide](https:
 For set-based writes, see the [EF Core ExecuteUpdate analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-executeupdate-analyzer/).
 For repeated writes, see the [EF Core SaveChanges in loop analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-savechanges-in-loop-analyzer/).
 For missing `CancellationToken` arguments on async EF Core calls, see the [EF Core CancellationToken analyzer guide](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/).
-For the full matrix of rule metadata, docs, and sample locations, see [docs/rule-catalog.md](docs/rule-catalog.md).
+For the full matrix of rule metadata, docs, and sample locations, see
+[docs/rule-catalog.md](https://github.com/georgepwall1991/LinqContraband/blob/master/docs/rule-catalog.md).
 
 
 ### LC001: The Local Method Smuggler
@@ -1362,7 +1363,8 @@ await db.Database.ExecuteSqlAsync($"DELETE FROM Users WHERE Name = {name}");
 - LC034 owns direct interpolated-string and direct non-constant `+` concatenation passed straight into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
 - Interpolated strings only report when an interpolation hole contains runtime data; no-hole and constant-only interpolations stay quiet.
 - LC034 binds to EF Core namespaces and `DatabaseFacade` receivers exactly, so same-named extension methods in lookalike namespaces or on unrelated receiver types stay quiet.
-- More complex string-building cases are covered separately by [LC037](docs/LC037_RawSqlStringConstruction.md).
+- More complex string-building cases are covered separately by
+  [LC037](https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC037_RawSqlStringConstruction.md).
 
 ---
 
@@ -1821,6 +1823,10 @@ var roles = await db.Roles.ToListAsync(cancellationToken);
 
 **🛡️ Reliability Notes:**
 - LC046 reports only when both async EF Core operations and their shared context origin are provable.
+- A discarded operation in a `foreach` reports at the loop-body invocation when the source is an inline array
+  initializer with at least two elements and the discard is the loop body's only statement. This repeated-loop pass
+  stays quiet for unknown, empty, or singleton sources and for conditionally exited, sequentially awaited, or
+  multi-statement bodies; ordinary direct-overlap analysis still applies within the loop body.
 - Sequential awaits, separate contexts, per-item factories, branch-exclusive flow, custom lookalikes, and ambiguous
   repository query origins stay quiet.
 - `Task.Run`, `Parallel`, thread-pool, `Thread`, and timer context capture remains LC036's responsibility.
@@ -1854,4 +1860,4 @@ Found a new way to smuggle bad queries? [Open an issue](https://github.com/georg
 submit a
 PR!
 
-License: [MIT](LICENSE)
+License: [MIT](https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE)
