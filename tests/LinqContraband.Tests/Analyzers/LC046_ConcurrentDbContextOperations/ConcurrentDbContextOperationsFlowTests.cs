@@ -5084,6 +5084,86 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task BreakBeforeReplacement_ShouldKeepWriterPotentiallyRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, bool skipClear)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            do
+            {
+                if (skipClear)
+                    break;
+
+                _writer = () => { };
+            }
+            while (false);
+
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThrowExpressionBeforeReplacement_ShouldKeepWriterPotentiallyRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, bool skipClear)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            try
+            {
+                _ = skipClear ? throw new InvalidOperationException() : 0;
+                _writer = () => { };
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SelfReferentialIncompleteQuery_DoesNotCrashAnalysis()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

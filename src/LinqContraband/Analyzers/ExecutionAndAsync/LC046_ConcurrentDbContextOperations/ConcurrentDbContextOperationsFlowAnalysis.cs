@@ -789,6 +789,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         SyntaxNode operation,
         SyntaxNode branch)
     {
+        if (HasPotentialControlTransferBefore(operation, branch))
+            return false;
+
         for (SyntaxNode? current = operation; current != null; current = current.Parent)
         {
             if (ReferenceEquals(current, branch) && current is SwitchSectionSyntax)
@@ -872,6 +875,75 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             if (ReferenceEquals(current, branch))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasPotentialControlTransferBefore(
+        SyntaxNode operation,
+        SyntaxNode branch)
+    {
+        foreach (var candidate in branch.DescendantNodes())
+        {
+            if (candidate.SpanStart >= operation.SpanStart ||
+                candidate.Span.Contains(operation.Span) ||
+                IsInsideNestedExecutableSyntax(candidate, branch))
+            {
+                continue;
+            }
+
+            switch (candidate)
+            {
+                case ReturnStatementSyntax:
+                case ThrowStatementSyntax:
+                case ThrowExpressionSyntax:
+                case GotoStatementSyntax:
+                case YieldStatementSyntax yieldStatement
+                    when yieldStatement.IsKind(
+                        Microsoft.CodeAnalysis.CSharp.SyntaxKind.YieldBreakStatement):
+                    return true;
+
+                case BreakStatementSyntax breakStatement:
+                    var breakTarget = breakStatement.Ancestors().FirstOrDefault(ancestor =>
+                        ancestor is WhileStatementSyntax or
+                            DoStatementSyntax or
+                            ForStatementSyntax or
+                            ForEachStatementSyntax or
+                            ForEachVariableStatementSyntax or
+                            SwitchStatementSyntax);
+                    if (breakTarget?.Span.Contains(operation.Span) == true)
+                        return true;
+
+                    break;
+
+                case ContinueStatementSyntax continueStatement:
+                    var continueTarget = continueStatement.Ancestors().FirstOrDefault(ancestor =>
+                        ancestor is WhileStatementSyntax or
+                            DoStatementSyntax or
+                            ForStatementSyntax or
+                            ForEachStatementSyntax or
+                            ForEachVariableStatementSyntax);
+                    if (continueTarget?.Span.Contains(operation.Span) == true)
+                        return true;
+
+                    break;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsInsideNestedExecutableSyntax(
+        SyntaxNode node,
+        SyntaxNode branch)
+    {
+        for (var current = node.Parent;
+             current != null && !ReferenceEquals(current, branch);
+             current = current.Parent)
+        {
+            if (current is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
                 return true;
         }
 
