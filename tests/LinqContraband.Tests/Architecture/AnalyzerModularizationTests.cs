@@ -549,6 +549,7 @@ public sealed class AnalyzerModularizationTests
         var flowEventsPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowEvents.cs");
         var flowStatePath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowState.cs");
         var autoIncludePath = Path.Combine(analyzerDir, "MissingIncludeAutoIncludeConfiguration.cs");
+        var appliedConfigurationPath = Path.Combine(analyzerDir, "MissingIncludeAppliedConfiguration.cs");
 
         Assert.True(File.Exists(flowAnalysisPath), "LC045 origin-aware control-flow analysis should live in a focused partial file.");
         Assert.True(File.Exists(flowBindingsPath), "LC045 origin and alias binding discovery should live in a focused partial file.");
@@ -556,6 +557,7 @@ public sealed class AnalyzerModularizationTests
         Assert.True(File.Exists(flowEventsPath), "LC045 origin-flow event collection should live in a focused partial file.");
         Assert.True(File.Exists(flowStatePath), "LC045 origin-flow state and event models should live in a focused partial file.");
         Assert.True(File.Exists(autoIncludePath), "LC045 model-level AutoInclude proof should live in a focused partial file.");
+        Assert.True(File.Exists(appliedConfigurationPath), "LC045 applied AutoInclude configuration proof should live in a focused partial file.");
 
         var usageScanSource = File.ReadAllText(usageScanPath);
         Assert.DoesNotContain("private static bool TryGetFlowGraph", usageScanSource);
@@ -574,6 +576,22 @@ public sealed class AnalyzerModularizationTests
         var autoIncludeSource = File.ReadAllText(autoIncludePath);
         Assert.Contains("private static void AddModelAutoIncludePrefixes", autoIncludeSource);
         Assert.Contains("private static bool TryGetDirectAutoInclude", autoIncludeSource);
+
+        var appliedConfigurationSource = File.ReadAllText(appliedConfigurationPath);
+        Assert.Contains("private static bool TryApplyConfigurationAutoIncludes", appliedConfigurationSource);
+        Assert.Contains("private static bool TryGetAppliedConfigurationAutoInclude", appliedConfigurationSource);
+
+        var appliedConfigurationTestsPath = Path.Combine(
+            _repoRoot,
+            "tests",
+            "LinqContraband.Tests",
+            "Analyzers",
+            "LC045_MissingInclude",
+            "MissingIncludeAppliedConfigurationTests.cs");
+        Assert.True(File.Exists(appliedConfigurationTestsPath), "LC045 applied AutoInclude configuration tests should live in a focused partial file.");
+        var appliedConfigurationTestsSource = File.ReadAllText(appliedConfigurationTestsPath);
+        Assert.Contains("TestInnocent_AppliedConfigurationAutoInclude_NoDiagnostic", appliedConfigurationTestsSource);
+        Assert.Contains("TestCrime_AppliedConfigurationHelperBoundary_DoesNotSuppress", appliedConfigurationTestsSource);
 
         var flowAnalysisSource = File.ReadAllText(flowAnalysisPath);
         Assert.Contains("private static bool TryCollectOriginAwareNavigationAccesses", flowAnalysisSource);

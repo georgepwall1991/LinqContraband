@@ -695,4 +695,125 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TestInnocent_FluentAutoIncludeEnableAfterDisable_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude(false).AutoInclude();
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ConditionalHelperDisableInvalidatesEarlierEnable()
+    {
+        var test =
+            Usings
+            + @"
+class AutoIncludeDbContext : MyDbContext
+{
+    private static void Configure(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude(false);
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude();
+        if (DateTime.UtcNow.Ticks > 0)
+        {
+            Configure(modelBuilder);
+        }
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_ConditionalSourceDefinedEfNamespaceHelperInvalidatesEarlierEnable()
+    {
+        var test =
+            Usings
+            + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class CustomModelBuilderExtensions
+    {
+        public static void ConfigureAutoInclude(this ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude(false);
+        }
+    }
+}
+
+class AutoIncludeDbContext : MyDbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Order>().Navigation(o => o.Customer).AutoInclude();
+        if (DateTime.UtcNow.Ticks > 0)
+        {
+            modelBuilder.ConfigureAutoInclude();
+        }
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new AutoIncludeDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
 }
