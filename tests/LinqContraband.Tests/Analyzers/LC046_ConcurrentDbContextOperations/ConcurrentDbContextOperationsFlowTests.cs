@@ -5164,6 +5164,100 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ConditionalRightHandOperations_ShouldNotBeTreatedAsDefinitelyExecuted()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Consumer
+    {
+        public void Observe(Task<bool> task) { }
+    }
+
+    public sealed class Program
+    {
+        public async Task Coalesce(AppDbContext db, Task<bool> cached)
+        {
+            var first = cached ?? db.Users.AnyAsync();
+            await db.Users.AnyAsync();
+            await first;
+        }
+
+        public async Task LogicalAnd(AppDbContext db, bool shouldRun)
+        {
+            _ = shouldRun && db.Users.AnyAsync().IsCompleted;
+            await db.Users.AnyAsync();
+        }
+
+        public async Task LogicalOr(AppDbContext db, bool skipRun)
+        {
+            _ = skipRun || db.Users.AnyAsync().IsCompleted;
+            await db.Users.AnyAsync();
+        }
+
+        public async Task CoalesceAssignment(AppDbContext db, Task<bool> cached)
+        {
+            cached ??= db.Users.AnyAsync();
+            await db.Users.AnyAsync();
+            await cached;
+        }
+
+        public async Task NullConditional(AppDbContext db, Consumer consumer)
+        {
+            consumer?.Observe(db.Users.AnyAsync());
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NullConditionalReplacement_ShouldKeepWriterPotentiallyRunnable()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Consumer
+    {
+        public void Observe(Action replacement) { }
+    }
+
+    public sealed class Program
+    {
+        private Action _writer = () => { };
+
+        public async Task Run(AppDbContext db, AppDbContext other, Consumer consumer)
+        {
+            _ = db.Users.ToListAsync();
+            _writer = () => db = other;
+            consumer?.Observe(_writer = () => { });
+            _writer();
+            await db.Users.AnyAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SelfReferentialIncompleteQuery_DoesNotCrashAnalysis()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

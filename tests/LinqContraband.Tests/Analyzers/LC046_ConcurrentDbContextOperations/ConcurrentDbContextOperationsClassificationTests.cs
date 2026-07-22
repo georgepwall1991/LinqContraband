@@ -310,4 +310,29 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task HiddenSaveChangesAsyncLookalike_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class AppDbContext : DbContext
+    {
+        public new Task<int> SaveChangesAsync() => Task.FromResult(0);
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            _ = db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -809,6 +810,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (current is AssignmentExpressionSyntax assignment &&
                 assignment.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.CoalesceAssignmentExpression) &&
                 assignment.Right.Span.Contains(operation.Span))
+            {
+                return false;
+            }
+
+            if (current is ConditionalAccessExpressionSyntax conditionalAccess &&
+                conditionalAccess.WhenNotNull.Span.Contains(operation.Span))
             {
                 return false;
             }
@@ -1638,6 +1645,24 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     : conditional.WhenFalse;
                 if (!previousBranch.Span.Contains(current.Span))
                     return false;
+            }
+            else if (ancestor is BinaryExpressionSyntax binary &&
+                     binary.Kind() is SyntaxKind.CoalesceExpression or
+                         SyntaxKind.LogicalAndExpression or
+                         SyntaxKind.LogicalOrExpression)
+            {
+                if (binary.Right.Span.Contains(previous.Span) &&
+                    !binary.Right.Span.Contains(current.Span))
+                {
+                    return false;
+                }
+            }
+            else if (ancestor is AssignmentExpressionSyntax assignment &&
+                     assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression) &&
+                     assignment.Right.Span.Contains(previous.Span) &&
+                     !assignment.Right.Span.Contains(current.Span))
+            {
+                return false;
             }
             else if (ancestor is SwitchSectionSyntax switchSection)
             {

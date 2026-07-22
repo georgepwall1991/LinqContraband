@@ -116,8 +116,24 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     private static bool IsDbContextAsyncSink(IInvocationOperation invocation)
     {
         var method = invocation.TargetMethod;
-        return method.ContainingType.IsDbContext() &&
-               method.Name is "SaveChangesAsync" or "FindAsync";
+        return method.Name is ("SaveChangesAsync" or "FindAsync") &&
+               IsEfDbContextMethod(method);
+    }
+
+    private static bool IsEfDbContextMethod(IMethodSymbol method)
+    {
+        for (IMethodSymbol? current = method;
+             current != null;
+             current = current.OverriddenMethod)
+        {
+            if (current.ContainingType.Name == "DbContext" &&
+                current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDbSetFindAsync(IInvocationOperation invocation)
