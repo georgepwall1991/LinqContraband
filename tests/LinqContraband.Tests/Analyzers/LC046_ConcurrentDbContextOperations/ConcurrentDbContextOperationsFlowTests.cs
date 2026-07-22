@@ -2523,6 +2523,40 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task SiblingHelperArgumentsOverlapBeforeDirectEscape()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        private static void Observe(Task first, Task second) { }
+
+        public void Run(AppDbContext db)
+        {
+            Observe(
+                {|#0:db.Users.ToListAsync()|},
+                {|#1:db.Users.AnyAsync()|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ReassignedContextAlias_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

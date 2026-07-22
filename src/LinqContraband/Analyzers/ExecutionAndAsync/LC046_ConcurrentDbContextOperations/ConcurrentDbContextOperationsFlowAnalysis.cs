@@ -454,7 +454,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return false;
         }
 
-        if (EscapesDirectly(previous))
+        if (EscapesDirectly(previous, current))
             return false;
 
         if (!TryGetAssignedTaskLocal(previous, out var taskLocal))
@@ -1288,7 +1288,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool EscapesDirectly(IInvocationOperation invocation)
+    private static bool EscapesDirectly(
+        IInvocationOperation invocation,
+        IInvocationOperation laterInvocation)
     {
         IOperation current = invocation;
         while (current.Parent != null)
@@ -1309,7 +1311,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (current.Parent is IArgumentOperation argument &&
                 argument.Parent is IInvocationOperation consumer)
             {
-                return !IsTaskWhenAll(consumer) && !IsTaskWhenAny(consumer);
+                return !consumer.Syntax.Span.Contains(laterInvocation.Syntax.Span) &&
+                       !IsTaskWhenAll(consumer) &&
+                       !IsTaskWhenAny(consumer);
             }
 
             if (current.Parent is IReturnOperation)
