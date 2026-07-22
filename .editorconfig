@@ -210,3 +210,6 @@ indent_size = 2
 
 # LC045: Missing Include - Navigation accessed on materialized entity without eager loading
 # dotnet_diagnostic.LC045.severity = warning
+
+# LC046: Concurrent DbContext Operations - Overlapping EF Core work on the same context
+# dotnet_diagnostic.LC046.severity = warning

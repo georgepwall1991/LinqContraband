@@ -1,7 +1,7 @@
 ---
 layout: default
 title: EF Core Async Query Analyzer
-description: Use LinqContraband as an EF Core async query analyzer for sync-over-async EF Core calls, missing cancellation tokens, SaveChangesAsync loops, and async stream buffering.
+description: Use LinqContraband as an EF Core async query analyzer for sync-over-async calls, concurrent same-context operations, missing cancellation tokens, SaveChangesAsync loops, and async stream buffering.
 permalink: /ef-core-async-query-analyzer/
 body_class: page-async-query-analyzer
 ---
@@ -9,8 +9,8 @@ body_class: page-async-query-analyzer
 # EF Core Async Query Analyzer
 
 LinqContraband helps teams review async EF Core query paths before they reach production. It catches synchronous
-database calls inside async methods, missing cancellation tokens on async EF APIs, `SaveChangesAsync` inside loops, and
-async stream buffering that should stay streaming.
+database calls inside async methods, concurrent operations on one context, missing cancellation tokens on async EF APIs,
+`SaveChangesAsync` inside loops, and async stream buffering that should stay streaming.
 
 For the focused missing-token workflow, use the
 [EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/).
@@ -53,6 +53,7 @@ public async Task<List<User>> ActiveUsers(CancellationToken cancellationToken)
 | [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html) | Synchronous EF Core query, save, find, and bulk APIs inside async contexts. | Blocking database I/O ties up request or worker threads that could be serving other work. |
 | [LC026: missing CancellationToken](/LinqContraband/LC026_MissingCancellationToken.html) | Async EF Core calls that omit a token, pass `default`, or pass `CancellationToken.None` while a usable token is in scope. | Cancelled requests and stopping workers should not leave database queries running unnecessarily. See the [EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/) for the focused rollout path. |
 | [LC043: async stream buffering](/LinqContraband/LC043_AsyncEnumerableBuffering.html) | Immediate `ToListAsync` or `ToArrayAsync` buffering of an `IAsyncEnumerable<T>` before a single loop. | Buffering loses the memory and latency benefits of streaming. |
+| [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html) | A second async EF Core operation starts before the first finishes on the same context, including proven `Task.WhenAll(...Select(...))` fan-out. | EF Core does not support parallel operations on one `DbContext`. |
 | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) | `SaveChanges` or `SaveChangesAsync` inside `for`, `foreach`, `while`, and related loop shapes. | Per-item commits create repeated transactions and partial-progress states. |
 
 ## Common Async EF Core Problems
@@ -130,6 +131,7 @@ await db.SaveChangesAsync(cancellationToken);
 - Use EF Core's async counterpart inside async code: `ToListAsync`, `CountAsync`, `FirstOrDefaultAsync`,
   `SaveChangesAsync`, `FindAsync`, `ExecuteUpdateAsync`, and `ExecuteDeleteAsync`.
 - Pass the available `CancellationToken` through async query and save APIs.
+- Await same-context EF Core operations sequentially, or use a separate context for each genuinely parallel operation.
 - Do not wrap synchronous EF Core database calls in `Task.Run` to make them look async.
 - Use `await foreach` when an `IAsyncEnumerable<T>` only needs one pass.
 - Batch entity changes and call `SaveChangesAsync` once unless each item has a deliberate commit boundary.
@@ -140,6 +142,7 @@ await db.SaveChangesAsync(cancellationToken);
 - Do `ToListAsync`, `CountAsync`, `FirstOrDefaultAsync`, `SaveChangesAsync`, and similar calls receive the available token?
 - Are async streams processed with `await foreach` instead of buffered into memory for one loop?
 - Are write loops batching changes before a single `SaveChangesAsync` call?
+- Can two queries, saves, or commands overlap on the same `DbContext`?
 - Are deliberate exceptions documented with narrow suppressions instead of broad analyzer disablement?
 
 ## CI Severity Starter
@@ -152,6 +155,7 @@ dotnet_diagnostic.LC008.severity = warning
 dotnet_diagnostic.LC026.severity = suggestion
 dotnet_diagnostic.LC043.severity = suggestion
 dotnet_diagnostic.LC010.severity = warning
+dotnet_diagnostic.LC046.severity = warning
 ```
 
 Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) to promote selected async rules

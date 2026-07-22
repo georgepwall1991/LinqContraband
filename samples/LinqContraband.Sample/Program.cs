@@ -35,6 +35,7 @@ using LinqContraband.Sample.Samples.LC042_MissingQueryTags;
 using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
 using LinqContraband.Sample.Samples.LC044_AsNoTrackingThenModify;
 using LinqContraband.Sample.Samples.LC045_MissingInclude;
+using LinqContraband.Sample.Samples.LC046_ConcurrentDbContextOperations;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -96,5 +97,6 @@ internal class Program
         await AsyncEnumerableBufferingSample.RunAsync(db);
         AsNoTrackingThenModifySample.Run(db);
         MissingIncludeSample.Run(db);
+        await ConcurrentDbContextOperationsSample.RunAsync(db, CancellationToken.None);
     }
 }

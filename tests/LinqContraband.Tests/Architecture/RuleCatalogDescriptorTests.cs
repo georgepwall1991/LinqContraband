@@ -10,6 +10,27 @@ namespace LinqContraband.Tests.Architecture;
 public sealed class RuleCatalogDescriptorTests
 {
     [Fact]
+    public void LC046_CatalogContract_DescribesConcurrentDbContextOperations()
+    {
+        var rule = RuleCatalog.All.SingleOrDefault(entry => entry.Id == "LC046");
+
+        Assert.True(rule != null, "LC046 should be present in the rule catalog.");
+        Assert.Equal("LC046_ConcurrentDbContextOperations", rule!.Slug);
+        Assert.Equal("Concurrent EF Core operations on the same DbContext", rule.Title);
+        Assert.Equal("Safety", rule.Category);
+        Assert.Equal("Execution & Async", rule.Domain);
+        Assert.Equal(DiagnosticSeverity.Warning, rule.Severity);
+        Assert.Equal("ConcurrentDbContextOperationsAnalyzer", rule.AnalyzerTypeName);
+        Assert.False(rule.HasCodeFix);
+
+        var analyzerAssembly = typeof(LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer).Assembly;
+        var analyzerType = analyzerAssembly.GetTypes()
+            .SingleOrDefault(type => type.Name == rule.AnalyzerTypeName);
+
+        Assert.True(analyzerType != null, "LC046 should expose ConcurrentDbContextOperationsAnalyzer.");
+    }
+
+    [Fact]
     public void RuleCatalog_MatchesAnalyzerDescriptors()
     {
         var analyzerAssembly = typeof(LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer).Assembly;

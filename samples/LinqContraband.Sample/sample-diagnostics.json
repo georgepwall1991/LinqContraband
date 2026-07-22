@@ -447,6 +447,15 @@
         "LC031",
         "LC045"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC046_ConcurrentDbContextOperations/ConcurrentDbContextOperationsSample.cs",
+      "samplePaths": [
+        "Samples/LC046_ConcurrentDbContextOperations/ConcurrentDbContextOperationsSample.cs"
+      ],
+      "ruleIds": [
+        "LC046"
+      ]
     }
   ]
 }
