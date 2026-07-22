@@ -274,6 +274,7 @@ public sealed class RuleQualityContractTests
             <a href=
               'relative-guide.md'>Guide</a>
             <img SRC=relative-unquoted.png alt="Unquoted">
+            <img srcset="relative-small.png 1x, relative-large.png 2x" alt="Responsive">
             Document href="prose-only.md" as an example.
             \[literal](escaped-source-example.md)
             `[code](inline-code-source-example.md)`
@@ -299,6 +300,8 @@ public sealed class RuleQualityContractTests
         Assert.Contains("relative-icon.png", destinations);
         Assert.Contains("relative-guide.md", destinations);
         Assert.Contains("relative-unquoted.png", destinations);
+        Assert.Contains("relative-small.png", destinations);
+        Assert.Contains("relative-large.png", destinations);
         Assert.Contains("prose-only.md", destinations);
         Assert.Contains("escaped-source-example.md", destinations);
         Assert.Contains("inline-code-source-example.md", destinations);
@@ -311,6 +314,8 @@ public sealed class RuleQualityContractTests
 
             > [docs]:
             >   https://example.test/docs
+
+            <img srcset="data:image/png;base64,AAAA 1x, https://example.test/icon@2x.png 2x">
             """;
         var relativeContinuationDestinations = ExtractPotentialMarkdownDestinations(absoluteContinuations)
             .Where(destination => !Uri.TryCreate(destination, UriKind.Absolute, out _))
@@ -503,11 +508,69 @@ public sealed class RuleQualityContractTests
                 @"\b(?:href|src)\s*=\s*(?:""(?<destination>[^""]+)""|'(?<destination>[^']+)'|(?<destination>[^\s>]+))",
                 RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
             .Cast<Match>();
+        var srcSetDestinations = Regex.Matches(
+                markdown,
+                @"\bsrcset\s*=\s*(?:""(?<candidates>[^""]+)""|'(?<candidates>[^']+)'|(?<candidates>[^\s>]+))",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            .Cast<Match>()
+            .SelectMany(match => ExtractSrcSetDestinations(match.Groups["candidates"].Value));
 
         return inlineDestinations
             .Concat(referenceDestinations)
             .Concat(attributeDestinations)
-            .Select(match => match.Groups["destination"].Value.Trim('<', '>'));
+            .Select(match => match.Groups["destination"].Value.Trim('<', '>'))
+            .Concat(srcSetDestinations);
+    }
+
+    private static IEnumerable<string> ExtractSrcSetDestinations(string candidates)
+    {
+        var position = 0;
+        while (position < candidates.Length)
+        {
+            while (position < candidates.Length &&
+                   (char.IsWhiteSpace(candidates[position]) || candidates[position] == ','))
+            {
+                position++;
+            }
+
+            if (position >= candidates.Length)
+                yield break;
+
+            var urlStart = position;
+            while (position < candidates.Length && !char.IsWhiteSpace(candidates[position]))
+                position++;
+
+            var url = candidates.Substring(urlStart, position - urlStart);
+            if (url.EndsWith(','))
+            {
+                url = url.TrimEnd(',');
+            }
+            else
+            {
+                var parentheses = 0;
+                while (position < candidates.Length)
+                {
+                    switch (candidates[position])
+                    {
+                        case '(':
+                            parentheses++;
+                            break;
+                        case ')' when parentheses > 0:
+                            parentheses--;
+                            break;
+                        case ',' when parentheses == 0:
+                            position++;
+                            goto CandidateComplete;
+                    }
+
+                    position++;
+                }
+            }
+
+        CandidateComplete:
+            if (url.Length > 0)
+                yield return url;
+        }
     }
 
     private static string? ExtractBaselineAuditedCommit(string baseline)
