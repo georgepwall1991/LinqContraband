@@ -9,17 +9,17 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.0</Version>
+        <Version>5.7.1</Version>
         <PackageId>LinqContraband</PackageId>
-        <Title>LinqContraband</Title>
+        <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
-        <Description>LinqContraband is an EF Core LINQ performance analyzer and Roslyn analyzer that catches N+1 queries, client-side evaluation, sync-over-async calls, raw SQL risks, and other query issues at compile time.</Description>
+        <Description>Compile-time EF Core LINQ performance analyzer for .NET: a Roslyn analyzer that catches N+1 queries, client-side evaluation, premature materialization, sync-over-async, missing AsNoTracking, raw SQL injection risks, and other DbContext query issues in the editor and CI—not production.</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 detects proven overlapping Entity Framework Core operations on one DbContext, including direct, discarded, delayed-await, task-combinator, synchronous-completion, selector fan-out, exhaustive-branch, and statically repeated loop shapes, while preserving conservative context and control-flow boundaries.</PackageReleaseNotes>
-        <PackageTags>EFCore;EntityFrameworkCore;LINQ;IQueryable;Analyzer;RoslynAnalyzer;StaticAnalysis;CodeAnalysis;Performance;QueryPerformance;NPlusOne;SQL;DotNet;NuGet</PackageTags>
+        <PackageReleaseNotes>Discoverability release: keyword-rich package title, description, and tags for EF Core LINQ performance (N+1, client-side evaluation, AsNoTracking, DbContext, query performance); conversion-funnel README with product-flow visuals; packs assets for NuGet README rendering; adds discoverability metadata tests and package verification. Diagnostic IDs and severities are unchanged.</PackageReleaseNotes>
+        <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -39,6 +39,7 @@
     <ItemGroup>
         <None Include="..\..\icon.png" Pack="true" PackagePath="\"/>
         <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
+        <None Include="..\..\assets\**\*" Pack="true" PackagePath="assets\" />
         <!-- Include analyzer DLL in correct path for Roslyn -->
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0">

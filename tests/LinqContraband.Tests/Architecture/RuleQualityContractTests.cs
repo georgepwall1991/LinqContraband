@@ -28,7 +28,7 @@ public sealed class RuleQualityContractTests
         var properties = LoadPackageProperties();
 
         Assert.Equal("LinqContraband", properties["PackageId"]);
-        Assert.Equal("LinqContraband", properties["Title"]);
+        Assert.Equal("LinqContraband — EF Core LINQ performance analyzer", properties["Title"]);
         Assert.Equal(RepositoryUrl, properties["RepositoryUrl"]);
         Assert.Equal(ProjectUrl, properties["PackageProjectUrl"]);
         Assert.True(properties.TryGetValue("PackageReleaseNotes", out var releaseNotes) && !string.IsNullOrWhiteSpace(releaseNotes));
