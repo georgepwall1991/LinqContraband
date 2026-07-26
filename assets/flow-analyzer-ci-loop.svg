@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="440" viewBox="0 0 920 440" role="img" aria-labelledby="title desc">
+  <title id="title">LinqContraband product loop: Roslyn analyzer in IDE and CI</title>
+  <desc id="desc">Diagram of EF Core DbContext and LINQ queries feeding LinqContraband diagnostics in the editor and ContinuousIntegrationBuild CI gates.</desc>
+  <rect width="920" height="440" rx="12" fill="#0f172a"/>
+  <text x="32" y="40" fill="#f1f5f9" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700">Product loop: analyzer · IDE · CI (EF Core LINQ)</text>
+  <text x="32" y="64" fill="#94a3b8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">Same Roslyn package · compile-time LC rules · no runtime dependency</text>
+
+  <rect x="310" y="100" width="300" height="100" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+  <text x="460" y="140" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700">Your EF Core queries</text>
+  <text x="460" y="164" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">DbContext · IQueryable · Include · SaveChanges</text>
+  <text x="460" y="184" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">FromSqlRaw · AsNoTracking · async terminals</text>
+
+  <rect x="32" y="250" width="400" height="150" rx="10" fill="#172554" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="52" y="284" fill="#93c5fd" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700">LinqContraband (Roslyn analyzer)</text>
+  <text x="52" y="312" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">Editor + build diagnostics LC001–LC046</text>
+  <text x="52" y="336" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• N+1 · client-side evaluation · materialization</text>
+  <text x="52" y="356" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• AsNoTracking · Include · SaveChanges loops</text>
+  <text x="52" y="376" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• raw SQL · DbContext lifetime · concurrency</text>
+
+  <rect x="488" y="250" width="400" height="150" rx="10" fill="#14532d" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="508" y="284" fill="#86efac" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700">CI gate (ContinuousIntegrationBuild)</text>
+  <text x="508" y="312" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">dotnet build -p:ContinuousIntegrationBuild=true</text>
+  <text x="508" y="336" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• same analyzer DLL as NuGet package</text>
+  <text x="508" y="356" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• treat LC warnings as errors in pipelines</text>
+  <text x="508" y="376" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">• zero runtime overhead on deployed apps</text>
+
+  <path d="M360 200 L180 250" stroke="#60a5fa" stroke-width="2.5" fill="none"/>
+  <path d="M560 200 L740 250" stroke="#4ade80" stroke-width="2.5" fill="none"/>
+  <polygon points="172,248 188,242 182,258" fill="#60a5fa"/>
+  <polygon points="748,248 732,242 738,258" fill="#4ade80"/>
+  <text x="200" y="220" fill="#60a5fa" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">IDE / build</text>
+  <text x="680" y="220" fill="#4ade80" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">PR / CI</text>
+</svg>

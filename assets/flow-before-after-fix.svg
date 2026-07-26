@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="480" viewBox="0 0 920 480" role="img" aria-labelledby="title desc">
+  <title id="title">Before and after: premature materialization fixed by LinqContraband LC002</title>
+  <desc id="desc">Side-by-side before/after showing ToList before Where (LC002) versus filter-then-materialize for EF Core IQueryable queries.</desc>
+  <rect width="920" height="480" rx="12" fill="#0f172a"/>
+  <text x="32" y="40" fill="#f1f5f9" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700">Code fix: premature materialization (LC002)</text>
+  <text x="32" y="64" fill="#94a3b8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">Keep filters on IQueryable before ToList — stop client-side evaluation of whole tables</text>
+
+  <rect x="24" y="88" width="430" height="360" rx="10" fill="#1e1b1b" stroke="#7f1d1d" stroke-width="1.5"/>
+  <rect x="24" y="88" width="430" height="40" rx="10" fill="#7f1d1d"/>
+  <rect x="24" y="118" width="430" height="10" fill="#7f1d1d"/>
+  <text x="40" y="114" fill="#fecaca" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700">BEFORE — materialize then filter</text>
+
+  <text x="40" y="156" fill="#fca5a5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">// EF Core IQueryable</text>
+  <text x="40" y="180" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">var adults = db.Users</text>
+  <text x="40" y="200" fill="#f87171" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700">  .ToList()              // SELECT *</text>
+  <text x="40" y="220" fill="#f87171" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700">  .Where(u =&gt; u.Age &gt; 18) // in memory</text>
+  <text x="40" y="240" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">  .ToList();</text>
+
+  <text x="40" y="280" fill="#fca5a5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">// SQL impact</text>
+  <text x="40" y="304" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">SELECT * FROM Users</text>
+  <text x="40" y="324" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">then filter every row in the app</text>
+
+  <rect x="40" y="364" width="398" height="64" rx="6" fill="#450a0a"/>
+  <text x="52" y="390" fill="#fecaca" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">⚠ LC002 warning</text>
+  <text x="52" y="410" fill="#fca5a5" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">Calling 'Where' after materializing an IQueryable…</text>
+
+  <rect x="466" y="88" width="430" height="360" rx="10" fill="#0f1f17" stroke="#14532d" stroke-width="1.5"/>
+  <rect x="466" y="88" width="430" height="40" rx="10" fill="#14532d"/>
+  <rect x="466" y="118" width="430" height="10" fill="#14532d"/>
+  <text x="482" y="114" fill="#bbf7d0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700">AFTER — filter then materialize</text>
+
+  <text x="482" y="156" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">// EF Core IQueryable</text>
+  <text x="482" y="180" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">var adults = db.Users</text>
+  <text x="482" y="200" fill="#4ade80" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700">  .Where(u =&gt; u.Age &gt; 18) // SQL</text>
+  <text x="482" y="220" fill="#4ade80" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700">  .ToList();              // once</text>
+
+  <text x="482" y="280" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">// SQL impact</text>
+  <text x="482" y="304" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">SELECT * FROM Users</text>
+  <text x="482" y="324" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">WHERE Age &gt; 18</text>
+
+  <rect x="482" y="364" width="398" height="64" rx="6" fill="#052e16"/>
+  <text x="494" y="390" fill="#bbf7d0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">✓ Provider-side filter</text>
+  <text x="494" y="410" fill="#86efac" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">LINQ stays on IQueryable until one materializer</text>
+</svg>

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![LinqContraband Icon](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/icon.png)
+![LinqContraband icon — EF Core LINQ performance Roslyn analyzer](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/icon.png)
 
 ### Stop Smuggling Bad Queries into Production
 
@@ -14,15 +14,46 @@
 
 </div>
 
----
+**Compile-time EF Core LINQ performance analyzer for .NET** — a high-signal Roslyn analyzer that catches N+1 queries, client-side evaluation, premature materialization, sync-over-async, missing AsNoTracking, raw SQL injection risks, and other DbContext query issues in the editor and CI—not production.
 
-**LinqContraband** is the TSA for your Entity Framework Core queries. It scans your code as you type and confiscates
-performance killers—like client-side evaluation, N+1 risks, and sync-over-async—before they ever reach production.
+## The problem
 
-## Official Project and Safe Install
+Entity Framework Core and LINQ compile cleanly even when the query shape will hurt production. An N+1 `Find` inside a loop, `ToList()` before `Where`, a local method that forces client-side evaluation, sync-over-async on `DbContext`, or `FromSqlRaw($"...")` only fail under load, at 3 AM, or as a security incident.
 
-LinqContraband is an EF Core LINQ performance analyzer for .NET, distributed as a NuGet analyzer package and maintained
-by [George Wall](https://www.georgewall.uk/).
+Runtime profilers and code review miss what static analysis can prove from your `IQueryable` chains and EF Core API usage.
+
+## What it catches
+
+LinqContraband reports proven EF Core LINQ and DbContext pitfalls early:
+
+- N+1 database execution inside loops (`Find`, materializers, explicit load)
+- premature materialization (`ToList`/`AsEnumerable` before filters)
+- client-side evaluation risk from non-translatable local methods
+- sync-over-async EF Core calls in async methods
+- missing or misused AsNoTracking (tracking tax, silent writes, mixed modes)
+- Cartesian explosion and missing/excessive Include paths
+- SaveChanges inside loops and nested SaveChanges
+- raw SQL injection patterns (`FromSqlRaw` / `ExecuteSqlRaw` interpolation)
+- DbContext lifetime and concurrent same-context operations
+- unbounded materialization, projection waste, and pagination without OrderBy
+
+When the analyzer cannot prove an EF-backed query shape statically, it **stays quiet**. High-signal feedback, not noisy guesses.
+
+## Install
+
+```xml
+  <PackageReference Include="LinqContraband" Version="5.7.1" PrivateAssets="all" />
+```
+
+Or:
+
+```bash
+dotnet add package LinqContraband --version 5.7.1
+```
+
+**No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
+
+Install only from NuGet or from this repository. LinqContraband is not distributed as a standalone ZIP installer or executable; treat third-party ZIP downloads as untrusted.
 
 - **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
@@ -43,28 +74,50 @@ by [George Wall](https://www.georgewall.uk/).
 - **Query performance checklist:** [georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist](https://georgepwall1991.github.io/LinqContraband/ef-core-query-performance-checklist/)
 - **Link kit:** [georgepwall1991.github.io/LinqContraband/backlink-kit](https://georgepwall1991.github.io/LinqContraband/backlink-kit/)
 
-Install only from NuGet or from this repository. LinqContraband is not distributed as a standalone ZIP installer or
-executable; treat third-party ZIP downloads as untrusted.
+## See it work
 
-### ⚡ Why use LinqContraband?
+Product-flow diagrams from real sample diagnostics and shipped LC message formats:
 
-* **Zero Runtime Overhead:** It runs entirely at compile-time. No performance cost to your app.
-* **Catch Bugs Early:** Fix N+1 queries and Cartesian explosions in the IDE, not during a 3 AM outage.
-* **Enforce Best Practices:** Acts as an automated code reviewer for your team's data access patterns.
-* **Universal Support:** Works with VS, Rider, VS Code, and CI/CD pipelines. Compatible with all modern EF Core
-  versions.
+### 1. Build / IDE diagnostics (EF Core LINQ)
 
-## 🚀 Installation
+![LinqContraband Roslyn analyzer warnings for EF Core LINQ performance — LC001 client-side evaluation, LC002 premature materialization, LC007 N+1, LC018 FromSqlRaw SQL injection](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/assets/flow-ide-diagnostics.svg)
 
-Install via NuGet. No configuration required.
+### 2. Before / after code fix (premature materialization)
 
-```bash
-dotnet add package LinqContraband
-```
+![Before and after: EF Core ToList before Where fixed to filter then materialize with LC002 premature materialization code fix](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/assets/flow-before-after-fix.svg)
 
-The analyzer will immediately start scanning your code for contraband.
+### 3. Product loop — analyzer in IDE and CI
 
-## 👮‍♂️ The Rules
+![LinqContraband product loop: Roslyn analyzer build diagnostics for DbContext and IQueryable in the IDE and ContinuousIntegrationBuild CI](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/assets/flow-analyzer-ci-loop.svg)
+
+## 30-second path
+
+1. Reference the package with `PrivateAssets="all"`.
+2. Keep writing EF Core LINQ as usual (`DbSet`, `IQueryable`, `Include`, `SaveChanges`).
+3. Build in the IDE or with `ContinuousIntegrationBuild=true` on the command line so analyzers run.
+4. Fix any `LC00x` warnings (many have code fixes).
+5. Optionally promote critical rules to error in `.editorconfig` (see Configuration below).
+
+## Feature snapshot
+
+| Area | What LinqContraband does |
+|------|--------------------------|
+| N+1 queries | Flags database execution inside loops and SaveChanges-in-loop write amplification. |
+| Materialization | Catches premature `ToList`/`AsEnumerable` and redundant second materializers. |
+| Translation | Reports local methods and non-translatable string/date patterns that risk client-side evaluation. |
+| Tracking | Guides AsNoTracking, silent-write, and mixed tracking-mode hazards. |
+| Loading | Detects Cartesian explosion, missing Include, deep ThenInclude, excessive eager loading. |
+| Async | Sync-over-async, missing CancellationToken, async stream buffering, concurrent DbContext use. |
+| Raw SQL | Interpolated `FromSqlRaw`/`ExecuteSqlRaw` and constructed SQL string risks. |
+| Modeling | Missing primary keys and explicit foreign-key properties when statically provable. |
+
+## Compatibility
+
+- **.NET / Roslyn hosts:** Visual Studio, Rider, VS Code (C# Dev Kit), and `dotnet build` / CI
+- **EF Core:** Modern Entity Framework Core versions used with C# `IQueryable` / `DbContext` APIs
+- **Package kind:** Development dependency analyzer (`PrivateAssets="all"`); no app runtime package
+
+## Rule Details
 
 > **46 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 

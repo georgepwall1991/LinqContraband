@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.1] - 2026-07-26
+
+### Changed
+- Improved NuGet and GitHub discoverability: keyword-rich package Title, Description, and PackageTags for EF Core LINQ performance (N+1, client-side evaluation, AsNoTracking, DbContext, query performance); conversion-funnel README with product-flow visuals and absolute HTTPS image URLs; packs `assets/` for NuGet README rendering; adds discoverability metadata tests and `scripts/verify-packages.sh`. Diagnostic IDs and severities are unchanged.
+
 ## [5.7.0] - 2026-07-22
 
 ### Added
