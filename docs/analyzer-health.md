@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **46 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.7.1
-- Base audited commit: d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.1`
+- Package version: 5.7.2
+- Base audited commit: a4cbfbcd3b2f7ae6282f6065bbd67acafde72c6e
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.2`
 
 ## Rubric
 
@@ -750,9 +750,9 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.7.1**
+Package version: **5.7.2**
 
-Base audited commit: master at `d375b9ea7f9d5d39d385abf6a8e4ad1e1db10544` (5.7.0 analyzer state; 5.7.1 is discoverability-only). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, the July 2026 raw-SQL/fixer hardening, LC046 concurrent same-context operation detection in 5.7.0, and NuGet/GitHub discoverability assets in 5.7.1.
+Base audited commit: master at `a4cbfbcd3b2f7ae6282f6065bbd67acafde72c6e` (LC046 precision-hardening merge for 5.7.2; the later coverage-badge update does not change analyzer source). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, the July 2026 raw-SQL/fixer hardening, LC046 concurrent same-context operation detection in 5.7.0, and NuGet/GitHub discoverability assets in 5.7.1.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 

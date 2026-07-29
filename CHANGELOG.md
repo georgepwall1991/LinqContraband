@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.2] - 2026-07-29
+
 ### Fixed
 - LC046 follow-up hardening keeps a concurrent-operation diagnostic when a direct or stored `Task.WhenAny` allocated inside a compatible continuing handler's `try` can fail, when a potentially overflowing checked built-in conversion, user-defined conversion/operator, custom event accessor assignment, possibly-null field-like event receiver, or possibly-null instance-field receiver can throw before that await, when a source-defined replacement-exception constructor can fail before a direct `throw`, or when a terminal-looking opposite branch can reach a compatible continuing outer catch through a prefix statement, return expression, explicit `throw` operand, or custom event accessor. It now keeps overflow-safe checked conversions, field-like events with known receivers, null-conditional field reads, and known non-null field receivers quiet, while routing possible field/event receiver faults only to compatible `NullReferenceException` handlers. A terminal opposite branch remains terminal when a prefix fault has no handler path to the later operation. Terminal nested catches now intercept potential user-code conversion/operator failures, and metadata `Task.FromResult` is routed only as an `OutOfMemoryException` allocation failure so mismatched handlers stay quiet. A stored `Task.WhenAny` created before the `try` remains quiet.
 
