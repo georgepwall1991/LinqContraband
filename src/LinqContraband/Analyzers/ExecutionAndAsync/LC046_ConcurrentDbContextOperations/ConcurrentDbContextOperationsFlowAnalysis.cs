@@ -117,7 +117,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 !IsDefinitelyExecutedBefore(
                     ifStatement,
                     current.Invocation.Syntax,
-                    executableRoot.Syntax))
+                    executableRoot))
             {
                 continue;
             }
@@ -405,7 +405,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot)
     {
         if (previous.Syntax.SpanStart >= current.Syntax.SpanStart ||
-            !IsDefinitelyExecutedBefore(previous.Syntax, current.Syntax, executableRoot.Syntax))
+            !IsDefinitelyExecutedBefore(previous.Syntax, current.Syntax, executableRoot))
         {
             return false;
         }
@@ -457,6 +457,38 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (EscapesDirectly(previous, current))
             return false;
 
+        var stableArrayCompletionPoints = GetStableArrayCompletionPoints(
+            previous,
+            executableRoot);
+        if (!stableArrayCompletionPoints.IsDefaultOrEmpty)
+        {
+            if (stableArrayCompletionPoints.Any(completion =>
+                    completion.Completion.SpanStart < current.Syntax.SpanStart &&
+                    IsDefinitelyExecutedBefore(
+                        completion.Completion,
+                        current.Syntax,
+                        executableRoot) &&
+                    !CompletionCanBeBypassedByContinuingHandler(
+                        previous.Syntax,
+                        completion.Completion,
+                        completion.ThrowingPrefixEnd,
+                        current.Syntax,
+                        executableRoot,
+                        completion.ProvenNonThrowingWhenAny)))
+            {
+                return false;
+            }
+
+            if (TaskCompletionPointsEndOnEveryBranch(
+                    stableArrayCompletionPoints,
+                    previous.Syntax,
+                    current.Syntax,
+                    executableRoot))
+            {
+                return false;
+            }
+        }
+
         if (!TryGetAssignedTaskLocal(previous, out var taskLocal))
             return true;
 
@@ -465,7 +497,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (assignmentsBeforeCurrent != 1)
             return false;
 
-        var taskEndReferences = new List<ILocalReferenceOperation>();
+        var completionPoints = ImmutableArray.CreateBuilder<(
+            SyntaxNode Completion,
+            int ThrowingPrefixEnd,
+            IInvocationOperation? ProvenNonThrowingWhenAny)>();
         foreach (var operation in executableRoot.Descendants())
         {
             if (operation is not ILocalReferenceOperation localReference ||
@@ -476,32 +511,53 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            if (!IsReferenceAwaited(localReference) &&
-                !IsReferenceInAwaitedWhenAll(localReference, executableRoot) &&
-                !IsReferenceInAwaitedSingleTaskWhenAny(localReference) &&
-                !TryGetSynchronousTaskCompletion(localReference, out _) &&
-                !EscapesToUnknownConsumer(localReference))
+            var referenceCompletionPoints = ImmutableArray.CreateBuilder<(
+                SyntaxNode Completion,
+                int ThrowingPrefixEnd,
+                IInvocationOperation? ProvenNonThrowingWhenAny)>();
+            if (IsReferenceAwaited(localReference) ||
+                IsReferenceInAwaitedWhenAll(localReference, executableRoot) ||
+                IsReferenceInAwaitedSingleTaskWhenAny(localReference, executableRoot) ||
+                TryGetSynchronousTaskCompletion(localReference, out _))
             {
-                continue;
+                referenceCompletionPoints.AddRange(
+                    GetTaskCompletionPoints(localReference, executableRoot)
+                        .Where(completion =>
+                            completion.Completion.SpanStart <
+                            current.Syntax.SpanStart));
             }
 
-            taskEndReferences.Add(localReference);
-            if (IsDefinitelyExecutedBefore(
-                    localReference.Syntax,
-                    current.Syntax,
-                    executableRoot.Syntax) &&
-                !TaskEndCanBeBypassedByContinuingHandler(
-                    previous.Syntax,
+            referenceCompletionPoints.AddRange(
+                GetUnknownConsumerCompletionPoints(
                     localReference,
                     current.Syntax,
-                    executableRoot))
+                    executableRoot)
+                    .Where(completion =>
+                        completion.Completion.SpanStart <
+                        current.Syntax.SpanStart));
+            if (referenceCompletionPoints.Count == 0)
+                continue;
+
+            completionPoints.AddRange(referenceCompletionPoints);
+            if (referenceCompletionPoints.Any(completion =>
+                    IsDefinitelyExecutedBefore(
+                        completion.Completion,
+                        current.Syntax,
+                        executableRoot) &&
+                    !CompletionCanBeBypassedByContinuingHandler(
+                        previous.Syntax,
+                        completion.Completion,
+                        completion.ThrowingPrefixEnd,
+                        current.Syntax,
+                        executableRoot,
+                        completion.ProvenNonThrowingWhenAny)))
             {
                 return false;
             }
         }
 
-        return !TaskEndsOnEveryBranch(
-            taskEndReferences,
+        return !TaskCompletionPointsEndOnEveryBranch(
+            completionPoints.ToImmutable(),
             previous.Syntax,
             current.Syntax,
             executableRoot);
@@ -561,24 +617,25 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         if (taskEnd is ILocalReferenceOperation arrayElementReference)
         {
-            var arrayWhenAllAwaits = GetAwaitedWhenAllForStableArrayElement(
+            var arrayCompletionPoints = GetStableArrayCompletionPoints(
                 arrayElementReference,
                 executableRoot);
-            if (!arrayWhenAllAwaits.IsDefaultOrEmpty)
+            if (!arrayCompletionPoints.IsDefaultOrEmpty)
             {
-                foreach (var arrayWhenAllAwait in arrayWhenAllAwaits)
+                foreach (var completion in arrayCompletionPoints)
                 {
-                    if (arrayWhenAllAwait.Syntax.SpanStart >= current.SpanStart ||
+                    if (completion.Completion.SpanStart >= current.SpanStart ||
                         !IsDefinitelyExecutedBefore(
-                            arrayWhenAllAwait.Syntax,
+                            completion.Completion,
                             current,
-                            executableRoot.Syntax) ||
+                            executableRoot) ||
                         CompletionCanBeBypassedByContinuingHandler(
                             taskStart,
-                            arrayWhenAllAwait.Syntax,
-                            arrayWhenAllAwait.Operation.Syntax.Span.End,
+                            completion.Completion,
+                            completion.ThrowingPrefixEnd,
                             current,
-                            executableRoot))
+                            executableRoot,
+                            completion.ProvenNonThrowingWhenAny))
                     {
                         continue;
                     }
@@ -586,13 +643,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     return false;
                 }
 
-                var completionPoints = arrayWhenAllAwaits
-                    .Select(completion => (
-                        Completion: (SyntaxNode)completion.Syntax,
-                        ThrowingPrefixEnd: completion.Operation.Syntax.Span.End))
-                    .ToImmutableArray();
                 return !TaskCompletionPointsEndOnEveryBranch(
-                    completionPoints,
+                    arrayCompletionPoints,
                     taskStart,
                     current,
                     executableRoot);
@@ -601,7 +653,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         if (TryGetContainingAwaitedSingleTaskWhenAny(
                 taskEnd,
-                out var anonymousFunction,
+                out var whenAny,
                 out var whenAnyAwait))
         {
             return CompletionCanBeBypassedByContinuingHandler(
@@ -609,7 +661,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 whenAnyAwait.Syntax,
                 whenAnyAwait.Operation.Syntax.Span.End,
                 current,
-                executableRoot);
+                executableRoot,
+                whenAny);
         }
 
         return CompletionCanBeBypassedByContinuingHandler(
@@ -620,7 +673,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             executableRoot);
     }
 
-    private static ImmutableArray<(SyntaxNode Completion, int ThrowingPrefixEnd)>
+    private static ImmutableArray<(
+        SyntaxNode Completion,
+        int ThrowingPrefixEnd,
+        IInvocationOperation? ProvenNonThrowingWhenAny)>
         GetTaskCompletionPoints(
             ILocalReferenceOperation taskEnd,
             IOperation executableRoot)
@@ -629,48 +685,80 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         {
             return ImmutableArray.Create((
                 Completion: (SyntaxNode)synchronousCompletion.Syntax,
-                ThrowingPrefixEnd: synchronousCompletion.Syntax.SpanStart));
+                ThrowingPrefixEnd: synchronousCompletion.Syntax.SpanStart,
+                ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
         }
 
         if (TryGetImmediateAwait(taskEnd, out var immediateAwait))
         {
             return ImmutableArray.Create((
                 Completion: (SyntaxNode)immediateAwait.Syntax,
-                ThrowingPrefixEnd: immediateAwait.Operation.Syntax.Span.End));
+                ThrowingPrefixEnd: immediateAwait.Operation.Syntax.Span.End,
+                ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
         }
 
         if (TryGetContainingAwaitedWhenAll(taskEnd, out _, out var whenAllAwait))
         {
             return ImmutableArray.Create((
                 Completion: (SyntaxNode)whenAllAwait.Syntax,
-                ThrowingPrefixEnd: whenAllAwait.Operation.Syntax.Span.End));
+                ThrowingPrefixEnd: whenAllAwait.Operation.Syntax.Span.End,
+                ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
         }
 
-        var arrayWhenAllAwaits = GetAwaitedWhenAllForStableArrayElement(
+        var arrayCompletionPoints = GetStableArrayCompletionPoints(
             taskEnd,
             executableRoot);
-        if (!arrayWhenAllAwaits.IsDefaultOrEmpty)
-        {
-            return arrayWhenAllAwaits
-                .Select(completion => (
-                    Completion: (SyntaxNode)completion.Syntax,
-                    ThrowingPrefixEnd: completion.Operation.Syntax.Span.End))
-                .ToImmutableArray();
-        }
+        if (!arrayCompletionPoints.IsDefaultOrEmpty)
+            return arrayCompletionPoints;
 
         if (TryGetContainingAwaitedSingleTaskWhenAny(
                 taskEnd,
-                out _,
+                out var whenAny,
                 out var whenAnyAwait))
         {
             return ImmutableArray.Create((
                 Completion: (SyntaxNode)whenAnyAwait.Syntax,
-                ThrowingPrefixEnd: whenAnyAwait.Operation.Syntax.Span.End));
+                ThrowingPrefixEnd: whenAnyAwait.Operation.Syntax.Span.End,
+                ProvenNonThrowingWhenAny: (IInvocationOperation?)whenAny));
         }
 
         return ImmutableArray.Create((
             Completion: (SyntaxNode)taskEnd.Syntax,
-            ThrowingPrefixEnd: taskEnd.Syntax.SpanStart));
+            ThrowingPrefixEnd: taskEnd.Syntax.SpanStart,
+            ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
+    }
+
+    private static ImmutableArray<(
+        SyntaxNode Completion,
+        int ThrowingPrefixEnd,
+        IInvocationOperation? ProvenNonThrowingWhenAny)>
+        GetStableArrayCompletionPoints(
+            IOperation arrayElementReference,
+            IOperation executableRoot)
+    {
+        var builder = ImmutableArray.CreateBuilder<(
+            SyntaxNode Completion,
+            int ThrowingPrefixEnd,
+            IInvocationOperation? ProvenNonThrowingWhenAny)>();
+        if (arrayElementReference is ILocalReferenceOperation localReference)
+        {
+            builder.AddRange(
+                GetAwaitedWhenAllForStableArrayElement(localReference, executableRoot)
+                    .Select(completion => (
+                        Completion: (SyntaxNode)completion.Syntax,
+                        ThrowingPrefixEnd: completion.Operation.Syntax.Span.End,
+                        ProvenNonThrowingWhenAny: (IInvocationOperation?)null)));
+        }
+
+        builder.AddRange(
+            GetAwaitedSingleTaskWhenAnyForStableArrayElement(
+                    arrayElementReference,
+                    executableRoot)
+                .Select(completion => (
+                    Completion: (SyntaxNode)completion.Await.Syntax,
+                    ThrowingPrefixEnd: completion.Await.Operation.Syntax.Span.End,
+                    ProvenNonThrowingWhenAny: (IInvocationOperation?)completion.WhenAny)));
+        return builder.ToImmutable();
     }
 
     private static bool CompletionCanBeBypassedByContinuingHandler(
@@ -678,7 +766,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         SyntaxNode completion,
         int throwingPrefixEnd,
         SyntaxNode current,
-        IOperation executableRoot)
+        IOperation executableRoot,
+        IInvocationOperation? provenNonThrowingWhenAny = null)
     {
         foreach (var tryStatement in completion.Ancestors().OfType<TryStatementSyntax>())
         {
@@ -693,6 +782,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             var currentIsInFinally = tryStatement.Finally?.Span.Contains(current.Span) == true;
             var handlerCanReachFollowingOperation =
                 tryStatement.Span.End <= current.SpanStart &&
+                TryCanFallThroughToFollowingOperation(tryStatement, current) &&
                 tryStatement.Catches.Any(catchClause => !BranchAlwaysExits(catchClause.Block));
             if (currentCatch == null &&
                 !currentIsInFinally &&
@@ -705,6 +795,31 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 ? new[] { currentCatch }
                 : tryStatement.Catches
                     .Where(catchClause => !BranchAlwaysExits(catchClause.Block));
+
+            if (provenNonThrowingWhenAny != null &&
+                tryStatement.Block.Span.Contains(provenNonThrowingWhenAny.Syntax.Span))
+            {
+                var outOfMemoryException = executableRoot.SemanticModel?.Compilation
+                    .GetTypeByMetadataName("System.OutOfMemoryException");
+                if (outOfMemoryException == null ||
+                    currentIsInFinally ||
+                    eligibleCatches.Any(catchClause =>
+                        ExceptionCanReachCatch(
+                            provenNonThrowingWhenAny,
+                            catchClause,
+                            tryStatement,
+                            outOfMemoryException,
+                            executableRoot) ||
+                        NestedCatchReplacementCanReachCatch(
+                            provenNonThrowingWhenAny,
+                            catchClause,
+                            tryStatement,
+                            outOfMemoryException,
+                            executableRoot)))
+                {
+                    return true;
+                }
+            }
 
             if (EnumerateOutsideNestedExecutables(executableRoot)
                 .OfType<IInvocationOperation>()
@@ -728,7 +843,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     operation.Syntax.Span.End <= throwingPrefixEnd &&
                     !operation.Syntax.Span.Equals(completion.Span) &&
                     tryStatement.Block.Span.Contains(operation.Syntax.Span) &&
-                    CanThrowBeforeTaskEnd(operation, executableRoot) &&
+                    CanThrowBeforeTaskEnd(
+                        operation,
+                        executableRoot,
+                        provenNonThrowingWhenAny) &&
                     (currentIsInFinally || eligibleCatches.Any(catchClause =>
                         OperationCanReachCatch(
                             operation,
@@ -743,9 +861,47 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool TryCanFallThroughToFollowingOperation(
+        TryStatementSyntax tryStatement,
+        SyntaxNode current)
+    {
+        for (SyntaxNode? node = tryStatement; node?.Parent != null; node = node.Parent)
+        {
+            switch (node.Parent)
+            {
+                case BlockSyntax block:
+                    if (block.Span.Contains(current.Span))
+                        return node.SpanStart < current.SpanStart;
+
+                    break;
+
+                case IfStatementSyntax ifStatement:
+                    var nodeBranch = GetIfBranch(ifStatement, node);
+                    var currentBranch = GetIfBranch(ifStatement, current);
+                    if (nodeBranch != null &&
+                        currentBranch != null &&
+                        !ReferenceEquals(nodeBranch, currentBranch))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case TryStatementSyntax outerTry when
+                    outerTry.Catches.Any(catchClause =>
+                        catchClause.Span.Contains(current.Span)) ||
+                    outerTry.Finally?.Span.Contains(current.Span) == true:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
     private static bool CanThrowBeforeTaskEnd(
         IOperation operation,
-        IOperation executableRoot)
+        IOperation executableRoot,
+        IInvocationOperation? provenNonThrowingWhenAny = null)
     {
         if (operation is IInvocationOperation invocation)
         {
@@ -754,6 +910,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if (IsTaskWhenAny(invocation))
             {
+                if (provenNonThrowingWhenAny != null &&
+                    (ReferenceEquals(invocation, provenNonThrowingWhenAny) ||
+                     invocation.Syntax.Span.Equals(provenNonThrowingWhenAny.Syntax.Span)))
+                {
+                    return false;
+                }
+
                 return !TaskWhenAnyHasExactlyOneInput(invocation) ||
                        !TaskCombinatorInputsAreDefinitelyNonNull(invocation, executableRoot);
             }
@@ -771,10 +934,249 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return operation is IObjectCreationOperation or
+            IArrayCreationOperation or
             IThrowOperation or
             IAwaitOperation or
             IPropertyReferenceOperation or
-            IArrayElementReferenceOperation;
+            IArrayElementReferenceOperation ||
+            operation is IEventAssignmentOperation eventAssignment &&
+                EventAssignmentCanThrowBeforeTaskEnd(eventAssignment, executableRoot) ||
+            FieldReferenceCanThrowBeforeTaskEnd(operation, executableRoot) ||
+            operation is IConversionOperation { OperatorMethod: not null } or
+                IBinaryOperation { OperatorMethod: not null } or
+                IUnaryOperation { OperatorMethod: not null } or
+                IIncrementOrDecrementOperation { OperatorMethod: not null } ||
+            BuiltInOperationCanThrow(operation) ||
+            IsArrayBackedCollectionExpression(operation);
+    }
+
+    private static bool BuiltInOperationCanThrow(IOperation operation)
+    {
+        return operation switch
+        {
+            IConversionOperation conversion => BuiltInConversionCanThrow(conversion),
+            IBinaryOperation binary => BuiltInBinaryOperationCanThrow(binary),
+            IUnaryOperation unary => BuiltInUnaryOperationCanThrow(unary),
+            IIncrementOrDecrementOperation incrementOrDecrement =>
+                BuiltInIncrementOrDecrementCanThrow(incrementOrDecrement),
+            _ => false
+        };
+    }
+
+    private static bool BuiltInConversionCanThrow(IConversionOperation conversion)
+    {
+        return conversion.OperatorMethod == null &&
+               (IsCheckedBuiltInConversion(conversion) ||
+                IsNullableValueConversion(conversion) ||
+                IsExplicitReferenceOrUnboxingConversion(conversion));
+    }
+
+    private static bool IsNullableValueConversion(IConversionOperation conversion)
+    {
+        return conversion.Conversion.IsNullable &&
+               IsNullableValueType(conversion.Operand.Type) &&
+               !IsNullableValueType(conversion.Type);
+    }
+
+    private static bool IsExplicitReferenceOrUnboxingConversion(
+        IConversionOperation conversion)
+    {
+        return !conversion.IsTryCast &&
+               !conversion.Conversion.IsImplicit &&
+               (conversion.Conversion.IsReference || IsUnboxingConversion(conversion));
+    }
+
+    private static bool IsUnboxingConversion(IConversionOperation conversion)
+    {
+        return conversion.Operand.Type?.IsReferenceType == true &&
+               conversion.Type?.IsValueType == true;
+    }
+
+    private static bool BuiltInBinaryOperationCanThrow(IBinaryOperation binary)
+    {
+        if (binary.OperatorMethod != null ||
+            binary.ConstantValue.HasValue ||
+            !IsIntegralOrDecimalType(binary.Type))
+        {
+            return false;
+        }
+
+        return IsDivisionOrRemainderExpression(binary.Syntax) ||
+               IsPotentiallyOverflowingBinaryOperation(binary);
+    }
+
+    private static bool IsPotentiallyOverflowingBinaryOperation(IBinaryOperation binary)
+    {
+        return IsArithmeticExpression(binary.Syntax) &&
+               (binary.IsChecked || IsDecimalType(binary.Type));
+    }
+
+    private static bool BuiltInUnaryOperationCanThrow(IUnaryOperation unary)
+    {
+        return unary.OperatorMethod == null &&
+               !unary.ConstantValue.HasValue &&
+               unary.Syntax.IsKind(SyntaxKind.UnaryMinusExpression) &&
+               IsIntegralOrDecimalType(unary.Type) &&
+               (unary.IsChecked || IsDecimalType(unary.Type));
+    }
+
+    private static bool BuiltInIncrementOrDecrementCanThrow(
+        IIncrementOrDecrementOperation incrementOrDecrement)
+    {
+        return incrementOrDecrement.OperatorMethod == null &&
+               IsIntegralOrDecimalType(incrementOrDecrement.Type) &&
+               (incrementOrDecrement.IsChecked ||
+                IsDecimalType(incrementOrDecrement.Type));
+    }
+
+    private static bool IsDivisionOrRemainderExpression(SyntaxNode syntax)
+    {
+        return syntax.IsKind(SyntaxKind.DivideExpression) ||
+               syntax.IsKind(SyntaxKind.ModuloExpression);
+    }
+
+    private static bool IsArithmeticExpression(SyntaxNode syntax)
+    {
+        return syntax.IsKind(SyntaxKind.AddExpression) ||
+               syntax.IsKind(SyntaxKind.SubtractExpression) ||
+               syntax.IsKind(SyntaxKind.MultiplyExpression) ||
+               IsDivisionOrRemainderExpression(syntax);
+    }
+
+    private static bool IsIntegralOrDecimalType(ITypeSymbol? type)
+    {
+        return UnwrapNullableValueType(type)?.SpecialType is
+            SpecialType.System_SByte or
+            SpecialType.System_Byte or
+            SpecialType.System_Int16 or
+            SpecialType.System_UInt16 or
+            SpecialType.System_Int32 or
+            SpecialType.System_UInt32 or
+            SpecialType.System_Int64 or
+            SpecialType.System_UInt64 or
+            SpecialType.System_Decimal;
+    }
+
+    private static bool IsDecimalType(ITypeSymbol? type)
+    {
+        return UnwrapNullableValueType(type)?.SpecialType == SpecialType.System_Decimal;
+    }
+
+    private static ITypeSymbol? UnwrapNullableValueType(ITypeSymbol? type)
+    {
+        return type is INamedTypeSymbol
+        {
+            OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+            TypeArguments.Length: 1
+        } nullableType
+            ? nullableType.TypeArguments[0]
+            : type;
+    }
+
+    private static bool IsNullableValueType(ITypeSymbol? type)
+    {
+        return type is INamedTypeSymbol
+        {
+            OriginalDefinition.SpecialType: SpecialType.System_Nullable_T
+        };
+    }
+
+    private static bool FieldReferenceCanThrowBeforeTaskEnd(
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        return operation is IFieldReferenceOperation { Instance: { } instance } &&
+               ReferenceReceiverCanThrowNullReference(instance, executableRoot);
+    }
+
+    private static bool ReferenceReceiverCanThrowNullReference(
+        IOperation instance,
+        IOperation executableRoot)
+    {
+        return instance is not IInstanceReferenceOperation &&
+               instance is not IConditionalAccessInstanceOperation &&
+               instance.Type?.IsReferenceType == true &&
+               !IsDefinitelyNonNullFieldReceiver(
+                   instance,
+                   executableRoot,
+                   instance.Syntax.SpanStart,
+                   new HashSet<ISymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private static bool IsDefinitelyNonNullFieldReceiver(
+        IOperation receiver,
+        IOperation executableRoot,
+        int beforePosition,
+        HashSet<ISymbol> visitedLocals)
+    {
+        receiver = receiver.UnwrapConversions();
+        if (receiver is IObjectCreationOperation)
+            return true;
+
+        if (receiver is not ILocalReferenceOperation localReference ||
+            !visitedLocals.Add(localReference.Local) ||
+            !LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) ||
+            !TryGetLatestDefiniteStorageReceiverValueBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                out var assignedValue,
+                out var assignmentPosition))
+        {
+            return false;
+        }
+
+        var isDefinitelyNonNull = IsDefinitelyNonNullFieldReceiver(
+            assignedValue,
+            executableRoot,
+            assignmentPosition,
+            visitedLocals);
+        visitedLocals.Remove(localReference.Local);
+        return isDefinitelyNonNull;
+    }
+
+    private static bool EventAssignmentCanThrowBeforeTaskEnd(
+        IEventAssignmentOperation assignment,
+        IOperation executableRoot)
+    {
+        return EventAssignmentReceiverCanThrowNullReference(assignment, executableRoot) ||
+               EventAccessorCanThrowBeforeTaskEnd(assignment);
+    }
+
+    private static bool EventAssignmentReceiverCanThrowNullReference(
+        IEventAssignmentOperation assignment,
+        IOperation executableRoot)
+    {
+        return assignment.EventReference is IEventReferenceOperation { Instance: { } instance } &&
+               ReferenceReceiverCanThrowNullReference(instance, executableRoot);
+    }
+
+    private static bool EventAccessorCanThrowBeforeTaskEnd(
+        IEventAssignmentOperation assignment)
+    {
+        if (assignment.EventReference is not IEventReferenceOperation eventReference)
+            return true;
+
+        var accessor = assignment.Adds
+            ? eventReference.Event.AddMethod
+            : eventReference.Event.RemoveMethod;
+        return accessor is null ||
+               !accessor.IsImplicitlyDeclared ||
+               accessor.IsAbstract ||
+               accessor.IsExtern ||
+               (accessor.IsVirtual || accessor.IsOverride) && !accessor.IsSealed;
+    }
+
+    private static bool IsCheckedBuiltInConversion(IOperation operation)
+    {
+        return operation is IConversionOperation conversion &&
+               conversion.IsChecked &&
+               conversion.OperatorMethod == null &&
+               !conversion.ConstantValue.HasValue &&
+               !conversion.Conversion.IsImplicit;
     }
 
     private static bool TaskStartCanReachCurrentHandler(
@@ -800,7 +1202,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 IsDefinitelyExecutedBefore(
                     taskStart.Syntax,
                     operation.Syntax,
-                    executableRoot.Syntax) &&
+                    executableRoot) &&
                 CanThrowBeforeTaskEnd(operation, executableRoot) &&
                 OperationCanReachCatch(
                     operation,
@@ -824,8 +1226,185 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (GetCatchFilterConstantValue(targetCatch, semanticModel) == false)
             return false;
 
-        if (operation is IObjectCreationOperation &&
-            IsDirectExceptionConstruction(operation))
+        if (NestedFinallyCanReachCatch(
+                operation,
+                targetCatch,
+                targetTry,
+                executableRoot))
+        {
+            return true;
+        }
+
+        if (operation is IInvocationOperation taskFromResult &&
+            IsKnownNonConsumingTaskWrapper(taskFromResult) &&
+            taskFromResult.TargetMethod.DeclaringSyntaxReferences.Length == 0)
+        {
+            var outOfMemoryException = semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.OutOfMemoryException");
+            return outOfMemoryException == null ||
+                   ExceptionCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       outOfMemoryException,
+                       executableRoot) ||
+                   NestedCatchReplacementCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       outOfMemoryException,
+                       executableRoot);
+        }
+
+        if (knownExceptionType == null &&
+            (operation is IArrayCreationOperation ||
+             IsArrayBackedCollectionExpression(operation)))
+        {
+            var outOfMemoryException = semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.OutOfMemoryException");
+            if (outOfMemoryException == null ||
+                ExceptionCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    outOfMemoryException,
+                    executableRoot) ||
+                NestedCatchReplacementCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    outOfMemoryException,
+                    executableRoot))
+            {
+                return true;
+            }
+
+            if (operation is IArrayCreationOperation nullableConversionArray &&
+                ArrayLengthHasNullableValueConversion(nullableConversionArray))
+            {
+                var invalidOperationException = semanticModel?.Compilation.GetTypeByMetadataName(
+                    "System.InvalidOperationException");
+                if (invalidOperationException == null ||
+                    ExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        invalidOperationException,
+                        executableRoot) ||
+                    NestedCatchReplacementCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        invalidOperationException,
+                        executableRoot))
+                {
+                    return true;
+                }
+            }
+
+            if (operation is IArrayCreationOperation userDefinedConversionArray &&
+                ArrayLengthHasUserDefinedConversion(userDefinedConversionArray))
+            {
+                return PotentialUserDefinedOperationCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    executableRoot);
+            }
+
+            if (operation is not IArrayCreationOperation overflowArrayCreation ||
+                !ArrayLengthMayOverflow(overflowArrayCreation))
+            {
+                return false;
+            }
+
+            var overflowException = semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.OverflowException");
+            return overflowException == null ||
+                   ExceptionCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       overflowException,
+                       executableRoot) ||
+                   NestedCatchReplacementCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       overflowException,
+                       executableRoot);
+        }
+
+        if (TryBuiltInOperationCanReachCatch(
+                operation,
+                targetCatch,
+                targetTry,
+                executableRoot,
+                out var builtInOperationCanReachCatch))
+        {
+            return builtInOperationCanReachCatch;
+        }
+
+        if (FieldReferenceCanThrowBeforeTaskEnd(operation, executableRoot))
+        {
+            var nullReferenceException = semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.NullReferenceException");
+            return nullReferenceException == null ||
+                   ExceptionCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       nullReferenceException,
+                       executableRoot) ||
+                   NestedCatchReplacementCanReachCatch(
+                       operation,
+                       targetCatch,
+                       targetTry,
+                       nullReferenceException,
+                       executableRoot);
+        }
+
+        if (operation is IEventAssignmentOperation eventAssignment &&
+            EventAssignmentReceiverCanThrowNullReference(eventAssignment, executableRoot))
+        {
+            var nullReferenceException = semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.NullReferenceException");
+            if (nullReferenceException == null ||
+                ExceptionCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    nullReferenceException,
+                    executableRoot) ||
+                NestedCatchReplacementCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    nullReferenceException,
+                    executableRoot))
+            {
+                return true;
+            }
+
+            if (!EventAccessorCanThrowBeforeTaskEnd(eventAssignment))
+                return false;
+        }
+
+        if (operation is IConversionOperation { OperatorMethod: not null } or
+            IBinaryOperation { OperatorMethod: not null } or
+            IUnaryOperation { OperatorMethod: not null } or
+            IIncrementOrDecrementOperation { OperatorMethod: not null })
+        {
+            return PotentialUserDefinedOperationCanReachCatch(
+                operation,
+                targetCatch,
+                targetTry,
+                executableRoot);
+        }
+
+        if (operation is IObjectCreationOperation objectCreation &&
+            IsDirectExceptionConstruction(operation) &&
+            IsKnownFrameworkExceptionConstruction(objectCreation))
         {
             return false;
         }
@@ -875,11 +1454,329 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             ? CatchDefinitelyHandlesException(targetCatch, thrownType, semanticModel)
             : CatchMayHandleException(targetCatch, thrownType, semanticModel);
         return catchCanHandleThrownType &&
-               !ThrowIsDefinitelyIntercepted(
-                   throwOperation,
+               !ExceptionIsDefinitelyIntercepted(
+                   throwOperation.Syntax,
                    thrownType,
+                   thrownTypeIsExact,
                    targetTry,
-                   semanticModel);
+                   targetCatch,
+                   executableRoot);
+    }
+
+    private static bool NestedFinallyCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        IOperation executableRoot)
+    {
+        foreach (var nestedTry in operation.Syntax.Ancestors()
+                     .OfType<TryStatementSyntax>())
+        {
+            if (ReferenceEquals(nestedTry, targetTry))
+                break;
+
+            if (!nestedTry.Block.Span.Contains(operation.Syntax.Span) ||
+                nestedTry.Finally == null)
+            {
+                continue;
+            }
+
+            if (FinallyCanReachCatch(
+                    nestedTry.Finally,
+                    targetCatch,
+                    targetTry,
+                    executableRoot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool FinallyCanReachCatch(
+        FinallyClauseSyntax finallyClause,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        IOperation executableRoot)
+    {
+        return EnumerateOutsideNestedExecutables(executableRoot).Any(candidate =>
+            finallyClause.Block.Span.Contains(candidate.Syntax.Span) &&
+            !IsStaticallyUnreachable(
+                candidate.Syntax,
+                executableRoot.SemanticModel) &&
+            CanThrowBeforeTaskEnd(candidate, executableRoot) &&
+            OperationCanReachCatch(
+                candidate,
+                targetCatch,
+                targetTry,
+                executableRoot));
+    }
+
+    private static bool ExceptionCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        ITypeSymbol exceptionType,
+        IOperation executableRoot)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        return CatchDefinitelyHandlesException(
+                   targetCatch,
+                   exceptionType,
+                   semanticModel) &&
+               !ExceptionIsDefinitelyIntercepted(
+                   operation.Syntax,
+                   exceptionType,
+                   true,
+                   targetTry,
+                   targetCatch,
+                   executableRoot);
+    }
+
+    private static bool PotentialUserDefinedOperationCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        IOperation executableRoot)
+    {
+        var exceptionType = executableRoot.SemanticModel?.Compilation.GetTypeByMetadataName(
+            "System.Exception");
+        return exceptionType == null ||
+               !ExceptionIsDefinitelyIntercepted(
+                   operation.Syntax,
+                   exceptionType,
+                   exceptionTypeIsExact: false,
+                   targetTry,
+                   targetCatch,
+                   executableRoot);
+    }
+
+    private static bool TryBuiltInOperationCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        IOperation executableRoot,
+        out bool canReachCatch)
+    {
+        canReachCatch = false;
+        switch (operation)
+        {
+            case IConversionOperation conversion when BuiltInConversionCanThrow(conversion):
+                if (IsCheckedBuiltInConversion(conversion))
+                {
+                    canReachCatch |= ExactExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        "System.OverflowException",
+                        executableRoot);
+                }
+
+                if (IsNullableValueConversion(conversion))
+                {
+                    canReachCatch |= ExactExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        "System.InvalidOperationException",
+                        executableRoot);
+                }
+
+                if (IsExplicitReferenceOrUnboxingConversion(conversion))
+                {
+                    canReachCatch |= ExactExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        "System.InvalidCastException",
+                        executableRoot);
+                    if (IsUnboxingConversion(conversion))
+                    {
+                        canReachCatch |= ExactExceptionCanReachCatch(
+                            operation,
+                            targetCatch,
+                            targetTry,
+                            "System.NullReferenceException",
+                            executableRoot);
+                    }
+                }
+
+                return true;
+
+            case IBinaryOperation binary when BuiltInBinaryOperationCanThrow(binary):
+                if (IsDivisionOrRemainderExpression(binary.Syntax))
+                {
+                    canReachCatch |= ExactExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        "System.DivideByZeroException",
+                        executableRoot);
+                }
+
+                if (IsPotentiallyOverflowingBinaryOperation(binary))
+                {
+                    canReachCatch |= ExactExceptionCanReachCatch(
+                        operation,
+                        targetCatch,
+                        targetTry,
+                        "System.OverflowException",
+                        executableRoot);
+                }
+
+                return true;
+
+            case IUnaryOperation unary when BuiltInUnaryOperationCanThrow(unary):
+                canReachCatch = ExactExceptionCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    "System.OverflowException",
+                    executableRoot);
+                return true;
+
+            case IIncrementOrDecrementOperation incrementOrDecrement when
+                BuiltInIncrementOrDecrementCanThrow(incrementOrDecrement):
+                canReachCatch = ExactExceptionCanReachCatch(
+                    operation,
+                    targetCatch,
+                    targetTry,
+                    "System.OverflowException",
+                    executableRoot);
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool ExactExceptionCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        string exceptionMetadataName,
+        IOperation executableRoot)
+    {
+        var exceptionType = executableRoot.SemanticModel?.Compilation.GetTypeByMetadataName(
+            exceptionMetadataName);
+        return exceptionType == null ||
+               ExceptionCanReachCatch(
+                   operation,
+                   targetCatch,
+                   targetTry,
+                   exceptionType,
+                   executableRoot) ||
+               NestedCatchReplacementCanReachCatch(
+                   operation,
+                   targetCatch,
+                   targetTry,
+                   exceptionType,
+                   executableRoot);
+    }
+
+    private static bool NestedCatchReplacementCanReachCatch(
+        IOperation operation,
+        CatchClauseSyntax targetCatch,
+        TryStatementSyntax targetTry,
+        ITypeSymbol exceptionType,
+        IOperation executableRoot)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        foreach (var nestedTry in operation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (ReferenceEquals(nestedTry, targetTry))
+                break;
+
+            if (!nestedTry.Block.Span.Contains(operation.Syntax.Span))
+                continue;
+
+            foreach (var catchClause in nestedTry.Catches)
+            {
+                if (!CatchDefinitelyHandlesException(
+                        catchClause,
+                        exceptionType,
+                        semanticModel))
+                {
+                    continue;
+                }
+
+                var filterValue = GetCatchFilterConstantValue(catchClause, semanticModel);
+                if (filterValue == false)
+                    continue;
+
+                if (CatchCanPropagateExceptionToTarget(
+                        catchClause,
+                        targetTry,
+                        targetCatch,
+                        exceptionType,
+                        caughtExceptionTypeIsExact: true,
+                        executableRoot))
+                {
+                    return true;
+                }
+
+                if (filterValue == true)
+                    break;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ArrayLengthMayOverflow(
+        IArrayCreationOperation arrayCreation)
+    {
+        return arrayCreation.DimensionSizes.Any(size =>
+            !IsGuaranteedArrayLengthWithinIntRange(size));
+    }
+
+    private static bool IsGuaranteedArrayLengthWithinIntRange(IOperation operation)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        return IsNonNegativeIntegralConstant(operation) ||
+               operation.Type?.SpecialType is
+                   SpecialType.System_Byte or
+                   SpecialType.System_UInt16 or
+                   SpecialType.System_Char;
+    }
+
+    private static bool ArrayLengthHasNullableValueConversion(
+        IArrayCreationOperation arrayCreation)
+    {
+        return arrayCreation.DimensionSizes.Any(size =>
+            size is IConversionOperation conversion && conversion.Conversion.IsNullable ||
+            size.Descendants().OfType<IConversionOperation>().Any(conversion =>
+                conversion.Conversion.IsNullable));
+    }
+
+    private static bool ArrayLengthHasUserDefinedConversion(
+        IArrayCreationOperation arrayCreation)
+    {
+        return arrayCreation.DimensionSizes.Any(size =>
+            size is IConversionOperation { OperatorMethod: not null } ||
+            size.Descendants().OfType<IConversionOperation>().Any(conversion =>
+                conversion.OperatorMethod != null));
+    }
+
+    private static bool IsNonNegativeIntegralConstant(IOperation operation)
+    {
+        var constant = operation.ConstantValue;
+        if (!constant.HasValue)
+            return false;
+
+        return constant.Value switch
+        {
+            byte => true,
+            sbyte value => value >= 0,
+            ushort => true,
+            short value => value >= 0,
+            uint value => value <= int.MaxValue,
+            int value => value >= 0,
+            ulong value => value <= int.MaxValue,
+            long value => value is >= 0 and <= int.MaxValue,
+            _ => false
+        };
     }
 
     private static ITypeSymbol? GetThrownExceptionType(
@@ -959,10 +1856,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             .ToArray();
         var hasNullCollection = inputs.Any(IsDefinitelyNullTaskInput);
         var hasNullElement = inputs.Any(input =>
-            input is IArrayCreationOperation
+        {
+            if ((TryGetArrayElements(input, out var elements) ||
+                 TryGetCollectionExpressionElements(input, out elements)) &&
+                elements.Any(IsDefinitelyNullTaskInput))
             {
-                Initializer: { } initializer
-            } && initializer.ElementValues.Any(IsDefinitelyNullTaskInput));
+                return true;
+            }
+
+            return CollectionExpressionHasDefinitelyNullElement(input);
+        });
 
         exceptionType = executableRoot.SemanticModel?.Compilation.GetTypeByMetadataName(
             hasNullCollection
@@ -1026,32 +1929,315 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return current.Parent is IThrowOperation;
     }
 
-    private static bool ThrowIsDefinitelyIntercepted(
-        IThrowOperation throwOperation,
-        ITypeSymbol? thrownType,
+    private static bool ExceptionIsDefinitelyIntercepted(
+        SyntaxNode operation,
+        ITypeSymbol? exceptionType,
+        bool exceptionTypeIsExact,
         TryStatementSyntax targetTry,
-        SemanticModel? semanticModel)
+        CatchClauseSyntax targetCatch,
+        IOperation executableRoot)
     {
-        foreach (var nestedTry in throwOperation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        var semanticModel = executableRoot.SemanticModel;
+        foreach (var nestedTry in operation.Ancestors().OfType<TryStatementSyntax>())
         {
             if (ReferenceEquals(nestedTry, targetTry))
                 break;
 
-            if (!nestedTry.Block.Span.Contains(throwOperation.Syntax.Span))
+            if (!nestedTry.Block.Span.Contains(operation.Span))
                 continue;
+
+            if (nestedTry.Finally is { } finallyClause &&
+                BranchAlwaysExits(finallyClause.Block))
+            {
+                return !FinallyCanReachCatch(
+                    finallyClause,
+                    targetCatch,
+                    targetTry,
+                    executableRoot);
+            }
 
             foreach (var catchClause in nestedTry.Catches)
             {
-                if (!CatchDefinitelyHandlesException(catchClause, thrownType, semanticModel))
+                if (!CatchDefinitelyHandlesException(
+                        catchClause,
+                        exceptionType,
+                        semanticModel))
+                {
                     continue;
+                }
 
                 var filterValue = GetCatchFilterConstantValue(catchClause, semanticModel);
+                if (filterValue == false)
+                    continue;
+
+                var canPropagate = CatchCanPropagateExceptionToTarget(
+                    catchClause,
+                    targetTry,
+                    targetCatch,
+                    exceptionType,
+                    exceptionTypeIsExact,
+                    executableRoot);
                 if (filterValue == true)
-                    return true;
+                {
+                    return !canPropagate;
+                }
+
+                if (canPropagate)
+                    return false;
             }
         }
 
+        foreach (var catchClause in targetTry.Catches)
+        {
+            if (ReferenceEquals(catchClause, targetCatch))
+                break;
+
+            if (!CatchDefinitelyHandlesException(
+                    catchClause,
+                    exceptionType,
+                    semanticModel))
+            {
+                continue;
+            }
+
+            var filterValue = GetCatchFilterConstantValue(catchClause, semanticModel);
+            if (filterValue == true)
+                return true;
+        }
+
         return false;
+    }
+
+    private static bool CatchCanPropagateExceptionToTarget(
+        CatchClauseSyntax sourceCatch,
+        TryStatementSyntax targetTry,
+        CatchClauseSyntax targetCatch,
+        ITypeSymbol? caughtExceptionType,
+        bool caughtExceptionTypeIsExact,
+        IOperation executableRoot)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        if (sourceCatch.Block.DescendantNodes(node =>
+                node is not AnonymousFunctionExpressionSyntax and
+                    not LocalFunctionStatementSyntax)
+            .Any(node =>
+            {
+                ExpressionSyntax? expression = node switch
+                {
+                    ThrowStatementSyntax throwStatement => throwStatement.Expression,
+                    ThrowExpressionSyntax throwExpression => throwExpression.Expression,
+                    _ => null
+                };
+                if (node is not ThrowStatementSyntax &&
+                    node is not ThrowExpressionSyntax)
+                {
+                    return false;
+                }
+
+                if (IsStaticallyUnreachable(node, semanticModel))
+                    return false;
+
+                ITypeSymbol? propagatedType;
+                bool propagatedTypeIsExact;
+                if (expression != null &&
+                    semanticModel?.GetOperation(node) is
+                    IThrowOperation propagatedThrow)
+                {
+                    propagatedType = GetThrownExceptionType(
+                        propagatedThrow,
+                        executableRoot,
+                        out propagatedTypeIsExact);
+                }
+                else
+                {
+                    propagatedType = GetBareRethrowExceptionType(
+                        node,
+                        sourceCatch,
+                        caughtExceptionType,
+                        caughtExceptionTypeIsExact,
+                        out propagatedTypeIsExact,
+                        semanticModel);
+                }
+
+                return !ExceptionIsDefinitelyIntercepted(
+                           node,
+                           propagatedType,
+                           propagatedTypeIsExact,
+                           targetTry,
+                           targetCatch,
+                           executableRoot) &&
+                       (propagatedTypeIsExact
+                           ? CatchDefinitelyHandlesException(
+                               targetCatch,
+                               propagatedType,
+                               semanticModel)
+                           : CatchMayHandleException(
+                               targetCatch,
+                               propagatedType,
+                               semanticModel));
+            }))
+        {
+            return true;
+        }
+
+        return EnumerateOutsideNestedExecutables(executableRoot)
+            .Where(operation =>
+                sourceCatch.Block.Span.Contains(operation.Syntax.Span) &&
+                operation is not IThrowOperation &&
+                !IsStaticallyUnreachable(operation.Syntax, semanticModel) &&
+                !IsKnownFrameworkReplacementConstructionForThrow(
+                    operation,
+                    sourceCatch,
+                    executableRoot) &&
+                CanThrowBeforeTaskEnd(operation, executableRoot))
+            .Any(operation => OperationCanReachCatch(
+                operation,
+                targetCatch,
+                targetTry,
+                executableRoot));
+    }
+
+    private static bool IsKnownFrameworkReplacementConstructionForThrow(
+        IOperation operation,
+        CatchClauseSyntax sourceCatch,
+        IOperation executableRoot)
+    {
+        if (operation is not IObjectCreationOperation objectCreation ||
+            !IsKnownFrameworkExceptionConstruction(objectCreation))
+        {
+            return false;
+        }
+
+        IOperation current = operation;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        var replacementLocal = current.Parent switch
+        {
+            IVariableInitializerOperation
+            {
+                Parent: IVariableDeclaratorOperation declarator
+            } => declarator.Symbol,
+            ISimpleAssignmentOperation assignment
+                when assignment.Target.UnwrapConversions() is
+                    ILocalReferenceOperation targetLocal => targetLocal.Local,
+            _ => null
+        };
+        if (replacementLocal == null)
+            return false;
+
+        return EnumerateOutsideNestedExecutables(executableRoot)
+            .OfType<IThrowOperation>()
+            .Where(throwOperation =>
+                sourceCatch.Block.Span.Contains(throwOperation.Syntax.Span) &&
+                throwOperation.Exception?.UnwrapConversions() is
+                    ILocalReferenceOperation thrownLocal &&
+                SymbolEqualityComparer.Default.Equals(
+                    thrownLocal.Local,
+                    replacementLocal))
+            .Any(throwOperation =>
+                GetThrownExceptionType(
+                    throwOperation,
+                    executableRoot,
+                    out var isExact) != null &&
+                isExact &&
+                LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                    executableRoot,
+                    replacementLocal,
+                    throwOperation.Syntax.SpanStart,
+                    out var assignedValue,
+                    default) &&
+                assignedValue.Syntax.Span.Contains(operation.Syntax.Span));
+    }
+
+    private static bool IsKnownFrameworkExceptionConstruction(
+        IObjectCreationOperation objectCreation)
+    {
+        var constructor = objectCreation.Constructor;
+        return constructor != null &&
+               constructor.ContainingNamespace?.ToString() == "System" &&
+               constructor.DeclaringSyntaxReferences.Length == 0;
+    }
+
+    private static ITypeSymbol? GetBareRethrowExceptionType(
+        SyntaxNode throwNode,
+        CatchClauseSyntax sourceCatch,
+        ITypeSymbol? sourceCatchExceptionType,
+        bool sourceCatchExceptionTypeIsExact,
+        out bool exceptionTypeIsExact,
+        SemanticModel? semanticModel)
+    {
+        var nearestCatch = throwNode.Ancestors()
+            .OfType<CatchClauseSyntax>()
+            .FirstOrDefault();
+        if (nearestCatch == null || ReferenceEquals(nearestCatch, sourceCatch))
+        {
+            exceptionTypeIsExact = sourceCatchExceptionTypeIsExact;
+            return sourceCatchExceptionType;
+        }
+
+        if (TryGetExactExceptionTypeCaughtBy(
+                nearestCatch,
+                semanticModel,
+                out var exactCaughtType))
+        {
+            exceptionTypeIsExact = true;
+            return exactCaughtType;
+        }
+
+        exceptionTypeIsExact = false;
+        if (nearestCatch.Declaration?.Type == null)
+        {
+            return semanticModel?.Compilation.GetTypeByMetadataName(
+                "System.Exception");
+        }
+
+        return semanticModel?.GetTypeInfo(nearestCatch.Declaration.Type).Type;
+    }
+
+    private static bool TryGetExactExceptionTypeCaughtBy(
+        CatchClauseSyntax catchClause,
+        SemanticModel? semanticModel,
+        out ITypeSymbol exceptionType)
+    {
+        exceptionType = null!;
+        if (semanticModel == null ||
+            catchClause.Parent is not TryStatementSyntax tryStatement ||
+            tryStatement.Block.Statements.Count != 1 ||
+            tryStatement.Block.Statements[0] is not ThrowStatementSyntax
+            {
+                Expression: { } expression
+            } ||
+            semanticModel.GetOperation(expression)?
+                .UnwrapConversions() is not IObjectCreationOperation
+                {
+                    Type: { } createdType
+                } ||
+            !CatchDefinitelyHandlesException(
+                catchClause,
+                createdType,
+                semanticModel))
+        {
+            return false;
+        }
+
+        foreach (var earlierCatch in tryStatement.Catches)
+        {
+            if (ReferenceEquals(earlierCatch, catchClause))
+                break;
+
+            if (GetCatchFilterConstantValue(earlierCatch, semanticModel) == true &&
+                CatchDefinitelyHandlesException(
+                    earlierCatch,
+                    createdType,
+                    semanticModel))
+            {
+                return false;
+            }
+        }
+
+        exceptionType = createdType;
+        return true;
     }
 
     private static bool CatchMayHandleException(
@@ -1115,6 +2301,36 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         var constant = semanticModel?.GetConstantValue(catchClause.Filter.FilterExpression);
         return constant is { HasValue: true, Value: bool value } ? value : null;
+    }
+
+    private static bool IsStaticallyUnreachable(
+        SyntaxNode node,
+        SemanticModel? semanticModel)
+    {
+        foreach (var ifStatement in node.AncestorsAndSelf().OfType<IfStatementSyntax>())
+        {
+            bool? condition = ifStatement.Condition.Kind() switch
+            {
+                SyntaxKind.TrueLiteralExpression => true,
+                SyntaxKind.FalseLiteralExpression => false,
+                _ => semanticModel?.GetConstantValue(ifStatement.Condition) is
+                { HasValue: true, Value: bool value }
+                    ? value
+                    : null
+            };
+            if (!condition.HasValue)
+                continue;
+
+            if ((!condition.Value &&
+                 (ReferenceEquals(ifStatement, node) ||
+                  ifStatement.Statement.Span.Contains(node.Span))) ||
+                (condition.Value && ifStatement.Else?.Statement.Span.Contains(node.Span) == true))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsUnconditionallyExecutedWithin(
@@ -1397,7 +2613,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (ancestor is IInvocationOperation containingCombinator &&
                 (IsTaskWhenAll(containingCombinator) ||
                  IsTaskWhenAny(containingCombinator) &&
-                 TaskWhenAnyHasExactlyOneInput(containingCombinator)))
+                 TaskWhenAnyHasExactlyOneInput(containingCombinator) &&
+                 SingleTaskWhenAnyContains(
+                     containingCombinator,
+                     invocation)))
             {
                 current = containingCombinator;
             }
@@ -1552,29 +2771,213 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool IsReferenceInAwaitedSingleTaskWhenAny(
-        ILocalReferenceOperation reference)
+        ILocalReferenceOperation reference,
+        IOperation executableRoot)
     {
-        return TryGetContainingAwaitedSingleTaskWhenAny(reference, out _, out _);
+        return TryGetContainingAwaitedSingleTaskWhenAny(reference, out _, out _) ||
+               !GetAwaitedSingleTaskWhenAnyForStableArrayElement(reference, executableRoot)
+                   .IsDefaultOrEmpty;
     }
 
-    private static bool EscapesToUnknownConsumer(ILocalReferenceOperation reference)
+    private static ImmutableArray<(
+        SyntaxNode Completion,
+        int ThrowingPrefixEnd,
+        IInvocationOperation? ProvenNonThrowingWhenAny)>
+        GetUnknownConsumerCompletionPoints(
+        ILocalReferenceOperation reference,
+        SyntaxNode candidate,
+        IOperation executableRoot)
     {
-        IOperation current = reference;
-        while (current.Parent is IConversionOperation or IParenthesizedOperation)
-            current = current.Parent;
+        return GetUnknownConsumerCompletionPoints(
+            reference,
+            candidate,
+            executableRoot,
+            new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+            followsKnownWrapper: false);
+    }
 
-        if (current.Parent is IArgumentOperation argument &&
-            argument.Parent is IInvocationOperation invocation)
+    private static ImmutableArray<(
+        SyntaxNode Completion,
+        int ThrowingPrefixEnd,
+        IInvocationOperation? ProvenNonThrowingWhenAny)>
+        GetUnknownConsumerCompletionPoints(
+        IOperation operation,
+        SyntaxNode candidate,
+        IOperation executableRoot,
+        HashSet<ISymbol> visitedWrapperLocals,
+        bool followsKnownWrapper)
+    {
+        IOperation current = operation;
+        while (true)
         {
-            return !IsTaskWhenAll(invocation) &&
-                   !IsTaskWhenAny(invocation) &&
-                   !IsTaskWrapper(invocation, current);
+            while (current.Parent is IConversionOperation or IParenthesizedOperation)
+                current = current.Parent;
+
+            if (current.Parent is IArgumentOperation argument &&
+                argument.Parent is IInvocationOperation invocation)
+            {
+                if (IsKnownNonConsumingTaskWrapper(invocation))
+                {
+                    current = invocation;
+                    followsKnownWrapper = true;
+                    continue;
+                }
+
+                return !IsTaskWhenAll(invocation) &&
+                       !IsTaskWhenAny(invocation) &&
+                       !IsTaskWrapper(invocation, current)
+                    ? ImmutableArray.Create((
+                        Completion: (SyntaxNode)invocation.Syntax,
+                        ThrowingPrefixEnd: invocation.Syntax.Span.End,
+                        ProvenNonThrowingWhenAny: (IInvocationOperation?)null))
+                    : ImmutableArray<(
+                        SyntaxNode,
+                        int,
+                        IInvocationOperation?)>.Empty;
+            }
+
+            if (current.Parent is ISimpleAssignmentOperation assignment)
+            {
+                var target = assignment.Target.UnwrapConversions();
+                if (target is IDiscardOperation)
+                {
+                    return ImmutableArray<(
+                        SyntaxNode,
+                        int,
+                        IInvocationOperation?)>.Empty;
+                }
+
+                return followsKnownWrapper &&
+                       target is ILocalReferenceOperation targetLocal
+                    ? GetStoredWrapperUnknownConsumerCompletionPoints(
+                        targetLocal.Local,
+                        assignment.Syntax.SpanStart,
+                        candidate,
+                        executableRoot,
+                        visitedWrapperLocals)
+                    : ImmutableArray.Create((
+                        Completion: (SyntaxNode)assignment.Syntax,
+                        ThrowingPrefixEnd: assignment.Syntax.Span.End,
+                        ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
+            }
+
+            if (followsKnownWrapper &&
+                current.Parent is IVariableInitializerOperation initializer &&
+                initializer.Parent is IVariableDeclaratorOperation declarator)
+            {
+                return GetStoredWrapperUnknownConsumerCompletionPoints(
+                    declarator.Symbol,
+                    declarator.Syntax.SpanStart,
+                    candidate,
+                    executableRoot,
+                    visitedWrapperLocals);
+            }
+
+            return current.Parent is IReturnOperation returnOperation
+                ? ImmutableArray.Create((
+                    Completion: (SyntaxNode)returnOperation.Syntax,
+                    ThrowingPrefixEnd: returnOperation.Syntax.Span.End,
+                    ProvenNonThrowingWhenAny: (IInvocationOperation?)null))
+                : ImmutableArray<(
+                    SyntaxNode,
+                    int,
+                    IInvocationOperation?)>.Empty;
+        }
+    }
+
+    private static ImmutableArray<(
+        SyntaxNode Completion,
+        int ThrowingPrefixEnd,
+        IInvocationOperation? ProvenNonThrowingWhenAny)>
+        GetStoredWrapperUnknownConsumerCompletionPoints(
+        ILocalSymbol wrapperLocal,
+        int assignmentPosition,
+        SyntaxNode candidate,
+        IOperation executableRoot,
+        HashSet<ISymbol> visitedWrapperLocals)
+    {
+        if (!visitedWrapperLocals.Add(wrapperLocal))
+        {
+            return ImmutableArray<(
+                SyntaxNode,
+                int,
+                IInvocationOperation?)>.Empty;
         }
 
-        if (current.Parent is ISimpleAssignmentOperation assignment)
-            return assignment.Target.UnwrapConversions() is not IDiscardOperation;
+        var completionPoints = EnumerateOutsideNestedExecutables(executableRoot)
+            .OfType<ILocalReferenceOperation>()
+            .Where(reference =>
+                reference.Syntax.SpanStart > assignmentPosition &&
+                reference.Syntax.SpanStart < candidate.SpanStart &&
+                SymbolEqualityComparer.Default.Equals(
+                    reference.Local,
+                    wrapperLocal) &&
+                LocalAssignmentCache.GetAssignments(executableRoot, wrapperLocal)
+                    .Where(assignment =>
+                        assignment.SpanStart < reference.Syntax.SpanStart)
+                    .OrderByDescending(assignment => assignment.SpanStart)
+                    .FirstOrDefault().SpanStart == assignmentPosition &&
+                AssignmentDefinitelyReachesReference(
+                    executableRoot,
+                    wrapperLocal,
+                    assignmentPosition,
+                    reference) &&
+                LocalHasNoUntrackedWritesBefore(
+                    executableRoot,
+                    wrapperLocal,
+                    reference.Syntax.SpanStart))
+            .SelectMany(reference => GetUnknownConsumerCompletionPoints(
+                reference,
+                candidate,
+                executableRoot,
+                visitedWrapperLocals,
+                followsKnownWrapper: true))
+            .ToImmutableArray();
+        visitedWrapperLocals.Remove(wrapperLocal);
+        return completionPoints;
+    }
 
-        return current.Parent is IReturnOperation;
+    private static bool AssignmentDefinitelyReachesReference(
+        IOperation executableRoot,
+        ILocalSymbol local,
+        int assignmentPosition,
+        ILocalReferenceOperation reference)
+    {
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (operation.Syntax.SpanStart != assignmentPosition)
+                continue;
+
+            switch (operation)
+            {
+                case IVariableDeclaratorOperation declarator
+                    when declarator.Initializer != null &&
+                         SymbolEqualityComparer.Default.Equals(declarator.Symbol, local):
+                    return IsDefinitelyExecutedBefore(
+                        declarator.Syntax,
+                        reference.Syntax,
+                        executableRoot);
+
+                case ISimpleAssignmentOperation assignment
+                    when assignment.Target.UnwrapConversions() is ILocalReferenceOperation target &&
+                         SymbolEqualityComparer.Default.Equals(target.Local, local):
+                    return IsDefinitelyExecutedBefore(
+                        assignment.Syntax,
+                        reference.Syntax,
+                        executableRoot);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsKnownNonConsumingTaskWrapper(
+        IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod;
+        return method.Name == "FromResult" &&
+               method.ContainingType.Name == "Task" &&
+               method.ContainingNamespace?.ToString() == "System.Threading.Tasks";
     }
 
     private static bool TryGetContainingAwaitedWhenAll(
@@ -1605,16 +3008,60 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         ILocalReferenceOperation elementReference,
         IOperation executableRoot)
     {
-        var isArrayElement = false;
-        IVariableDeclaratorOperation? declarator = null;
+        return GetAwaitedTaskCombinatorsForStableArrayElement(
+                elementReference,
+                executableRoot,
+                singleTaskWhenAny: false)
+            .Select(completion => completion.Await)
+            .ToImmutableArray();
+    }
+
+    private static ImmutableArray<(
+        IAwaitOperation Await,
+        IInvocationOperation WhenAny)>
+        GetAwaitedSingleTaskWhenAnyForStableArrayElement(
+            IOperation elementReference,
+            IOperation executableRoot)
+    {
+        return GetAwaitedTaskCombinatorsForStableArrayElement(
+                elementReference,
+                executableRoot,
+                singleTaskWhenAny: true)
+            .Select(completion => (
+                completion.Await,
+                WhenAny: completion.Combinator))
+            .ToImmutableArray();
+    }
+
+    private static ImmutableArray<(
+        IAwaitOperation Await,
+        IInvocationOperation Combinator)>
+        GetAwaitedTaskCombinatorsForStableArrayElement(
+            IOperation elementReference,
+            IOperation executableRoot,
+            bool singleTaskWhenAny)
+    {
+        IOperation? elementArrayCreation = null;
+        ILocalSymbol? arrayLocal = null;
+        var assignmentSpanStart = -1;
         for (IOperation? current = elementReference; current != null; current = current.Parent)
         {
-            if (current is IArrayCreationOperation)
-                isArrayElement = true;
+            if (TryGetArrayElements(current, out _))
+                elementArrayCreation = UnwrapNonUserDefinedConversions(current);
 
             if (current is IVariableDeclaratorOperation variableDeclarator)
             {
-                declarator = variableDeclarator;
+                arrayLocal = variableDeclarator.Symbol;
+                assignmentSpanStart = variableDeclarator.Syntax.SpanStart;
+                break;
+            }
+
+            if (elementArrayCreation != null &&
+                current is ISimpleAssignmentOperation assignment &&
+                assignment.Target.UnwrapConversions() is ILocalReferenceOperation target)
+            {
+                arrayLocal = target.Local;
+                assignmentSpanStart = assignment.Syntax.SpanStart;
                 break;
             }
 
@@ -1622,17 +3069,34 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 break;
         }
 
-        if (!isArrayElement ||
-            declarator == null ||
-            !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
-                executableRoot,
-                declarator.Symbol,
-                int.MaxValue,
-                out var assignedValue,
-            default) ||
-            assignedValue.UnwrapConversions() is not IArrayCreationOperation)
+        if (elementArrayCreation == null ||
+            arrayLocal == null ||
+            LocalAssignmentCache.GetAssignments(executableRoot, arrayLocal).Count != 1)
         {
-            return ImmutableArray<IAwaitOperation>.Empty;
+            return ImmutableArray<(
+                IAwaitOperation Await,
+                IInvocationOperation Combinator)>.Empty;
+        }
+
+        var assignedValue = LocalAssignmentCache.GetAssignments(executableRoot, arrayLocal)[0].Value;
+        if (
+            !TryGetArrayElements(assignedValue, out var elements))
+        {
+            return ImmutableArray<(
+                IAwaitOperation Await,
+                IInvocationOperation Combinator)>.Empty;
+        }
+
+        if (!elements.Any(element =>
+                ReferenceEquals(
+                    UnwrapNonUserDefinedConversions(element),
+                    elementReference)) ||
+            singleTaskWhenAny &&
+            elements.Length != 1)
+        {
+            return ImmutableArray<(
+                IAwaitOperation Await,
+                IInvocationOperation Combinator)>.Empty;
         }
 
         if (executableRoot.Descendants()
@@ -1640,67 +3104,252 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             .Any(candidate =>
                 SymbolEqualityComparer.Default.Equals(
                     candidate.Local,
-                    declarator.Symbol) &&
+                    arrayLocal) &&
                 IsInsideNestedExecutable(candidate, executableRoot)))
+        {
+            return ImmutableArray<(
+                IAwaitOperation Await,
+                IInvocationOperation Combinator)>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<(
+            IAwaitOperation Await,
+            IInvocationOperation Combinator)>();
+        var unsupportedReferences = ImmutableArray.CreateBuilder<ILocalReferenceOperation>();
+        foreach (var candidate in EnumerateOutsideNestedExecutables(executableRoot)
+                     .OfType<ILocalReferenceOperation>()
+                     .Where(candidate =>
+                         candidate.Syntax.SpanStart > assignmentSpanStart &&
+                         SymbolEqualityComparer.Default.Equals(
+                             candidate.Local,
+                             arrayLocal))
+                     .OrderBy(candidate => candidate.Syntax.SpanStart))
+        {
+            if (!TryGetDirectTaskCombinatorInput(
+                    candidate,
+                    executableRoot,
+                    singleTaskWhenAny,
+                    out var awaitOperations,
+                    out var combinator))
+            {
+                unsupportedReferences.Add(candidate);
+                continue;
+            }
+
+            builder.AddRange(awaitOperations.Select(awaitOperation => (
+                awaitOperation,
+                combinator)));
+        }
+
+        return builder
+            .Where(completion => unsupportedReferences.All(reference =>
+                ReferencesAreInMutuallyExclusiveIfBranches(
+                    completion.Await.Syntax,
+                    reference.Syntax) ||
+                completion.Await.Syntax.SpanStart < reference.Syntax.SpanStart &&
+                IsDefinitelyExecutedBefore(
+                    completion.Await.Syntax,
+                    reference.Syntax,
+                    executableRoot)))
+            .ToImmutableArray();
+    }
+
+    private static bool TryGetArrayElements(
+        IOperation operation,
+        out ImmutableArray<IOperation> elements)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        if (operation is IArrayCreationOperation arrayCreation)
+        {
+            elements = arrayCreation.Initializer?.ElementValues ??
+                       ImmutableArray<IOperation>.Empty;
+            return arrayCreation.Initializer != null;
+        }
+
+        if (!IsArrayBackedCollectionExpression(operation))
+        {
+            elements = ImmutableArray<IOperation>.Empty;
+            return false;
+        }
+
+        return TryGetCollectionExpressionElements(operation, out elements);
+    }
+
+    private static bool TryGetCollectionExpressionElements(
+        IOperation operation,
+        out ImmutableArray<IOperation> elements)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        if (operation.Kind.ToString() != "CollectionExpression")
+        {
+            elements = ImmutableArray<IOperation>.Empty;
+            return false;
+        }
+
+        var collectionExpressionInterface = operation.GetType()
+            .GetInterfaces()
+            .FirstOrDefault(type =>
+                type.FullName ==
+                "Microsoft.CodeAnalysis.Operations.ICollectionExpressionOperation");
+        var rawElements = collectionExpressionInterface?
+            .GetProperty("Elements")?
+            .GetValue(operation) as System.Collections.IEnumerable;
+        if (rawElements == null)
+        {
+            elements = ImmutableArray<IOperation>.Empty;
+            return false;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<IOperation>();
+        foreach (var element in rawElements)
+        {
+            if (element is not IOperation elementOperation)
+            {
+                elements = ImmutableArray<IOperation>.Empty;
+                return false;
+            }
+
+            builder.Add(UnwrapCollectionExpressionElement(elementOperation));
+        }
+
+        elements = builder.ToImmutable();
+        return true;
+    }
+
+    private static IOperation UnwrapCollectionExpressionElement(IOperation element)
+    {
+        var collectionElementInterface = element.GetType()
+            .GetInterfaces()
+            .FirstOrDefault(type =>
+                type.FullName ==
+                "Microsoft.CodeAnalysis.Operations.ICollectionElementOperation");
+        return collectionElementInterface?.GetProperty("Expression")?.GetValue(element) as
+                   IOperation ??
+               element;
+    }
+
+    private static bool CollectionExpressionHasDefinitelyNullElement(IOperation operation)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        return operation.Kind.ToString() == "CollectionExpression" &&
+               operation.Descendants().Any(candidate =>
+                   ReferenceEquals(candidate.Parent, operation) &&
+                   IsDefinitelyNullTaskInput(candidate));
+    }
+
+    private static bool IsArrayBackedCollectionExpression(IOperation operation)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        if (operation.Kind.ToString() != "CollectionExpression")
+            return false;
+
+        return operation.Type is IArrayTypeSymbol ||
+               operation.Type is INamedTypeSymbol
+               {
+                   Name: "IEnumerable",
+                   Arity: 1,
+                   ContainingNamespace: { } containingNamespace
+               } && containingNamespace.ToString() == "System.Collections.Generic";
+    }
+
+    private static IOperation UnwrapNonUserDefinedConversions(IOperation operation)
+    {
+        while (true)
+        {
+            if (operation is IConversionOperation
+                {
+                    OperatorMethod: null,
+                    Operand: { } conversionOperand
+                })
+            {
+                operation = conversionOperand;
+                continue;
+            }
+
+            if (operation is IParenthesizedOperation
+                { Operand: { } parenthesizedOperand })
+            {
+                operation = parenthesizedOperand;
+                continue;
+            }
+
+            return operation;
+        }
+    }
+
+    private static bool TryGetDirectTaskCombinatorInput(
+        ILocalReferenceOperation reference,
+        IOperation executableRoot,
+        bool singleTaskWhenAny,
+        out ImmutableArray<IAwaitOperation> awaitOperations,
+        out IInvocationOperation combinator)
+    {
+        IOperation current = reference;
+        while (current.Parent is IParenthesizedOperation ||
+               current.Parent is IConversionOperation { OperatorMethod: null })
+        {
+            current = current.Parent;
+        }
+
+        if (current.Parent is not IArgumentOperation argument ||
+            argument.Parent is not IInvocationOperation invocation)
+        {
+            awaitOperations = ImmutableArray<IAwaitOperation>.Empty;
+            combinator = null!;
+            return false;
+        }
+
+        var isWhenAll = IsTaskWhenAll(invocation);
+        var isWhenAny = IsTaskWhenAny(invocation) &&
+                        invocation.Arguments.Length == 1;
+        if (!isWhenAll && !isWhenAny)
+        {
+            awaitOperations = ImmutableArray<IAwaitOperation>.Empty;
+            combinator = null!;
+            return false;
+        }
+
+        combinator = invocation;
+        awaitOperations = isWhenAll || singleTaskWhenAny
+            ? GetDirectOrStoredTaskCombinatorAwaits(invocation, executableRoot)
+            : ImmutableArray<IAwaitOperation>.Empty;
+        return true;
+    }
+
+    private static ImmutableArray<IAwaitOperation> GetDirectOrStoredTaskCombinatorAwaits(
+        IInvocationOperation combinator,
+        IOperation executableRoot)
+    {
+        if (TryGetImmediateAwait(combinator, out var immediateAwait))
+            return ImmutableArray.Create(immediateAwait);
+
+        if (!TryGetAssignedTaskLocal(combinator, out var taskLocal) ||
+            LocalAssignmentCache.GetAssignments(executableRoot, taskLocal).Count != 1 ||
+            !LocalHasNoUntrackedWritesBefore(executableRoot, taskLocal, int.MaxValue))
         {
             return ImmutableArray<IAwaitOperation>.Empty;
         }
 
         var builder = ImmutableArray.CreateBuilder<IAwaitOperation>();
-        var contentsAreStable = true;
-        foreach (var candidate in EnumerateOutsideNestedExecutables(executableRoot)
+        foreach (var reference in EnumerateOutsideNestedExecutables(executableRoot)
                      .OfType<ILocalReferenceOperation>()
-                     .Where(candidate =>
-                         candidate.Syntax.SpanStart > declarator.Syntax.SpanStart &&
-                         SymbolEqualityComparer.Default.Equals(
-                             candidate.Local,
-                             declarator.Symbol))
-                     .OrderBy(candidate => candidate.Syntax.SpanStart))
+                     .Where(reference =>
+                         reference.Syntax.SpanStart > combinator.Syntax.SpanStart &&
+                         SymbolEqualityComparer.Default.Equals(reference.Local, taskLocal))
+                     .OrderBy(reference => reference.Syntax.SpanStart))
         {
-            if (!contentsAreStable)
-                continue;
-
-            if (!TryGetDirectTaskWhenAllInput(candidate, out var awaitOperation))
-            {
-                contentsAreStable = false;
-                continue;
-            }
-
-            if (awaitOperation != null)
-                builder.Add(awaitOperation);
+            if (TryGetImmediateAwait(reference, out var storedAwait))
+                builder.Add(storedAwait);
         }
 
         return builder.ToImmutable();
     }
 
-    private static bool TryGetDirectTaskWhenAllInput(
-        ILocalReferenceOperation reference,
-        out IAwaitOperation? awaitOperation)
-    {
-        IOperation current = reference;
-        while (current.Parent is IConversionOperation or IParenthesizedOperation)
-            current = current.Parent;
-
-        if (current.Parent is not IArgumentOperation argument ||
-            argument.Parent is not IInvocationOperation invocation ||
-            !IsTaskWhenAll(invocation))
-        {
-            awaitOperation = null;
-            return false;
-        }
-
-        if (!TryGetImmediateAwait(invocation, out var immediateAwait))
-        {
-            awaitOperation = null;
-            return true;
-        }
-
-        awaitOperation = immediateAwait;
-        return true;
-    }
-
     private static bool TaskCompletionPointsEndOnEveryBranch(
-        ImmutableArray<(SyntaxNode Completion, int ThrowingPrefixEnd)> completions,
+        ImmutableArray<(
+            SyntaxNode Completion,
+            int ThrowingPrefixEnd,
+            IInvocationOperation? ProvenNonThrowingWhenAny)> completions,
         SyntaxNode taskStart,
         SyntaxNode current,
         IOperation executableRoot)
@@ -1713,7 +3362,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 if (!visitedConditionals.Add(ifStatement) ||
                     ifStatement.Else == null ||
                     ifStatement.SpanStart >= current.SpanStart ||
-                    !IsDefinitelyExecutedBefore(ifStatement, current, executableRoot.Syntax))
+                    !IsDefinitelyExecutedBefore(ifStatement, current, executableRoot))
                 {
                     continue;
                 }
@@ -1729,7 +3378,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         candidate.Completion,
                         candidate.ThrowingPrefixEnd,
                         current,
-                        executableRoot));
+                        executableRoot,
+                        candidate.ProvenNonThrowingWhenAny));
                 var elseEndsTask = completions.Any(candidate =>
                     candidate.Completion.SpanStart < current.SpanStart &&
                     ifStatement.Else.Statement.Span.Contains(candidate.Completion.Span) &&
@@ -1741,7 +3391,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         candidate.Completion,
                         candidate.ThrowingPrefixEnd,
                         current,
-                        executableRoot));
+                        executableRoot,
+                        candidate.ProvenNonThrowingWhenAny));
                 if (thenEndsTask && elseEndsTask)
                     return true;
             }
@@ -1754,7 +3405,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         section.Labels.Any(label => label.IsKind(
                             Microsoft.CodeAnalysis.CSharp.SyntaxKind.DefaultSwitchLabel))) ||
                     switchStatement.SpanStart >= current.SpanStart ||
-                    !IsDefinitelyExecutedBefore(switchStatement, current, executableRoot.Syntax))
+                    !IsDefinitelyExecutedBefore(switchStatement, current, executableRoot))
                 {
                     continue;
                 }
@@ -1771,7 +3422,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                             candidate.Completion,
                             candidate.ThrowingPrefixEnd,
                             current,
-                            executableRoot)));
+                            executableRoot,
+                            candidate.ProvenNonThrowingWhenAny)));
                 if (everySectionEndsTask)
                     return true;
             }
@@ -1790,6 +3442,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (current is IInvocationOperation invocation &&
                 IsTaskWhenAny(invocation) &&
                 TaskWhenAnyHasExactlyOneInput(invocation) &&
+                SingleTaskWhenAnyContains(invocation, operation) &&
                 TryGetImmediateAwait(invocation, out awaitOperation))
             {
                 whenAny = invocation;
@@ -1807,7 +3460,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
     private static bool IsTaskWrapper(IInvocationOperation invocation, IOperation wrapped)
     {
-        if (invocation.TargetMethod.Name is not ("ConfigureAwait" or "AsTask"))
+        if (!IsTaskCompletionWrapper(invocation))
             return false;
 
         var receiver = invocation.GetInvocationReceiver(false);
@@ -1836,14 +3489,59 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return false;
 
         var argument = whenAny.Arguments[0];
-        var value = argument.Value.UnwrapConversions();
-        if (value is IArrayCreationOperation arrayCreation &&
-            arrayCreation.Initializer != null)
-        {
-            return arrayCreation.Initializer.ElementValues.Length == 1;
-        }
+        var value = UnwrapNonUserDefinedConversions(argument.Value);
+        if (TryGetArrayElements(value, out var elements))
+            return elements.Length == 1;
+
+        if (IsSingleSpanBackedCollectionExpression(value))
+            return true;
 
         return argument.Parameter?.IsParams == true && ReturnsTaskLike(value.Type);
+    }
+
+    private static bool SingleTaskWhenAnyContains(
+        IInvocationOperation whenAny,
+        IOperation possibleTask)
+    {
+        if (whenAny.Arguments.Length != 1)
+            return false;
+
+        var value = UnwrapNonUserDefinedConversions(whenAny.Arguments[0].Value);
+        if (TryGetArrayElements(value, out var elements))
+        {
+            return elements.Length == 1 &&
+                   UnwrapNonUserDefinedConversions(elements[0]).Syntax.Span.Equals(
+                       possibleTask.Syntax.Span);
+        }
+
+        if (IsSingleSpanBackedCollectionExpression(value))
+        {
+            return TryGetCollectionExpressionElements(value, out var spanElements) &&
+                   spanElements.Length == 1 &&
+                   UnwrapNonUserDefinedConversions(spanElements[0]).Syntax.Span.Equals(
+                       UnwrapNonUserDefinedConversions(possibleTask).Syntax.Span);
+        }
+
+        return value.Syntax.Span.Equals(possibleTask.Syntax.Span);
+    }
+
+    private static bool IsSingleSpanBackedCollectionExpression(IOperation operation)
+    {
+        operation = UnwrapNonUserDefinedConversions(operation);
+        return operation.Kind.ToString() == "CollectionExpression" &&
+               IsSpanBackedCollectionExpression(operation) &&
+               operation.Syntax.ChildNodes().Count() == 1 &&
+               operation.Syntax.ChildNodes().Single().Kind().ToString() == "ExpressionElement";
+    }
+
+    private static bool IsSpanBackedCollectionExpression(IOperation operation)
+    {
+        return operation.Type is INamedTypeSymbol
+        {
+            Name: "Span" or "ReadOnlySpan",
+            Arity: 1,
+            ContainingNamespace: { } containingNamespace
+        } && containingNamespace.ToString() == "System";
     }
 
     private static bool IsTaskCompletionWrapper(IInvocationOperation invocation)
@@ -1888,17 +3586,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         HashSet<ISymbol> visitedLocals)
     {
         value = value.UnwrapConversions();
+        if (TryGetArrayElements(value, out var arrayElements))
+        {
+            return arrayElements.All(element =>
+                IsDefinitelyNonNullTaskInput(
+                    element,
+                    executableRoot,
+                    beforePosition,
+                    visitedLocals));
+        }
+
         switch (value)
         {
-            case IArrayCreationOperation arrayCreation
-                when arrayCreation.Initializer != null:
-                return arrayCreation.Initializer.ElementValues.All(element =>
-                    IsDefinitelyNonNullTaskInput(
-                        element,
-                        executableRoot,
-                        beforePosition,
-                        visitedLocals));
-
             case ILocalReferenceOperation localReference:
                 if (!visitedLocals.Add(localReference.Local) ||
                     !LocalHasNoUntrackedWritesBefore(
@@ -1959,6 +3658,31 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         SyntaxNode current,
         SyntaxNode executableRoot)
     {
+        return IsDefinitelyExecutedBefore(
+            previous,
+            current,
+            executableRoot,
+            executableOperation: null);
+    }
+
+    private static bool IsDefinitelyExecutedBefore(
+        SyntaxNode previous,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        return IsDefinitelyExecutedBefore(
+            previous,
+            current,
+            executableRoot.Syntax,
+            executableRoot);
+    }
+
+    private static bool IsDefinitelyExecutedBefore(
+        SyntaxNode previous,
+        SyntaxNode current,
+        SyntaxNode executableRoot,
+        IOperation? executableOperation)
+    {
         if (CanForwardGotoBypass(previous, current, executableRoot))
             return false;
 
@@ -1973,7 +3697,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 var currentBranch = GetIfBranch(ifStatement, current);
                 if (previousBranch != null &&
                     currentBranch == null &&
-                    OppositeBranchAlwaysExits(ifStatement, previousBranch))
+                    OppositeBranchAlwaysExits(
+                        ifStatement,
+                        previousBranch,
+                        current,
+                        executableOperation))
                 {
                     continue;
                 }
@@ -2086,14 +3814,279 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return null;
     }
 
+    private static bool ReferencesAreInMutuallyExclusiveIfBranches(
+        SyntaxNode first,
+        SyntaxNode second)
+    {
+        foreach (var ifStatement in first.Ancestors().OfType<IfStatementSyntax>())
+        {
+            var firstBranch = GetIfBranch(ifStatement, first);
+            var secondBranch = GetIfBranch(ifStatement, second);
+            if (firstBranch != null &&
+                secondBranch != null &&
+                !ReferenceEquals(firstBranch, secondBranch))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool OppositeBranchAlwaysExits(
         IfStatementSyntax ifStatement,
-        SyntaxNode previousBranch)
+        SyntaxNode previousBranch,
+        SyntaxNode current,
+        IOperation? executableRoot)
     {
         if (ReferenceEquals(previousBranch, ifStatement.Statement))
-            return ifStatement.Else != null && BranchAlwaysExits(ifStatement.Else.Statement);
+            return ifStatement.Else != null &&
+                   BranchDefinitelyTransfersOutOfConditional(
+                       ifStatement.Else.Statement,
+                       current,
+                       executableRoot);
 
-        return BranchAlwaysExits(ifStatement.Statement);
+        return BranchDefinitelyTransfersOutOfConditional(
+            ifStatement.Statement,
+            current,
+            executableRoot);
+    }
+
+    private static bool BranchDefinitelyTransfersOutOfConditional(
+        StatementSyntax statement,
+        SyntaxNode current,
+        IOperation? executableRoot)
+    {
+        switch (statement)
+        {
+            case ReturnStatementSyntax returnStatement:
+                return ReturnStatementIsDefinitelyNonThrowing(
+                    returnStatement,
+                    executableRoot);
+
+            case ThrowStatementSyntax throwStatement:
+                return executableRoot != null &&
+                       !ThrowCanReachFollowingOperation(
+                           throwStatement,
+                           current,
+                           executableRoot);
+
+            case BlockSyntax block when block.Statements.Count > 0:
+                return StatementsBeforeTerminalTransferCannotReachFollowingOperation(
+                           block,
+                           current,
+                           executableRoot) &&
+                       BranchDefinitelyTransfersOutOfConditional(
+                           block.Statements[block.Statements.Count - 1],
+                           current,
+                           executableRoot);
+
+            case IfStatementSyntax nestedIf when nestedIf.Else != null:
+                return BranchDefinitelyTransfersOutOfConditional(
+                           nestedIf.Statement,
+                           current,
+                           executableRoot) &&
+                       BranchDefinitelyTransfersOutOfConditional(
+                           nestedIf.Else.Statement,
+                           current,
+                           executableRoot);
+
+            case TryStatementSyntax nestedTry:
+                return BranchReturnsWithoutThrowing(
+                           nestedTry.Block,
+                           executableRoot) &&
+                       nestedTry.Catches.All(catchClause =>
+                           BranchDefinitelyTransfersOutOfConditional(
+                               catchClause.Block,
+                               current,
+                               executableRoot)) &&
+                       (nestedTry.Finally == null ||
+                        FinallyIsDefinitelyNonThrowing(nestedTry.Finally.Block));
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool ThrowCanReachFollowingOperation(
+        ThrowStatementSyntax throwStatement,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        var throwOperation = EnumerateOutsideNestedExecutables(executableRoot)
+            .OfType<IThrowOperation>()
+            .FirstOrDefault(candidate => candidate.Syntax.Span.Equals(throwStatement.Span));
+        if (throwOperation == null)
+            return true;
+
+        return ThrowOperandCanReachFollowingOperation(
+                   throwOperation,
+                   current,
+                   executableRoot) ||
+               OperationCanReachFollowingOperation(
+                   throwOperation,
+                   current,
+                   executableRoot);
+    }
+
+    private static bool ThrowOperandCanReachFollowingOperation(
+        IThrowOperation throwOperation,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        if (throwOperation.Exception == null)
+            return false;
+
+        var semanticModel = executableRoot.SemanticModel;
+        return EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+            !ReferenceEquals(operation, throwOperation) &&
+            throwOperation.Exception.Syntax.Span.Contains(operation.Syntax.Span) &&
+            !IsStaticallyUnreachable(operation.Syntax, semanticModel) &&
+            OperationMayThrowBeforeTerminalReturn(operation, executableRoot) &&
+            OperationCanReachFollowingOperation(
+                operation,
+                current,
+                executableRoot));
+    }
+
+    private static bool OperationCanReachFollowingOperation(
+        IOperation operation,
+        SyntaxNode current,
+        IOperation executableRoot)
+    {
+        foreach (var tryStatement in operation.Syntax.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!tryStatement.Block.Span.Contains(operation.Syntax.Span) ||
+                !TryCanFallThroughToFollowingOperation(tryStatement, current))
+            {
+                continue;
+            }
+
+            if (tryStatement.Catches.Any(catchClause =>
+                    !BranchAlwaysExits(catchClause.Block) &&
+                    OperationCanReachCatch(
+                        operation,
+                        catchClause,
+                        tryStatement,
+                        executableRoot)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReturnStatementIsDefinitelyNonThrowing(
+        ReturnStatementSyntax returnStatement,
+        IOperation? executableRoot)
+    {
+        if (returnStatement.Expression == null)
+            return true;
+
+        return executableRoot != null &&
+               SyntaxIsDefinitelyNonThrowing(
+                   returnStatement.Expression,
+                   executableRoot);
+    }
+
+    private static bool BranchReturnsWithoutThrowing(
+        StatementSyntax statement,
+        IOperation? executableRoot)
+    {
+        switch (statement)
+        {
+            case ReturnStatementSyntax { Expression: null }:
+                return true;
+
+            case BlockSyntax block when block.Statements.Count > 0:
+                return StatementsBeforeReturnAreDefinitelyNonThrowing(
+                           block,
+                           executableRoot) &&
+                       BranchReturnsWithoutThrowing(
+                           block.Statements[block.Statements.Count - 1],
+                           executableRoot);
+
+            case IfStatementSyntax nestedIf when nestedIf.Else != null:
+                return BranchReturnsWithoutThrowing(
+                           nestedIf.Statement,
+                           executableRoot) &&
+                       BranchReturnsWithoutThrowing(
+                           nestedIf.Else.Statement,
+                           executableRoot);
+
+            case TryStatementSyntax nestedTry:
+                return BranchReturnsWithoutThrowing(
+                           nestedTry.Block,
+                           executableRoot) &&
+                       (nestedTry.Finally == null ||
+                        FinallyIsDefinitelyNonThrowing(nestedTry.Finally.Block));
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool StatementsBeforeReturnAreDefinitelyNonThrowing(
+        BlockSyntax block,
+        IOperation? executableRoot)
+    {
+        if (block.Statements.Count <= 1)
+            return true;
+
+        if (executableRoot == null)
+            return false;
+
+        return block.Statements
+            .Take(block.Statements.Count - 1)
+            .All(statement => SyntaxIsDefinitelyNonThrowing(statement, executableRoot));
+    }
+
+    private static bool StatementsBeforeTerminalTransferCannotReachFollowingOperation(
+        BlockSyntax block,
+        SyntaxNode current,
+        IOperation? executableRoot)
+    {
+        if (block.Statements.Count <= 1)
+            return true;
+
+        if (executableRoot == null)
+            return false;
+
+        var semanticModel = executableRoot.SemanticModel;
+        return block.Statements
+            .Take(block.Statements.Count - 1)
+            .All(statement => !EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+                statement.Span.Contains(operation.Syntax.Span) &&
+                !IsStaticallyUnreachable(operation.Syntax, semanticModel) &&
+                OperationMayThrowBeforeTerminalReturn(operation, executableRoot) &&
+                OperationCanReachFollowingOperation(
+                    operation,
+                    current,
+                    executableRoot)));
+    }
+
+    private static bool SyntaxIsDefinitelyNonThrowing(
+        SyntaxNode syntax,
+        IOperation executableRoot)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        return !EnumerateOutsideNestedExecutables(executableRoot).Any(operation =>
+            syntax.Span.Contains(operation.Syntax.Span) &&
+            !IsStaticallyUnreachable(operation.Syntax, semanticModel) &&
+            OperationMayThrowBeforeTerminalReturn(operation, executableRoot));
+    }
+
+    private static bool OperationMayThrowBeforeTerminalReturn(
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        return CanThrowBeforeTaskEnd(operation, executableRoot);
+    }
+
+    private static bool FinallyIsDefinitelyNonThrowing(StatementSyntax statement)
+    {
+        return statement is BlockSyntax { Statements.Count: 0 };
     }
 
     private static bool BranchAlwaysExits(StatementSyntax statement)
@@ -2110,6 +4103,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             case IfStatementSyntax nestedIf when nestedIf.Else != null:
                 return BranchAlwaysExits(nestedIf.Statement) &&
                        BranchAlwaysExits(nestedIf.Else.Statement);
+
+            case TryStatementSyntax nestedTry:
+                return nestedTry.Finally != null &&
+                       BranchAlwaysExits(nestedTry.Finally.Block) ||
+                       BranchAlwaysExits(nestedTry.Block) &&
+                       nestedTry.Catches.All(catchClause =>
+                           BranchAlwaysExits(catchClause.Block));
 
             default:
                 return false;
