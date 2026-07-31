@@ -77,8 +77,8 @@ or more alias assignments, or through an invoked captured local before starting 
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
 argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
 required sequence, callable, string, or formattable-string parameter, a required terminal callable
-argument, a null or empty required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
-empty `FindAsync` key array, a null raw-SQL parameter collection, a possibly-empty raw-SQL interpolation,
+argument, a null or blank required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
+empty `FindAsync` key array or an array containing an unproven/null key, a null raw-SQL parameter collection, a possibly-empty raw-SQL interpolation,
 a definitely-cancelled token, an unguarded,
 null-suppressed, or nullable-oblivious context parameter, a nullable local query alias, a nullable or
 constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
@@ -89,9 +89,11 @@ Null-conditional `Add` remains diagnostic when the same construction proof estab
 be null. A local or anonymous function that captures the accumulator affects the proof only when its reachable direct
 or delegate invocation can run before the loop or its binding escapes local control; a locally bound invocation that
 occurs only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
-nullable flow analysis proves a preceding guard; null forgiveness is not treated as runtime proof. The known
+nullable flow analysis proves a preceding guard; null forgiveness alone is not treated as runtime proof, while redundant
+suppression after a proven null-exit guard retains that proof. The known
 metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
-declarations, while required terminal SQL, raw-SQL parameter collections, key arrays, and cancellation tokens must
+declarations, while required terminal non-blank SQL, raw-SQL parameter collections, non-empty key arrays containing
+only proven non-null keys, and cancellation tokens must
 permit a task to start before the overlap is reported.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,

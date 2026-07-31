@@ -671,14 +671,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 Value: string sql
             })
         {
-            return sql.Length > 0;
+            return sql.Any(character => !char.IsWhiteSpace(character));
         }
 
         if (operation.Syntax is InterpolatedStringExpressionSyntax
             interpolatedString &&
             interpolatedString.Contents
                 .OfType<InterpolatedStringTextSyntax>()
-                .Any(text => text.TextToken.ValueText.Length > 0))
+                .Any(text => text.TextToken.ValueText
+                    .Any(character => !char.IsWhiteSpace(character))))
         {
             return true;
         }
@@ -715,15 +716,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (operation is IArrayCreationOperation arrayCreation)
         {
             if (arrayCreation.Initializer != null)
-                return arrayCreation.Initializer.ElementValues.Length > 0;
+            {
+                return arrayCreation.Initializer.ElementValues.Length > 0 &&
+                       arrayCreation.Initializer.ElementValues.All(element =>
+                           OperationIsDefinitelyNonNull(
+                               element,
+                               executableRoot,
+                               beforePosition,
+                               new HashSet<ILocalSymbol>(
+                                   SymbolEqualityComparer.Default)));
+            }
 
-            return arrayCreation.DimensionSizes.Length == 1 &&
-                   arrayCreation.DimensionSizes[0].ConstantValue is
-                   {
-                       HasValue: true,
-                       Value: int length
-                   } &&
-                   length > 0;
+            return false;
         }
 
         if (operation is ILocalReferenceOperation localReference &&
@@ -956,10 +960,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IParameterReferenceOperation parameterReference)
     {
         if (parameterReference.Parameter.NullableAnnotation ==
-                NullableAnnotation.None ||
-            parameterReference.Syntax.Ancestors().Any(ancestor =>
+            NullableAnnotation.None)
+            return false;
+
+        var flowState = parameterReference.SemanticModel?
+            .GetTypeInfo(parameterReference.Syntax)
+            .Nullability.FlowState;
+        if (parameterReference.Syntax.Ancestors().Any(ancestor =>
                 ancestor.IsKind(
-                    SyntaxKind.SuppressNullableWarningExpression)))
+                    SyntaxKind.SuppressNullableWarningExpression)) &&
+            !ParameterHasPriorNullExitGuard(parameterReference))
         {
             return false;
         }
@@ -970,10 +980,106 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return true;
         }
 
-        return parameterReference.SemanticModel?
-                   .GetTypeInfo(parameterReference.Syntax)
-                   .Nullability.FlowState ==
-               NullableFlowState.NotNull;
+        return flowState == NullableFlowState.NotNull;
+    }
+
+    private static bool ParameterHasPriorNullExitGuard(
+        IParameterReferenceOperation parameterReference)
+    {
+        var semanticModel = parameterReference.SemanticModel;
+        if (semanticModel == null)
+            return false;
+
+        for (SyntaxNode? current = parameterReference.Syntax;
+             current?.Parent != null;
+             current = current.Parent)
+        {
+            if (current.Parent is not BlockSyntax block ||
+                current is not StatementSyntax containingStatement)
+            {
+                continue;
+            }
+
+            foreach (var statement in block.Statements)
+            {
+                if (statement.SpanStart >= containingStatement.SpanStart)
+                    break;
+
+                if (statement is IfStatementSyntax ifStatement &&
+                    BranchAlwaysExits(ifStatement.Statement) &&
+                    ConditionProvesParameterNull(
+                        ifStatement.Condition,
+                        parameterReference.Parameter,
+                        semanticModel))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ConditionProvesParameterNull(
+        ExpressionSyntax condition,
+        IParameterSymbol parameter,
+        SemanticModel semanticModel)
+    {
+        condition = UnwrapParentheses(condition);
+        if (condition is IsPatternExpressionSyntax
+            {
+                Expression: { } expression,
+                Pattern: ConstantPatternSyntax
+                {
+                    Expression: { } constant
+                }
+            })
+        {
+            return constant.IsKind(SyntaxKind.NullLiteralExpression) &&
+                   ExpressionReferencesParameter(
+                       expression,
+                       parameter,
+                       semanticModel);
+        }
+
+        if (condition is BinaryExpressionSyntax binary &&
+            binary.IsKind(SyntaxKind.EqualsExpression))
+        {
+            var left = UnwrapParentheses(binary.Left);
+            var right = UnwrapParentheses(binary.Right);
+            return left.IsKind(SyntaxKind.NullLiteralExpression) &&
+                       ExpressionReferencesParameter(
+                           right,
+                           parameter,
+                           semanticModel) ||
+                   right.IsKind(SyntaxKind.NullLiteralExpression) &&
+                       ExpressionReferencesParameter(
+                           left,
+                           parameter,
+                           semanticModel);
+        }
+
+        return false;
+    }
+
+    private static bool ExpressionReferencesParameter(
+        ExpressionSyntax expression,
+        IParameterSymbol parameter,
+        SemanticModel semanticModel)
+    {
+        expression = UnwrapParentheses(expression);
+        return SymbolEqualityComparer.Default.Equals(
+            semanticModel.GetSymbolInfo(expression).Symbol,
+            parameter);
+    }
+
+    private static ExpressionSyntax UnwrapParentheses(
+        ExpressionSyntax expression)
+    {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        return expression;
     }
 
     private static bool IsKnownDbContextDatabaseProperty(

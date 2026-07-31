@@ -409,14 +409,32 @@ namespace TestApp
                 tasks.Add({|#0:db.Users.AnyAsync()|});
             }
         }
+
+        public void RedundantSuppression(AppDbContext? db)
+        {
+            if (db is null)
+                return;
+
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#1:db!.Users.AnyAsync()|});
+            }
+        }
     }
 }";
 
-        var expected = VerifyCS.Diagnostic()
+        var guarded = VerifyCS.Diagnostic()
             .WithLocation(0)
             .WithArguments("db");
+        var guardedWithSuppression = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithArguments("db");
 
-        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+        await VerifyCS.VerifyAnalyzerAsync(
+            test,
+            guarded,
+            guardedWithSuppression);
     }
 
     [Fact]
@@ -575,6 +593,24 @@ namespace TestApp
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(db.Database.ExecuteSqlRawAsync($""{fragment}""));
+            }
+        }
+
+        public void WhitespaceQuerySql(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.FromSqlRaw(""   "").AnyAsync());
+            }
+        }
+
+        public void NullFindKeyElement(AppDbContext db)
+        {
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.FindAsync<User>((object)null));
             }
         }
     }
