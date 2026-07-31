@@ -393,6 +393,170 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachTaskList_WithUnprovenParameterNullability_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void NullForgiven(AppDbContext? db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db!.Users.AnyAsync());
+            }
+        }
+
+#nullable disable
+        public void Oblivious(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+#nullable enable
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ForeachTaskList_WithInvalidRequiredTerminalArguments_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void NullRawSql(AppDbContext db)
+        {
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Database.ExecuteSqlRawAsync((string)null));
+            }
+        }
+
+        public void NullInterpolatedSql(AppDbContext db)
+        {
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Database.ExecuteSqlInterpolatedAsync(
+                    (FormattableString)null));
+            }
+        }
+
+        public void NullFindKeys(AppDbContext db)
+        {
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.FindAsync<User>((object[])null));
+            }
+        }
+
+        public void EmptyQuerySql(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.FromSqlRaw("""").AnyAsync());
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ForeachTaskList_WithValidRequiredTerminalArguments_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void RawSql(AppDbContext db)
+        {
+            var sql = ""SELECT 1"";
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#0:db.Database.ExecuteSqlRawAsync(sql)|});
+            }
+        }
+
+        public void InterpolatedSql(AppDbContext db)
+        {
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#1:db.Database.ExecuteSqlInterpolatedAsync(
+                    $""SELECT {id}"")|});
+            }
+        }
+
+        public void ExpandedFindKeys(AppDbContext db)
+        {
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#2:db.FindAsync<User>(id)|});
+            }
+        }
+    }
+}";
+
+        var rawSql = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+        var interpolatedSql = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithArguments("db");
+        var expandedFindKeys = VerifyCS.Diagnostic()
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(
+            test,
+            rawSql,
+            interpolatedSql,
+            expandedFindKeys);
+    }
+
+    [Fact]
     public async Task ForeachTaskList_WithCompletingUserDefinedConversion_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

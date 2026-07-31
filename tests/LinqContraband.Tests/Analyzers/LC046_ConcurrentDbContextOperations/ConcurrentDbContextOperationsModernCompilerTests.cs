@@ -292,6 +292,7 @@ public sealed class ConcurrentDbContextOperationsModernCompilerTests
                  <Project Sdk="Microsoft.NET.Sdk">
                    <PropertyGroup>
                      <TargetFramework>net10.0</TargetFramework>
+                     <Nullable>enable</Nullable>
                      <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
                    </PropertyGroup>
                    <ItemGroup>

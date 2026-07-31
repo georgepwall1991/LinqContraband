@@ -76,16 +76,19 @@ or more alias assignments, or through an invoked captured local before starting 
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
 argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
 required sequence, callable, string, or formattable-string parameter, a required terminal callable
-argument, an unguarded nullable context parameter, a nullable local query alias, a nullable or constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
+argument, a null or empty required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
+null-suppressed, or nullable-oblivious context parameter, a nullable local query alias, a nullable or
+constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
 its construction and the loop's `Add` receiver, or a custom
 `Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
 Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
 be null. A local function that captures the accumulator affects the proof only when its reachable direct or delegate
 invocation can run before the loop or its method group escapes local control; a locally bound invocation that occurs
-only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic after
-nullable flow analysis proves a preceding guard, and the known metadata-backed EF Core `DbContext.Database` property
-retains relational-command diagnostics without requiring source declarations.
+only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
+nullable flow analysis proves a preceding guard; null forgiveness is not treated as runtime proof. The known
+metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
+declarations, while required terminal SQL and key-array inputs must be valid before the first task can start.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,

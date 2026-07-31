@@ -464,10 +464,20 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             if ((IsRequiredCallableParameter(argument.Parameter) ||
-                 IsRequiredQueryArgument(
-                     invocation,
-                     argument.Parameter)) &&
+                 IsRequiredQueryArgument(invocation, argument.Parameter) ||
+                 IsRequiredTerminalArgument(invocation, argument.Parameter)) &&
                 !OperationIsDefinitelyNonNull(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+
+            if (IsRequiredSqlArgument(invocation, argument.Parameter) &&
+                !OperationIsDefinitelyNonEmptySql(
                     argument.Value,
                     executableRoot,
                     invocation.Syntax.SpanStart,
@@ -529,6 +539,103 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                formattableString.ContainingNamespace?.ToString() == "System";
     }
 
+    private static bool IsRequiredTerminalArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        if (parameter == null || parameter.HasExplicitDefaultValue)
+            return false;
+
+        if (IsRequiredSqlArgument(invocation, parameter))
+            return true;
+
+        return invocation.TargetMethod.Name == "FindAsync" &&
+               (IsDbContextAsyncSink(invocation) ||
+                IsDbSetFindAsync(invocation)) &&
+               parameter.Name == "keyValues" &&
+               parameter.Type is IArrayTypeSymbol
+               {
+                   ElementType.SpecialType: SpecialType.System_Object
+               };
+    }
+
+    private static bool IsRequiredSqlArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        if (parameter == null ||
+            parameter.HasExplicitDefaultValue ||
+            parameter.Name != "sql" ||
+            !IsSqlArgumentType(parameter.Type))
+        {
+            return false;
+        }
+
+        return IsDatabaseFacadeAsyncSink(invocation) ||
+               IsTransparentQueryInvocation(invocation) &&
+               invocation.TargetMethod.Name is (
+                   "FromSql" or
+                   "FromSqlRaw" or
+                   "FromSqlInterpolated");
+    }
+
+    private static bool IsSqlArgumentType(ITypeSymbol type)
+    {
+        return type.SpecialType == SpecialType.System_String ||
+               type is INamedTypeSymbol
+               {
+                   Name: "FormattableString",
+                   Arity: 0
+               } formattableString &&
+               formattableString.ContainingNamespace?.ToString() == "System";
+    }
+
+    private static bool OperationIsDefinitelyNonEmptySql(
+        IOperation operation,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        operation = UnwrapNonThrowingConversionsAndParentheses(operation);
+        if (operation.ConstantValue is
+            {
+                HasValue: true,
+                Value: string sql
+            })
+        {
+            return sql.Length > 0;
+        }
+
+        if (operation.Syntax is InterpolatedStringExpressionSyntax
+            {
+                Contents.Count: > 0
+            })
+        {
+            return true;
+        }
+
+        if (operation is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
+            LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                out var assignedValue))
+        {
+            return OperationIsDefinitelyNonEmptySql(
+                assignedValue,
+                executableRoot,
+                localReference.Syntax.SpanStart,
+                visitedLocals);
+        }
+
+        return false;
+    }
+
     private static bool OperationIsDefinitelyNonNull(
         IOperation operation,
         IOperation executableRoot,
@@ -549,6 +656,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             IArrayCreationOperation or
             IAnonymousFunctionOperation or
             IDelegateCreationOperation or
+            IInterpolatedStringOperation or
             IInstanceReferenceOperation or
             ITypeOfOperation)
         {
@@ -676,8 +784,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     private static bool ParameterReferenceIsDefinitelyNonNull(
         IParameterReferenceOperation parameterReference)
     {
-        if (parameterReference.Parameter.NullableAnnotation !=
-            NullableAnnotation.Annotated)
+        if (parameterReference.Parameter.NullableAnnotation ==
+                NullableAnnotation.None ||
+            parameterReference.Syntax.Ancestors().Any(ancestor =>
+                ancestor.IsKind(
+                    SyntaxKind.SuppressNullableWarningExpression)))
+        {
+            return false;
+        }
+
+        if (parameterReference.Parameter.NullableAnnotation ==
+            NullableAnnotation.NotAnnotated)
         {
             return true;
         }

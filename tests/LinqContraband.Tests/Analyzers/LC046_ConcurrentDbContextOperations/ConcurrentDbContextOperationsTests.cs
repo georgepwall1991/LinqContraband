@@ -6,7 +6,8 @@ namespace LinqContraband.Tests.Analyzers.LC046_ConcurrentDbContextOperations;
 public sealed class ConcurrentDbContextOperationsTests
 {
     internal const string EfMock = @"
-using System;
+	#nullable enable
+	using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -102,6 +103,12 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<int> ExecuteSqlRawAsync(
             this Infrastructure.DatabaseFacade database,
             string sql,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+
+        public static Task<int> ExecuteSqlInterpolatedAsync(
+            this Infrastructure.DatabaseFacade database,
+            FormattableString sql,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
     }
