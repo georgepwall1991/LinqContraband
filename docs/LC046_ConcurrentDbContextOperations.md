@@ -74,7 +74,8 @@ iterations, an awaited result, a throwing or unstable list receiver, a potential
 user-defined conversion around the task, a task-producing call that may consume the accumulator directly, through one
 or more alias assignments, or through an invoked captured local before starting the next operation, a potentially
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
-argument that can prevent a later EF call from starting, an invalid query-construction or required terminal callable
+argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
+required sequence or callable parameter, a required terminal callable
 argument, a nullable local query alias, a nullable or constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
 its construction and the loop's `Add` receiver, or a custom

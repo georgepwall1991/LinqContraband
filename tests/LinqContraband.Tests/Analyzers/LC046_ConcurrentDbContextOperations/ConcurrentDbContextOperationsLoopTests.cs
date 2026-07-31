@@ -627,6 +627,7 @@ namespace TestApp
 	using System;
 	using System.Collections;
 	using System.Collections.Generic;
+	using System.Linq;
 	using System.Linq.Expressions;
 	using System.Threading.Tasks;" + EfMock + @"
 namespace TestApp
@@ -814,6 +815,17 @@ namespace TestApp
             {
                 tasks.Add(db.Users
                     .Where((Expression<Func<User, bool>>)null)
+                    .AnyAsync());
+            }
+        }
+
+        public void NullQueryableSourceArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users
+                    .Concat((IQueryable<User>)null)
                     .AnyAsync());
             }
         }

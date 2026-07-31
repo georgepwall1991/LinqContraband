@@ -463,7 +463,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            if (IsRequiredCallableParameter(argument.Parameter) &&
+            if ((IsRequiredCallableParameter(argument.Parameter) ||
+                 IsRequiredQuerySequenceParameter(
+                     invocation,
+                     argument.Parameter)) &&
                 !OperationIsDefinitelyNonNull(
                     argument.Value,
                     executableRoot,
@@ -496,6 +499,27 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                expression.ContainingNamespace?.ToString() ==
                "System.Linq.Expressions" &&
                expression.TypeArguments[0].TypeKind == TypeKind.Delegate;
+    }
+
+    private static bool IsRequiredQuerySequenceParameter(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        if (parameter == null ||
+            parameter.HasExplicitDefaultValue ||
+            !IsTransparentQueryInvocation(invocation))
+        {
+            return false;
+        }
+
+        return parameter.Type.IsIQueryable() ||
+               parameter.Type is INamedTypeSymbol
+               {
+                   Name: "IEnumerable",
+                   Arity: 1
+               } enumerable &&
+               enumerable.ContainingNamespace?.ToString() ==
+               "System.Collections.Generic";
     }
 
     private static bool OperationIsDefinitelyNonNull(
