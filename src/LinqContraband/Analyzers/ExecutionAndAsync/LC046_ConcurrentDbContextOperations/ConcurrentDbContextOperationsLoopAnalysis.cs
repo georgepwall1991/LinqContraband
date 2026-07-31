@@ -675,9 +675,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         if (operation.Syntax is InterpolatedStringExpressionSyntax
-            {
-                Contents.Count: > 0
-            })
+            interpolatedString &&
+            interpolatedString.Contents
+                .OfType<InterpolatedStringTextSyntax>()
+                .Any(text => text.TextToken.ValueText.Length > 0))
         {
             return true;
         }
@@ -1198,8 +1199,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                SymbolEqualityComparer.Default.Equals(
                    assignedType.OriginalDefinition,
                    listType) &&
-               (assignedValue is IObjectCreationOperation ||
-                assignedValue.Kind.ToString() == "CollectionExpression");
+               IsSafeAccumulatorConstruction(assignedValue);
+    }
+
+    private static bool IsSafeAccumulatorConstruction(
+        IOperation assignedValue)
+    {
+        if (assignedValue is IObjectCreationOperation creation)
+        {
+            return creation.Arguments.Length == 0 &&
+                   (creation.Initializer == null ||
+                    creation.Initializer.Initializers.Length == 0);
+        }
+
+        return assignedValue.Kind.ToString() == "CollectionExpression" &&
+               !assignedValue.Descendants().Any();
     }
 
     private static bool AccumulatorEscapesBefore(
@@ -1215,6 +1229,25 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     accumulator) &&
                 !IsSimpleAssignmentTarget(localReference))
             {
+                var anonymousFunction =
+                    GetContainingAnonymousFunction(localReference);
+                if (anonymousFunction != null)
+                {
+                    if (CanOperationRunBefore(
+                            anonymousFunction,
+                            executableRoot,
+                            beforePosition) &&
+                        AnonymousFunctionCanRunOrEscapeBefore(
+                            anonymousFunction,
+                            executableRoot,
+                            beforePosition))
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 var localFunction =
                     GetContainingLocalFunction(localReference);
                 if (localFunction != null)
@@ -1248,6 +1281,97 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static IAnonymousFunctionOperation? GetContainingAnonymousFunction(
+        IOperation operation)
+    {
+        for (var current = operation.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            if (current is IAnonymousFunctionOperation anonymousFunction)
+                return anonymousFunction;
+
+            if (current is ILocalFunctionOperation)
+                return null;
+        }
+
+        return null;
+    }
+
+    private static bool AnonymousFunctionCanRunOrEscapeBefore(
+        IAnonymousFunctionOperation anonymousFunction,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        if (!TryGetAnonymousFunctionBindingLocal(
+                anonymousFunction,
+                out var delegateLocal))
+        {
+            return true;
+        }
+
+        return LocalDelegateCanRunBefore(
+                   delegateLocal,
+                   executableRoot,
+                   beforePosition) ||
+               LocalDelegateEscapesBefore(
+                   delegateLocal,
+                   executableRoot,
+                   beforePosition);
+    }
+
+    private static bool TryGetAnonymousFunctionBindingLocal(
+        IAnonymousFunctionOperation anonymousFunction,
+        out ILocalSymbol delegateLocal)
+    {
+        IOperation binding = anonymousFunction;
+        while (binding.Parent is IConversionOperation or
+               IDelegateCreationOperation or
+               IParenthesizedOperation or
+               IVariableInitializerOperation)
+        {
+            binding = binding.Parent;
+        }
+
+        if (binding.Parent is IVariableDeclaratorOperation declarator)
+        {
+            delegateLocal = declarator.Symbol;
+            return true;
+        }
+
+        if (binding.Parent is ISimpleAssignmentOperation assignment &&
+            assignment.Target.UnwrapConversions() is
+                ILocalReferenceOperation targetLocal)
+        {
+            delegateLocal = targetLocal.Local;
+            return true;
+        }
+
+        delegateLocal = null!;
+        return false;
+    }
+
+    private static bool LocalDelegateCanRunBefore(
+        ILocalSymbol delegateLocal,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        return executableRoot.Descendants()
+            .OfType<IInvocationOperation>()
+            .Any(invocation =>
+                invocation.TargetMethod.MethodKind ==
+                    MethodKind.DelegateInvoke &&
+                invocation.Instance?.UnwrapConversions() is
+                    ILocalReferenceOperation localReference &&
+                SymbolEqualityComparer.Default.Equals(
+                    localReference.Local,
+                    delegateLocal) &&
+                CanOperationRunBefore(
+                    invocation,
+                    executableRoot,
+                    beforePosition));
     }
 
     private static ILocalFunctionOperation? GetContainingLocalFunction(

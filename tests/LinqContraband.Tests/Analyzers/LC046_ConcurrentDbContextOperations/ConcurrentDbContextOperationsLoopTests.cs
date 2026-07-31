@@ -113,6 +113,20 @@ namespace TestApp
 
             drain();
         }
+
+        public void LambdaDrainRunsOnlyAfterLoop(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            Action drain = () =>
+                Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#5:db.Users.AnyAsync()|});
+            }
+
+            drain();
+        }
     }
 }";
 
@@ -131,6 +145,9 @@ namespace TestApp
         var postLoopDelegateDrain = VerifyCS.Diagnostic()
             .WithLocation(4)
             .WithArguments("db");
+        var postLoopLambdaDrain = VerifyCS.Diagnostic()
+            .WithLocation(5)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
@@ -138,7 +155,8 @@ namespace TestApp
             separateAssignment,
             loopVariableArgument,
             postLoopLocalDrain,
-            postLoopDelegateDrain);
+            postLoopDelegateDrain,
+            postLoopLambdaDrain);
     }
 
     [Fact]
@@ -279,6 +297,15 @@ namespace TestApp
         public void CustomCollector(AppDbContext db)
         {
             var tasks = new TaskCollector();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
+        public void ThrowingAccumulatorConstruction(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>(-1);
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(db.Users.AnyAsync());
@@ -537,6 +564,17 @@ namespace TestApp
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(db.Users.AnyAsync(canceled));
+            }
+        }
+
+        public void PossiblyEmptyInterpolatedRawSql(
+            AppDbContext db,
+            string fragment)
+        {
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Database.ExecuteSqlRawAsync($""{fragment}""));
             }
         }
     }

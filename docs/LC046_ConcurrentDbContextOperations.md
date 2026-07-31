@@ -65,28 +65,30 @@ different holder objects is not conflated.
 A separate loop pass reports the loop-body invocation itself when a `foreach` iterates an inline array initializer with
 at least two elements and the loop body's only statement either discards the EF Core async invocation or passes it
 directly to framework `List<T>.Add` on a single-assignment local constructed with `new` or a collection expression
-before the loop, either at declaration or by one later simple assignment. The task-list branch additionally requires
+before the loop, either at declaration or by one later simple assignment. The accepted accumulator construction is
+an empty parameterless `new` or empty collection expression. The task-list branch additionally requires
 a synchronous, non-deconstructing loop over a direct inline array with at least two compile-time-constant elements and
 an identity iteration-variable conversion. It does not report that branch for an unknown, empty, or singleton source,
 an asynchronous or deconstructing loop, a source whose setup can throw before repetition, a user-defined source or
 iteration-variable conversion, a multi-statement or conditionally exited loop body, a context that can change between
 iterations, an awaited result, a throwing or unstable list receiver, a potentially throwing explicit cast or
-user-defined conversion around the task, a task-producing call that may consume the accumulator directly, through one
+user-defined conversion around the task, an evaluated or non-empty accumulator construction, a task-producing call that may consume the accumulator directly, through one
 or more alias assignments, or through an invoked captured local before starting the next operation, a potentially
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
 argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
 required sequence, callable, string, or formattable-string parameter, a required terminal callable
 argument, a null or empty required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
-empty `FindAsync` key array, a null raw-SQL parameter collection, a definitely-cancelled token, an unguarded,
+empty `FindAsync` key array, a null raw-SQL parameter collection, a possibly-empty raw-SQL interpolation,
+a definitely-cancelled token, an unguarded,
 null-suppressed, or nullable-oblivious context parameter, a nullable local query alias, a nullable or
 constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
 its construction and the loop's `Add` receiver, or a custom
 `Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
 Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
-be null. A local function that captures the accumulator affects the proof only when its reachable direct or delegate
-invocation can run before the loop or its method group escapes local control; a locally bound invocation that occurs
-only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
+be null. A local or anonymous function that captures the accumulator affects the proof only when its reachable direct
+or delegate invocation can run before the loop or its binding escapes local control; a locally bound invocation that
+occurs only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
 nullable flow analysis proves a preceding guard; null forgiveness is not treated as runtime proof. The known
 metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
 declarations, while required terminal SQL, raw-SQL parameter collections, key arrays, and cancellation tokens must
