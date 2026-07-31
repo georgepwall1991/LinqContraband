@@ -524,6 +524,30 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return true;
         }
 
+        if (operation is IPropertyReferenceOperation propertyReference)
+        {
+            return StableMemberValueIsDefinitelyNonNull(
+                       propertyReference.Property,
+                       executableRoot,
+                       beforePosition) &&
+                   propertyReference.Instance != null &&
+                   QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                       propertyReference.Instance,
+                       executableRoot);
+        }
+
+        if (operation is IFieldReferenceOperation fieldReference)
+        {
+            return StableMemberValueIsDefinitelyNonNull(
+                       fieldReference.Field,
+                       executableRoot,
+                       beforePosition) &&
+                   fieldReference.Instance != null &&
+                   QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                       fieldReference.Instance,
+                       executableRoot);
+        }
+
         if (operation is ILocalReferenceOperation localReference &&
             visitedLocals.Add(localReference.Local) &&
             LocalHasNoUntrackedWritesBefore(
@@ -594,7 +618,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                            fieldReference.Instance,
                            executableRoot);
 
-            case ILocalReferenceOperation:
+            case ILocalReferenceOperation localReference:
+                return OperationIsDefinitelyNonNull(
+                    localReference,
+                    executableRoot,
+                    localReference.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default));
+
             case IParameterReferenceOperation:
             case IInstanceReferenceOperation:
                 return true;
@@ -611,8 +642,13 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot,
         int beforePosition)
     {
-        if (member.IsStatic)
+        if (member.IsStatic ||
+            member is IFieldSymbol { IsReadOnly: false } ||
+            member is IPropertySymbol { SetMethod: not null } ||
+            MemberHasConstructorWrite(member, executableRoot))
+        {
             return false;
+        }
 
         var semanticModel = executableRoot.SemanticModel;
         if (semanticModel == null)
@@ -643,6 +679,47 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                         SymbolEqualityComparer.Default)))
             {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool MemberHasConstructorWrite(
+        ISymbol member,
+        IOperation executableRoot)
+    {
+        var semanticModel = executableRoot.SemanticModel;
+        if (semanticModel == null || member.ContainingType == null)
+            return true;
+
+        foreach (var typeReference in
+                 member.ContainingType.DeclaringSyntaxReferences)
+        {
+            if (typeReference.GetSyntax() is not
+                TypeDeclarationSyntax typeDeclaration)
+            {
+                continue;
+            }
+
+            var model = semanticModel.Compilation.GetSemanticModel(
+                typeDeclaration.SyntaxTree);
+            foreach (var constructor in typeDeclaration.Members
+                         .OfType<ConstructorDeclarationSyntax>())
+            {
+                var bodyOperation = constructor.Body != null
+                    ? model.GetOperation(constructor.Body)
+                    : constructor.ExpressionBody != null
+                        ? model.GetOperation(
+                            constructor.ExpressionBody.Expression)
+                        : null;
+                if (bodyOperation != null &&
+                    (OperationWritesStorage(bodyOperation, member) ||
+                     bodyOperation.Descendants().Any(operation =>
+                         OperationWritesStorage(operation, member))))
+                {
+                    return true;
+                }
             }
         }
 
@@ -792,7 +869,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     GetContainingLocalFunction(localReference);
                 if (localFunction != null)
                 {
-                    if (LocalFunctionCanRunBefore(
+                    if (CanOperationRunBefore(
+                            localReference,
+                            executableRoot,
+                            beforePosition) ||
+                        LocalFunctionCanRunBefore(
                             localFunction.Symbol,
                             executableRoot,
                             beforePosition,

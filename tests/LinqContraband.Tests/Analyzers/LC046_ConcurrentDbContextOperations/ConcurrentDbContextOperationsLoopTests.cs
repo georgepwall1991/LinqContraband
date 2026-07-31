@@ -495,6 +495,7 @@ namespace TestApp
     public async Task ForeachTaskList_EscapesBeforeLoop_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
 	using System.Collections.Generic;
 	using System.Threading.Tasks;" + EfMock + @"
 namespace TestApp
@@ -519,6 +520,7 @@ namespace TestApp
     public sealed class Program
     {
         private List<Task<User>> _escaped = new List<Task<User>>();
+        private List<Task<bool>> _escapedBool = new List<Task<bool>>();
 
         public void FieldEscape(AppDbContext db)
         {
@@ -592,6 +594,19 @@ namespace TestApp
             void Inner() => _escaped = tasks;
         }
 
+        public void DelegateLocalFunctionEscape(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            void Escape() => _escapedBool = tasks;
+            Action escape = Escape;
+            escape();
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
         private void Retain(List<Task<User>> tasks) => _escaped = tasks;
 
         private int DrainEscaped()
@@ -626,6 +641,13 @@ namespace TestApp
     {
         public readonly AppDbContext Field = null;
         public AppDbContext Property { get; } = null;
+    }
+
+    public sealed class ConstructorInvalidatedDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+
+        public ConstructorInvalidatedDbContext() => Users = null;
     }
 
     public static class Callbacks
@@ -821,6 +843,26 @@ namespace TestApp
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(holder.Property.Users.AnyAsync());
+            }
+        }
+
+        public void NullQueryAlias(ContextHolder holder)
+        {
+            var users = holder.Property.Users;
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(users.AnyAsync());
+            }
+        }
+
+        public void ConstructorInvalidatedQueryMember(
+            ConstructorInvalidatedDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
             }
         }
 
