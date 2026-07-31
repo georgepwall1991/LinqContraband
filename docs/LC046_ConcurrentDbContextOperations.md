@@ -82,7 +82,8 @@ its construction and the loop's `Add` receiver, or a custom
 `Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
 Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
 be null. A local function that captures the accumulator affects the proof only when its reachable direct or delegate
-invocation can run before the loop; an invocation that occurs only after the loop does not suppress the diagnostic.
+invocation can run before the loop or its method group escapes local control; a locally bound invocation that occurs
+only after the loop does not suppress the diagnostic.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,

@@ -905,7 +905,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                             executableRoot,
                             beforePosition,
                             new HashSet<IMethodSymbol>(
-                                SymbolEqualityComparer.Default)))
+                                SymbolEqualityComparer.Default)) ||
+                        LocalFunctionEscapesBefore(
+                            localFunction.Symbol,
+                            executableRoot,
+                            beforePosition))
                     {
                         return true;
                     }
@@ -985,6 +989,108 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private static bool LocalFunctionEscapesBefore(
+        IMethodSymbol localFunction,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        foreach (var methodReference in executableRoot.Descendants()
+                     .OfType<IMethodReferenceOperation>())
+        {
+            if (!SymbolEqualityComparer.Default.Equals(
+                    methodReference.Method.OriginalDefinition,
+                    localFunction.OriginalDefinition) ||
+                !CanOperationRunBefore(
+                    methodReference,
+                    executableRoot,
+                    beforePosition))
+            {
+                continue;
+            }
+
+            IOperation binding = methodReference;
+            while (binding.Parent is IConversionOperation or
+                   IDelegateCreationOperation or
+                   IParenthesizedOperation or
+                   IVariableInitializerOperation)
+            {
+                binding = binding.Parent;
+            }
+
+            if (binding.Parent is IVariableDeclaratorOperation declarator)
+            {
+                if (LocalDelegateEscapesBefore(
+                        declarator.Symbol,
+                        executableRoot,
+                        beforePosition))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (binding.Parent is ISimpleAssignmentOperation assignment &&
+                assignment.Target.UnwrapConversions() is
+                    ILocalReferenceOperation targetLocal)
+            {
+                if (LocalDelegateEscapesBefore(
+                        targetLocal.Local,
+                        executableRoot,
+                        beforePosition))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LocalDelegateEscapesBefore(
+        ILocalSymbol delegateLocal,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        foreach (var localReference in executableRoot.Descendants()
+                     .OfType<ILocalReferenceOperation>())
+        {
+            if (!SymbolEqualityComparer.Default.Equals(
+                    localReference.Local,
+                    delegateLocal) ||
+                !CanOperationRunBefore(
+                    localReference,
+                    executableRoot,
+                    beforePosition))
+            {
+                continue;
+            }
+
+            IOperation use = localReference;
+            while (use.Parent is IConversionOperation or
+                   IParenthesizedOperation)
+            {
+                use = use.Parent;
+            }
+
+            if (use.Parent is IInvocationOperation invocation &&
+                invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                ReferenceEquals(invocation.Instance, use))
+            {
+                continue;
+            }
+
+            if (!IsSimpleAssignmentTarget(localReference))
+                return true;
         }
 
         return false;

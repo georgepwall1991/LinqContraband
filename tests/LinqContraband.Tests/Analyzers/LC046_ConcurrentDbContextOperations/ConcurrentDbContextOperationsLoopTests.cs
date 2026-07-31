@@ -789,6 +789,19 @@ namespace TestApp
             }
         }
 
+        public void RetainedLocalFunctionClosure(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            void Drain() =>
+                Task.WhenAll(tasks).GetAwaiter().GetResult();
+            Callbacks.Drain = Drain;
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
         public void ThrowingIterationVariableConversion(AppDbContext db)
         {
             var tasks = new List<Task<bool>>();
