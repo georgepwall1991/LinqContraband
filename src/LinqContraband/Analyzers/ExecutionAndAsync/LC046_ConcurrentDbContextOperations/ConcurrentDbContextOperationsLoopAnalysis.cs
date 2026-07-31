@@ -413,8 +413,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot)
     {
         var receiver = GetEvaluationReceiver(invocation);
-        if (IsTransparentQueryInvocation(invocation) &&
-            !TransparentQueryArgumentsAreDefinitelyValid(
+        if (!RequiredCallableArgumentsAreDefinitelyValid(
                 invocation,
                 receiver,
                 executableRoot))
@@ -450,7 +449,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return true;
     }
 
-    private static bool TransparentQueryArgumentsAreDefinitelyValid(
+    private static bool RequiredCallableArgumentsAreDefinitelyValid(
         IInvocationOperation invocation,
         IOperation? receiver,
         IOperation executableRoot)
@@ -464,7 +463,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            if (argument.Parameter?.Type.IsReferenceType == true &&
+            if (IsRequiredCallableParameter(argument.Parameter) &&
                 !OperationIsDefinitelyNonNull(
                     argument.Value,
                     executableRoot,
@@ -477,6 +476,26 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static bool IsRequiredCallableParameter(
+        IParameterSymbol? parameter)
+    {
+        if (parameter == null || parameter.HasExplicitDefaultValue)
+            return false;
+
+        if (parameter.Type.TypeKind == TypeKind.Delegate)
+            return true;
+
+        return parameter.Type is INamedTypeSymbol
+               {
+                   Name: "Expression",
+                   Arity: 1,
+                   TypeArguments.Length: 1
+               } expression &&
+               expression.ContainingNamespace?.ToString() ==
+               "System.Linq.Expressions" &&
+               expression.TypeArguments[0].TypeKind == TypeKind.Delegate;
     }
 
     private static bool OperationIsDefinitelyNonNull(
@@ -556,13 +575,21 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                            executableRoot);
 
             case IPropertyReferenceOperation propertyReference:
-                return propertyReference.Instance == null ||
+                return StableMemberValueIsDefinitelyNonNull(
+                           propertyReference.Property,
+                           executableRoot,
+                           propertyReference.Syntax.SpanStart) &&
+                       propertyReference.Instance != null &&
                        QueryReceiverEvaluationIsDefinitelyNonThrowing(
                            propertyReference.Instance,
                            executableRoot);
 
             case IFieldReferenceOperation fieldReference:
-                return fieldReference.Instance == null ||
+                return StableMemberValueIsDefinitelyNonNull(
+                           fieldReference.Field,
+                           executableRoot,
+                           fieldReference.Syntax.SpanStart) &&
+                       fieldReference.Instance != null &&
                        QueryReceiverEvaluationIsDefinitelyNonThrowing(
                            fieldReference.Instance,
                            executableRoot);
@@ -577,6 +604,49 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     receiver,
                     executableRoot);
         }
+    }
+
+    private static bool StableMemberValueIsDefinitelyNonNull(
+        ISymbol member,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        if (member.IsStatic)
+            return false;
+
+        var semanticModel = executableRoot.SemanticModel;
+        if (semanticModel == null)
+            return false;
+
+        foreach (var syntaxReference in member.DeclaringSyntaxReferences)
+        {
+            var declaration = syntaxReference.GetSyntax();
+            var initializer = declaration switch
+            {
+                VariableDeclaratorSyntax variable => variable.Initializer?.Value,
+                PropertyDeclarationSyntax property => property.Initializer?.Value,
+                _ => null
+            };
+            if (initializer == null)
+                continue;
+
+            var initializerModel =
+                semanticModel.Compilation.GetSemanticModel(initializer.SyntaxTree);
+            var initializerOperation =
+                initializerModel.GetOperation(initializer);
+            if (initializerOperation != null &&
+                OperationIsDefinitelyNonNull(
+                    initializerOperation,
+                    executableRoot,
+                    beforePosition,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool OperationEvaluationIsDefinitelyNonThrowing(

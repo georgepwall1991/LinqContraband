@@ -622,6 +622,12 @@ namespace TestApp
         public DbSet<User> Users { get; } = new DbSet<User>();
     }
 
+    public sealed class ContextHolder
+    {
+        public readonly AppDbContext Field = null;
+        public AppDbContext Property { get; } = null;
+    }
+
     public static class Callbacks
     {
         public static Action Drain { get; set; }
@@ -787,6 +793,34 @@ namespace TestApp
                 tasks.Add(db.Users
                     .Where((Expression<Func<User, bool>>)null)
                     .AnyAsync());
+            }
+        }
+
+        public void NullTerminalSelector(AppDbContext db)
+        {
+            var tasks = new List<Task<Dictionary<int, User>>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ToDictionaryAsync(
+                    (Func<User, int>)null));
+            }
+        }
+
+        public void NullContextField(ContextHolder holder)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(holder.Field.Users.AnyAsync());
+            }
+        }
+
+        public void NullContextProperty(ContextHolder holder)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(holder.Property.Users.AnyAsync());
             }
         }
 

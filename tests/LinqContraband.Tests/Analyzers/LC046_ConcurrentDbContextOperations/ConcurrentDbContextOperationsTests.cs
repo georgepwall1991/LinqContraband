@@ -64,6 +64,12 @@ namespace Microsoft.EntityFrameworkCore
             CancellationToken cancellationToken = default) =>
             Task.FromResult(default(TEntity));
 
+        public static Task<Dictionary<TKey, TEntity>> ToDictionaryAsync<TEntity, TKey>(
+            this IQueryable<TEntity> source,
+            Func<TEntity, TKey> keySelector,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Dictionary<TKey, TEntity>());
+
         public static Task LoadAsync<TEntity>(
             this IQueryable<TEntity> source,
             CancellationToken cancellationToken = default) =>
