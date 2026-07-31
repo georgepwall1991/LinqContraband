@@ -324,6 +324,75 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachTaskList_WithNullableContextParameter_ShouldNotTrigger()
+    {
+        var test = @"#nullable enable
+using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext? db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ForeachTaskList_WithNullGuardedContextParameter_ShouldTrigger()
+    {
+        var test = @"#nullable enable
+using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext? db)
+        {
+            if (db is null)
+                return;
+
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#0:db.Users.AnyAsync()|});
+            }
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ForeachTaskList_WithCompletingUserDefinedConversion_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

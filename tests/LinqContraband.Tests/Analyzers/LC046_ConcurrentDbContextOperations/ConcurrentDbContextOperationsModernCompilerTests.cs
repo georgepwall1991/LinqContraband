@@ -216,6 +216,12 @@ public sealed class ConcurrentDbContextOperationsModernCompilerTests
     }
 
     [Fact]
+    public async Task MetadataBackedDatabaseFacadeLoopAccumulation_ShouldTrigger()
+    {
+        await VerifyMetadataBackedDatabaseFacadeAsync();
+    }
+
+    [Fact]
     public void DiagnosticMatcher_ShouldRejectAnalyzerCrashText()
     {
         const string diagnostic =
@@ -225,6 +231,120 @@ public sealed class ConcurrentDbContextOperationsModernCompilerTests
 
         Assert.True(ContainsDiagnostic(diagnostic, "LC046"));
         Assert.False(ContainsDiagnostic(analyzerCrash, "LC046"));
+    }
+
+    private static async Task VerifyMetadataBackedDatabaseFacadeAsync()
+    {
+        var analyzerPath = typeof(
+            LinqContraband.Analyzers.LC046_ConcurrentDbContextOperations
+                .ConcurrentDbContextOperationsAnalyzer).Assembly.Location;
+        var probeDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"linqcontraband-lc046-metadata-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(probeDirectory);
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(probeDirectory, "EfMetadata.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Compile Include="EfMetadata.cs" />
+                  </ItemGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(probeDirectory, "EfMetadata.cs"),
+                """
+                using System.Threading.Tasks;
+
+                namespace Microsoft.EntityFrameworkCore.Infrastructure
+                {
+                    public sealed class DatabaseFacade { }
+                }
+
+                namespace Microsoft.EntityFrameworkCore
+                {
+                    using Infrastructure;
+
+                    public class DbContext
+                    {
+                        public DatabaseFacade Database { get; } = new();
+                    }
+
+                    public static class RelationalDatabaseFacadeExtensions
+                    {
+                        public static Task<int> ExecuteSqlRawAsync(
+                            this DatabaseFacade database,
+                            string sql) =>
+                            Task.FromResult(0);
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(probeDirectory, "Probe.csproj"),
+                $"""
+                 <Project Sdk="Microsoft.NET.Sdk">
+                   <PropertyGroup>
+                     <TargetFramework>net10.0</TargetFramework>
+                     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+                   </PropertyGroup>
+                   <ItemGroup>
+                     <Compile Include="Probe.cs" />
+                     <ProjectReference Include="EfMetadata.csproj" />
+                     <Analyzer Include="{analyzerPath}" />
+                   </ItemGroup>
+                 </Project>
+                 """);
+            await File.WriteAllTextAsync(
+                Path.Combine(probeDirectory, "Probe.cs"),
+                """
+                using System.Collections.Generic;
+                using System.Threading.Tasks;
+                using Microsoft.EntityFrameworkCore;
+
+                public sealed class AppDbContext : DbContext { }
+
+                public sealed class Program
+                {
+                    public void Run(AppDbContext db)
+                    {
+                        var tasks = new List<Task<int>>();
+                        foreach (var id in new[] { 1, 2 })
+                        {
+                            tasks.Add(db.Database.ExecuteSqlRawAsync("SELECT 1"));
+                        }
+                    }
+                }
+                """);
+
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = "build Probe.csproj --nologo --verbosity minimal",
+                WorkingDirectory = probeDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            })!;
+            var standardOutput = await process.StandardOutput.ReadToEndAsync();
+            var standardError = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var output = standardOutput + standardError;
+
+            Assert.Equal(0, process.ExitCode);
+            Assert.DoesNotContain("AD0001", output, StringComparison.Ordinal);
+            Assert.True(ContainsDiagnostic(output, "LC046"), output);
+        }
+        finally
+        {
+            Directory.Delete(probeDirectory, recursive: true);
+        }
     }
 
     private static async Task VerifyCurrentCompilerAsync(

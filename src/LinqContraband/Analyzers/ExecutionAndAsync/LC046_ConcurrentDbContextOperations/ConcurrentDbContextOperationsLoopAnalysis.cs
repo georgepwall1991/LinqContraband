@@ -630,10 +630,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                            executableRoot);
 
             case IPropertyReferenceOperation propertyReference:
-                return StableMemberValueIsDefinitelyNonNull(
-                           propertyReference.Property,
-                           executableRoot,
-                           propertyReference.Syntax.SpanStart) &&
+                return (IsKnownDbContextDatabaseProperty(
+                            propertyReference.Property) ||
+                        StableMemberValueIsDefinitelyNonNull(
+                            propertyReference.Property,
+                            executableRoot,
+                            propertyReference.Syntax.SpanStart)) &&
                        propertyReference.Instance != null &&
                        QueryReceiverEvaluationIsDefinitelyNonThrowing(
                            propertyReference.Instance,
@@ -657,7 +659,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     new HashSet<ILocalSymbol>(
                         SymbolEqualityComparer.Default));
 
-            case IParameterReferenceOperation:
+            case IParameterReferenceOperation parameterReference:
+                return ParameterReferenceIsDefinitelyNonNull(
+                    parameterReference);
+
             case IInstanceReferenceOperation:
                 return true;
 
@@ -666,6 +671,33 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     receiver,
                     executableRoot);
         }
+    }
+
+    private static bool ParameterReferenceIsDefinitelyNonNull(
+        IParameterReferenceOperation parameterReference)
+    {
+        if (parameterReference.Parameter.NullableAnnotation !=
+            NullableAnnotation.Annotated)
+        {
+            return true;
+        }
+
+        return parameterReference.SemanticModel?
+                   .GetTypeInfo(parameterReference.Syntax)
+                   .Nullability.FlowState ==
+               NullableFlowState.NotNull;
+    }
+
+    private static bool IsKnownDbContextDatabaseProperty(
+        IPropertySymbol property)
+    {
+        return property.Name == "Database" &&
+               property.ContainingType.Name == "DbContext" &&
+               property.ContainingNamespace?.ToString() ==
+               "Microsoft.EntityFrameworkCore" &&
+               property.Type.Name == "DatabaseFacade" &&
+               property.Type.ContainingNamespace?.ToString() ==
+               "Microsoft.EntityFrameworkCore.Infrastructure";
     }
 
     private static bool StableMemberValueIsDefinitelyNonNull(
