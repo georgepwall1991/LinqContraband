@@ -84,6 +84,19 @@ namespace TestApp
                 tasks.Add({|#2:db.Users.ElementAtAsync(id)|});
             }
         }
+
+        public void LocalDrainRunsOnlyAfterLoop(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            void Drain() => Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#3:db.Users.AnyAsync()|});
+            }
+
+            Drain();
+        }
     }
 }";
 
@@ -96,12 +109,16 @@ namespace TestApp
         var loopVariableArgument = VerifyCS.Diagnostic()
             .WithLocation(2)
             .WithArguments("db");
+        var postLoopLocalDrain = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             declarationInitializer,
             separateAssignment,
-            loopVariableArgument);
+            loopVariableArgument,
+            postLoopLocalDrain);
     }
 
     [Fact]
@@ -561,6 +578,20 @@ namespace TestApp
             }
         }
 
+        public void TransitiveLocalFunctionEscape(AppDbContext db)
+        {
+            var tasks = new List<Task<User>>();
+            Outer();
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(DrainEscaped()));
+            }
+
+            void Outer() => Inner();
+            void Inner() => _escaped = tasks;
+        }
+
         private void Retain(List<Task<User>> tasks) => _escaped = tasks;
 
         private int DrainEscaped()
@@ -581,6 +612,7 @@ namespace TestApp
 	using System;
 	using System.Collections;
 	using System.Collections.Generic;
+	using System.Linq.Expressions;
 	using System.Threading.Tasks;" + EfMock + @"
 namespace TestApp
 {
@@ -743,6 +775,17 @@ namespace TestApp
             {
                 tasks.Add(db.Users
                     .Skip(id == 2 ? Throw() : id)
+                    .AnyAsync());
+            }
+        }
+
+        public void NullTransparentQueryArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users
+                    .Where((Expression<Func<User, bool>>)null)
                     .AnyAsync());
             }
         }

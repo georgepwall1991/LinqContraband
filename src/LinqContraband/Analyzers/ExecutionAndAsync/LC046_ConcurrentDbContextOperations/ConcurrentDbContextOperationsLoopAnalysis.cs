@@ -413,6 +413,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation executableRoot)
     {
         var receiver = GetEvaluationReceiver(invocation);
+        if (IsTransparentQueryInvocation(invocation) &&
+            !TransparentQueryArgumentsAreDefinitelyValid(
+                invocation,
+                receiver,
+                executableRoot))
+        {
+            return false;
+        }
+
         if (receiver != null &&
             !QueryReceiverEvaluationIsDefinitelyNonThrowing(
                 receiver,
@@ -439,6 +448,83 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static bool TransparentQueryArgumentsAreDefinitelyValid(
+        IInvocationOperation invocation,
+        IOperation? receiver,
+        IOperation executableRoot)
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            if (receiver != null &&
+                (ReferenceEquals(argument.Value, receiver) ||
+                 argument.Value.Syntax.Span.Equals(receiver.Syntax.Span)))
+            {
+                continue;
+            }
+
+            if (argument.Parameter?.Type.IsReferenceType == true &&
+                !OperationIsDefinitelyNonNull(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool OperationIsDefinitelyNonNull(
+        IOperation operation,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        operation = UnwrapNonThrowingConversionsAndParentheses(operation);
+        if (operation.Type?.IsValueType == true &&
+            !IsNullableValueType(operation.Type))
+        {
+            return true;
+        }
+
+        if (operation.ConstantValue.HasValue)
+            return operation.ConstantValue.Value != null;
+
+        if (operation is IObjectCreationOperation or
+            IArrayCreationOperation or
+            IAnonymousFunctionOperation or
+            IDelegateCreationOperation or
+            IInstanceReferenceOperation or
+            ITypeOfOperation)
+        {
+            return true;
+        }
+
+        if (operation is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
+            LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                out var assignedValue))
+        {
+            return OperationIsDefinitelyNonNull(
+                assignedValue,
+                executableRoot,
+                localReference.Syntax.SpanStart,
+                visitedLocals);
+        }
+
+        return false;
     }
 
     private static IOperation? GetEvaluationReceiver(
@@ -630,12 +716,93 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (SymbolEqualityComparer.Default.Equals(
                     localReference.Local,
                     accumulator) &&
-                !IsSimpleAssignmentTarget(localReference) &&
-                (localReference.Syntax.SpanStart < beforePosition ||
-                 CanOperationRunBefore(
-                     localReference,
-                     executableRoot,
-                     beforePosition)))
+                !IsSimpleAssignmentTarget(localReference))
+            {
+                var localFunction =
+                    GetContainingLocalFunction(localReference);
+                if (localFunction != null)
+                {
+                    if (LocalFunctionCanRunBefore(
+                            localFunction.Symbol,
+                            executableRoot,
+                            beforePosition,
+                            new HashSet<IMethodSymbol>(
+                                SymbolEqualityComparer.Default)))
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (localReference.Syntax.SpanStart < beforePosition ||
+                    CanOperationRunBefore(
+                        localReference,
+                        executableRoot,
+                        beforePosition))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static ILocalFunctionOperation? GetContainingLocalFunction(
+        IOperation operation)
+    {
+        for (var current = operation.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            if (current is ILocalFunctionOperation localFunction)
+                return localFunction;
+        }
+
+        return null;
+    }
+
+    private static bool LocalFunctionCanRunBefore(
+        IMethodSymbol localFunction,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<IMethodSymbol> visitedLocalFunctions)
+    {
+        if (!visitedLocalFunctions.Add(localFunction.OriginalDefinition))
+            return false;
+
+        foreach (var invocation in executableRoot.Descendants()
+                     .OfType<IInvocationOperation>())
+        {
+            if (!SymbolEqualityComparer.Default.Equals(
+                    invocation.TargetMethod.OriginalDefinition,
+                    localFunction.OriginalDefinition))
+            {
+                continue;
+            }
+
+            var containingLocalFunction =
+                GetContainingLocalFunction(invocation);
+            if (containingLocalFunction != null)
+            {
+                if (LocalFunctionCanRunBefore(
+                        containingLocalFunction.Symbol,
+                        executableRoot,
+                        beforePosition,
+                        visitedLocalFunctions))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (invocation.Syntax.SpanStart < beforePosition ||
+                CanOperationRunBefore(
+                    invocation,
+                    executableRoot,
+                    beforePosition))
             {
                 return true;
             }

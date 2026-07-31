@@ -74,12 +74,14 @@ iterations, an awaited result, a throwing or unstable list receiver, a potential
 user-defined conversion around the task, a task-producing call that may consume the accumulator directly, through one
 or more alias assignments, or through an invoked captured local before starting the next operation, a potentially
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
-argument that can prevent a later EF call from starting, loop source setup that
+argument that can prevent a later EF call from starting, an invalid transparent-query argument that makes query
+construction fail, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
 its construction and the loop's `Add` receiver, or a custom
 `Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
 Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
-be null.
+be null. A local function that captures the accumulator affects the proof only when its reachable invocation can run
+before the loop; an invocation that occurs only after the loop does not suppress the diagnostic.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
