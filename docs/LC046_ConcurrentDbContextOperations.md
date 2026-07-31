@@ -63,12 +63,24 @@ items. Instance context members are matched by both the member and its proven re
 different holder objects is not conflated.
 
 A separate loop pass reports the loop-body invocation itself when a `foreach` iterates an inline array initializer with
-at least two elements and the discarded EF Core async invocation is the loop body's only statement. It does not report
-for an unknown, empty, or singleton source, a multi-statement or conditionally exited loop body, a context that can
-change between iterations, or an awaited result.
+at least two elements and the loop body's only statement either discards the EF Core async invocation or passes it
+directly to framework `List<T>.Add` on a single-assignment local constructed with `new` or a collection expression
+before the loop, either at declaration or by one later simple assignment. The task-list branch additionally requires
+a synchronous, non-deconstructing loop over a direct inline array with at least two compile-time-constant elements and
+an identity iteration-variable conversion. It does not report that branch for an unknown, empty, or singleton source,
+an asynchronous or deconstructing loop, a source whose setup can throw before repetition, a user-defined source or
+iteration-variable conversion, a multi-statement or conditionally exited loop body, a context that can change between
+iterations, an awaited result, a throwing or unstable list receiver, a potentially throwing explicit cast or
+user-defined conversion around the task, a task-producing call that may consume the accumulator directly, through one
+or more alias assignments, or through an invoked captured local before starting the next operation, loop source setup
+that references the accumulator between body executions, any executable use or retained closure of the accumulator
+between its construction and the loop's `Add` receiver, or a custom
+`Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
+Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
+be null.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
-reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
+unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
 custom lookalike APIs, query construction, `AsAsyncEnumerable()` alone, per-item context factories, and selector
 fan-out over statically empty or singleton sources, including fixed-size arrays. LC036 continues to own `Task.Run`,
 `Parallel`, `Thread`, thread-pool, and timer capture diagnostics.

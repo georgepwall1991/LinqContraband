@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC046 now detects direct or safely identity/reference-converted EF Core async tasks accumulated through direct or null-conditional `Add` on a proven non-null, single-assignment, unescaped framework `List<T>` local created with `new` or a collection expression, either at declaration or by one later assignment, as the sole statement of a synchronous, non-deconstructing `foreach` over a direct inline array with at least two compile-time-constant elements and an identity iteration-variable conversion, closing the loop-built task-list false negative while keeping singleton, asynchronous, deconstructing, throwing-source, and user-defined source or iteration-variable conversion loops, per-iteration contexts, sequential awaits, throwing or unstable receivers, retained-closure escapes, escaped or previously referenced accumulators, loop setup or direct, multiply aliased, and captured task arguments that may consume the accumulator, potentially throwing explicit casts, user-defined task conversions, and custom `Add`-shaped APIs quiet.
+
 ## [5.7.2] - 2026-07-29
 
 ### Fixed

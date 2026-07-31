@@ -200,6 +200,22 @@ public sealed class ConcurrentDbContextOperationsModernCompilerTests
     }
 
     [Fact]
+    public async Task ListCollectionExpressionAccumulation_ShouldTrigger()
+    {
+        await VerifyCurrentCompilerAsync(
+            """
+                        List<Task<bool>> tasks = [];
+                        foreach (var id in new[] { 1, 2 })
+                        {
+                            tasks.Add(db.Users.AnyAsync());
+                        }
+
+                        await Task.WhenAll(tasks);
+            """,
+            expectsLc046: true);
+    }
+
+    [Fact]
     public void DiagnosticMatcher_ShouldRejectAnalyzerCrashText()
     {
         const string diagnostic =

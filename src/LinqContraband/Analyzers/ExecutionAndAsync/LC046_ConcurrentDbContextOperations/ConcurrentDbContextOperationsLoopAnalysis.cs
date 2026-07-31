@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -18,7 +20,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                      .OfType<IForEachLoopOperation>())
         {
             if (!CollectionHasAtLeastTwoElements(loop.Collection) ||
-                !TryGetSingleDiscardedInvocation(loop.Body, out var invocation) ||
+                !TryGetSingleRepeatedInvocation(
+                    loop,
+                    executableRoot,
+                    out var invocation) ||
                 !TryClassifyEfAsyncOperation(
                     invocation,
                     executableRoot,
@@ -343,16 +348,22 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         } && initializer.ElementValues.Length >= 2;
     }
 
-    private static bool TryGetSingleDiscardedInvocation(
-        IOperation body,
+    private static bool TryGetSingleRepeatedInvocation(
+        IForEachLoopOperation loop,
+        IOperation executableRoot,
         out IInvocationOperation invocation)
     {
-        var statement = body is IBlockOperation { Operations.Length: 1 } block
+        var statement = loop.Body is IBlockOperation { Operations.Length: 1 } block
             ? block.Operations[0]
-            : body;
-        if (statement is IExpressionStatementOperation expressionStatement &&
-            UnwrapConversionsAndParentheses(expressionStatement.Operation) is
-                ISimpleAssignmentOperation assignment &&
+            : loop.Body;
+        if (statement is not IExpressionStatementOperation expressionStatement)
+        {
+            invocation = null!;
+            return false;
+        }
+
+        var expression = UnwrapConversionsAndParentheses(expressionStatement.Operation);
+        if (expression is ISimpleAssignmentOperation assignment &&
             assignment.Target.UnwrapConversions() is IDiscardOperation &&
             UnwrapConversionsAndParentheses(assignment.Value) is
                 IInvocationOperation discardedInvocation)
@@ -361,8 +372,305 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return true;
         }
 
+        if (LoopHasProvenRepeatedListExecutions(loop) &&
+            TryGetStableFrameworkListAdd(
+                expression,
+                executableRoot,
+                out var addInvocation,
+                out var accumulator) &&
+            addInvocation.Arguments.Length == 1 &&
+            UnwrapNonThrowingConversionsAndParentheses(
+                addInvocation.Arguments[0].Value) is
+                IInvocationOperation addedInvocation &&
+            !OperationReferencesAccumulator(
+                addedInvocation,
+                executableRoot,
+                accumulator,
+                new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default),
+                new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default),
+                new HashSet<int>()) &&
+            !OperationReferencesAccumulator(
+                loop.Collection,
+                executableRoot,
+                accumulator,
+                new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default),
+                new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default),
+                new HashSet<int>()))
+        {
+            invocation = addedInvocation;
+            return true;
+        }
+
         invocation = null!;
         return false;
+    }
+
+    private static bool LoopHasProvenRepeatedListExecutions(
+        IForEachLoopOperation loop)
+    {
+        if (loop.IsAsynchronous)
+            return false;
+
+        if (loop.SemanticModel == null ||
+            loop.Syntax is not ForEachStatementSyntax forEachSyntax ||
+            !loop.SemanticModel.GetForEachStatementInfo(forEachSyntax)
+                .ElementConversion.IsIdentity)
+        {
+            return false;
+        }
+
+        var collection =
+            UnwrapNonThrowingConversionsAndParentheses(loop.Collection);
+
+        return collection is IArrayCreationOperation
+               {
+                   Initializer: { } initializer
+               } &&
+               initializer.ElementValues.Length >= 2 &&
+               initializer.ElementValues.All(element =>
+                   element.ConstantValue.HasValue);
+    }
+
+    private static bool TryGetStableFrameworkListAdd(
+        IOperation expression,
+        IOperation executableRoot,
+        out IInvocationOperation invocation,
+        out ILocalSymbol accumulator)
+    {
+        IOperation? receiver;
+        if (expression is IInvocationOperation directInvocation)
+        {
+            invocation = directInvocation;
+            receiver = invocation.Instance;
+        }
+        else if (expression is IConditionalAccessOperation conditionalAccess &&
+                 UnwrapConversionsAndParentheses(conditionalAccess.WhenNotNull) is
+                     IInvocationOperation conditionalInvocation)
+        {
+            invocation = conditionalInvocation;
+            receiver = conditionalAccess.Operation;
+        }
+        else
+        {
+            invocation = null!;
+            accumulator = null!;
+            return false;
+        }
+
+        if (!IsStableFrameworkListAdd(
+                invocation,
+                receiver,
+                executableRoot) ||
+            receiver?.UnwrapConversions() is not
+                ILocalReferenceOperation listLocal)
+        {
+            accumulator = null!;
+            return false;
+        }
+
+        accumulator = listLocal.Local;
+        return true;
+    }
+
+    private static bool IsStableFrameworkListAdd(
+        IInvocationOperation invocation,
+        IOperation? receiver,
+        IOperation executableRoot)
+    {
+        var listType = invocation.SemanticModel?.Compilation.GetTypeByMetadataName(
+            "System.Collections.Generic.List`1");
+        if (listType == null ||
+            invocation.TargetMethod.Name != "Add" ||
+            !SymbolEqualityComparer.Default.Equals(
+                invocation.TargetMethod.ContainingType.OriginalDefinition,
+                listType) ||
+            receiver?.UnwrapConversions() is not
+                ILocalReferenceOperation listLocal ||
+            !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                listLocal.Local,
+                invocation.Syntax.SpanStart,
+                out var assignedValue) ||
+            !LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                listLocal.Local,
+                invocation.Syntax.SpanStart) ||
+            AccumulatorEscapesBefore(
+                executableRoot,
+                listLocal.Local,
+                receiver.Syntax.SpanStart))
+        {
+            return false;
+        }
+
+        assignedValue = UnwrapNonUserDefinedConversions(assignedValue);
+        return assignedValue.Type is INamedTypeSymbol assignedType &&
+               SymbolEqualityComparer.Default.Equals(
+                   assignedType.OriginalDefinition,
+                   listType) &&
+               (assignedValue is IObjectCreationOperation ||
+                assignedValue.Kind.ToString() == "CollectionExpression");
+    }
+
+    private static bool AccumulatorEscapesBefore(
+        IOperation executableRoot,
+        ILocalSymbol accumulator,
+        int beforePosition)
+    {
+        foreach (var localReference in executableRoot.Descendants()
+                     .OfType<ILocalReferenceOperation>())
+        {
+            if (SymbolEqualityComparer.Default.Equals(
+                    localReference.Local,
+                    accumulator) &&
+                !IsSimpleAssignmentTarget(localReference) &&
+                (localReference.Syntax.SpanStart < beforePosition ||
+                 CanOperationRunBefore(
+                     localReference,
+                     executableRoot,
+                     beforePosition)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSimpleAssignmentTarget(
+        ILocalReferenceOperation localReference)
+    {
+        return localReference.Parent is ISimpleAssignmentOperation assignment &&
+               ReferenceEquals(assignment.Target, localReference);
+    }
+
+    private static bool OperationReferencesAccumulator(
+        IOperation operation,
+        IOperation executableRoot,
+        ILocalSymbol accumulator,
+        ISet<ILocalSymbol> visitedAliases,
+        ISet<IMethodSymbol> visitedLocalFunctions,
+        ISet<int> visitedAnonymousFunctions)
+    {
+        if (OperationReferencesAccumulatorLocal(
+                operation,
+                executableRoot,
+                accumulator,
+                visitedAliases,
+                visitedLocalFunctions,
+                visitedAnonymousFunctions))
+        {
+            return true;
+        }
+
+        foreach (var localReference in operation.Descendants()
+                     .OfType<ILocalReferenceOperation>())
+        {
+            if (OperationReferencesAccumulatorLocal(
+                    localReference,
+                    executableRoot,
+                    accumulator,
+                    visitedAliases,
+                    visitedLocalFunctions,
+                    visitedAnonymousFunctions))
+            {
+                return true;
+            }
+        }
+
+        var invocations = operation is IInvocationOperation rootInvocation
+            ? new[] { rootInvocation }.Concat(
+                operation.Descendants().OfType<IInvocationOperation>())
+            : operation.Descendants().OfType<IInvocationOperation>();
+        foreach (var invocation in invocations)
+        {
+            if (TryGetInvokedNestedExecutable(
+                    invocation,
+                    executableRoot,
+                    visitedLocalFunctions,
+                    visitedAnonymousFunctions,
+                    out var nestedExecutable) &&
+                OperationReferencesAccumulator(
+                    nestedExecutable,
+                    executableRoot,
+                    accumulator,
+                    visitedAliases,
+                    visitedLocalFunctions,
+                    visitedAnonymousFunctions))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool OperationReferencesAccumulatorLocal(
+        IOperation operation,
+        IOperation executableRoot,
+        ILocalSymbol accumulator,
+        ISet<ILocalSymbol> visitedAliases,
+        ISet<IMethodSymbol> visitedLocalFunctions,
+        ISet<int> visitedAnonymousFunctions)
+    {
+        if (operation is not ILocalReferenceOperation localReference)
+            return false;
+
+        if (SymbolEqualityComparer.Default.Equals(
+                localReference.Local,
+                accumulator))
+        {
+            return true;
+        }
+
+        if (!visitedAliases.Add(localReference.Local))
+            return false;
+
+        var hasAssignmentBeforeReference = false;
+        foreach (var assignment in LocalAssignmentCache.GetAssignments(
+                     executableRoot,
+                     localReference.Local))
+        {
+            if (assignment.SpanStart >= localReference.Syntax.SpanStart)
+                continue;
+
+            hasAssignmentBeforeReference = true;
+            if (OperationReferencesAccumulator(
+                    assignment.Value,
+                    executableRoot,
+                    accumulator,
+                    visitedAliases,
+                    visitedLocalFunctions,
+                    visitedAnonymousFunctions))
+            {
+                return true;
+            }
+        }
+
+        return !hasAssignmentBeforeReference &&
+               SymbolEqualityComparer.Default.Equals(
+                   localReference.Local.Type,
+                   accumulator.Type);
+    }
+
+    private static IOperation UnwrapNonThrowingConversionsAndParentheses(
+        IOperation operation)
+    {
+        while (operation is IParenthesizedOperation ||
+               operation is IConversionOperation currentConversion &&
+               currentConversion.OperatorMethod == null &&
+               (currentConversion.IsImplicit ||
+                currentConversion.Conversion.IsImplicit))
+        {
+            operation = operation switch
+            {
+                IConversionOperation conversion => conversion.Operand,
+                IParenthesizedOperation parenthesized => parenthesized.Operand,
+                _ => operation
+            };
+        }
+
+        return operation;
     }
 
     private static IOperation UnwrapConversionsAndParentheses(IOperation operation)
