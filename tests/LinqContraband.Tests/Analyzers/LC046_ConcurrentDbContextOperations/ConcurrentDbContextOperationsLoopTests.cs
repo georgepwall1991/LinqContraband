@@ -43,6 +43,7 @@ namespace TestApp
     public async Task ForeachOverTwoElementArray_AddsEfTasksToStableList_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
+	using System;
 	using System.Collections.Generic;
 	using System.Threading.Tasks;" + EfMock + @"
 namespace TestApp
@@ -97,6 +98,21 @@ namespace TestApp
 
             Drain();
         }
+
+        public void DelegateDrainRunsOnlyAfterLoop(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            void Drain() =>
+                Task.WhenAll(tasks).GetAwaiter().GetResult();
+            Action drain = Drain;
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#4:db.Users.AnyAsync()|});
+            }
+
+            drain();
+        }
     }
 }";
 
@@ -112,13 +128,17 @@ namespace TestApp
         var postLoopLocalDrain = VerifyCS.Diagnostic()
             .WithLocation(3)
             .WithArguments("db");
+        var postLoopDelegateDrain = VerifyCS.Diagnostic()
+            .WithLocation(4)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             declarationInitializer,
             separateAssignment,
             loopVariableArgument,
-            postLoopLocalDrain);
+            postLoopLocalDrain,
+            postLoopDelegateDrain);
     }
 
     [Fact]
@@ -826,6 +846,17 @@ namespace TestApp
             {
                 tasks.Add(db.Users
                     .Concat((IQueryable<User>)null)
+                    .AnyAsync());
+            }
+        }
+
+        public void NullRequiredScalarQueryArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users
+                    .FromSqlRaw(id == 2 ? null : ""SELECT 1"")
                     .AnyAsync());
             }
         }

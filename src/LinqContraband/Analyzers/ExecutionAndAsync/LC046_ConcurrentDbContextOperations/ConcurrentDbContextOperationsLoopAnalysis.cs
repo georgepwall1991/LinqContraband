@@ -464,7 +464,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             }
 
             if ((IsRequiredCallableParameter(argument.Parameter) ||
-                 IsRequiredQuerySequenceParameter(
+                 IsRequiredQueryArgument(
                      invocation,
                      argument.Parameter)) &&
                 !OperationIsDefinitelyNonNull(
@@ -501,7 +501,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                expression.TypeArguments[0].TypeKind == TypeKind.Delegate;
     }
 
-    private static bool IsRequiredQuerySequenceParameter(
+    private static bool IsRequiredQueryArgument(
         IInvocationOperation invocation,
         IParameterSymbol? parameter)
     {
@@ -513,13 +513,20 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return parameter.Type.IsIQueryable() ||
+               parameter.Type.SpecialType == SpecialType.System_String ||
                parameter.Type is INamedTypeSymbol
                {
                    Name: "IEnumerable",
                    Arity: 1
                } enumerable &&
                enumerable.ContainingNamespace?.ToString() ==
-               "System.Collections.Generic";
+               "System.Collections.Generic" ||
+               parameter.Type is INamedTypeSymbol
+               {
+                   Name: "FormattableString",
+                   Arity: 0
+               } formattableString &&
+               formattableString.ContainingNamespace?.ToString() == "System";
     }
 
     private static bool OperationIsDefinitelyNonNull(
@@ -893,11 +900,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     GetContainingLocalFunction(localReference);
                 if (localFunction != null)
                 {
-                    if (CanOperationRunBefore(
-                            localReference,
-                            executableRoot,
-                            beforePosition) ||
-                        LocalFunctionCanRunBefore(
+                    if (LocalFunctionCanRunBefore(
                             localFunction.Symbol,
                             executableRoot,
                             beforePosition,
@@ -950,9 +953,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         foreach (var invocation in executableRoot.Descendants()
                      .OfType<IInvocationOperation>())
         {
-            if (!SymbolEqualityComparer.Default.Equals(
-                    invocation.TargetMethod.OriginalDefinition,
-                    localFunction.OriginalDefinition))
+            if (!InvocationTargetsLocalFunction(
+                    invocation,
+                    localFunction,
+                    executableRoot))
             {
                 continue;
             }
@@ -984,6 +988,40 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static bool InvocationTargetsLocalFunction(
+        IInvocationOperation invocation,
+        IMethodSymbol localFunction,
+        IOperation executableRoot)
+    {
+        if (SymbolEqualityComparer.Default.Equals(
+                invocation.TargetMethod.OriginalDefinition,
+                localFunction.OriginalDefinition))
+        {
+            return true;
+        }
+
+        if (invocation.TargetMethod.MethodKind != MethodKind.DelegateInvoke ||
+            invocation.Instance?.UnwrapConversions() is not
+                ILocalReferenceOperation delegateLocal ||
+            !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                delegateLocal.Local,
+                invocation.Syntax.SpanStart,
+                out var assignedValue))
+        {
+            return false;
+        }
+
+        assignedValue = assignedValue.UnwrapConversions();
+        if (assignedValue is IDelegateCreationOperation delegateCreation)
+            assignedValue = delegateCreation.Target.UnwrapConversions();
+
+        return assignedValue is IMethodReferenceOperation methodReference &&
+               SymbolEqualityComparer.Default.Equals(
+                   methodReference.Method.OriginalDefinition,
+                   localFunction.OriginalDefinition);
     }
 
     private static bool IsSimpleAssignmentTarget(

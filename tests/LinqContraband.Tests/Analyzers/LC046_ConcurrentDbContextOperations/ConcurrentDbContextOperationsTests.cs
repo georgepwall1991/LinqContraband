@@ -90,6 +90,13 @@ namespace Microsoft.EntityFrameworkCore
             this IQueryable<TEntity> source) => null;
     }
 
+    public static class RelationalQueryableExtensions
+    {
+        public static IQueryable<TEntity> FromSqlRaw<TEntity>(
+            this DbSet<TEntity> source,
+            string sql) where TEntity : class => source;
+    }
+
     public static class RelationalDatabaseFacadeExtensions
     {
         public static Task<int> ExecuteSqlRawAsync(
