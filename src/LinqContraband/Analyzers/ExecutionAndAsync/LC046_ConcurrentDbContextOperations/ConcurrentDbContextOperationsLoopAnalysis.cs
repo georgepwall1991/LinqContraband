@@ -382,6 +382,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             UnwrapNonThrowingConversionsAndParentheses(
                 addInvocation.Arguments[0].Value) is
                 IInvocationOperation addedInvocation &&
+            InvocationArgumentsAreDefinitelyNonThrowing(
+                addedInvocation,
+                executableRoot) &&
             !OperationReferencesAccumulator(
                 addedInvocation,
                 executableRoot,
@@ -403,6 +406,34 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         invocation = null!;
         return false;
+    }
+
+    private static bool InvocationArgumentsAreDefinitelyNonThrowing(
+        IInvocationOperation invocation,
+        IOperation executableRoot)
+    {
+        var receiver = GetSemanticInvocationReceiver(invocation);
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.IsImplicit)
+                continue;
+
+            var value = argument.Value.UnwrapConversions();
+            if (receiver != null &&
+                value.Syntax.Span.Equals(receiver.Syntax.Span))
+            {
+                continue;
+            }
+
+            if (!SyntaxIsDefinitelyNonThrowing(
+                    value.Syntax,
+                    executableRoot))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool LoopHasProvenRepeatedListExecutions(

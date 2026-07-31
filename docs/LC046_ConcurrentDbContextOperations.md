@@ -72,9 +72,10 @@ an asynchronous or deconstructing loop, a source whose setup can throw before re
 iteration-variable conversion, a multi-statement or conditionally exited loop body, a context that can change between
 iterations, an awaited result, a throwing or unstable list receiver, a potentially throwing explicit cast or
 user-defined conversion around the task, a task-producing call that may consume the accumulator directly, through one
-or more alias assignments, or through an invoked captured local before starting the next operation, loop source setup
-that references the accumulator between body executions, any executable use or retained closure of the accumulator
-between its construction and the loop's `Add` receiver, or a custom
+or more alias assignments, or through an invoked captured local before starting the next operation, another
+potentially throwing invocation argument that can prevent a later EF call from starting, loop source setup that
+references the accumulator between body executions, any executable use or retained closure of the accumulator between
+its construction and the loop's `Add` receiver, or a custom
 `Add`-shaped API. Safe explicit identity and reference upcasts around the task retain the diagnostic.
 Null-conditional `Add` remains diagnostic when the same construction proof establishes that the local receiver cannot
 be null.

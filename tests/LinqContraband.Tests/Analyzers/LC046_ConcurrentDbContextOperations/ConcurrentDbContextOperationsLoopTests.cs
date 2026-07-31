@@ -75,6 +75,15 @@ namespace TestApp
                 tasks.Add({|#1:db.Users.AnyAsync()|});
             }
         }
+
+        public void LoopVariableArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#2:db.Users.ElementAtAsync(id)|});
+            }
+        }
     }
 }";
 
@@ -84,11 +93,15 @@ namespace TestApp
         var separateAssignment = VerifyCS.Diagnostic()
             .WithLocation(1)
             .WithArguments("db");
+        var loopVariableArgument = VerifyCS.Diagnostic()
+            .WithLocation(2)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             declarationInitializer,
-            separateAssignment);
+            separateAssignment,
+            loopVariableArgument);
     }
 
     [Fact]
@@ -710,6 +723,16 @@ namespace TestApp
             foreach (var (id, ignored) in new[] { 1, 2 })
             {
                 tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
+        public void ThrowingInvocationArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(
+                    id == 2 ? Throw() : id));
             }
         }
 
