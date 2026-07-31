@@ -95,7 +95,8 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static IQueryable<TEntity> FromSqlRaw<TEntity>(
             this DbSet<TEntity> source,
-            string sql) where TEntity : class => source;
+            string sql,
+            params object[] parameters) where TEntity : class => source;
     }
 
     public static class RelationalDatabaseFacadeExtensions
@@ -103,7 +104,13 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<int> ExecuteSqlRawAsync(
             this Infrastructure.DatabaseFacade database,
             string sql,
-            CancellationToken cancellationToken = default) =>
+            params object[] parameters) =>
+            Task.FromResult(0);
+
+        public static Task<int> ExecuteSqlRawAsync(
+            this Infrastructure.DatabaseFacade database,
+            string sql,
+            CancellationToken cancellationToken) =>
             Task.FromResult(0);
 
         public static Task<int> ExecuteSqlInterpolatedAsync(

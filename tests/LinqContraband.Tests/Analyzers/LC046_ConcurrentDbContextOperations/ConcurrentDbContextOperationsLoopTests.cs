@@ -327,7 +327,7 @@ namespace TestApp
     public async Task ForeachTaskList_WithNullableContextParameter_ShouldNotTrigger()
     {
         var test = @"#nullable enable
-using Microsoft.EntityFrameworkCore;
+	using Microsoft.EntityFrameworkCore;
 	using System.Collections.Generic;
 	using System.Threading.Tasks;" + EfMock + @"
 namespace TestApp
@@ -486,6 +486,59 @@ namespace TestApp
                 tasks.Add(db.Users.FromSqlRaw("""").AnyAsync());
             }
         }
+
+        public void EmptyFindKeys(AppDbContext db)
+        {
+            var keys = new object[0];
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.FindAsync<User>(keys));
+            }
+        }
+
+        public void OmittedFindKeys(AppDbContext db)
+        {
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.FindAsync<User>());
+            }
+        }
+
+        public void NullRawSqlParameters(AppDbContext db)
+        {
+            object[] parameters = null;
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Database.ExecuteSqlRawAsync(
+                    ""SELECT 1"",
+                    parameters));
+            }
+        }
+
+        public void NullQuerySqlParameters(AppDbContext db)
+        {
+            object[] parameters = null;
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users
+                    .FromSqlRaw(""SELECT 1"", parameters)
+                    .AnyAsync());
+            }
+        }
+
+        public void DefinitelyCancelled(AppDbContext db)
+        {
+            var canceled = new System.Threading.CancellationToken(true);
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync(canceled));
+            }
+        }
     }
 }";
 
@@ -536,6 +589,51 @@ namespace TestApp
                 tasks.Add({|#2:db.FindAsync<User>(id)|});
             }
         }
+
+        public void StableFindKeys(AppDbContext db)
+        {
+            var keys = new object[] { 1 };
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#3:db.FindAsync<User>(keys)|});
+            }
+        }
+
+        public void RawSqlParameters(AppDbContext db)
+        {
+            var parameters = new object[] { 1 };
+            var tasks = new List<Task<int>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#4:db.Database.ExecuteSqlRawAsync(
+                    ""SELECT {0}"",
+                    parameters)|});
+            }
+        }
+
+        public void QuerySqlParameters(AppDbContext db)
+        {
+            var parameters = new object[] { 1 };
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#5:db.Users
+                    .FromSqlRaw(""SELECT {0}"", parameters)
+                    .AnyAsync()|});
+            }
+        }
+
+        public void NonCancelledToken(AppDbContext db)
+        {
+            var cancellationToken =
+                new System.Threading.CancellationToken(false);
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#6:db.Users.AnyAsync(cancellationToken)|});
+            }
+        }
     }
 }";
 
@@ -548,12 +646,28 @@ namespace TestApp
         var expandedFindKeys = VerifyCS.Diagnostic()
             .WithLocation(2)
             .WithArguments("db");
+        var stableFindKeys = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithArguments("db");
+        var rawSqlParameters = VerifyCS.Diagnostic()
+            .WithLocation(4)
+            .WithArguments("db");
+        var querySqlParameters = VerifyCS.Diagnostic()
+            .WithLocation(5)
+            .WithArguments("db");
+        var nonCancelledToken = VerifyCS.Diagnostic()
+            .WithLocation(6)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             rawSql,
             interpolatedSql,
-            expandedFindKeys);
+            expandedFindKeys,
+            stableFindKeys,
+            rawSqlParameters,
+            querySqlParameters,
+            nonCancelledToken);
     }
 
     [Fact]

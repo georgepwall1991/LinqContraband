@@ -465,8 +465,22 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if ((IsRequiredCallableParameter(argument.Parameter) ||
                  IsRequiredQueryArgument(invocation, argument.Parameter) ||
-                 IsRequiredTerminalArgument(invocation, argument.Parameter)) &&
+                 IsRequiredTerminalArgument(invocation, argument.Parameter) ||
+                 IsRequiredRawSqlParametersArgument(
+                     invocation,
+                     argument.Parameter)) &&
                 !OperationIsDefinitelyNonNull(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+
+            if (IsFindKeyValuesArgument(invocation, argument.Parameter) &&
+                !OperationIsDefinitelyNonEmptyArray(
                     argument.Value,
                     executableRoot,
                     invocation.Syntax.SpanStart,
@@ -478,6 +492,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             if (IsRequiredSqlArgument(invocation, argument.Parameter) &&
                 !OperationIsDefinitelyNonEmptySql(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+
+            if (IsCancellationTokenParameter(argument.Parameter) &&
+                OperationIsDefinitelyCancelledToken(
                     argument.Value,
                     executableRoot,
                     invocation.Syntax.SpanStart,
@@ -549,7 +574,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (IsRequiredSqlArgument(invocation, parameter))
             return true;
 
-        return invocation.TargetMethod.Name == "FindAsync" &&
+        return IsFindKeyValuesArgument(invocation, parameter);
+    }
+
+    private static bool IsFindKeyValuesArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        return parameter != null &&
+               invocation.TargetMethod.Name == "FindAsync" &&
                (IsDbContextAsyncSink(invocation) ||
                 IsDbSetFindAsync(invocation)) &&
                parameter.Name == "keyValues" &&
@@ -557,6 +590,41 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                {
                    ElementType.SpecialType: SpecialType.System_Object
                };
+    }
+
+    private static bool IsRequiredRawSqlParametersArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        if (parameter == null ||
+            parameter.Name != "parameters" ||
+            !IsObjectSequenceType(parameter.Type))
+        {
+            return false;
+        }
+
+        return invocation.TargetMethod.Name == "ExecuteSqlRawAsync" &&
+                   IsDatabaseFacadeAsyncSink(invocation) ||
+               invocation.TargetMethod.Name == "FromSqlRaw" &&
+                   IsTransparentQueryInvocation(invocation);
+    }
+
+    private static bool IsObjectSequenceType(ITypeSymbol type)
+    {
+        return type is IArrayTypeSymbol
+        {
+            ElementType.SpecialType: SpecialType.System_Object
+        } ||
+               type is INamedTypeSymbol
+               {
+                   Name: "IEnumerable",
+                   Arity: 1,
+               } enumerable &&
+               enumerable.TypeArguments.Length == 1 &&
+               enumerable.TypeArguments[0].SpecialType ==
+                   SpecialType.System_Object &&
+               enumerable.ContainingNamespace?.ToString() ==
+               "System.Collections.Generic";
     }
 
     private static bool IsRequiredSqlArgument(
@@ -627,6 +695,108 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 out var assignedValue))
         {
             return OperationIsDefinitelyNonEmptySql(
+                assignedValue,
+                executableRoot,
+                localReference.Syntax.SpanStart,
+                visitedLocals);
+        }
+
+        return false;
+    }
+
+    private static bool OperationIsDefinitelyNonEmptyArray(
+        IOperation operation,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        operation = UnwrapNonThrowingConversionsAndParentheses(operation);
+        if (operation is IArrayCreationOperation arrayCreation)
+        {
+            if (arrayCreation.Initializer != null)
+                return arrayCreation.Initializer.ElementValues.Length > 0;
+
+            return arrayCreation.DimensionSizes.Length == 1 &&
+                   arrayCreation.DimensionSizes[0].ConstantValue is
+                   {
+                       HasValue: true,
+                       Value: int length
+                   } &&
+                   length > 0;
+        }
+
+        if (operation is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
+            LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                out var assignedValue))
+        {
+            return OperationIsDefinitelyNonEmptyArray(
+                assignedValue,
+                executableRoot,
+                localReference.Syntax.SpanStart,
+                visitedLocals);
+        }
+
+        return false;
+    }
+
+    private static bool IsCancellationTokenParameter(
+        IParameterSymbol? parameter)
+    {
+        return parameter?.Type is INamedTypeSymbol
+        {
+            Name: "CancellationToken",
+            Arity: 0
+        } token &&
+               token.ContainingNamespace?.ToString() == "System.Threading";
+    }
+
+    private static bool OperationIsDefinitelyCancelledToken(
+        IOperation operation,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        operation = UnwrapNonThrowingConversionsAndParentheses(operation);
+        if (operation is IObjectCreationOperation
+            {
+                Type:
+                {
+                    Name: "CancellationToken",
+                    ContainingNamespace: { } tokenNamespace
+                },
+                Arguments.Length: 1
+            } creation &&
+            tokenNamespace.ToString() == "System.Threading" &&
+            creation.Arguments[0].Value.ConstantValue is
+            {
+                HasValue: true,
+                Value: true
+            })
+        {
+            return true;
+        }
+
+        if (operation is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition) &&
+            LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition,
+                out var assignedValue))
+        {
+            return OperationIsDefinitelyCancelledToken(
                 assignedValue,
                 executableRoot,
                 localReference.Syntax.SpanStart,

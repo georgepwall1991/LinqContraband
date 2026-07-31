@@ -77,6 +77,7 @@ throwing query-receiver evaluation, explicit argument conversion, expanded `para
 argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
 required sequence, callable, string, or formattable-string parameter, a required terminal callable
 argument, a null or empty required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
+empty `FindAsync` key array, a null raw-SQL parameter collection, a definitely-cancelled token, an unguarded,
 null-suppressed, or nullable-oblivious context parameter, a nullable local query alias, a nullable or
 constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
@@ -88,7 +89,8 @@ invocation can run before the loop or its method group escapes local control; a 
 only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
 nullable flow analysis proves a preceding guard; null forgiveness is not treated as runtime proof. The known
 metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
-declarations, while required terminal SQL and key-array inputs must be valid before the first task can start.
+declarations, while required terminal SQL, raw-SQL parameter collections, key arrays, and cancellation tokens must
+permit a task to start before the overlap is reported.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,
