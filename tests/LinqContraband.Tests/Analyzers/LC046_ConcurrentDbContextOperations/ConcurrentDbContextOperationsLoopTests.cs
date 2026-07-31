@@ -736,6 +736,37 @@ namespace TestApp
             }
         }
 
+        public void ThrowingQueryReceiverArgument(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users
+                    .Skip(id == 2 ? Throw() : id)
+                    .AnyAsync());
+            }
+        }
+
+        public void ThrowingExplicitArgumentConversion(AppDbContext db)
+        {
+            var tasks = new List<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(
+                    (int)(id == 2 ? (object)""bad"" : 0)));
+            }
+        }
+
+        public void ThrowingExpandedParamsArgument(AppDbContext db)
+        {
+            var tasks = new List<ValueTask<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.FindAsync<User>(
+                    id == 2 ? Throw() : id));
+            }
+        }
+
         private static int Throw() =>
             throw new InvalidOperationException();
     }

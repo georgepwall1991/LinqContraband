@@ -382,7 +382,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             UnwrapNonThrowingConversionsAndParentheses(
                 addInvocation.Arguments[0].Value) is
                 IInvocationOperation addedInvocation &&
-            InvocationArgumentsAreDefinitelyNonThrowing(
+            InvocationEvaluationIsDefinitelyNonThrowing(
                 addedInvocation,
                 executableRoot) &&
             !OperationReferencesAccumulator(
@@ -408,25 +408,30 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool InvocationArgumentsAreDefinitelyNonThrowing(
+    private static bool InvocationEvaluationIsDefinitelyNonThrowing(
         IInvocationOperation invocation,
         IOperation executableRoot)
     {
-        var receiver = GetSemanticInvocationReceiver(invocation);
+        var receiver = GetEvaluationReceiver(invocation);
+        if (receiver != null &&
+            !QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                receiver,
+                executableRoot))
+        {
+            return false;
+        }
+
         foreach (var argument in invocation.Arguments)
         {
-            if (argument.IsImplicit)
-                continue;
-
-            var value = argument.Value.UnwrapConversions();
             if (receiver != null &&
-                value.Syntax.Span.Equals(receiver.Syntax.Span))
+                (ReferenceEquals(argument.Value, receiver) ||
+                 argument.Value.Syntax.Span.Equals(receiver.Syntax.Span)))
             {
                 continue;
             }
 
-            if (!SyntaxIsDefinitelyNonThrowing(
-                    value.Syntax,
+            if (!OperationEvaluationIsDefinitelyNonThrowing(
+                    argument.Value,
                     executableRoot))
             {
                 return false;
@@ -434,6 +439,77 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static IOperation? GetEvaluationReceiver(
+        IInvocationOperation invocation)
+    {
+        if (invocation.Instance != null)
+            return invocation.Instance;
+
+        if (!invocation.TargetMethod.IsExtensionMethod)
+            return null;
+
+        return invocation.Arguments
+            .FirstOrDefault(argument => argument.Parameter?.Ordinal == 0)
+            ?.Value;
+    }
+
+    private static bool QueryReceiverEvaluationIsDefinitelyNonThrowing(
+        IOperation receiver,
+        IOperation executableRoot)
+    {
+        receiver = UnwrapNonThrowingConversionsAndParentheses(receiver);
+        switch (receiver)
+        {
+            case IInvocationOperation receiverInvocation:
+                return (IsTransparentQueryInvocation(receiverInvocation) ||
+                        IsDbContextSetInvocation(receiverInvocation)) &&
+                       InvocationEvaluationIsDefinitelyNonThrowing(
+                           receiverInvocation,
+                           executableRoot);
+
+            case IPropertyReferenceOperation propertyReference:
+                return propertyReference.Instance == null ||
+                       QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                           propertyReference.Instance,
+                           executableRoot);
+
+            case IFieldReferenceOperation fieldReference:
+                return fieldReference.Instance == null ||
+                       QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                           fieldReference.Instance,
+                           executableRoot);
+
+            case ILocalReferenceOperation:
+            case IParameterReferenceOperation:
+            case IInstanceReferenceOperation:
+                return true;
+
+            default:
+                return OperationEvaluationIsDefinitelyNonThrowing(
+                    receiver,
+                    executableRoot);
+        }
+    }
+
+    private static bool OperationEvaluationIsDefinitelyNonThrowing(
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        return !EvaluationOperationCanThrow(operation, executableRoot) &&
+               EnumerateOutsideNestedExecutables(operation).All(candidate =>
+                   !EvaluationOperationCanThrow(candidate, executableRoot));
+    }
+
+    private static bool EvaluationOperationCanThrow(
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        if (operation is IArrayCreationOperation { IsImplicit: true })
+            return false;
+
+        return CanThrowBeforeTaskEnd(operation, executableRoot);
     }
 
     private static bool LoopHasProvenRepeatedListExecutions(
