@@ -830,12 +830,23 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (operation is IObjectCreationOperation or
             IArrayCreationOperation or
             IAnonymousFunctionOperation or
-            IDelegateCreationOperation or
             IInterpolatedStringOperation or
             IInstanceReferenceOperation or
             ITypeOfOperation)
         {
             return true;
+        }
+
+        if (operation is IDelegateCreationOperation delegateCreation)
+        {
+            var target = UnwrapNonThrowingConversionsAndParentheses(
+                delegateCreation.Target);
+            return target is IAnonymousFunctionOperation ||
+                   target is IMethodReferenceOperation methodReference &&
+                   (methodReference.Instance == null ||
+                    QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                        methodReference.Instance,
+                        executableRoot));
         }
 
         if (operation is IPropertyReferenceOperation propertyReference)
@@ -944,7 +955,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
             case IParameterReferenceOperation parameterReference:
                 return ParameterReferenceIsDefinitelyNonNull(
-                    parameterReference);
+                    parameterReference,
+                    executableRoot);
 
             case IInstanceReferenceOperation:
                 return true;
@@ -957,7 +969,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool ParameterReferenceIsDefinitelyNonNull(
-        IParameterReferenceOperation parameterReference)
+        IParameterReferenceOperation parameterReference,
+        IOperation executableRoot)
     {
         if (parameterReference.Parameter.NullableAnnotation ==
             NullableAnnotation.None)
@@ -969,7 +982,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (parameterReference.Syntax.Ancestors().Any(ancestor =>
                 ancestor.IsKind(
                     SyntaxKind.SuppressNullableWarningExpression)) &&
-            !ParameterHasPriorNullExitGuard(parameterReference))
+            !ParameterHasPriorNullExitGuard(
+                parameterReference,
+                executableRoot))
         {
             return false;
         }
@@ -984,7 +999,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     }
 
     private static bool ParameterHasPriorNullExitGuard(
-        IParameterReferenceOperation parameterReference)
+        IParameterReferenceOperation parameterReference,
+        IOperation executableRoot)
     {
         var semanticModel = parameterReference.SemanticModel;
         if (semanticModel == null)
@@ -1010,10 +1026,58 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     ConditionProvesParameterNull(
                         ifStatement.Condition,
                         parameterReference.Parameter,
-                        semanticModel))
+                        semanticModel) &&
+                    !ParameterHasWriteBetween(
+                        executableRoot,
+                        parameterReference.Parameter,
+                        ifStatement.Span.End,
+                        parameterReference.Syntax.SpanStart))
                 {
                     return true;
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ParameterHasWriteBetween(
+        IOperation executableRoot,
+        IParameterSymbol parameter,
+        int afterPosition,
+        int beforePosition)
+    {
+        foreach (var operation in executableRoot.Descendants())
+        {
+            if (operation.Syntax.SpanStart <= afterPosition ||
+                operation.Syntax.SpanStart >= beforePosition ||
+                !CanOperationRunBefore(
+                    operation,
+                    executableRoot,
+                    beforePosition))
+            {
+                continue;
+            }
+
+            if (operation is IAssignmentOperation assignment &&
+                assignment.Target.ReferencesParameter(parameter))
+            {
+                return true;
+            }
+
+            if (operation is IVariableDeclaratorOperation declarator &&
+                declarator.Symbol.RefKind != RefKind.None &&
+                declarator.Initializer?.Value.ReferencesParameter(parameter) ==
+                true)
+            {
+                return true;
+            }
+
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesParameter(parameter))
+            {
+                return true;
             }
         }
 
@@ -1043,7 +1107,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         if (condition is BinaryExpressionSyntax binary &&
-            binary.IsKind(SyntaxKind.EqualsExpression))
+            binary.IsKind(SyntaxKind.EqualsExpression) &&
+            semanticModel.GetOperation(binary) is
+                IBinaryOperation { OperatorMethod: null })
         {
             var left = UnwrapParentheses(binary.Left);
             var right = UnwrapParentheses(binary.Right);

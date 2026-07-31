@@ -76,7 +76,7 @@ user-defined conversion around the task, an evaluated or non-empty accumulator c
 or more alias assignments, or through an invoked captured local before starting the next operation, a potentially
 throwing query-receiver evaluation, explicit argument conversion, expanded `params` element, or other invocation
 argument that can prevent a later EF call from starting, an invalid query-construction argument including a null
-required sequence, callable, string, or formattable-string parameter, a required terminal callable
+required sequence, callable, or nullable instance method-group receiver, string, or formattable-string parameter, a required terminal callable
 argument, a null or blank required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
 empty `FindAsync` key array or an array containing an unproven/null key, a null raw-SQL parameter collection, a possibly-empty raw-SQL interpolation,
 a definitely-cancelled token, an unguarded,
@@ -90,7 +90,8 @@ be null. A local or anonymous function that captures the accumulator affects the
 or delegate invocation can run before the loop or its binding escapes local control; a locally bound invocation that
 occurs only after the loop does not suppress the diagnostic. A nullable context parameter retains the diagnostic only after
 nullable flow analysis proves a preceding guard; null forgiveness alone is not treated as runtime proof, while redundant
-suppression after a proven null-exit guard retains that proof. The known
+suppression after a proven `is null` or built-in equality null-exit guard retains that proof only when no intervening
+parameter write invalidates it. Overloaded equality is not accepted as null proof. The known
 metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
 declarations, while required terminal non-blank SQL, raw-SQL parameter collections, non-empty key arrays containing
 only proven non-null keys, and cancellation tokens must

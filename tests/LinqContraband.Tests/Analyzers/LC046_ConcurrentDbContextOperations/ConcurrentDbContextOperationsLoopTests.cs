@@ -421,6 +421,18 @@ namespace TestApp
                 tasks.Add({|#1:db!.Users.AnyAsync()|});
             }
         }
+
+        public void BuiltInEqualityGuard(AppDbContext? db)
+        {
+            if (db == null)
+                return;
+
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#2:db!.Users.AnyAsync()|});
+            }
+        }
     }
 }";
 
@@ -430,11 +442,15 @@ namespace TestApp
         var guardedWithSuppression = VerifyCS.Diagnostic()
             .WithLocation(1)
             .WithArguments("db");
+        var guardedWithBuiltInEquality = VerifyCS.Diagnostic()
+            .WithLocation(2)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
             guarded,
-            guardedWithSuppression);
+            guardedWithSuppression,
+            guardedWithBuiltInEquality);
     }
 
     [Fact]
@@ -446,9 +462,25 @@ namespace TestApp
 namespace TestApp
 {
     public sealed class User { }
-    public sealed class AppDbContext : DbContext
+    public class AppDbContext : DbContext
     {
         public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class LyingDbContext : AppDbContext
+    {
+        public static bool operator ==(
+            LyingDbContext? left,
+            LyingDbContext? right) => false;
+
+        public static bool operator !=(
+            LyingDbContext? left,
+            LyingDbContext? right) => true;
+
+        public override bool Equals(object? other) =>
+            ReferenceEquals(this, other);
+
+        public override int GetHashCode() => 0;
     }
 
     public sealed class Program
@@ -472,6 +504,30 @@ namespace TestApp
             }
         }
 #nullable enable
+        public void ReassignedAfterGuard(AppDbContext? db)
+        {
+            if (db is null)
+                return;
+
+            db = null;
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db!.Users.AnyAsync());
+            }
+        }
+
+        public void OverloadedEqualityGuard(LyingDbContext? db)
+        {
+            if (db == null)
+                return;
+
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db!.Users.AnyAsync());
+            }
+        }
     }
 }";
 
@@ -491,6 +547,11 @@ namespace TestApp
     public sealed class AppDbContext : DbContext
     {
         public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Selector
+    {
+        public int Key(User user) => 0;
     }
 
     public sealed class Program
@@ -611,6 +672,16 @@ namespace TestApp
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(db.FindAsync<User>((object)null));
+            }
+        }
+
+        public void NullSelectorMethodGroup(AppDbContext db)
+        {
+            Selector? selector = null;
+            var tasks = new List<Task<Dictionary<int, User>>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ToDictionaryAsync(selector!.Key));
             }
         }
     }
