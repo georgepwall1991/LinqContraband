@@ -32,6 +32,8 @@ public sealed partial class MissingIncludeAnalyzer
             "AsNoTracking",
             "AsNoTrackingWithIdentityResolution",
             "AsTracking",
+            "AsSplitQuery",
+            "AsSingleQuery",
             "TagWith",
             "TagWithCallSite",
             "IgnoreAutoIncludes",
