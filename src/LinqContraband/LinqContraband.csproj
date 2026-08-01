@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.3</Version>
+        <Version>5.7.4</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 now detects EF Core async tasks accumulated into a stable framework list inside a provably repeated loop, no longer reports a loop rooted at a DbContext.Set name that cannot be proven non-blank, and no longer lets CancellationToken.None hide a real overlap.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC046 applies the DbContext.Set name validity proof outside loops as well, so two operations rooted at a set name that cannot be proven non-blank are no longer reported as concurrent. EF Core rejects such a name before building a query, so neither operation starts.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

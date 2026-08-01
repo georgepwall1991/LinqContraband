@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **46 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.7.3
-- Base audited commit: 540bbf5b2e387c0b9460088830d96030db390891
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.3`
+- Package version: 5.7.4
+- Base audited commit: 29d3020a64d872f8aed38dd2c214fdfedbc6ace9
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.4`
 
 ## Rubric
 
@@ -770,9 +770,9 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.7.3**
+Package version: **5.7.4**
 
-Base audited commit: master at `540bbf5b2e387c0b9460088830d96030db390891` (LC046 loop-built task-list detection plus named-`Set` and `CancellationToken.None` review closure, merged for 5.7.3). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, the July 2026 raw-SQL/fixer hardening, LC046 concurrent same-context operation detection in 5.7.0, NuGet/GitHub discoverability assets in 5.7.1, LC046 completion-bypass precision hardening in 5.7.2, and LC046 loop-built task-list detection with named-`Set` and `CancellationToken.None` review closure in 5.7.3.
+Base audited commit: master at `29d3020a64d872f8aed38dd2c214fdfedbc6ace9` (LC046 shared named-`Set` non-blank-name proof across loop and non-loop paths, merged for 5.7.4). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, the July 2026 raw-SQL/fixer hardening, LC046 concurrent same-context operation detection in 5.7.0, NuGet/GitHub discoverability assets in 5.7.1, LC046 completion-bypass precision hardening in 5.7.2, LC046 loop-built task-list detection with named-`Set` and `CancellationToken.None` review closure in 5.7.3, and the shared named-`Set` non-blank-name proof in 5.7.4.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 

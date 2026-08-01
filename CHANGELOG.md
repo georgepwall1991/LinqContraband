@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.4] - 2026-08-01
+
 ### Fixed
 - LC046 now applies the `DbContext.Set<TEntity>(name)` non-blank-name proof at context-origin resolution as well as inside loops. Two operations rooted at a set name that cannot be proven non-blank are no longer reported as concurrent, because EF Core rejects a null or whitespace name before constructing a query, so neither operation starts. A proven non-blank name still reports.
 
