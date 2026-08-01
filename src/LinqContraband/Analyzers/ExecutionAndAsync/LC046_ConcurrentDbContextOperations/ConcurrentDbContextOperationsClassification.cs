@@ -59,6 +59,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (!ReturnsTaskLike(invocation.TargetMethod.ReturnType))
             return false;
 
+        // An EF call whose required arguments are invalid faults before it starts any
+        // work, so it cannot overlap another operation. This proof is shared with the
+        // loop gate so the two paths cannot disagree about what "starts" means.
+        if (RequiredArgumentIsDefinitelyInvalid(invocation, executableRoot))
+            return false;
+
         IOperation? source;
         if (IsDbContextAsyncSink(invocation))
         {
@@ -280,7 +286,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 if (IsDbContextSetInvocation(queryInvocation) &&
                     queryInvocation.Instance != null)
                 {
-                    if (!DbContextSetNameIsDefinitelyValid(
+                    if (RequiredArgumentIsDefinitelyInvalid(
                             queryInvocation,
                             executableRoot))
                     {
@@ -298,6 +304,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
                 if (IsTransparentQueryInvocation(queryInvocation))
                 {
+                    // Query construction that faults on its own arguments never yields a
+                    // query, so no operation built on it can start or overlap.
+                    if (RequiredArgumentIsDefinitelyInvalid(
+                            queryInvocation,
+                            executableRoot))
+                    {
+                        origin = default;
+                        return false;
+                    }
+
                     var receiver = GetSemanticInvocationReceiver(queryInvocation);
                     if (receiver != null)
                     {
@@ -680,6 +696,60 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     /// operation rooted at such a name never starts and cannot overlap another. Shared by
     /// context-origin resolution and the loop argument gate so the two cannot drift.
     /// </summary>
+    /// <summary>
+    /// True only when a required argument is *provably* invalid, so the EF call faults
+    /// before starting any work and cannot overlap another operation.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the opposite polarity to the loop gate. The loop gate must positively
+    /// prove an operation starts on every iteration, so it requires proof of validity.
+    /// Outside loops the default is to report, so only demonstrated invalidity may
+    /// suppress; otherwise a required argument supplied by a parameter or field, which
+    /// cannot be proven either way, would silently drop a genuine diagnostic.
+    /// </remarks>
+    private static bool RequiredArgumentIsDefinitelyInvalid(
+        IInvocationOperation invocation,
+        IOperation executableRoot)
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            var parameter = argument.Parameter;
+            var isRequired =
+                IsRequiredCallableParameter(parameter) ||
+                IsRequiredQueryArgument(invocation, parameter) ||
+                IsRequiredTerminalArgument(invocation, parameter) ||
+                IsRequiredRawSqlParametersArgument(invocation, parameter) ||
+                IsRequiredSqlArgument(invocation, parameter) ||
+                IsDbContextSetNameArgument(invocation, parameter);
+
+            var value = argument.Value.UnwrapConversions();
+
+            if (isRequired && value.ConstantValue is { HasValue: true, Value: null })
+                return true;
+
+            if ((IsRequiredSqlArgument(invocation, parameter) ||
+                 IsDbContextSetNameArgument(invocation, parameter)) &&
+                value.ConstantValue is { HasValue: true, Value: string text } &&
+                text.All(char.IsWhiteSpace))
+            {
+                return true;
+            }
+
+            if (IsCancellationTokenParameter(parameter) &&
+                OperationIsDefinitelyCancelledToken(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool DbContextSetNameIsDefinitelyValid(
         IInvocationOperation invocation,
         IOperation executableRoot)
