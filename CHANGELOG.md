@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.5] - 2026-08-01
+
 ### Fixed
 - LC046 no longer reports operations outside loops whose required arguments provably make them fault before they start. A literal null or blank raw-SQL string, a null `FindAsync` key array, a null required query sequence or callable, a null raw-SQL parameter collection, and a definitely-cancelled token all mean the EF call never begins work, so two such calls cannot overlap. The same proof runs when query construction itself provably faults, such as `FromSqlRaw("")` followed by a terminal.
 - LC046 reports `DbContext.Set<TEntity>(name)` operations again when the name comes from a parameter, field, or call. 5.7.4 required the name to be *provably* non-blank on every path, which silently dropped genuine concurrency diagnostics for the common case of a name the analyzer cannot evaluate. Outside loops LC046 now suppresses only on proof that an argument is invalid, never on absence of proof that it is valid. The loop gate keeps the stricter requirement, which it needs to prove an operation starts on every iteration.
