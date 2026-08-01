@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.5</Version>
+        <Version>5.7.6</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Recommended for anyone on 5.7.4: that version could silently hide real concurrency bugs, because LC046 stopped reporting named-set operations whose name came from a parameter or field. LC046 now reports them again, and separately no longer produces false positives outside loops for operations whose required arguments provably make them fault before starting, such as null or blank raw SQL, a null key array, or a cancelled token.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now sees through AsSplitQuery and AsSingleQuery. Both only choose how EF Core emits SQL and leave the materialized entity shape unchanged, but LC045 previously stopped analysing at them, so a missing Include went unreported on any query using them.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
