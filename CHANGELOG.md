@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now sees through `Reverse()`. It only changes ordering and leaves the materialized entity shape unchanged, but LC045 treated it as an unknown operator and stopped analysing the query, so a missing `Include` went unreported. This was the last operator on which LC045's shape-preserving set disagreed with the equivalent set used by the bulk-delete rule.
+
 ## [5.7.6] - 2026-08-01
 
 ### Fixed

@@ -417,6 +417,109 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_ReverseWithoutInclude_Diagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Reverse().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_RealisticOperatorChainWithoutInclude_Diagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders
+            .Where(o => o.Id > 0)
+            .AsNoTracking()
+            .AsSplitQuery()
+            .TagWith(""report"")
+            .OrderBy(o => o.Id)
+            .Take(10)
+            .ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_ReverseWithInclude_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).Reverse().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeAfterReverse_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Reverse().Include(o => o.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_SelectProjectionInChain_NoDiagnostic()
     {
         // A Select reshapes the query: the materialized objects are no longer raw entities, so
