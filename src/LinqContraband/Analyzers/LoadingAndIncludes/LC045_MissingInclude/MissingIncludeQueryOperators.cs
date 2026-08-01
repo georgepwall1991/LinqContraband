@@ -23,6 +23,7 @@ public sealed partial class MissingIncludeAnalyzer
             "Skip",
             "Take",
             "Distinct",
+            "Reverse",
             "AsQueryable"
         );
 
