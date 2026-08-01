@@ -928,7 +928,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         if (operation is IPropertyReferenceOperation propertyReference &&
-            IsTaskCompletedTaskProperty(propertyReference))
+            (IsTaskCompletedTaskProperty(propertyReference) ||
+             IsCancellationTokenNoneProperty(propertyReference)))
         {
             return false;
         }
@@ -3564,6 +3565,16 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return property.Name == "CompletedTask" &&
                property.ContainingType.Name == "Task" &&
                property.ContainingNamespace?.ToString() == "System.Threading.Tasks";
+    }
+
+    private static bool IsCancellationTokenNoneProperty(
+        IPropertyReferenceOperation propertyReference)
+    {
+        var property = propertyReference.Property;
+        return property.Name == "None" &&
+               property.IsStatic &&
+               property.ContainingType.Name == "CancellationToken" &&
+               property.ContainingNamespace?.ToString() == "System.Threading";
     }
 
     private static bool TaskCombinatorInputsAreDefinitelyNonNull(

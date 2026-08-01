@@ -6,7 +6,8 @@ namespace LinqContraband.Tests.Analyzers.LC046_ConcurrentDbContextOperations;
 public sealed class ConcurrentDbContextOperationsTests
 {
     internal const string EfMock = @"
-using System;
+	#nullable enable
+	using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,6 +23,7 @@ namespace Microsoft.EntityFrameworkCore
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public ValueTask<TEntity> FindAsync<TEntity>(params object[] keyValues) where TEntity : class => default;
         public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+        public DbSet<TEntity> Set<TEntity>(string name) where TEntity : class => new DbSet<TEntity>();
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
@@ -64,6 +66,12 @@ namespace Microsoft.EntityFrameworkCore
             CancellationToken cancellationToken = default) =>
             Task.FromResult(default(TEntity));
 
+        public static Task<Dictionary<TKey, TEntity>> ToDictionaryAsync<TEntity, TKey>(
+            this IQueryable<TEntity> source,
+            Func<TEntity, TKey> keySelector,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Dictionary<TKey, TEntity>());
+
         public static Task LoadAsync<TEntity>(
             this IQueryable<TEntity> source,
             CancellationToken cancellationToken = default) =>
@@ -84,11 +92,31 @@ namespace Microsoft.EntityFrameworkCore
             this IQueryable<TEntity> source) => null;
     }
 
+    public static class RelationalQueryableExtensions
+    {
+        public static IQueryable<TEntity> FromSqlRaw<TEntity>(
+            this DbSet<TEntity> source,
+            string sql,
+            params object[] parameters) where TEntity : class => source;
+    }
+
     public static class RelationalDatabaseFacadeExtensions
     {
         public static Task<int> ExecuteSqlRawAsync(
             this Infrastructure.DatabaseFacade database,
             string sql,
+            params object[] parameters) =>
+            Task.FromResult(0);
+
+        public static Task<int> ExecuteSqlRawAsync(
+            this Infrastructure.DatabaseFacade database,
+            string sql,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(0);
+
+        public static Task<int> ExecuteSqlInterpolatedAsync(
+            this Infrastructure.DatabaseFacade database,
+            FormattableString sql,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
     }
