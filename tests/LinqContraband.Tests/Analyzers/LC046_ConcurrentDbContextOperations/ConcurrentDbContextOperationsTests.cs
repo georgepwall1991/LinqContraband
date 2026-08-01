@@ -311,16 +311,38 @@ namespace TestApp
                 db.Set<User>(""   "").ToListAsync());
         }
 
-        public async Task UnprovenName(DbContext db, string name)
-        {
-            await Task.WhenAll(
-                db.Set<User>(name).AnyAsync(),
-                db.Set<User>(name).ToListAsync());
-        }
     }
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithUnprovenName_ShouldStillTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, string name)
+        {
+            await Task.WhenAll(
+                {|#0:db.Set<User>(name).AnyAsync()|},
+                {|#1:db.Set<User>(name).ToListAsync()|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
@@ -509,6 +531,169 @@ namespace TestApp
             .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NonLoopOperations_WithUnprovenArgumentsFromParameters_ShouldStillTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task SqlFromParameter(AppDbContext db, string sql)
+        {
+            await Task.WhenAll(
+                {|#0:db.Database.ExecuteSqlRawAsync(sql)|},
+                {|#1:db.Database.ExecuteSqlRawAsync(sql)|});
+        }
+
+        public async Task TokenFromParameter(AppDbContext db, CancellationToken ct)
+        {
+            await Task.WhenAll(
+                {|#2:db.Users.AnyAsync(ct)|},
+                {|#3:db.Users.ToListAsync(ct)|});
+        }
+
+    }
+}";
+
+        var sqlFromParameter = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        var tokenFromParameter = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, sqlFromParameter, tokenFromParameter);
+    }
+
+    [Fact]
+    public async Task NonLoopOperations_WithValidRequiredArguments_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task RawSql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                {|#0:db.Database.ExecuteSqlRawAsync(""SELECT 1"")|},
+                {|#1:db.Database.ExecuteSqlRawAsync(""SELECT 2"")|});
+        }
+
+        public async Task QuerySql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                {|#2:db.Users.FromSqlRaw(""SELECT 1"").AnyAsync()|},
+                {|#3:db.Users.FromSqlRaw(""SELECT 2"").ToListAsync()|});
+        }
+
+        public void FindKeys(AppDbContext db)
+        {
+            var first = {|#4:db.FindAsync<User>(1)|};
+            var second = {|#5:db.FindAsync<User>(2)|};
+        }
+
+        public async Task NonCancelledToken(AppDbContext db)
+        {
+            var token = new System.Threading.CancellationToken(false);
+            await Task.WhenAll(
+                {|#6:db.Users.AnyAsync(token)|},
+                {|#7:db.Users.ToListAsync(token)|});
+        }
+    }
+}";
+
+        var rawSql = VerifyCS.Diagnostic().WithLocation(1).WithLocation(0).WithArguments("db");
+        var querySql = VerifyCS.Diagnostic().WithLocation(3).WithLocation(2).WithArguments("db");
+        var findKeys = VerifyCS.Diagnostic().WithLocation(5).WithLocation(4).WithArguments("db");
+        var token = VerifyCS.Diagnostic().WithLocation(7).WithLocation(6).WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, rawSql, querySql, findKeys, token);
+    }
+
+    [Fact]
+    public async Task NonLoopOperations_WithInvalidRequiredArguments_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task NullRawSql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                db.Database.ExecuteSqlRawAsync((string)null),
+                db.Database.ExecuteSqlRawAsync((string)null));
+        }
+
+        public async Task EmptyQuerySql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                db.Users.FromSqlRaw("""").AnyAsync(),
+                db.Users.FromSqlRaw("""").ToListAsync());
+        }
+
+        public async Task NullFindKeys(AppDbContext db)
+        {
+            var first = db.FindAsync<User>((object[])null);
+            var second = db.FindAsync<User>((object[])null);
+        }
+
+        public async Task DefinitelyCancelled(AppDbContext db)
+        {
+            var canceled = new System.Threading.CancellationToken(true);
+            await Task.WhenAll(
+                db.Users.AnyAsync(canceled),
+                db.Users.ToListAsync(canceled));
+        }
+
+        public async Task WhitespaceQuerySql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                db.Users.FromSqlRaw(""   "").AnyAsync(),
+                db.Users.FromSqlRaw(""   "").ToListAsync());
+        }
+
+        public async Task NullQuerySql(AppDbContext db)
+        {
+            await Task.WhenAll(
+                db.Users.FromSqlRaw((string)null).AnyAsync(),
+                db.Users.FromSqlRaw((string)null).ToListAsync());
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

@@ -97,7 +97,14 @@ declarations, while required terminal non-blank SQL, raw-SQL parameter collectio
 only proven non-null keys, and cancellation tokens must
 permit a task to start before the overlap is reported. `CancellationToken.None` is a readonly static of a
 core-library struct, so reading it cannot throw and it never suppresses the diagnostic. A definitely-cancelled token
-suppresses, as does any token expression whose evaluation cannot be proven non-throwing. A named `DbContext.Set<TEntity>(name)` root must have a provably non-blank name whether or not it appears in a loop,
+suppresses, as does any token expression whose evaluation cannot be proven non-throwing. Outside loops, an operation is quiet when a required argument is *provably* invalid — a literal null or blank
+SQL string or set name, a null key array or parameter collection, or a definitely-cancelled token — because the
+call then faults before starting any work and cannot overlap anything. The same applies to query construction
+that provably faults on its own arguments. An argument the analyzer cannot evaluate, such as one supplied by a
+parameter or field, does **not** suppress the diagnostic. Inside a loop the burden is the opposite and stricter:
+validity must be positively proven, because the loop gate has to establish that the operation starts on every
+iteration.
+A named `DbContext.Set<TEntity>(name)` root must have a provably non-blank name whether or not it appears in a loop,
 because EF Core rejects a null or whitespace name before any query is constructed. Proof covers constant strings, interpolated
 strings with non-whitespace literal text, and single-assignment locals resolving to either; a name that cannot be
 proven non-blank stays quiet, which is a deliberate conservative false negative.
