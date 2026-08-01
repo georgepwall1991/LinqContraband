@@ -97,8 +97,8 @@ declarations, while required terminal non-blank SQL, raw-SQL parameter collectio
 only proven non-null keys, and cancellation tokens must
 permit a task to start before the overlap is reported. `CancellationToken.None` is a readonly static of a
 core-library struct, so reading it cannot throw and it never suppresses the diagnostic. A definitely-cancelled token
-suppresses, as does any token expression whose evaluation cannot be proven non-throwing. A named `DbContext.Set<TEntity>(name)` root must have a provably non-blank name, because EF Core
-rejects a null or whitespace name before any query is constructed. Proof covers constant strings, interpolated
+suppresses, as does any token expression whose evaluation cannot be proven non-throwing. A named `DbContext.Set<TEntity>(name)` root must have a provably non-blank name whether or not it appears in a loop,
+because EF Core rejects a null or whitespace name before any query is constructed. Proof covers constant strings, interpolated
 strings with non-whitespace literal text, and single-assignment locals resolving to either; a name that cannot be
 proven non-blank stays quiet, which is a deliberate conservative false negative.
 
