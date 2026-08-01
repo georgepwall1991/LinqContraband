@@ -280,6 +280,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 if (IsDbContextSetInvocation(queryInvocation) &&
                     queryInvocation.Instance != null)
                 {
+                    if (!DbContextSetNameIsDefinitelyValid(
+                            queryInvocation,
+                            executableRoot))
+                    {
+                        origin = default;
+                        return false;
+                    }
+
                     return TryResolveContextOrigin(
                         queryInvocation.Instance,
                         executableRoot,
@@ -665,6 +673,46 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return invocation.TargetMethod.Name == "Set" &&
                IsEfDbContextMethod(invocation.TargetMethod) &&
                invocation.Type.IsDbSet();
+    }
+
+    /// <summary>
+    /// EF Core rejects a null or whitespace set name before constructing a query, so an
+    /// operation rooted at such a name never starts and cannot overlap another. Shared by
+    /// context-origin resolution and the loop argument gate so the two cannot drift.
+    /// </summary>
+    private static bool DbContextSetNameIsDefinitelyValid(
+        IInvocationOperation invocation,
+        IOperation executableRoot)
+    {
+        if (!IsDbContextSetInvocation(invocation))
+            return true;
+
+        foreach (var argument in invocation.Arguments)
+        {
+            if (!IsDbContextSetNameArgument(invocation, argument.Parameter))
+                continue;
+
+            if (!OperationIsDefinitelyNonEmptySql(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsDbContextSetNameArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        return parameter != null &&
+               parameter.Type.SpecialType == SpecialType.System_String &&
+               IsDbContextSetInvocation(invocation);
     }
 
     private static IOperation? GetSemanticInvocationReceiver(IInvocationOperation invocation)

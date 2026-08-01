@@ -287,6 +287,231 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task DbContextSet_WithUnprovenName_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task NullName(DbContext db)
+        {
+            await Task.WhenAll(
+                db.Set<User>((string)null).AnyAsync(),
+                db.Set<User>((string)null).ToListAsync());
+        }
+
+        public async Task BlankName(DbContext db)
+        {
+            await Task.WhenAll(
+                db.Set<User>(""   "").AnyAsync(),
+                db.Set<User>(""   "").ToListAsync());
+        }
+
+        public async Task UnprovenName(DbContext db, string name)
+        {
+            await Task.WhenAll(
+                db.Set<User>(name).AnyAsync(),
+                db.Set<User>(name).ToListAsync());
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithProvenName_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db)
+        {
+            await Task.WhenAll(
+                {|#0:db.Set<User>(""Users"").AnyAsync()|},
+                {|#1:db.Set<User>(""Users"").ToListAsync()|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithUnprovenNameInUnawaitedStatements_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var first = db.Set<User>((string)null).AnyAsync();
+            var second = db.Set<User>((string)null).ToListAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithMixedNameValidity_ShouldStillReportValidPair()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db)
+        {
+            await Task.WhenAll(
+                {|#0:db.Set<User>(""Users"").AnyAsync()|},
+                db.Set<User>((string)null).ToListAsync(),
+                {|#1:db.Set<User>(""Users"").ContainsAsync(null)|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithTrailingUnprovenName_ShouldStillReportValidPair()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db)
+        {
+            await Task.WhenAll(
+                {|#0:db.Set<User>(""Users"").AnyAsync()|},
+                {|#1:db.Set<User>(""Users"").ToListAsync()|},
+                db.Set<User>((string)null).ContainsAsync(null));
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithProvenLocalName_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db)
+        {
+            var name = ""Users"";
+            await Task.WhenAll(
+                {|#0:db.Set<User>(name).AnyAsync()|},
+                {|#1:db.Set<User>(name).ToListAsync()|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithUnprovenNameHoistedToLocal_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db)
+        {
+            var set = db.Set<User>((string)null);
+            await Task.WhenAll(
+                set.AnyAsync(),
+                set.ToListAsync());
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DbContextSet_WithNoNameArgument_ShouldStillTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var first = {|#0:db.Set<User>().AnyAsync()|};
+            var second = {|#1:db.Set<User>().ToListAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task StaticEfExtensionSyntax_WithSameContext_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
