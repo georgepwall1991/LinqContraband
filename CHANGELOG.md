@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.6] - 2026-08-01
+
 ### Fixed
-- LC045 now sees through `AsSplitQuery()` and `AsSingleQuery()`. Both only choose how EF Core emits SQL and leave the materialized entity shape unchanged, but LC045 treated them as unknown operators and stopped analysing the query, so a missing `Include` went unreported. This mattered because `AsSplitQuery()` is the standard remedy for the cartesian explosion LC006 flags, so following that advice silently disabled LC045 on the same query.
+- LC045 now sees through `AsSplitQuery()` and `AsSingleQuery()`. Both only choose how EF Core emits SQL and leave the materialized entity shape unchanged, but LC045 treated them as unknown operators and stopped analysing the query, so a missing `Include` went unreported. This mattered because `AsSplitQuery()` is the standard remedy for the cartesian explosion this package's own query-shape rule flags, so following that advice silently disabled LC045 on the same query.
 
 ## [5.7.5] - 2026-08-01
 
