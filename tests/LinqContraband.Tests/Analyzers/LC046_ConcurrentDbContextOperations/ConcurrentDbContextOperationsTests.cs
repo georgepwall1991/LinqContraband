@@ -23,6 +23,7 @@ namespace Microsoft.EntityFrameworkCore
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public ValueTask<TEntity> FindAsync<TEntity>(params object[] keyValues) where TEntity : class => default;
         public DbSet<TEntity> Set<TEntity>() where TEntity : class => new DbSet<TEntity>();
+        public DbSet<TEntity> Set<TEntity>(string name) where TEntity : class => new DbSet<TEntity>();
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class

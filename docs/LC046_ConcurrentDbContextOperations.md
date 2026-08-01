@@ -79,7 +79,7 @@ argument that can prevent a later EF call from starting, an invalid query-constr
 required sequence, callable, or nullable instance method-group receiver, string, or formattable-string parameter, a required terminal callable
 argument, a null or blank required raw-SQL argument, a null required `FindAsync` key array, an unguarded,
 empty `FindAsync` key array or an array containing an unproven/null key, a null raw-SQL parameter collection, a possibly-empty raw-SQL interpolation,
-a definitely-cancelled token, an unguarded,
+a definitely-cancelled token, an unproven-non-blank `DbContext.Set<TEntity>(name)` argument, an unguarded,
 null-suppressed, or nullable-oblivious context parameter, a nullable local query alias, a nullable or
 constructor-invalidated stored query member, or a static member whose type initialization is not proven safe, loop source setup that
 references the accumulator between body executions, any executable use or retained closure of the accumulator between
@@ -95,7 +95,12 @@ parameter write invalidates it. Overloaded equality is not accepted as null proo
 metadata-backed EF Core `DbContext.Database` property retains relational-command diagnostics without requiring source
 declarations, while required terminal non-blank SQL, raw-SQL parameter collections, non-empty key arrays containing
 only proven non-null keys, and cancellation tokens must
-permit a task to start before the overlap is reported.
+permit a task to start before the overlap is reported. `CancellationToken.None` is a readonly static of a
+core-library struct, so reading it cannot throw and it never suppresses the diagnostic. A definitely-cancelled token
+suppresses, as does any token expression whose evaluation cannot be proven non-throwing. A named `DbContext.Set<TEntity>(name)` root must have a provably non-blank name, because EF Core
+rejects a null or whitespace name before any query is constructed. Proof covers constant strings, interpolated
+strings with non-whitespace literal text, and single-assignment locals resolving to either; a name that cannot be
+proven non-blank stays quiet, which is a deliberate conservative false negative.
 
 To preserve precision, LC046 stays quiet for sequential awaits, separate contexts, branch-exclusive operations,
 unproven reassigned or escaped task/context state, repository-produced `IQueryable` values, computed context or set properties,

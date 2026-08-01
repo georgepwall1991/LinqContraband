@@ -501,6 +501,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return false;
             }
 
+            if (IsDbContextSetNameArgument(invocation, argument.Parameter) &&
+                !OperationIsDefinitelyNonEmptySql(
+                    argument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return false;
+            }
+
             if (IsCancellationTokenParameter(argument.Parameter) &&
                 OperationIsDefinitelyCancelledToken(
                     argument.Value,
@@ -750,6 +761,15 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsDbContextSetNameArgument(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        return parameter != null &&
+               parameter.Type.SpecialType == SpecialType.System_String &&
+               IsDbContextSetInvocation(invocation);
     }
 
     private static bool IsCancellationTokenParameter(

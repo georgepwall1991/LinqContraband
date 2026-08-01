@@ -556,6 +556,33 @@ namespace TestApp
 
     public sealed class Program
     {
+        public void NullSetName(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Set<User>((string)null).AnyAsync());
+            }
+        }
+
+        public void WhitespaceSetName(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Set<User>(""   "").AnyAsync());
+            }
+        }
+
+        public void UnprovenSetName(AppDbContext db, string name)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Set<User>(name).AnyAsync());
+            }
+        }
+
         public void NullRawSql(AppDbContext db)
         {
             var tasks = new List<Task<int>>();
@@ -779,6 +806,25 @@ namespace TestApp
                 tasks.Add({|#6:db.Users.AnyAsync(cancellationToken)|});
             }
         }
+
+        public void NoneCancellationToken(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#7:db.Users.AnyAsync(
+                    System.Threading.CancellationToken.None)|});
+            }
+        }
+
+        public void NamedSetRoot(AppDbContext db)
+        {
+            var tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#8:db.Set<User>(""Users"").AnyAsync()|});
+            }
+        }
     }
 }";
 
@@ -803,6 +849,12 @@ namespace TestApp
         var nonCancelledToken = VerifyCS.Diagnostic()
             .WithLocation(6)
             .WithArguments("db");
+        var noneCancellationToken = VerifyCS.Diagnostic()
+            .WithLocation(7)
+            .WithArguments("db");
+        var namedSetRoot = VerifyCS.Diagnostic()
+            .WithLocation(8)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
@@ -812,7 +864,9 @@ namespace TestApp
             stableFindKeys,
             rawSqlParameters,
             querySqlParameters,
-            nonCancelledToken);
+            nonCancelledToken,
+            noneCancellationToken,
+            namedSetRoot);
     }
 
     [Fact]
