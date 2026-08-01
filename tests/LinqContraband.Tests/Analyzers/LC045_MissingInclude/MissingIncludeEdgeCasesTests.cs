@@ -104,6 +104,10 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsSplitQuery<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsSingleQuery<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsNoTrackingWithIdentityResolution<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> TagWith<T>(this IQueryable<T> source, string tag) => source;
         public static IQueryable<T> IgnoreAutoIncludes<T>(this IQueryable<T> source) => source;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => null;
         public static Task<HashSet<T>> ToHashSetAsync<T>(
@@ -214,6 +218,203 @@ namespace TestNamespace
         public static IQueryable<T> Shuffle<T>(this IQueryable<T> source) => source;
     }
 }";
+
+    [Fact]
+    public async Task TestCrime_SplitQueryWithoutInclude_Diagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.AsSplitQuery().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_TagWithWithoutInclude_Diagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.TagWith(""report"").ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_SplitQueryWithInclude_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).AsSplitQuery().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SingleQueryWithoutInclude_Diagnostic()
+    {
+        // AsSingleQuery only picks the SQL strategy; the materialized entity shape is
+        // identical, so a missing Include is still a missing Include.
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.AsSingleQuery().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestCrime_SplitQueryBeforeIncludeOfOtherNavigation_Diagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.AsSplitQuery().Include(o => o.Items).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|#0:o.Customer|}.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    [Fact]
+    public async Task TestInnocent_SingleQueryWithInclude_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).AsSingleQuery().ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeAfterSplitQuery_NoDiagnostic()
+    {
+        // Distinguishes "chain analysis continues past the operator" from "post-operator
+        // Include evidence is silently dropped" — both would keep an unincluded navigation
+        // reporting, so only this shape proves the Include is still honoured.
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.AsSplitQuery().Include(o => o.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeAfterSingleQuery_NoDiagnostic()
+    {
+        var test =
+            Usings
+            + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.AsSingleQuery().Include(o => o.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+"
+            + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
     [Fact]
     public async Task TestInnocent_SelectProjectionInChain_NoDiagnostic()
