@@ -86,6 +86,21 @@ public sealed partial class MissingIncludeAnalyzer
                             out var isUnconditional
                         );
                         if (
+                            isTopLevel
+                            && isUnconditional
+                            && TryApplyConfigurationAutoIncludes(
+                                configurationInvocation,
+                                method.Parameters[0],
+                                compilation,
+                                prefixesByEntity,
+                                cancellationToken
+                            )
+                        )
+                        {
+                            continue;
+                        }
+
+                        if (
                             !TryGetDirectAutoInclude(
                                 configurationInvocation,
                                 method.Parameters[0],
@@ -97,7 +112,10 @@ public sealed partial class MissingIncludeAnalyzer
                         )
                         {
                             if (
-                                isTopLevel
+                                (isTopLevel
+                                    || CanNestedInvocationChangeAutoIncludes(
+                                        configurationInvocation
+                                    ))
                                 && IsUnprovenModelConfigurationBoundary(
                                     configurationInvocation,
                                     method.Parameters[0],
@@ -187,7 +205,8 @@ public sealed partial class MissingIncludeAnalyzer
         enabled = null;
 
         if (
-            autoInclude.TargetMethod.Name != "AutoInclude"
+            IsChainedAutoIncludeReceiver(autoInclude)
+            || autoInclude.TargetMethod.Name != "AutoInclude"
             || !IsEfBuilderType(autoInclude.TargetMethod.ContainingType, "NavigationBuilder")
             || !TryGetAutoIncludeSetting(autoInclude, out enabled)
             || !TryGetNavigationInvocation(autoInclude, out var navigationInvocation)
@@ -224,6 +243,21 @@ public sealed partial class MissingIncludeAnalyzer
 
         entityType = configuredEntity;
         return true;
+    }
+
+    private static bool IsChainedAutoIncludeReceiver(IInvocationOperation invocation)
+    {
+        IOperation current = invocation;
+        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+            current = current.Parent;
+
+        return current.Parent is IInvocationOperation outerInvocation
+            && outerInvocation.TargetMethod.Name == "AutoInclude"
+            && IsEfBuilderType(
+                outerInvocation.TargetMethod.ContainingType,
+                "NavigationBuilder"
+            )
+            && object.ReferenceEquals(outerInvocation.Instance?.UnwrapConversions(), current);
     }
 
     private static bool TryGetNavigationInvocation(
@@ -334,6 +368,46 @@ public sealed partial class MissingIncludeAnalyzer
             || invocation.Arguments.Any(argument =>
                 ReferencesParameter(argument.Value, modelBuilderParameter, cancellationToken)
             );
+    }
+
+    private static bool CanNestedInvocationChangeAutoIncludes(
+        IInvocationOperation invocation
+    )
+    {
+        if (
+            invocation.TargetMethod.Name
+                is "ApplyConfiguration"
+                    or "ApplyConfigurationsFromAssembly"
+                    or "OnModelCreating"
+                    or "SetIsEagerLoaded"
+        )
+        {
+            return true;
+        }
+
+        var containingType = invocation.TargetMethod.ContainingType;
+        var containingNamespace = containingType.ContainingNamespace.ToDisplayString();
+        if (
+            containingType.Name == "ModelBuilder"
+            && containingNamespace == "Microsoft.EntityFrameworkCore"
+            && invocation.TargetMethod.Name == "Entity"
+        )
+        {
+            return false;
+        }
+
+        if (
+            containingNamespace == "Microsoft.EntityFrameworkCore.Metadata.Builders"
+            && ((containingType.Name == "EntityTypeBuilder"
+                    && invocation.TargetMethod.Name == "Navigation")
+                || (containingType.Name == "NavigationBuilder"
+                    && invocation.TargetMethod.Name == "AutoInclude"))
+        )
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool ReferencesParameter(
