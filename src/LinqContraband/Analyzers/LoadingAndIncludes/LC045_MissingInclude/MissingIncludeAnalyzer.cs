@@ -73,31 +73,50 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                 IOperation,
                 FlowGraphHolder
             >();
-            compilationContext.RegisterOperationAction(
-                operationContext =>
-                    AnalyzeInvocation(
-                        operationContext,
-                        entityTypeCache,
-                        autoIncludeCache,
-                        flowGraphCache
-                    ),
-                OperationKind.Invocation
-            );
-            compilationContext.RegisterOperationAction(
-                operationContext =>
-                    AnalyzeForEach(
-                        operationContext,
-                        entityTypeCache,
-                        autoIncludeCache,
-                        flowGraphCache
-                    ),
-                OperationKind.Loop
-            );
+            // Registered per operation block, not per operation: LC045 reports on the
+            // navigation access, which lies outside the span of the invocation or loop that
+            // triggers analysis. An operation-scoped action would make Roslyn classify the
+            // report as a non-local (compilation-level) diagnostic, which suppresses live
+            // IDE analysis and makes the code fix unreliable.
+            compilationContext.RegisterOperationBlockAction(blockContext =>
+            {
+                foreach (var block in blockContext.OperationBlocks)
+                {
+                    foreach (var operation in block.DescendantsAndSelf())
+                    {
+                        var operationContext = new MissingIncludeAnalysisContext(
+                            operation,
+                            blockContext.Compilation,
+                            blockContext.ReportDiagnostic,
+                            blockContext.CancellationToken
+                        );
+
+                        if (operation is IInvocationOperation)
+                        {
+                            AnalyzeInvocation(
+                                operationContext,
+                                entityTypeCache,
+                                autoIncludeCache,
+                                flowGraphCache
+                            );
+                        }
+                        else if (operation is ILoopOperation)
+                        {
+                            AnalyzeForEach(
+                                operationContext,
+                                entityTypeCache,
+                                autoIncludeCache,
+                                flowGraphCache
+                            );
+                        }
+                    }
+                }
+            });
         });
     }
 
     private static void AnalyzeInvocation(
-        OperationAnalysisContext context,
+        MissingIncludeAnalysisContext context,
         System.Collections.Concurrent.ConcurrentDictionary<
             INamedTypeSymbol,
             System.Collections.Generic.HashSet<INamedTypeSymbol>
