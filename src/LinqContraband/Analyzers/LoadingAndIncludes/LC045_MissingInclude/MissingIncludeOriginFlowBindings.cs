@@ -18,11 +18,9 @@ public sealed partial class MissingIncludeAnalyzer
             var deconstructionAssignments = new Dictionary<ILocalSymbol, List<LocalAssignment>>(
                 SymbolEqualityComparer.Default
             );
-            foreach (var operation in executableRoot.Descendants())
+            // Mirrors FlowScopeIndex.AliasBindings: keep the two in step when adding a case.
+            foreach (var operation in scope.AliasBindings)
             {
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
-
                 switch (operation)
                 {
                     case IVariableDeclaratorOperation declarator:
@@ -378,20 +376,9 @@ public sealed partial class MissingIncludeAnalyzer
 
         private void DiscoverLocalFunctionCaptures()
         {
-            foreach (var operation in executableRoot.Descendants())
+            foreach (var localFunction in scope.LocalFunctions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (
-                    operation is not ILocalFunctionOperation localFunction
-                    || localFunction.Parent == null
-                    || !ReferenceEquals(
-                        localFunction.Parent.FindOwningExecutableRoot(),
-                        executableRoot
-                    )
-                )
-                {
-                    continue;
-                }
 
                 var capture = new LocalFunctionCapture();
                 foreach (var descendant in localFunction.Descendants())
@@ -414,43 +401,6 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (capture.EscapesRoot || capture.OriginIds.Count > 0)
                     localFunctionCaptures[localFunction.Symbol] = capture;
-            }
-        }
-
-        private static int FindFirstBlockOrdinalInside(ControlFlowGraph graph, SyntaxNode body)
-        {
-            var bestOrdinal = -1;
-            var bestPosition = int.MaxValue;
-
-            foreach (var block in graph.Blocks)
-            {
-                if (!block.IsReachable)
-                    continue;
-
-                foreach (var operation in block.Operations)
-                    Consider(operation, block.Ordinal);
-
-                if (block.BranchValue != null)
-                    Consider(block.BranchValue, block.Ordinal);
-            }
-
-            return bestOrdinal;
-
-            void Consider(IOperation operation, int ordinal)
-            {
-                if (operation.Syntax.SyntaxTree != body.SyntaxTree)
-                    return;
-
-                var span = operation.Syntax.Span;
-                var bodySpan = body.Span;
-                if (span.Start < bodySpan.Start || span.End > bodySpan.End)
-                    return;
-
-                if (span.Start < bestPosition)
-                {
-                    bestPosition = span.Start;
-                    bestOrdinal = ordinal;
-                }
             }
         }
 

@@ -20,7 +20,7 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -88,7 +88,7 @@ public sealed partial class MissingIncludeAnalyzer
                         callback.Symbol.Parameters[0],
                         entityType,
                         entityTypes,
-                        flowGraphCache,
+                        flowCache,
                         cancellationToken,
                         out var callbackAccesses
                     )
@@ -115,7 +115,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection,
             entityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             cancellationToken
         );
         if (accesses == null || !returnsCollection)
@@ -139,7 +139,7 @@ public sealed partial class MissingIncludeAnalyzer
                     entityType,
                     entityTypes,
                     invocation,
-                    flowGraphCache,
+                    flowCache,
                     cancellationToken
                 )
             )
@@ -154,7 +154,7 @@ public sealed partial class MissingIncludeAnalyzer
                     callback.Symbol.Parameters[0],
                     entityType,
                     entityTypes,
-                    flowGraphCache,
+                    flowCache,
                     cancellationToken,
                     out var callbackAccesses
                 )

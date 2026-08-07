@@ -21,7 +21,7 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -32,7 +32,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 materializer.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -46,6 +46,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
 
@@ -81,7 +82,7 @@ public sealed partial class MissingIncludeAnalyzer
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
         IInvocationOperation invocation,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -89,7 +90,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 materializer.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -105,6 +106,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection: true,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
         context.Build();
@@ -172,7 +174,7 @@ public sealed partial class MissingIncludeAnalyzer
         IParameterSymbol callbackParameter,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -182,7 +184,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 parentExecutableRoot,
                 callback.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var parentGraph
             ) || !TryGetCallbackFlowGraph(parentGraph, callback, cancellationToken, out var graph)
@@ -196,6 +198,7 @@ public sealed partial class MissingIncludeAnalyzer
             callbackParameter,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
         context.Build();
@@ -310,7 +313,7 @@ public sealed partial class MissingIncludeAnalyzer
         IForEachLoopOperation rootForEach,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -321,7 +324,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 rootForEach.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -333,6 +336,7 @@ public sealed partial class MissingIncludeAnalyzer
             rootForEach,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
 
@@ -364,12 +368,12 @@ public sealed partial class MissingIncludeAnalyzer
     private static bool TryGetFlowGraph(
         IOperation executableRoot,
         SemanticModel? semanticModel,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out ControlFlowGraph graph
     )
     {
-        if (flowGraphCache.TryGetValue(executableRoot, out var cached))
+        if (flowCache.TryGetGraph(executableRoot, out var cached))
         {
             graph = cached.Graph!;
             return graph != null;
@@ -401,16 +405,7 @@ public sealed partial class MissingIncludeAnalyzer
             created = null;
         }
 
-        var holder = new FlowGraphHolder(created);
-        try
-        {
-            flowGraphCache.Add(executableRoot, holder);
-        }
-        catch (ArgumentException)
-        {
-            if (flowGraphCache.TryGetValue(executableRoot, out var raced))
-                holder = raced;
-        }
+        var holder = flowCache.AddGraph(executableRoot, new FlowGraphHolder(created));
 
         graph = holder.Graph!;
         return graph != null;

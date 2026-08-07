@@ -6,6 +6,7 @@ using LinqContraband.Analyzers.LC015_MissingOrderBy;
 using LinqContraband.Analyzers.LC017_WholeEntityProjection;
 using LinqContraband.Analyzers.LC023_FindInsteadOfFirstOrDefault;
 using LinqContraband.Analyzers.LC027_MissingExplicitForeignKey;
+using LinqContraband.Analyzers.LC045_MissingInclude;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -100,6 +101,19 @@ public partial class AnalyzerPerformanceTests
             AnalyzerTimeout);
 
         Assert.Contains(diagnostics, diagnostic => diagnostic.Id == WholeEntityProjectionAnalyzer.DiagnosticId);
+    }
+
+    [Fact]
+    public async Task LC045_OriginFlow_CompletesOnManyMaterializersInOneMethod()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc045StressSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new MissingIncludeAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == MissingIncludeAnalyzer.DiagnosticId);
     }
 
     private static async Task<ImmutableArray<Diagnostic>> GetDiagnosticsWithinAsync(
@@ -373,6 +387,68 @@ public partial class AnalyzerPerformanceTests
                 }
                 """);
         }
+
+        return source.ToString();
+    }
+
+    // LC045 derives its origin flow per materializer. Every fact that depends only on the
+    // executable root or its control-flow graph is cached, so one method holding many
+    // materializers must not re-walk the whole method once per materializer. The count is
+    // deliberately modest: three target frameworks run in parallel on one CI runner, and a
+    // heavier stress source starves the other analyzer performance tests rather than
+    // measuring this one. It still fails loudly on a quadratic blow-up.
+    private static string GenerateLc045StressSource()
+    {
+        const int materializerCount = 60;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                public DbSet<Order> Orders { get; set; }
+                public DbSet<Customer> Customers { get; set; }
+            }
+
+            public class Order
+            {
+                public int Id { get; set; }
+                public Customer Customer { get; set; }
+            }
+
+            public class Customer
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            public class Queries
+            {
+                public void Run()
+                {
+                    var db = new AppDbContext();
+            """);
+
+        for (var i = 0; i < materializerCount; i++)
+        {
+            source.AppendLine($"        var orders{i} = db.Orders.ToList();");
+            source.AppendLine($"        foreach (var order{i} in orders{i})");
+            source.AppendLine("        {");
+            source.AppendLine($"            Console.WriteLine(order{i}.Customer.Name);");
+            source.AppendLine("        }");
+        }
+
+        source.AppendLine(
+            """
+                }
+            }
+            """);
 
         return source.ToString();
     }

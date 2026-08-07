@@ -69,10 +69,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                     System.Collections.Generic.HashSet<string>
                 >
             >(SymbolEqualityComparer.Default);
-            var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<
-                IOperation,
-                FlowGraphHolder
-            >();
+            var flowCache = new MissingIncludeFlowCache();
             // Registered per operation block, not per operation: LC045 reports on the
             // navigation access, which lies outside the span of the invocation or loop that
             // triggers analysis. An operation-scoped action would make Roslyn classify the
@@ -102,7 +99,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                                 operationContext,
                                 entityTypeCache,
                                 autoIncludeCache,
-                                flowGraphCache
+                                flowCache
                             );
                         }
                         else
@@ -111,7 +108,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                                 operationContext,
                                 entityTypeCache,
                                 autoIncludeCache,
-                                flowGraphCache
+                                flowCache
                             );
                         }
                     }
@@ -133,10 +130,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                 System.Collections.Generic.HashSet<string>
             >
         > autoIncludeCache,
-        System.Runtime.CompilerServices.ConditionalWeakTable<
-            IOperation,
-            FlowGraphHolder
-        > flowGraphCache
+        MissingIncludeFlowCache flowCache
     )
     {
         var invocation = (IInvocationOperation)context.Operation;
@@ -164,7 +158,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
             returnsCollection,
             query.EntityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             context.CancellationToken
         );
         if (accesses == null || accesses.Count == 0)

@@ -549,6 +549,7 @@ public sealed class AnalyzerModularizationTests
         var flowEventsPath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowEvents.cs");
         var flowStatePath = Path.Combine(analyzerDir, "MissingIncludeOriginFlowState.cs");
         var autoIncludePath = Path.Combine(analyzerDir, "MissingIncludeAutoIncludeConfiguration.cs");
+        var flowCachePath = Path.Combine(analyzerDir, "MissingIncludeFlowCache.cs");
 
         Assert.True(File.Exists(flowAnalysisPath), "LC045 origin-aware control-flow analysis should live in a focused partial file.");
         Assert.True(File.Exists(flowBindingsPath), "LC045 origin and alias binding discovery should live in a focused partial file.");
@@ -556,6 +557,7 @@ public sealed class AnalyzerModularizationTests
         Assert.True(File.Exists(flowEventsPath), "LC045 origin-flow event collection should live in a focused partial file.");
         Assert.True(File.Exists(flowStatePath), "LC045 origin-flow state and event models should live in a focused partial file.");
         Assert.True(File.Exists(autoIncludePath), "LC045 model-level AutoInclude proof should live in a focused partial file.");
+        Assert.True(File.Exists(flowCachePath), "LC045 per-compilation flow caches should live in a focused partial file.");
 
         var usageScanSource = File.ReadAllText(usageScanPath);
         Assert.DoesNotContain("private static bool TryGetFlowGraph", usageScanSource);
@@ -566,7 +568,7 @@ public sealed class AnalyzerModularizationTests
 
         var analyzerSource = File.ReadAllText(analyzerPath);
         Assert.Contains("RegisterCompilationStartAction", analyzerSource);
-        Assert.Contains("var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<", analyzerSource);
+        Assert.Contains("var flowCache = new MissingIncludeFlowCache();", analyzerSource);
         Assert.Contains("var autoIncludeCache = new System.Collections.Concurrent.ConcurrentDictionary<", analyzerSource);
         Assert.Contains("AnalyzeInvocation(", analyzerSource);
         Assert.Contains("autoIncludeCache,", analyzerSource);
@@ -578,8 +580,16 @@ public sealed class AnalyzerModularizationTests
         var flowAnalysisSource = File.ReadAllText(flowAnalysisPath);
         Assert.Contains("private static bool TryCollectOriginAwareNavigationAccesses", flowAnalysisSource);
         Assert.Contains("private static bool TryGetFlowGraph", flowAnalysisSource);
-        Assert.Contains("ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache", flowAnalysisSource);
+        Assert.Contains("MissingIncludeFlowCache flowCache", flowAnalysisSource);
         Assert.DoesNotContain("static readonly ConditionalWeakTable<IOperation", flowAnalysisSource);
+
+        // The per-root scope walk and the per-graph block index are what keep a method with
+        // many materializers from re-deriving the same facts once per materializer.
+        var flowCacheSource = File.ReadAllText(flowCachePath);
+        Assert.Contains("private sealed class MissingIncludeFlowCache", flowCacheSource);
+        Assert.Contains("private sealed class FlowScopeIndex", flowCacheSource);
+        Assert.Contains("private sealed class BlockOrdinalIndex", flowCacheSource);
+        Assert.DoesNotContain("static readonly ConditionalWeakTable<", flowCacheSource);
 
         var flowBindingsSource = File.ReadAllText(flowBindingsPath);
         Assert.Contains("private void DiscoverStableAliases", flowBindingsSource);
