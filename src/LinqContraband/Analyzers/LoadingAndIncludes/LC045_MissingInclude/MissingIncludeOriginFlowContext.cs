@@ -22,6 +22,8 @@ public sealed partial class MissingIncludeAnalyzer
         private readonly INamedTypeSymbol entityType;
         private readonly HashSet<INamedTypeSymbol> entityTypes;
         private readonly CancellationToken cancellationToken;
+        private readonly MissingIncludeFlowCache flowCache;
+        private readonly FlowScopeIndex scope;
         private readonly Dictionary<ILocalSymbol, EntityOrigin> originsByLocal = new(
             SymbolEqualityComparer.Default
         );
@@ -59,9 +61,12 @@ public sealed partial class MissingIncludeAnalyzer
             bool returnsCollection,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(executableRoot);
             this.executableRoot = executableRoot;
             this.materializer = materializer;
             this.resultLocal = resultLocal;
@@ -77,9 +82,12 @@ public sealed partial class MissingIncludeAnalyzer
             IForEachLoopOperation rootForEach,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(executableRoot);
             this.executableRoot = executableRoot;
             this.rootForEach = rootForEach;
             activationSyntax = rootForEach.Collection.Syntax;
@@ -94,9 +102,12 @@ public sealed partial class MissingIncludeAnalyzer
             IParameterSymbol callbackParameter,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(callback);
             executableRoot = callback;
             rootCallbackParameter = callbackParameter;
             activationSyntax = callback.Body.Syntax;
@@ -149,21 +160,18 @@ public sealed partial class MissingIncludeAnalyzer
                 )
             );
 
-            foreach (var operation in executableRoot.Descendants())
+            // scope.Ordered is pre-filtered to the operation kinds handled below; keep
+            // FlowScopeIndex.IsEventCandidate in step when adding a case here.
+            foreach (var scopeOperation in scope.Ordered)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (
-                    operation is IAnonymousFunctionOperation lambda
-                    && IsDeclaredInExecutableRoot(lambda)
-                )
+                var operation = scopeOperation.Operation;
+                if (scopeOperation.IsDeclaredLambda)
                 {
-                    CollectLambdaCaptureEvents(lambda);
+                    CollectLambdaCaptureEvents((IAnonymousFunctionOperation)operation);
                     continue;
                 }
-
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
 
                 CollectBindingAndEscapeEvents(operation);
 
@@ -176,16 +184,18 @@ public sealed partial class MissingIncludeAnalyzer
 
         public bool TryMapEventsToBlocks(ControlFlowGraph graph)
         {
+            var blockIndex = flowCache.GetBlockOrdinals(graph);
+
             foreach (var flowEvent in events)
             {
-                var blockOrdinal = FindBlockOrdinal(graph, flowEvent.Syntax);
+                var blockOrdinal = blockIndex.FindContainingBlock(flowEvent.Syntax);
                 if (
                     blockOrdinal < 0
                     && flowEvent.Kind == FlowEventKind.Materialize
                     && executableRoot is IAnonymousFunctionOperation
                 )
                 {
-                    blockOrdinal = FindFirstBlockOrdinalInside(graph, activationSyntax);
+                    blockOrdinal = blockIndex.FindFirstBlockInside(activationSyntax);
                 }
                 if (blockOrdinal < 0)
                     return false;
@@ -201,7 +211,7 @@ public sealed partial class MissingIncludeAnalyzer
 
             foreach (var binding in iterationBindings)
             {
-                var blockOrdinal = FindFirstBlockOrdinalInside(graph, binding.Body);
+                var blockOrdinal = blockIndex.FindFirstBlockInside(binding.Body);
                 if (blockOrdinal < 0)
                     return false;
 
@@ -277,11 +287,9 @@ public sealed partial class MissingIncludeAnalyzer
                 );
             }
 
-            foreach (var operation in executableRoot.Descendants())
+            foreach (var operation in scope.ForEachLoops)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
 
                 switch (operation)
                 {
@@ -791,76 +799,46 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
-        private bool IsDeclaredInExecutableRoot(IAnonymousFunctionOperation lambda)
-        {
-            if (executableRoot is IAnonymousFunctionOperation callback)
-                return !ReferenceEquals(lambda, callback) && BelongsToExecutableRoot(lambda);
+    }
 
-            var parent = lambda.Parent;
-            return parent != null
-                && ReferenceEquals(parent.FindOwningExecutableRoot(), executableRoot);
-        }
+    private static bool IsDeclaredInRoot(
+        IAnonymousFunctionOperation lambda,
+        IOperation executableRoot
+    )
+    {
+        if (executableRoot is IAnonymousFunctionOperation callback)
+            return !ReferenceEquals(lambda, callback) && BelongsToRoot(lambda, executableRoot);
 
-        private bool BelongsToExecutableRoot(IOperation operation)
+        var parent = lambda.Parent;
+        return parent != null
+            && ReferenceEquals(parent.FindOwningExecutableRoot(), executableRoot);
+    }
+
+    private static bool BelongsToRoot(IOperation operation, IOperation executableRoot)
+    {
+        if (executableRoot is IAnonymousFunctionOperation callback)
         {
-            if (executableRoot is IAnonymousFunctionOperation callback)
+            if (
+                operation.Syntax.SyntaxTree != callback.Syntax.SyntaxTree
+                || !callback.Body.Syntax.Span.Contains(operation.Syntax.Span)
+            )
             {
-                if (
-                    operation.Syntax.SyntaxTree != callback.Syntax.SyntaxTree
-                    || !callback.Body.Syntax.Span.Contains(operation.Syntax.Span)
-                )
-                {
+                return false;
+            }
+
+            for (
+                var parent = operation.Parent;
+                parent != null && !ReferenceEquals(parent, callback);
+                parent = parent.Parent
+            )
+            {
+                if (parent is IAnonymousFunctionOperation)
                     return false;
-                }
-
-                for (
-                    var parent = operation.Parent;
-                    parent != null && !ReferenceEquals(parent, callback);
-                    parent = parent.Parent
-                )
-                {
-                    if (parent is IAnonymousFunctionOperation)
-                        return false;
-                }
-
-                return true;
             }
 
-            return ReferenceEquals(operation.FindOwningExecutableRoot(), executableRoot);
+            return true;
         }
 
-        private static int FindBlockOrdinal(ControlFlowGraph graph, SyntaxNode syntax)
-        {
-            var bestOrdinal = -1;
-            var bestLength = int.MaxValue;
-
-            foreach (var block in graph.Blocks)
-            {
-                foreach (var operation in block.Operations)
-                    Consider(operation, block.Ordinal);
-
-                if (block.BranchValue != null)
-                    Consider(block.BranchValue, block.Ordinal);
-            }
-
-            return bestOrdinal;
-
-            void Consider(IOperation operation, int ordinal)
-            {
-                if (operation.Syntax.SyntaxTree != syntax.SyntaxTree)
-                    return;
-
-                var operationSpan = operation.Syntax.Span;
-                var targetSpan = syntax.Span;
-                if (operationSpan.Start > targetSpan.Start || operationSpan.End < targetSpan.End)
-                    return;
-
-                if (operationSpan.Length < bestLength)
-                {
-                    bestLength = operationSpan.Length;
-                    bestOrdinal = ordinal;
-                }
-            }
-        }
+        return ReferenceEquals(operation.FindOwningExecutableRoot(), executableRoot);
     }
 }

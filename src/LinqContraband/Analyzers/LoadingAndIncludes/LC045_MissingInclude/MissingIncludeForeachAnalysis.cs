@@ -20,7 +20,7 @@ public sealed partial class MissingIncludeAnalyzer
             INamedTypeSymbol,
             Dictionary<INamedTypeSymbol, HashSet<string>>
         > autoIncludeCache,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache
+        MissingIncludeFlowCache flowCache
     )
     {
         if (context.Operation is not IForEachLoopOperation forEach || forEach.IsAsynchronous)
@@ -67,7 +67,7 @@ public sealed partial class MissingIncludeAnalyzer
             forEach,
             query.EntityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             context.CancellationToken
         );
         if (accesses == null || accesses.Count == 0)
@@ -86,7 +86,7 @@ public sealed partial class MissingIncludeAnalyzer
         IForEachLoopOperation forEach,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -99,7 +99,7 @@ public sealed partial class MissingIncludeAnalyzer
             forEach,
             entityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             cancellationToken,
             out var accesses
         )
