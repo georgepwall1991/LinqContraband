@@ -33,6 +33,22 @@ public class MissingIncludeSample
         }
     }
 
+    public static async Task RunAsyncStream(AppDbContext db)
+    {
+        // VIOLATION: `await foreach` materializes the same entities one row at a time, so a
+        // navigation the query never asked for has exactly the same failure modes.
+        await foreach (var c in db.Customers.AsAsyncEnumerable())
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
+        }
+
+        // CORRECT: the Include goes before the async bridge.
+        await foreach (var c in db.Customers.Include(x => x.ShippingAddress).AsAsyncEnumerable())
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
+        }
+    }
+
     public static void RunNested(NestedCollectionContext db)
     {
         var orders = db

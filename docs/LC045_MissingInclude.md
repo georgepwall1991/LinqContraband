@@ -35,7 +35,7 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 ```
 
 ## Code Fix
-The code fix wraps the exact query source immediately before the materializer or direct `foreach` enumeration — `recv.ToList()` becomes `recv.Include(x => x.Nav).ToList()`, while `foreach (var x in recv)` becomes `foreach (var x in recv.Include(x => x.Nav))`. Nested paths become `Include`/`ThenInclude` chains: a flagged `Customer.Address` produces `.Include(x => x.Customer).ThenInclude(x => x.Address)`. FixAll applies the same navigation across the document/project.
+The code fix wraps the exact query source immediately before the materializer or direct `foreach` enumeration — `recv.ToList()` becomes `recv.Include(x => x.Nav).ToList()`, while `foreach (var x in recv)` becomes `foreach (var x in recv.Include(x => x.Nav))`. Wrapping the source of an `await foreach` would leave an `IQueryable<T>` that is no longer an `IAsyncEnumerable<T>` (CS8415), so the rewrite restores the bridge: `await foreach (var x in db.Set)` becomes `await foreach (var x in db.Set.Include(x => x.Nav).AsAsyncEnumerable())`. When the stream already goes through `AsAsyncEnumerable()`, the `Include` simply lands before it. If the compilation has no `AsAsyncEnumerable`, the direct-`DbSet` async form reports without a fix rather than emitting code that does not build. Nested paths become `Include`/`ThenInclude` chains: a flagged `Customer.Address` produces `.Include(x => x.Customer).ThenInclude(x => x.Address)`. FixAll applies the same navigation across the document/project.
 
 The fix only registers when the source expression it would wrap is statically `IQueryable<T>`. If the query has already been widened to `IEnumerable<T>` (for example `IEnumerable<Order> source = db.Orders; source.ToList()`), LC045 still reports the missing eager load, but the remediation is manual: add `Include` before widening or keep the local typed as `IQueryable<T>`.
 
@@ -46,7 +46,7 @@ The fix only registers when the source expression it would wrap is statically `I
 ### Severity: `Warning`
 
 ### Algorithm
-1. **Anchor**: register on entity-producing materializers — `ToList`/`ToArray`/`ToHashSet` (+ supported `Async` forms), `First`/`Single`/`Last` (`OrDefault`, `Async`), and query-root `ElementAt` (`OrDefault`, supported `Async`) — plus synchronous `foreach` directly over a statically `IQueryable<T>` DbSet-rooted source. Inline collection materializers use the same source proof. Aggregates (`Count`, `Any`, …) never materialize entities and are ignored.
+1. **Anchor**: register on entity-producing materializers — `ToList`/`ToArray`/`ToHashSet` (+ supported `Async` forms), `First`/`Single`/`Last` (`OrDefault`, `Async`), and query-root `ElementAt` (`OrDefault`, supported `Async`) — plus synchronous `foreach` directly over a statically `IQueryable<T>` DbSet-rooted source, plus `await foreach` over a proven EF stream: the exact `EntityFrameworkQueryableExtensions.AsAsyncEnumerable()` bridge over an `IQueryable<T>`, or a source that is still statically `IQueryable<T>` (a `DbSet<T>` is directly awaitable because it implements both interfaces). An arbitrary `IAsyncEnumerable<T>` is not a proven EF stream and stays quiet. Inline collection materializers use the same source proof. Aggregates (`Count`, `Any`, …) never materialize entities and are ignored.
 2. **Chain proof**: walk the semantic source parameter back to a `DbSet<T>` property/field on a `DbContext`, or to `DbContext.Set<TEntity>()`. Exact `Queryable`, EF, and relational symbols preserve only known query shapes, including `AsQueryable`, `IgnoreAutoIncludes`, and EF Core `FromSql*`; reordered static arguments are resolved by parameter ordinal. Anything else — `Select`, `Join`, `GroupBy`, custom extensions, and lookalikes — bails.
 3. **Included paths**: parse every `Include`/`ThenInclude` (lambda, filtered-lambda, and constant-string overloads) into navigation paths and record every prefix (`Include(o => o.A.B)` covers `A` and `A.B`). If any Include cannot be parsed (dynamic string), the whole query is skipped — it could cover anything.
 4. **Model-level eager loading**: cache exact top-level `OnModelCreating` overrides per context, matching constructed generic contexts through their original symbols. An exact EF `modelBuilder.Entity<TEntity>().Navigation(e => e.Nav).AutoInclude()` chain counts as loading only that entity/navigation path. Later fluent or standalone disablement removes the proof, an unproven later model-configuration boundary invalidates prior evidence, and a query-level `IgnoreAutoIncludes()` disables all model-level evidence for that query.
@@ -69,7 +69,7 @@ The fix only registers when the source expression it would wrap is statically `I
 - **Null-guarded access still fires.** `if (o.Customer != null)` and `order?.Customer` are flagged on purpose: with proxies the null check itself can trigger the N+1 load, and without another loading mechanism a consistently null navigation makes the guard dead code hiding the bug. Suppress with `#pragma warning disable LC045` if the guard is intentional. This holds for every null-conditional spelling: chained inline access on the materializer (`FirstOrDefault()?.Customer?.Name`, `FirstOrDefault()?.Customer.Address?.City`), parenthesized regrouping (`(order?.Customer)?.Address?.City`, reported as `Customer.Address`, including inline materializer and inherited-navigation forms), conditional element access on the result (`orders?[0].Customer`), and locals initialized from a conditional indexer (`var o = orders?[0];`). Conditional method-call results such as `(order?.Customer.GetDetached())?.Address` are treated as call results, not as a continuation of the queried navigation path.
 - Exact top-level `AutoInclude()` chains in the nearest real `OnModelCreating` override are recognised, including constructed generic contexts. Indirect builder locals, `IEntityTypeConfiguration<T>`/`ApplyConfiguration`, inferred base-method calls, deferred calls, later unproven model mutations, and transitive auto-includes on a different entity remain unproven and can still report; keep an explicit `Include`, project, or use a reviewed suppression for those shapes.
 - Widened `IEnumerable<T>` aliases are diagnostic-only: the analyzer can still prove the DbSet root, but the fixer will not emit `Include` against a non-queryable source expression.
-- Current scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): `await foreach`, arbitrary callbacks and delegate/method-group consumers, predicate/default-value element extractor overloads, custom extraction lookalikes, provider-specific temporal APIs, `Find*`, `Entry(...).Reference/Collection(...).Load()` recognition, and `IQueryable` parameters / repository-returned queries as roots.
+- Current scope is intra-procedural and local-based (methods and constructors). Out of scope (quiet, not flagged): `await foreach` over anything other than a proven EF stream, arbitrary callbacks and delegate/method-group consumers, predicate/default-value element extractor overloads, custom extraction lookalikes, provider-specific temporal APIs, `Find*`, `Entry(...).Reference/Collection(...).Load()` recognition, and `IQueryable` parameters / repository-returned queries as roots.
 
 ## Test Cases
 
@@ -87,6 +87,11 @@ foreach (var o in withCustomer) Console.WriteLine(o.Customer.Address.City); // L
 var nested = db.Orders.ToList();
 foreach (var order in nested)
 foreach (var item in order.Items) Console.WriteLine(item.Product.Name);      // LC045: Items.Product
+
+await foreach (var o in db.Orders.AsAsyncEnumerable())
+    Console.WriteLine(o.Customer.Name);                          // LC045: Customer
+
+await foreach (var o in db.Orders) Console.WriteLine(o.Customer.Name);       // LC045: Customer
 ```
 
 ### Valid
@@ -105,6 +110,11 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 }
 var autoIncluded = db.Orders.ToList();
 foreach (var order in autoIncluded) Console.WriteLine(order.Customer.Name);
+
+await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable())
+    Console.WriteLine(o.Customer.Name);
+
+await foreach (var o in stream) Console.WriteLine(o.Customer.Name); // arbitrary IAsyncEnumerable — not a proven EF stream
 
 var names = db.Orders.Select(o => o.Customer.Name).ToList();     // projection — out of scope
 

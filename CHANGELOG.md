@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now analyses `await foreach` over an EF Core query. The async spelling materializes the same entities one row at a time, so a navigation the query never asked for has exactly the same failure modes, but the loop was skipped outright and the missing `Include` went unreported. Both EF stream shapes are covered: the exact `AsAsyncEnumerable()` bridge and a source that is still statically `IQueryable<T>` (a `DbSet<T>` is directly awaitable). An arbitrary `IAsyncEnumerable<T>` is not a proven EF stream and stays quiet.
+- LC045's code fix restores the async bridge when it wraps the source of an `await foreach`: `Include` alone leaves an `IQueryable<T>` that is no longer an `IAsyncEnumerable<T>`, so the loop would not compile (CS8415). The fix now emits `db.Set.Include(x => x.Nav).AsAsyncEnumerable()`, and withholds itself entirely when the compilation has no `AsAsyncEnumerable` to bridge with.
+
 ## [5.7.9] - 2026-08-08
 
 ### Changed
