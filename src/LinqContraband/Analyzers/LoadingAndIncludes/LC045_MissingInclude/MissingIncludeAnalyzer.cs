@@ -84,6 +84,11 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                 {
                     foreach (var operation in block.DescendantsAndSelf())
                     {
+                        if (operation is not (IInvocationOperation or ILoopOperation))
+                        {
+                            continue;
+                        }
+
                         var operationContext = new MissingIncludeAnalysisContext(
                             operation,
                             blockContext.Compilation,
@@ -100,7 +105,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                                 flowGraphCache
                             );
                         }
-                        else if (operation is ILoopOperation)
+                        else
                         {
                             AnalyzeForEach(
                                 operationContext,
