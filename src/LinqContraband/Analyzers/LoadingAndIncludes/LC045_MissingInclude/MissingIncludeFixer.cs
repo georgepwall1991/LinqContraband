@@ -53,6 +53,15 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             if (await GetQueryableSourceAsync(context.Document, querySource, context.CancellationToken).ConfigureAwait(false) == null)
                 continue;
 
+            // Wrapping the source of an `await foreach` turns it into an IQueryable that is no
+            // longer an IAsyncEnumerable (CS8415), so the rewrite has to restore the async
+            // bridge. Without the bridge in the compilation there is no compiling fix to offer.
+            if (IsDirectAsyncForEachSource(querySource) &&
+                !await HasAsyncEnumerableBridgeAsync(context.Document, context.CancellationToken).ConfigureAwait(false))
+            {
+                continue;
+            }
+
             context.RegisterCodeFix(
                 CodeAction.Create(
                     $"Add .Include() for '{navigationPath}'",
@@ -94,9 +103,42 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             first = false;
         }
 
+        if (IsDirectAsyncForEachSource(source))
+        {
+            current = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    current,
+                    SyntaxFactory.IdentifierName("AsAsyncEnumerable")),
+                SyntaxFactory.ArgumentList());
+        }
+
         editor.ReplaceNode(source, current.WithLeadingTrivia(leadingTrivia).WithTrailingTrivia(trailingTrivia));
 
         return editor.GetChangedDocument();
+    }
+
+    /// <summary>
+    /// True when the expression is enumerated directly by an <c>await foreach</c>. Only a
+    /// <c>DbSet&lt;T&gt;</c>-shaped source reaches this state: it is both an
+    /// <c>IQueryable&lt;T&gt;</c> and an <c>IAsyncEnumerable&lt;T&gt;</c>, and <c>Include</c>
+    /// preserves only the first.
+    /// </summary>
+    private static bool IsDirectAsyncForEachSource(ExpressionSyntax source)
+    {
+        return source.Parent is CommonForEachStatementSyntax forEachStatement
+            && forEachStatement.Expression == source
+            && !forEachStatement.AwaitKeyword.IsKind(SyntaxKind.None);
+    }
+
+    private static async Task<bool> HasAsyncEnumerableBridgeAsync(
+        Document document,
+        CancellationToken cancellationToken)
+    {
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var extensions = semanticModel?.Compilation.GetTypeByMetadataName(
+            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions");
+        return extensions?.GetMembers("AsAsyncEnumerable").Length > 0;
     }
 
     private static string EscapeIdentifier(string name)

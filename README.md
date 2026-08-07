@@ -1827,9 +1827,9 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 
 **🛡️ Reliability Notes:**
 - LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
-  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized or synchronously `foreach`-enumerated entity
-  origin, and a navigation access on it. Inline collection materializers, direct query roots, nested collection paths,
-  and exact `Enumerable` element extraction are covered.
+  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized, synchronously `foreach`-enumerated, or
+  `await foreach`-streamed entity origin, and a navigation access on it. Inline collection materializers, direct query
+  roots, nested collection paths, and exact `Enumerable` element extraction are covered.
 - Any `Select`/`Join`/custom operator or dynamic `Include(variable)` makes the query stay quiet. A later reassignment
   or escape (return, helper call, lambda capture, or external store) suppresses only subsequent uncertain reads of
   that entity origin; a proven read before it still reports. Escaping one extracted entity does not poison a sibling,
@@ -1838,9 +1838,13 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   and are not flagged. A setter satisfies a later read only for the same entity and only when every path to the read
   performs the write; a one-branch or different-entity write does not hide a missing `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
-  to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
-- `await foreach`, arbitrary callbacks/delegate forms, predicate/default-value element extraction overloads, custom
-  lookalikes, and repository or `IQueryable` parameter roots remain conservative boundaries. Exact inline
+  to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you. On an `await foreach` the fix
+  restores the async bridge — `db.Set.Include(x => x.Nav).AsAsyncEnumerable()` — because `Include` alone would leave a
+  source that is no longer an `IAsyncEnumerable<T>`.
+- `await foreach` is analysed only over a proven EF stream (the exact `AsAsyncEnumerable()` bridge, or a source that is
+  still statically `IQueryable<T>`); an arbitrary `IAsyncEnumerable<T>` stays quiet. Arbitrary callbacks/delegate forms,
+  predicate/default-value element extraction overloads, custom lookalikes, and repository or `IQueryable` parameter
+  roots remain conservative boundaries. Exact inline
   `List<T>.ForEach` and single-source `Enumerable.Where`/`Select`/`Any`/`All` callbacks and property-pattern reads
   use the same origin-flow proof while the original materialized collection generation remains active. Effectful
   `Where` predicates and entity-returning `Select` projections stay conservative; scalar `Select` projections do
