@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.9] - 2026-08-08
+
 ### Changed
 - LC045 derives its origin-aware flow analysis once per method instead of once per materializer. The per-materializer walk re-derived the same executable-root partition and re-scanned the whole control-flow graph for every mapped event, so a method holding many materialized queries paid for the whole method on each one. The executable-root partition and a span-indexed block lookup are now cached per compilation. On a 320-materializer method the analyzer examines 1,035,521 operations instead of 10,036,480 — a 9.7x reduction — and no diagnostic changes.
 

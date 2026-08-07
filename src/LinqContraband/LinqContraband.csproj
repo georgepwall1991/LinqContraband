@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.8</Version>
+        <Version>5.7.9</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC008's fixer no longer offers a rewrite that fails to build: inserting the await could leave a ref struct such as Span&lt;T&gt; live across the suspension point (CS4007). LC030 no longer reports a computed partial property as stored DbContext state. LC032, LC043 and LC045 now report diagnostics that are local to the analysed block, so live IDE analysis and their code fixes behave reliably.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now derives its origin-aware flow analysis once per method instead of once per materializer. A method holding many materialized queries re-walked the whole method and re-scanned the whole control-flow graph for every query; on a 320-materializer method the analyzer examines 9.7x fewer operations. Diagnostics are unchanged.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
