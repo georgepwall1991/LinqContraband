@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.8] - 2026-08-07
+
+### Fixed
+- LC008's code fix is withheld when inserting the `await` would leave a ref struct such as `Span<T>` live across the suspension point. The rewrite compiled under binding but failed the build with CS4007, which the async rewriter only raises during emit.
+- LC030 no longer treats the defining half of a partial property as backing storage, so a computed partial property is no longer reported as stored `DbContext` state.
+- LC032, LC043 and LC045 report diagnostics on a node outside the operation that triggers analysis. They now register per operation block, so Roslyn classifies those reports as local rather than compilation-level. Diagnostic locations are unchanged; live IDE analysis and the code fixes behave reliably.
+
+### Changed
+- The analyzer test harness hosts Roslyn 4.14 instead of 4.3, so test sources use the language version consumers compile with. The pin capped test code at C# 11 and hid the LC008 and LC030 defects above.
+
+
 ## [5.7.7] - 2026-08-01
 
 ### Fixed

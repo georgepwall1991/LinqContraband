@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -46,12 +47,28 @@ public sealed partial class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnal
         if (!HasExecuteUpdateSupport(context.Compilation))
             return;
 
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        // Registered per operation block, not per invocation: the diagnostic is reported on
+        // the foreach loop preceding the SaveChanges call, which lies outside that call's own
+        // span. An invocation-scoped action makes Roslyn classify the report as a non-local
+        // (compilation-level) diagnostic, which suppresses live IDE analysis and makes the
+        // code fix unreliable. The block scope contains both nodes, so it stays local.
+        context.RegisterOperationBlockAction(AnalyzeOperationBlock);
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeOperationBlock(OperationBlockAnalysisContext context)
     {
-        var invocation = (IInvocationOperation)context.Operation;
+        foreach (var block in context.OperationBlocks)
+        {
+            foreach (var operation in block.DescendantsAndSelf())
+            {
+                if (operation is IInvocationOperation invocation)
+                    AnalyzeInvocation(invocation, context.ReportDiagnostic);
+            }
+        }
+    }
+
+    private static void AnalyzeInvocation(IInvocationOperation invocation, Action<Diagnostic> reportDiagnostic)
+    {
         var method = invocation.TargetMethod;
 
         if (method.Name is not ("SaveChanges" or "SaveChangesAsync"))
@@ -72,7 +89,7 @@ public sealed partial class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnal
         if (!TryAnalyzeLoop(loop, dbContextReference.Local, out var entityTypeName))
             return;
 
-        context.ReportDiagnostic(
+        reportDiagnostic(
             Diagnostic.Create(
                 Rule,
                 loop.Syntax.GetLocation(),

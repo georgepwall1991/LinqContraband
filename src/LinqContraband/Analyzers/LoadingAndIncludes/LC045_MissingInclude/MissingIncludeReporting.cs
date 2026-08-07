@@ -10,7 +10,7 @@ namespace LinqContraband.Analyzers.LC045_MissingInclude;
 public sealed partial class MissingIncludeAnalyzer
 {
     private static void ReportMissingIncludeDiagnostics(
-        OperationAnalysisContext context,
+        MissingIncludeAnalysisContext context,
         IOperation querySource,
         QueryChainInfo query,
         List<NavigationAccess> accesses)

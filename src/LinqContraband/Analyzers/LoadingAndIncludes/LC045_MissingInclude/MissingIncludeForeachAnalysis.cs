@@ -11,7 +11,7 @@ namespace LinqContraband.Analyzers.LC045_MissingInclude;
 public sealed partial class MissingIncludeAnalyzer
 {
     private static void AnalyzeForEach(
-        OperationAnalysisContext context,
+        MissingIncludeAnalysisContext context,
         System.Collections.Concurrent.ConcurrentDictionary<
             INamedTypeSymbol,
             HashSet<INamedTypeSymbol>
