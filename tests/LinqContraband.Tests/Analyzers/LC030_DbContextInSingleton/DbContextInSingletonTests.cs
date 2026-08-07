@@ -488,4 +488,33 @@ public sealed class Worker : Microsoft.Extensions.Hosting.IHostedService
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    [Fact]
+    public async Task PartialPropertyWithComputedImplementation_ShouldNotTriggerLC030()
+    {
+        // A partial property's defining declaration has no backing field: the implementing
+        // declaration is computed, so the singleton stores no DbContext. Only expressible
+        // now that the harness parses C# 13.
+        var test = EFCoreMock + DependencyInjectionMock + @"
+public sealed partial class Worker
+{
+    public partial Microsoft.EntityFrameworkCore.DbContext Context { get; }
+}
+
+public sealed partial class Worker
+{
+    public partial Microsoft.EntityFrameworkCore.DbContext Context
+        => new Microsoft.EntityFrameworkCore.DbContext();
+}
+
+public static class Startup
+{
+    public static void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<Worker>(services);
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
