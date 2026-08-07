@@ -393,10 +393,13 @@ public partial class AnalyzerPerformanceTests
 
     // LC045 derives its origin flow per materializer. Every fact that depends only on the
     // executable root or its control-flow graph is cached, so one method holding many
-    // materializers must not re-walk the whole method once per materializer.
+    // materializers must not re-walk the whole method once per materializer. The count is
+    // deliberately modest: three target frameworks run in parallel on one CI runner, and a
+    // heavier stress source starves the other analyzer performance tests rather than
+    // measuring this one. It still fails loudly on a quadratic blow-up.
     private static string GenerateLc045StressSource()
     {
-        const int materializerCount = 120;
+        const int materializerCount = 60;
         var source = new StringBuilder();
         source.AppendLine(
             """
