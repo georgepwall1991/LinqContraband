@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.24] - 2026-08-08
+
 ### Fixed
 - LC045 now follows an indexer into a copy or view of the materialized collection. `orders.ToList()[0].Customer` was the one spelling 5.7.23 left uncovered, because the indexed-access pre-pass matched an indexer whose receiver was a local reference. It now walks an element-preserving view or copy chain, which must end at the result local — so a query materializer, whose receiver is a `DbSet`, still cannot match.
 
