@@ -547,6 +547,14 @@ public sealed partial class MissingIncludeAnalyzer
                 return true;
 
             if (
+                operation != null
+                && TryResolveNavigationCollectionIndexedElement(operation, out origin)
+            )
+            {
+                return true;
+            }
+
+            if (
                 TryResolveTrackedSource(operation, out var isRoot, out var trackedOrigin)
                 && !isRoot
                 && trackedOrigin != null
@@ -806,10 +814,24 @@ public sealed partial class MissingIncludeAnalyzer
         )
         {
             origin = null!;
+            return IsExactCollectionElementExtraction(invocation)
+                && GetQuerySource(invocation) is { } source
+                && TryResolveNavigationCollectionElement(source, out origin);
+        }
+
+        /// <summary>
+        /// The origin of an element taken from a navigation collection, given the expression that
+        /// produced the collection. Element-preserving views are peeled first, so
+        /// `order.Items.Where(...)` resolves to the same origin as `order.Items`.
+        /// </summary>
+        private bool TryResolveNavigationCollectionElement(
+            IOperation collectionExpression,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
             if (
-                !IsExactCollectionElementExtraction(invocation)
-                || GetQuerySource(invocation) is not { } source
-                || PeelElementPreservingViews(source.UnwrapConversions())
+                PeelElementPreservingViews(collectionExpression.UnwrapConversions())
                     is not IPropertyReferenceOperation navigation
                 || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
                 || !TryGetNavigationTarget(
@@ -831,6 +853,29 @@ public sealed partial class MissingIncludeAnalyzer
                 CombineNavigationPath(parentOrigin.NavigationPrefix, navigation.Property.Name)
             );
             return true;
+        }
+
+        /// <summary>
+        /// `order.Items[0]` indexes into a navigation collection, which yields one of the
+        /// instances that collection holds — the same element an extractor would return.
+        /// </summary>
+        private bool TryResolveNavigationCollectionIndexedElement(
+            IOperation operation,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
+            var unwrapped = operation.UnwrapConversions();
+            var collection = unwrapped switch
+            {
+                IPropertyReferenceOperation indexer when indexer.Arguments.Length > 0 =>
+                    indexer.Instance,
+                IArrayElementReferenceOperation arrayElement => arrayElement.ArrayReference,
+                _ => null,
+            };
+
+            return collection != null
+                && TryResolveNavigationCollectionElement(collection, out origin);
         }
 
         private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
