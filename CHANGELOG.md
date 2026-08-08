@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.29] - 2026-08-08
+
 ### Fixed
 - LC045 now reads through a local that names the materialized collection. `var active = orders.Where(o => o.Active);` followed by a loop, an element extraction, or a callback over `active` was silent, because the proof was held against one local and an assignment to a second was not tracked — so hoisting a view into a variable, which is how the same read is ordinarily written, hid it. A local assigned exactly once from the collection, from an element-preserving view or copy of it, or from another such alias now stands in for the collection. A reassigned or conditionally bound local still does not.
 - LC045 no longer reports a read whose entities escaped through such an alias. Handing `active` to a helper that could load the navigation now discards the proof exactly as handing out the collection itself does; 5.7.28 reported here because the alias was not understood to be the collection.
