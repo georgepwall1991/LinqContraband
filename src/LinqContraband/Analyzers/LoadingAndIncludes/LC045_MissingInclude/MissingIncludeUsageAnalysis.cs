@@ -160,10 +160,41 @@ public sealed partial class MissingIncludeAnalyzer
                 )
             )
             {
-                accesses.AddRange(callbackAccesses);
+                // The callback ran in its own graph, so a fix-up loop that already wrote the
+                // navigation on every element has to be applied to its reads from out here.
+                var satisfied = GetCollectionSatisfiedPathsAtInvocation(
+                    executableRoot,
+                    materializer,
+                    resultLocal,
+                    entityType,
+                    entityTypes,
+                    invocation,
+                    flowCache,
+                    cancellationToken
+                );
+
+                foreach (var callbackAccess in callbackAccesses)
+                {
+                    if (!IsCoveredByCollectionWrite(callbackAccess, satisfied))
+                        accesses.Add(callbackAccess);
+                }
             }
         }
 
         return accesses;
+    }
+
+    private static bool IsCoveredByCollectionWrite(
+        NavigationAccess access,
+        HashSet<string> collectionSatisfiedPaths
+    )
+    {
+        foreach (var written in collectionSatisfiedPaths)
+        {
+            if (PathCovers(written, access.Path))
+                return true;
+        }
+
+        return false;
     }
 }

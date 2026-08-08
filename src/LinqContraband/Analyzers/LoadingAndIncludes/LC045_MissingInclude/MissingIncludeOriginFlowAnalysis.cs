@@ -117,6 +117,97 @@ public sealed partial class MissingIncludeAnalyzer
         return IsProvenActiveAtProbe(graph, context, probe, cancellationToken);
     }
 
+    /// <summary>
+    /// The navigation paths a preceding whole-collection fix-up loop has written by the time
+    /// <paramref name="invocation"/> runs. A callback body is analysed in its own control-flow
+    /// graph, which never sees the outer collection facts, so the outer walk is asked for them
+    /// here and the callback's reads are filtered against the answer.
+    /// </summary>
+    private static HashSet<string> GetCollectionSatisfiedPathsAtInvocation(
+        IOperation executableRoot,
+        IInvocationOperation materializer,
+        ILocalSymbol resultLocal,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        IInvocationOperation invocation,
+        MissingIncludeFlowCache flowCache,
+        CancellationToken cancellationToken
+    )
+    {
+        var satisfied = new HashSet<string>(StringComparer.Ordinal);
+        if (
+            !TryGetFlowGraph(
+                executableRoot,
+                materializer.SemanticModel,
+                flowCache,
+                cancellationToken,
+                out var graph
+            )
+        )
+        {
+            return satisfied;
+        }
+
+        var context = new OriginFlowContext(
+            executableRoot,
+            materializer,
+            resultLocal,
+            returnsCollection: true,
+            entityType,
+            entityTypes,
+            flowCache,
+            cancellationToken
+        );
+        context.Build();
+        var probe = context.AddRootProbe(invocation.Syntax);
+        if (!context.TryMapEventsToBlocks(graph))
+            return satisfied;
+
+        var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
+        var worklist = new Queue<FlowWorkItem>();
+        var canReachProbe = GetBlocksThatCanReachAccess(graph, context, probe.AccessId);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachProbe);
+
+        while (worklist.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = worklist.Dequeue();
+            var state = item.State;
+            var reachedProbe = false;
+
+            if (context.EventsByBlock.TryGetValue(item.Block.Ordinal, out var events))
+            {
+                foreach (var flowEvent in events)
+                {
+                    if (
+                        flowEvent.Kind == FlowEventKind.Access
+                        && flowEvent.AccessId == probe.AccessId
+                    )
+                    {
+                        reachedProbe = true;
+                        if (state.CollectionSatisfiedPaths != null)
+                        {
+                            foreach (var path in state.CollectionSatisfiedPaths)
+                                satisfied.Add(path);
+                        }
+
+                        break;
+                    }
+
+                    ApplyEvent(flowEvent, probe, ref state);
+                }
+            }
+
+            if (reachedProbe)
+                continue;
+
+            foreach (var successor in GetSuccessors(item.Block))
+                Enqueue(successor, state, statesByBlock, worklist, canReachProbe);
+        }
+
+        return satisfied;
+    }
+
     private static bool IsProvenActiveAtProbe(
         ControlFlowGraph graph,
         OriginFlowContext context,

@@ -32,11 +32,10 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestCrime_FixUpLoopThenAggregateCallback_StillReports()
+    public async Task TestInnocent_FixUpLoopThenAggregateCallback_StaysQuiet()
     {
-        // A callback body is analysed in its own control-flow graph, which the collection-level
-        // fact does not reach, so this shape is still reported. Recorded in the candidate queue;
-        // pinned here so closing it is a deliberate change rather than a surprise.
+        // A callback body is analysed in its own control-flow graph, so the collection-level
+        // fact is applied to its reads from the outer walk instead.
         await VerifyOriginFlowAsync(
             @"
     void Main(Customer customer)
@@ -46,6 +45,50 @@ public partial class MissingIncludeEdgeCasesTests
         foreach (var order in orders)
         {
             order.Customer = customer;
+        }
+
+        var total = orders.Sum(o => o.Customer.Id);
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_CallbackReadOfADifferentNavigation_StillReports()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(Customer customer)
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            order.Customer = customer;
+        }
+
+        var count = orders.Count(o => {|#0:o.Items|}.Count > 0);
+    }
+",
+            Diagnostic(0, "Items", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_CallbackReadAfterAConditionalFixUp_StillReports()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(Customer customer, bool flag)
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            if (flag)
+            {
+                order.Customer = customer;
+            }
         }
 
         var total = orders.Sum(o => {|#0:o.Customer|}.Id);

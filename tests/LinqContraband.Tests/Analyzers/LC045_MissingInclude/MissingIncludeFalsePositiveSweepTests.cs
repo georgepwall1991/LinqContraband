@@ -182,10 +182,10 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestCrime_NavigationWriteInAnEarlierLoop_StillReportsInsideACallback()
+    public async Task TestInnocent_NavigationWriteInAnEarlierLoop_CoversACallbackRead()
     {
-        // The callback body has its own control-flow graph, which the collection-level write
-        // fact does not reach.
+        // The callback body has its own control-flow graph, so the collection-level write fact
+        // is applied to its reads from the outer walk rather than carried into it.
         await VerifyOriginFlowAsync(
             @"
     void Main(MyDbContext db, Customer customer)
@@ -196,10 +196,9 @@ public partial class MissingIncludeEdgeCasesTests
             order.Customer = customer;
         }
 
-        var total = orders.Sum(o => {|#0:o.Customer|}.Id);
+        var total = orders.Sum(o => o.Customer.Id);
     }
-",
-            Diagnostic(0, "Customer", "Order")
+"
         );
     }
 }

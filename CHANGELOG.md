@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045's manual fix-up handling now covers reads inside a callback. `orders.Sum(o => o.Customer.Id)` after a loop that wrote `Customer` on every element was the one shape 5.7.25 left reporting, because a callback body is analysed in its own control-flow graph which the collection-level write fact never reaches. The outer walk is now asked what the collection has been given by the time the call runs, and the callback's reads are filtered against that answer. A callback reading a different navigation, or following a merely conditional fix-up, still reports.
+
 ## [5.7.25] - 2026-08-08
 
 ### Fixed
