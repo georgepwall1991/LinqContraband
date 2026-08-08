@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.26</Version>
+        <Version>5.7.27</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045's manual fix-up handling now covers reads inside a callback. orders.Sum(o =&gt; o.Customer.Id) after a loop that wrote Customer on every element was the one shape 5.7.25 left reporting. LC045 now has no known false positive.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now recognises AutoInclude applied through modelBuilder.ApplyConfiguration(new TConfiguration()). A navigation configured as auto-included inside an IEntityTypeConfiguration&lt;TEntity&gt;.Configure implementation is loaded by EF on every query, so reading it is no longer reported. IgnoreAutoIncludes(), a different navigation, and conditional or runtime configuration all still report.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

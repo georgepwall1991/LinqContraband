@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.27] - 2026-08-08
+
+### Fixed
+- LC045 now recognises `AutoInclude()` applied through `modelBuilder.ApplyConfiguration(new TConfiguration())`. A navigation configured as auto-included inside an `IEntityTypeConfiguration<TEntity>.Configure` implementation is loaded by EF on every query, but only a settings chain written directly in `OnModelCreating` counted as proof, so the read was reported as a missing `Include`. The same proof now follows an unconditional `ApplyConfiguration` into the source-visible `Configure` method and applies its top-level `builder.Navigation(...).AutoInclude()` settings in execution order. A query-level `IgnoreAutoIncludes()`, a later disablement, a different navigation, and conditional or runtime configuration each still report.
+
 ## [5.7.26] - 2026-08-08
 
 ### Fixed
