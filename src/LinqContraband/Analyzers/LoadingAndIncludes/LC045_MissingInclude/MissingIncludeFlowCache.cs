@@ -24,6 +24,10 @@ public sealed partial class MissingIncludeAnalyzer
         private readonly ConditionalWeakTable<IOperation, FlowScopeIndex> scopes = new();
         private readonly ConditionalWeakTable<ControlFlowGraph, BlockOrdinalIndex> blockOrdinals =
             new();
+        private readonly ConditionalWeakTable<
+            ControlFlowGraph,
+            BlockReachabilityIndex
+        > blockReachability = new();
 
         public bool TryGetGraph(IOperation executableRoot, out FlowGraphHolder holder)
         {
@@ -53,6 +57,14 @@ public sealed partial class MissingIncludeAnalyzer
         public BlockOrdinalIndex GetBlockOrdinals(ControlFlowGraph graph)
         {
             return blockOrdinals.GetValue(graph, static value => BlockOrdinalIndex.Create(value));
+        }
+
+        public BlockReachabilityIndex GetBlockReachability(ControlFlowGraph graph)
+        {
+            return blockReachability.GetValue(
+                graph,
+                static value => BlockReachabilityIndex.Create(value)
+            );
         }
     }
 
@@ -330,6 +342,86 @@ public sealed partial class MissingIncludeAnalyzer
             public int Ordinal { get; }
 
             public int Sequence { get; }
+        }
+    }
+
+    /// <summary>
+    /// Reverse edges of one control-flow graph. The origin-flow probe only decides its verdict
+    /// where the analysed access lives, so a block that cannot reach that access contributes
+    /// nothing: walking it costs state hashing and queueing for a path the verdict never sees.
+    /// </summary>
+    private sealed class BlockReachabilityIndex
+    {
+        private readonly int[][] predecessorOrdinals;
+
+        private BlockReachabilityIndex(int[][] predecessorOrdinals)
+        {
+            this.predecessorOrdinals = predecessorOrdinals;
+        }
+
+        public static BlockReachabilityIndex Create(ControlFlowGraph graph)
+        {
+            var blocks = graph.Blocks;
+            var predecessors = new List<int>[blocks.Length];
+
+            foreach (var block in blocks)
+            {
+                // Mirrors GetSuccessors exactly: the pruning is only sound while the reverse
+                // edges are the inverse of the edges the walk actually follows.
+                var fallThrough = block.FallThroughSuccessor?.Destination;
+                if (fallThrough != null)
+                    Add(fallThrough.Ordinal, block.Ordinal);
+
+                var conditional = block.ConditionalSuccessor?.Destination;
+                if (conditional != null && !ReferenceEquals(conditional, fallThrough))
+                    Add(conditional.Ordinal, block.Ordinal);
+            }
+
+            var ordinals = new int[blocks.Length][];
+            for (var index = 0; index < ordinals.Length; index++)
+            {
+                ordinals[index] = predecessors[index]?.ToArray() ?? Array.Empty<int>();
+            }
+
+            return new BlockReachabilityIndex(ordinals);
+
+            void Add(int destination, int source)
+            {
+                (predecessors[destination] ??= new List<int>()).Add(source);
+            }
+        }
+
+        /// <summary>
+        /// The blocks from which <paramref name="targetOrdinal"/> is reachable, including itself.
+        /// </summary>
+        public bool[] BlocksThatCanReach(int targetOrdinal)
+        {
+            var canReach = new bool[predecessorOrdinals.Length];
+            if (targetOrdinal < 0 || targetOrdinal >= canReach.Length)
+            {
+                // Unknown target: prove nothing away, walk everything.
+                for (var index = 0; index < canReach.Length; index++)
+                    canReach[index] = true;
+                return canReach;
+            }
+
+            var pending = new Stack<int>();
+            canReach[targetOrdinal] = true;
+            pending.Push(targetOrdinal);
+
+            while (pending.Count > 0)
+            {
+                foreach (var predecessor in predecessorOrdinals[pending.Pop()])
+                {
+                    if (canReach[predecessor])
+                        continue;
+
+                    canReach[predecessor] = true;
+                    pending.Push(predecessor);
+                }
+            }
+
+            return canReach;
         }
     }
 }

@@ -126,7 +126,8 @@ public sealed partial class MissingIncludeAnalyzer
     {
         var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
         var worklist = new Queue<FlowWorkItem>();
-        Enqueue(graph.Blocks[0], default, statesByBlock, worklist);
+        var canReachProbe = GetBlocksThatCanReachAccess(graph, context, probe.AccessId);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachProbe);
 
         var sawActive = false;
         var sawUncertain = false;
@@ -162,7 +163,7 @@ public sealed partial class MissingIncludeAnalyzer
                 continue;
 
             foreach (var successor in GetSuccessors(item.Block))
-                Enqueue(successor, state, statesByBlock, worklist);
+                Enqueue(successor, state, statesByBlock, worklist, canReachProbe);
         }
 
         return sawActive && !sawUncertain;
@@ -422,8 +423,9 @@ public sealed partial class MissingIncludeAnalyzer
         provenAccess = candidate.Access;
         var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
         var worklist = new Queue<FlowWorkItem>();
+        var canReachAccess = GetBlocksThatCanReachAccess(graph, context, candidate.AccessId);
 
-        Enqueue(graph.Blocks[0], default, statesByBlock, worklist);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachAccess);
 
         var sawKnownUnsatisfied = false;
         var sawUncertain = false;
@@ -486,7 +488,7 @@ public sealed partial class MissingIncludeAnalyzer
                 continue;
 
             foreach (var successor in GetSuccessors(item.Block))
-                Enqueue(successor, state, statesByBlock, worklist);
+                Enqueue(successor, state, statesByBlock, worklist, canReachAccess);
         }
 
         if (
@@ -1183,14 +1185,36 @@ public sealed partial class MissingIncludeAnalyzer
             yield return conditional;
     }
 
+    /// <summary>
+    /// The blocks from which the analysed access is reachable. The verdict is decided only where
+    /// the access lives, so states that can never arrive there cannot change it — and in a method
+    /// holding many materialized queries, most of the graph lies past the access being analysed.
+    /// </summary>
+    private static bool[] GetBlocksThatCanReachAccess(
+        ControlFlowGraph graph,
+        OriginFlowContext context,
+        int accessId
+    )
+    {
+        return context
+            .FlowCache.GetBlockReachability(graph)
+            .BlocksThatCanReach(
+                context.AccessBlockByAccessId.TryGetValue(accessId, out var ordinal) ? ordinal : -1
+            );
+    }
+
     private static void Enqueue(
         BasicBlock block,
         FlowProbeState state,
         Dictionary<int, HashSet<FlowProbeState>> statesByBlock,
-        Queue<FlowWorkItem> worklist
+        Queue<FlowWorkItem> worklist,
+        bool[] canReachAccess
     )
     {
         if (!block.IsReachable)
+            return;
+
+        if (block.Ordinal >= 0 && block.Ordinal < canReachAccess.Length && !canReachAccess[block.Ordinal])
             return;
 
         if (!statesByBlock.TryGetValue(block.Ordinal, out var states))
