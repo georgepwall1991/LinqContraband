@@ -158,7 +158,14 @@ public sealed partial class MissingIncludeAnalyzer
         if (source is not IInvocationOperation invocation)
             return false;
 
-        return IsElementPreservingInMemoryView(invocation, compilation)
+        // A copy such as `orders.ToList()` is a different collection holding the same entity
+        // instances. It is accepted only here, where the source is already proven to be the
+        // materialized collection, so the query materializer itself can never match: its own
+        // source is a DbSet, not that collection.
+        return (
+                IsElementPreservingInMemoryView(invocation, compilation)
+                || IsSequenceCopy(invocation, compilation)
+            )
             && IsProvenMaterializedCollectionSource(
                 GetQuerySource(invocation),
                 materializer,
@@ -181,7 +188,10 @@ public sealed partial class MissingIncludeAnalyzer
         var compilation = invocation.SemanticModel?.Compilation;
         return materializer != null
             && compilation != null
-            && IsElementPreservingInMemoryView(invocation, compilation)
+            && (
+                IsElementPreservingInMemoryView(invocation, compilation)
+                || IsSequenceCopy(invocation, compilation)
+            )
             && IsProvenMaterializedCollectionSource(
                 GetQuerySource(invocation),
                 materializer,
@@ -198,6 +208,40 @@ public sealed partial class MissingIncludeAnalyzer
     /// effect-free lambda: a predicate or key selector that hands the entity to a helper could
     /// have loaded the navigation itself.
     /// </summary>
+    /// <summary>
+    /// An exact <c>Enumerable</c> copy of a sequence. The copy is a different collection but
+    /// holds the same element references, so the entities it yields have the same origin.
+    /// </summary>
+    private static bool IsSequenceCopy(IInvocationOperation invocation, Compilation compilation)
+    {
+        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        if (
+            SymbolEqualityComparer.Default.Equals(
+                method.ContainingType.OriginalDefinition,
+                enumerable
+            )
+        )
+        {
+            return method.Name is "ToList" or "ToArray" or "ToHashSet"
+                && method.Parameters.Length == 1
+                && IsIEnumerableSourceParameter(method.Parameters[0], compilation);
+        }
+
+        // `items.ToArray()` on a List<T> binds to the instance method, not to Enumerable —
+        // the same trap as List<T>.Reverse(), which returns void and is deliberately not an
+        // element-preserving view.
+        var list = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
+        return list != null
+            && SymbolEqualityComparer.Default.Equals(
+                method.ContainingType.OriginalDefinition,
+                list
+            )
+            && method.Name == "ToArray"
+            && method.Parameters.Length == 0
+            && invocation.Instance != null;
+    }
+
     private static bool IsElementPreservingInMemoryView(
         IInvocationOperation invocation,
         Compilation compilation
