@@ -62,7 +62,8 @@ public sealed partial class MissingIncludeAnalyzer
                             invocation,
                             materializer,
                             resultLocal
-                        ):
+                        )
+                        && !IsNavigationCollectionReadOnlyConsumer(invocation):
                     CollectInvocationEscapeEvents(invocation);
                     break;
 

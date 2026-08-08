@@ -93,6 +93,10 @@ public class MissingIncludeSample
 
             // VIOLATION: the aggregate reads Product once per item — an N+1 inside a Sum.
             Console.WriteLine(order.Items.Sum(item => item.Product.Id));
+
+            // VIOLATION: the extracted item is one of the collection's own instances.
+            var first = order.Items.First();
+            Console.WriteLine(first.Product.Name);
         }
     }
 }

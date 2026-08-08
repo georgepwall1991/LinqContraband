@@ -736,13 +736,11 @@ public sealed partial class MissingIncludeAnalyzer
         )
         {
             origin = null!;
-            if (
-                operation?.UnwrapConversions() is not IInvocationOperation invocation
-                || !IsExactMaterializedCollectionElementExtraction(invocation)
-            )
-            {
+            if (operation?.UnwrapConversions() is not IInvocationOperation invocation)
                 return false;
-            }
+
+            if (!IsExactMaterializedCollectionElementExtraction(invocation))
+                return TryResolveNavigationCollectionElementExtraction(invocation, out origin);
 
             var key = SiteKey(invocation, out _);
             if (!extractionOrigins.TryGetValue(key, out origin))
@@ -760,6 +758,78 @@ public sealed partial class MissingIncludeAnalyzer
                 extractionOrigins[key] = origin;
             }
 
+            return true;
+        }
+
+        /// <summary>
+        /// True when the invocation only reads a navigation collection to pick an element out of
+        /// it — `order.Items.First(...)`, including through an element-preserving view. Handing
+        /// the collection to <c>Enumerable</c> for that is not the navigation escaping, so it must
+        /// not make later reads of that path uncertain.
+        /// </summary>
+        private bool IsNavigationCollectionReadOnlyConsumer(IInvocationOperation invocation)
+        {
+            if (TryResolveNavigationCollectionElementExtraction(invocation, out _))
+                return true;
+
+            // `order.Items.Where(...)` in `order.Items.Where(...).First()` is the same read-only
+            // consumption one step earlier in the chain.
+            var compilation = invocation.SemanticModel?.Compilation;
+            return compilation != null
+                && IsElementPreservingInMemoryView(invocation, compilation)
+                && IsNavigationCollectionSource(invocation);
+        }
+
+        /// <summary>
+        /// True when the invocation's source, after peeling element-preserving views, is a
+        /// collection navigation on an origin this analysis already tracks.
+        /// </summary>
+        private bool IsNavigationCollectionSource(IInvocationOperation invocation)
+        {
+            return GetQuerySource(invocation) is { } source
+                && PeelElementPreservingViews(source.UnwrapConversions())
+                    is IPropertyReferenceOperation navigation
+                && TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                && TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out _,
+                    out var isCollection
+                )
+                && isCollection
+                && IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType);
+        }
+
+        private bool TryResolveNavigationCollectionElementExtraction(
+            IInvocationOperation invocation,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
+            if (
+                !IsExactCollectionElementExtraction(invocation)
+                || GetQuerySource(invocation) is not { } source
+                || PeelElementPreservingViews(source.UnwrapConversions())
+                    is not IPropertyReferenceOperation navigation
+                || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                || !TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out var elementEntityType,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType)
+            )
+            {
+                return false;
+            }
+
+            origin = GetOrCreateNavigationOrigin(
+                parentOrigin,
+                elementEntityType,
+                CombineNavigationPath(parentOrigin.NavigationPrefix, navigation.Property.Name)
+            );
             return true;
         }
 
