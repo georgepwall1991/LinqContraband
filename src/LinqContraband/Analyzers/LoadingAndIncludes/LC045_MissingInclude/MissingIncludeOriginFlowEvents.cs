@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC045_MissingInclude;
@@ -844,6 +845,24 @@ public sealed partial class MissingIncludeAnalyzer
                         sequence: FindWriteSequence(propertyReference)
                     )
                 );
+
+                // Manual relationship fix-up: a loop over the whole collection that writes this
+                // navigation on every element leaves no element unwritten, so a later read
+                // through a different origin is not a missing Include.
+                if (IsUnconditionalWriteOverTheWholeCollection(propertyReference, origin))
+                {
+                    events.Add(
+                        new FlowEvent(
+                            FlowEventKind.SatisfyCollectionPath,
+                            propertyReference.Syntax,
+                            FindWriteCompletionPosition(propertyReference),
+                            origin,
+                            path,
+                            sequence: FindWriteSequence(propertyReference)
+                        )
+                    );
+                }
+
                 return;
             }
 
@@ -886,6 +905,70 @@ public sealed partial class MissingIncludeAnalyzer
                     accessId
                 )
             );
+        }
+
+        /// <summary>
+        /// True when <paramref name="write"/> runs for every element of the materialized
+        /// collection: its origin is the iteration variable of a `foreach` over the collection
+        /// itself — not a filtered or reordered view — and nothing between the loop body and the
+        /// write can skip it.
+        /// </summary>
+        /// <remarks>
+        /// Unconditionality is what makes the later read safe. The only path through the loop
+        /// that does not perform the write is the one where the body never runs, and on that
+        /// path the collection is empty, so any later loop over it performs no read either.
+        /// </remarks>
+        private bool IsUnconditionalWriteOverTheWholeCollection(
+            IPropertyReferenceOperation write,
+            EntityOrigin origin
+        )
+        {
+            if (
+                !origin.IsIteration
+                || origin.AliasSourceOrigin != null
+                || origin.NavigationPrefix.Length != 0
+                || origin.Local == null
+            )
+            {
+                return false;
+            }
+
+            var loopBody = FindWholeCollectionLoopBody(origin);
+            if (loopBody == null)
+                return false;
+
+            for (var node = write.Syntax.Parent; node != null; node = node.Parent)
+            {
+                if (ReferenceEquals(node, loopBody))
+                    return true;
+
+                // Only straight-line statement nesting keeps the write unconditional. A branch,
+                // a jump target, another loop or a guarded region can all skip it.
+                if (
+                    node is not (
+                        BlockSyntax
+                        or ExpressionStatementSyntax
+                        or AssignmentExpressionSyntax
+                        or MemberAccessExpressionSyntax
+                    )
+                )
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private SyntaxNode? FindWholeCollectionLoopBody(EntityOrigin origin)
+        {
+            foreach (var binding in iterationBindings)
+            {
+                if (ReferenceEquals(binding.Origin, origin))
+                    return binding.IteratesWholeCollection ? binding.Body : null;
+            }
+
+            return null;
         }
 
         private void CollectPropertyPatternNavigationEvent(IPropertySubpatternOperation subpattern)

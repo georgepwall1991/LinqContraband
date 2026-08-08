@@ -119,6 +119,7 @@ public sealed partial class MissingIncludeAnalyzer
         InvalidateCollection,
         SnapshotOrigin,
         SatisfyPath,
+        SatisfyCollectionPath,
         Access,
     }
 
@@ -180,7 +181,8 @@ public sealed partial class MissingIncludeAnalyzer
             ImmutableHashSet<BindingFact>? unknownGenerations = null,
             ImmutableHashSet<BindingFact>? satisfiedGenerations = null,
             ImmutableDictionary<int, string>? originPrefixes = null,
-            ImmutableDictionary<int, string>? prefixSnapshots = null
+            ImmutableDictionary<int, string>? prefixSnapshots = null,
+            ImmutableHashSet<string>? collectionSatisfiedPaths = null
         )
         {
             IsActive = isActive;
@@ -198,6 +200,8 @@ public sealed partial class MissingIncludeAnalyzer
             SatisfiedGenerations = satisfiedGenerations ?? ImmutableHashSet<BindingFact>.Empty;
             OriginPrefixes = originPrefixes ?? ImmutableDictionary<int, string>.Empty;
             PrefixSnapshots = prefixSnapshots ?? ImmutableDictionary<int, string>.Empty;
+            CollectionSatisfiedPaths =
+                collectionSatisfiedPaths ?? ImmutableHashSet<string>.Empty;
         }
 
         public bool IsActive { get; }
@@ -208,6 +212,14 @@ public sealed partial class MissingIncludeAnalyzer
         public bool OriginIndependentOfRoot { get; }
         public bool IterationSourceCaptured { get; }
         public bool AliasSourceLinked { get; }
+        /// <summary>
+        /// Navigation paths written on every element of the materialized collection by a
+        /// preceding unconditional loop over the whole collection. Unlike
+        /// <see cref="SatisfiedGenerations"/> this is a fact about the collection rather than
+        /// about one origin, so binding a fresh iteration variable does not clear it.
+        /// </summary>
+        public ImmutableHashSet<string>? CollectionSatisfiedPaths { get; }
+
         public ImmutableDictionary<int, long>? OriginGenerations { get; }
         public ImmutableHashSet<int>? CapturedOriginIds { get; }
         public ImmutableDictionary<int, long>? BindingSnapshots { get; }
@@ -233,7 +245,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -254,7 +267,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -275,7 +289,58 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
+            );
+        }
+
+        /// <summary>
+        /// Records that every element of the materialized collection has had
+        /// <paramref name="path"/> written by a preceding unconditional loop over the whole
+        /// collection.
+        /// </summary>
+        public FlowProbeState WithCollectionSatisfiedPath(string path)
+        {
+            return new FlowProbeState(
+                IsActive,
+                RootUnknown,
+                OriginBound,
+                OriginUnknown,
+                PathSatisfied,
+                OriginIndependentOfRoot,
+                IterationSourceCaptured,
+                AliasSourceLinked,
+                OriginGenerations,
+                CurrentCapturedOriginIds,
+                CurrentBindingSnapshots,
+                CurrentUnknownGenerations,
+                CurrentSatisfiedGenerations,
+                CurrentOriginPrefixes,
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths.Add(path)
+            );
+        }
+
+        /// <summary>Drops collection-level writes when the collection itself stops being known.</summary>
+        public FlowProbeState WithoutCollectionSatisfiedPaths()
+        {
+            return new FlowProbeState(
+                IsActive,
+                RootUnknown,
+                OriginBound,
+                OriginUnknown,
+                PathSatisfied,
+                OriginIndependentOfRoot,
+                IterationSourceCaptured,
+                AliasSourceLinked,
+                OriginGenerations,
+                CurrentCapturedOriginIds,
+                CurrentBindingSnapshots,
+                CurrentUnknownGenerations,
+                CurrentSatisfiedGenerations,
+                CurrentOriginPrefixes,
+                CurrentPrefixSnapshots,
+                ImmutableHashSet<string>.Empty
             );
         }
 
@@ -296,7 +361,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -324,7 +390,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -345,7 +412,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -366,7 +434,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -403,7 +472,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -424,7 +494,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -463,7 +534,8 @@ public sealed partial class MissingIncludeAnalyzer
                 unknownGenerations,
                 satisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -509,7 +581,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes.SetItem(origin.Id, navigationPrefix ?? UnboundPrefix),
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -530,7 +603,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations.Add(new BindingFact(generation, prefix)),
                 CurrentSatisfiedGenerations,
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -551,7 +625,8 @@ public sealed partial class MissingIncludeAnalyzer
                 CurrentUnknownGenerations,
                 CurrentSatisfiedGenerations.Add(new BindingFact(generation, path)),
                 CurrentOriginPrefixes,
-                CurrentPrefixSnapshots
+                CurrentPrefixSnapshots,
+                CurrentCollectionSatisfiedPaths
             );
         }
 
@@ -628,7 +703,8 @@ public sealed partial class MissingIncludeAnalyzer
                 && CurrentUnknownGenerations.SetEquals(other.CurrentUnknownGenerations)
                 && CurrentSatisfiedGenerations.SetEquals(other.CurrentSatisfiedGenerations)
                 && PrefixesEqual(CurrentOriginPrefixes, other.CurrentOriginPrefixes)
-                && PrefixesEqual(CurrentPrefixSnapshots, other.CurrentPrefixSnapshots);
+                && PrefixesEqual(CurrentPrefixSnapshots, other.CurrentPrefixSnapshots)
+                && CurrentCollectionSatisfiedPaths.SetEquals(other.CurrentCollectionSatisfiedPaths);
         }
 
         public override bool Equals(object? obj)
@@ -660,6 +736,8 @@ public sealed partial class MissingIncludeAnalyzer
                 value ^= (pair.Key * 3571) ^ StringComparer.Ordinal.GetHashCode(pair.Value);
             foreach (var pair in CurrentPrefixSnapshots)
                 value ^= (pair.Key * 4513) ^ StringComparer.Ordinal.GetHashCode(pair.Value);
+            foreach (var path in CurrentCollectionSatisfiedPaths)
+                value ^= StringComparer.Ordinal.GetHashCode(path) * 5449;
             return value;
         }
 
@@ -677,6 +755,9 @@ public sealed partial class MissingIncludeAnalyzer
 
         private ImmutableHashSet<BindingFact> CurrentSatisfiedGenerations =>
             SatisfiedGenerations ?? ImmutableHashSet<BindingFact>.Empty;
+
+        private ImmutableHashSet<string> CurrentCollectionSatisfiedPaths =>
+            CollectionSatisfiedPaths ?? ImmutableHashSet<string>.Empty;
 
         private ImmutableDictionary<int, string> CurrentOriginPrefixes =>
             OriginPrefixes ?? ImmutableDictionary<int, string>.Empty;

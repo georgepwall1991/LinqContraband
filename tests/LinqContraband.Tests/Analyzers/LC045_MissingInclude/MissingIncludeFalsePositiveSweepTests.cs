@@ -135,12 +135,12 @@ public partial class MissingIncludeEdgeCasesTests
         );
     }
 
-    // The three cases below pin the CURRENT boundary of navigation-write suppression: a write is
-    // credited to the origin it was made on, not to the collection. A write in the same scope as
-    // the read suppresses; a write made in an earlier loop does not reach a later read through a
-    // different origin. That is a known false positive for manual relationship fix-up, recorded
-    // in the analyzer-health candidate queue. These tests exist so that closing it is a
-    // deliberate, visible change rather than an accident.
+    // These pin navigation-write suppression. A write in the same scope as the read suppresses;
+    // an unconditional write in an earlier loop over the whole collection now suppresses too,
+    // because no element is left unwritten — that is the manual relationship fix-up false
+    // positive, closed in 5.7.25. A read inside a later callback body still reports, because a
+    // callback is analysed in its own control-flow graph which the collection-level fact does
+    // not reach.
     [Fact]
     public async Task TestInnocent_NavigationWriteInSameScopeAsRead_StaysQuiet()
     {
@@ -160,7 +160,7 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestCrime_NavigationWriteInAnEarlierLoop_StillReportsAtALaterLoop()
+    public async Task TestInnocent_NavigationWriteInAnEarlierLoop_CoversALaterLoop()
     {
         await VerifyOriginFlowAsync(
             @"
@@ -174,17 +174,18 @@ public partial class MissingIncludeEdgeCasesTests
 
         foreach (var order in orders)
         {
-            Console.WriteLine({|#0:order.Customer|}.Name);
+            Console.WriteLine(order.Customer.Name);
         }
     }
-",
-            Diagnostic(0, "Customer", "Order")
+"
         );
     }
 
     [Fact]
-    public async Task TestCrime_NavigationWriteInAnEarlierLoop_StillReportsAtAnAggregate()
+    public async Task TestCrime_NavigationWriteInAnEarlierLoop_StillReportsInsideACallback()
     {
+        // The callback body has its own control-flow graph, which the collection-level write
+        // fact does not reach.
         await VerifyOriginFlowAsync(
             @"
     void Main(MyDbContext db, Customer customer)

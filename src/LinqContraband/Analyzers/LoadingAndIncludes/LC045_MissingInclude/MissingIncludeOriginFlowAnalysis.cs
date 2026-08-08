@@ -429,6 +429,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         var sawKnownUnsatisfied = false;
         var sawUncertain = false;
+        var sawCollectionSatisfied = false;
         var knownBindings = new HashSet<string>(StringComparer.Ordinal);
         var knownPaths = new HashSet<string>(StringComparer.Ordinal);
 
@@ -450,6 +451,19 @@ public sealed partial class MissingIncludeAnalyzer
                             continue;
 
                         reachedCandidate = true;
+                        if (
+                            state.CollectionSatisfiedPaths != null
+                            && PathIsCollectionSatisfied(candidate, state)
+                        )
+                        {
+                            // A preceding unconditional loop wrote this navigation on every
+                            // element. Only the path where that loop's body never ran lacks the
+                            // fact, and on that path the collection is empty, so this read does
+                            // not happen either — one witness is therefore enough.
+                            sawCollectionSatisfied = true;
+                            break;
+                        }
+
                         if (
                             !state.IsActive
                             || !state.OriginBound
@@ -494,6 +508,7 @@ public sealed partial class MissingIncludeAnalyzer
         if (
             !sawKnownUnsatisfied
             || sawUncertain
+            || sawCollectionSatisfied
             || knownBindings.Count != 1
             || knownPaths.Count != 1
         )
@@ -508,6 +523,25 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when a preceding whole-collection loop wrote a navigation that covers the path this
+    /// candidate reads.
+    /// </summary>
+    private static bool PathIsCollectionSatisfied(
+        FlowAccessCandidate candidate,
+        FlowProbeState state
+    )
+    {
+        var effectivePath = GetEffectiveAccessPath(candidate, state) ?? candidate.Access.Path;
+        foreach (var written in state.CollectionSatisfiedPaths!)
+        {
+            if (PathCovers(written, effectivePath))
+                return true;
+        }
+
+        return false;
     }
 
     private static void ApplyEvent(
@@ -817,11 +851,16 @@ public sealed partial class MissingIncludeAnalyzer
                         state = state.WithAliasSourceLinked(false);
                 }
 
+                state = state.WithoutCollectionSatisfiedPaths();
                 break;
 
             case FlowEventKind.EscapeRoot:
                 if (state.IsActive && !(state.RootUnknown && state.OriginIndependentOfRoot))
                     state = state.WithRootEscape();
+
+                // A helper holding the collection may repopulate or replace its elements, so
+                // the fix-up loop no longer speaks for what the collection now contains.
+                state = state.WithoutCollectionSatisfiedPaths();
                 break;
 
             case FlowEventKind.EscapeOrigin when flowEvent.Origin != null:
@@ -890,6 +929,11 @@ public sealed partial class MissingIncludeAnalyzer
                     state = state.WithUnknownGeneration(invalidatedGeneration, flowEvent.Path);
                 }
 
+                break;
+
+            case FlowEventKind.SatisfyCollectionPath when flowEvent.Path != null:
+                if (state.IsActive && !state.RootUnknown)
+                    state = state.WithCollectionSatisfiedPath(flowEvent.Path);
                 break;
 
             case FlowEventKind.SatisfyPath when flowEvent.Origin != null && flowEvent.Path != null:

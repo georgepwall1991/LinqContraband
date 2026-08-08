@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 no longer reports manual relationship fix-up. A loop over the whole materialized collection that unconditionally writes a navigation on every element leaves no element unwritten, so a later read of that navigation — in a second loop, through an indexer, or on a nested path beneath it — is no longer flagged. The write is credited to the collection rather than to the loop variable, which is what lets it survive a fresh iteration binding. Three requirements keep it sound and each is pinned by its own test: the loop must iterate the collection itself rather than a filtered view, nothing between the loop body and the write may skip it, and a later escape or reassignment of the collection discards the fact. A read inside a callback body still reports, because a callback is analysed in its own control-flow graph which the collection-level fact does not reach.
+
 ## [5.7.24] - 2026-08-08
 
 ### Fixed
