@@ -32,6 +32,13 @@ public class MissingIncludeSample
             Console.WriteLine(c.ShippingAddress.Street);
         }
 
+        // VIOLATION: the sort key reads the navigation once per element, so the N+1 hides
+        // inside the ordering rather than the loop body.
+        foreach (var c in customers.OrderBy(c => c.ShippingAddress.Street))
+        {
+            Console.WriteLine(c.Id);
+        }
+
         // CORRECT: project exactly the data the loop needs — no entity, no Include.
         var streets = db.Customers.Select(c => c.ShippingAddress.Street).ToList();
         foreach (var street in streets)

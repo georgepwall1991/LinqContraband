@@ -38,11 +38,33 @@ public sealed partial class MissingIncludeAnalyzer
                 method.ContainingType.OriginalDefinition,
                 enumerable
             )
-            && method.Name is "Where" or "Select" or "Any" or "All"
+            && method.Name
+                is "Where"
+                    or "Select"
+                    or "Any"
+                    or "All"
+                    // An ordering key selector reads the entity exactly like a predicate does.
+                    or "OrderBy"
+                    or "OrderByDescending"
             && method.Parameters.Length == 2
             && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
         )
         {
+            source = GetQuerySource(invocation);
+            callbackOrdinal = invocation.Instance == null ? 1 : 0;
+        }
+        else if (
+            SymbolEqualityComparer.Default.Equals(
+                method.ContainingType.OriginalDefinition,
+                enumerable
+            )
+            && method.Name is "ThenBy" or "ThenByDescending"
+            && method.Parameters.Length == 2
+            && IsIOrderedEnumerableSourceParameter(method.Parameters[0], compilation)
+        )
+        {
+            // A secondary ordering chains from the primary one, which the view proof already
+            // follows back to the materialized collection.
             source = GetQuerySource(invocation);
             callbackOrdinal = invocation.Instance == null ? 1 : 0;
         }
