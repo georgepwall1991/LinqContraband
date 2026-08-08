@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.30] - 2026-08-08
+
 ### Fixed
 - The LC045 code fix no longer emits code that does not compile for LINQ query syntax. Because query syntax lowers its trailing `select o` to an identity projection, the query source the analyzer reports is a node inside the query expression, and the fix wrapped it — producing `select o.Include(x => x.Customer)`, where the range variable is an entity rather than a queryable (CS0411). Every query-syntax diagnostic was affected, from the moment 5.7.28 began reporting them. The fix now goes on the expression the query draws from: `from o in db.Orders` becomes `from o in db.Orders.Include(x => x.Customer)`, and an existing chain is extended in place. A query with a continuation, or with a clause other than `where`/`orderby`, offers no fix rather than guessing.
 
