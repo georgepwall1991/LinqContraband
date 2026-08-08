@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.28</Version>
+        <Version>5.7.29</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now sees through the identity projection Select(x =&gt; x) that LINQ query syntax lowers a trailing select x to. Query-comprehension spellings such as from o in db.Orders where o.Id &gt; 0 select o were invisible to the rule and are now proven like the method chain they compile to. Upcasts, rewrapping calls, method groups and the indexed (x, i) overload stay real projections.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reads through a local that names the materialized collection. var active = orders.Where(o =&gt; o.Active); followed by a loop, an element extraction or a callback over active was silent, because hoisting a view into a variable dropped the proof. A local assigned exactly once from the collection, from a view or copy of it, or from another such alias now stands in for it. Escaping that alias is an escape of the collection, which also removes a false positive 5.7.28 had.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
