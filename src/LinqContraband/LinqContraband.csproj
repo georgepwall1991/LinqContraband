@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.19</Version>
+        <Version>5.7.20</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reads inline callbacks over a navigation collection. order.Items.Sum(i =&gt; i.Product.Price) invokes its callback once per item, so a navigation read inside one is a per-item read — an N+1 hidden inside an aggregate — but only a foreach over order.Items was followed.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now follows element extraction out of a navigation collection. var item = order.Items.First(i =&gt; i.Id == id) yields an instance that collection holds, so reading a navigation on it is the same nested read — but every extractor spelling was silent, including through a view.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
