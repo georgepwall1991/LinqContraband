@@ -52,6 +52,13 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             if (querySource == null)
                 continue;
 
+            // Query-comprehension syntax lowers its trailing `select x` to an identity projection,
+            // so the analyzer's query source is a node *inside* the query expression. Wrapping it
+            // would emit `select o.Include(...)`, which does not bind.
+            querySource = RedirectIntoQuerySyntaxSource(querySource);
+            if (querySource == null)
+                continue;
+
             if (await GetQueryableSourceAsync(context.Document, querySource, context.CancellationToken).ConfigureAwait(false) == null)
                 continue;
 
@@ -71,6 +78,37 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
                     "LC045_AddInclude:" + navigationPath),
                 diagnostic);
         }
+    }
+
+    /// <summary>
+    /// Redirects a query source that sits inside a query expression onto the expression the query
+    /// draws from, because that is where <c>Include</c> belongs: <c>from o in db.Orders</c> becomes
+    /// <c>from o in db.Orders.Include(...)</c>, which binds and is the canonical EF spelling.
+    /// Wrapping the lowered identity projection instead would produce <c>select o.Include(...)</c>,
+    /// where the range variable is an entity rather than a queryable.
+    /// Only a <c>where</c>/<c>orderby</c> query reaches this today, because an extra <c>from</c>,
+    /// a <c>join</c> and a <c>let</c> all lower to operators the chain proof rejects, so they are
+    /// never reported in the first place. The clause and continuation checks are therefore a
+    /// forward guard: if the proof ever widens to accept those shapes, the from-clause rewrite
+    /// must not be applied to them blindly. An expression outside any query expression is
+    /// returned unchanged.
+    /// </summary>
+    private static ExpressionSyntax? RedirectIntoQuerySyntaxSource(ExpressionSyntax querySource)
+    {
+        var query = querySource.FirstAncestorOrSelf<QueryExpressionSyntax>();
+        if (query == null)
+            return querySource;
+
+        if (query.Body.SelectOrGroup is not SelectClauseSyntax || query.Body.Continuation != null)
+            return null;
+
+        foreach (var clause in query.Body.Clauses)
+        {
+            if (clause is not (WhereClauseSyntax or OrderByClauseSyntax))
+                return null;
+        }
+
+        return query.FromClause.Expression;
     }
 
     private static async Task<Document> ApplyFixAsync(
