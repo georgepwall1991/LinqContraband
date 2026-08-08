@@ -936,4 +936,40 @@ class Program
 
         await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
     }
+
+    [Fact]
+    public async Task FixCrime_NavigationCollectionCallback_ExtendsTheExistingIncludeChain()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).ToList();
+        foreach (var order in orders)
+        {
+            var total = order.Items.Sum(i => {|LC045:i.Product|}.Id);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).ThenInclude(x => x.Product).ToList();
+        foreach (var order in orders)
+        {
+            var total = order.Items.Sum(i => i.Product.Id);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
 }
