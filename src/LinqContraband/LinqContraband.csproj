@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.14</Version>
+        <Version>5.7.15</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reads aggregate and partition callbacks over a materialized collection. orders.Sum(o =&gt; o.Customer.Rating), orders.Count(...), and the LongCount/Average/Min/Max/SkipWhile/TakeWhile forms each invoke their callback once per element, so a navigation read inside one is a per-element read that went unreported.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now follows element extraction beyond the bare overloads. orders.First(o =&gt; o.Id == id), the filtered Single/Last forms, MinBy/MaxBy, and extraction from a filtered or ordered view all return an instance the query materialized, but only the no-argument overloads were followed, so a navigation read on the extracted entity went unreported.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
