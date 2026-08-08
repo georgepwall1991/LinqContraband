@@ -351,6 +351,31 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+        /// <summary>
+        /// Sees through element-preserving in-memory views of a navigation collection.
+        /// `order.Items.Where(i => i.Active)` yields the very `OrderItem` instances
+        /// `order.Items` holds, so iterating the view is the same nested read. The operator set
+        /// and its effect-free inline callback requirement are shared with the collection-level
+        /// view proof.
+        /// </summary>
+        private IOperation PeelElementPreservingViews(IOperation operation)
+        {
+            var compilation = executableRoot.SemanticModel?.Compilation;
+            if (compilation == null)
+                return operation;
+
+            while (
+                operation is IInvocationOperation view
+                && IsElementPreservingInMemoryView(view, compilation)
+                && GetQuerySource(view)?.UnwrapConversions() is { } source
+            )
+            {
+                operation = source;
+            }
+
+            return operation;
+        }
+
         private bool TryResolveCollectionNavigationIteration(
             IOperation collection,
             out EntityOrigin parentOrigin,
@@ -362,7 +387,7 @@ public sealed partial class MissingIncludeAnalyzer
             elementEntityType = null!;
             navigationPrefix = null!;
 
-            var unwrapped = collection.UnwrapConversions();
+            var unwrapped = PeelElementPreservingViews(collection.UnwrapConversions());
             if (
                 unwrapped is not IPropertyReferenceOperation propertyReference
                 || !TryResolveEntityOrigin(propertyReference.Instance, out parentOrigin)

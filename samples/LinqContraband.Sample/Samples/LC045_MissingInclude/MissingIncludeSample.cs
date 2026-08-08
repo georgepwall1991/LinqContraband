@@ -84,9 +84,10 @@ public class MissingIncludeSample
 
         foreach (var order in orders)
         {
-            foreach (var item in order.Items)
+            // VIOLATION: filtering a navigation collection yields the same items, so neither
+            // Items nor Product was eagerly loaded here either.
+            foreach (var item in order.Items.Where(i => i.Id > 0))
             {
-                // VIOLATION: neither Items nor Product was eagerly loaded.
                 Console.WriteLine(item.Product.Name);
             }
         }
