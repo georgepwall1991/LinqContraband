@@ -119,6 +119,13 @@ namespace TestNamespace
     {
         public int Id { get; set; }
         public string Sku { get; set; }
+        public Product Product { get; set; }
+    }
+
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class MyDbContext : DbContext
@@ -127,6 +134,7 @@ namespace TestNamespace
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Address> Addresses { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
+        public DbSet<Product> Products { get; set; }
     }
 
     public class SetOnlyDbContext : DbContext
@@ -880,6 +888,48 @@ class Program
         var orders = db.Orders.Include(x => x.Customer).ToList();
         var order = orders.OrderBy(x => x.Id).First();
         Console.WriteLine(order.Customer.Name);
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_NavigationCollectionView_ExtendsTheExistingIncludeChain()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).ToList();
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items.Where(i => i.Id > 0))
+            {
+                Console.WriteLine({|LC045:item.Product|}.Name);
+            }
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).ThenInclude(x => x.Product).ToList();
+        foreach (var order in orders)
+        {
+            foreach (var item in order.Items.Where(i => i.Id > 0))
+            {
+                Console.WriteLine(item.Product.Name);
+            }
+        }
     }
 }
 " + MockNamespace;
