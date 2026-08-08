@@ -109,30 +109,113 @@ public sealed partial class MissingIncludeAnalyzer
         if (source is not IInvocationOperation invocation)
             return false;
 
-        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
-        return SymbolEqualityComparer.Default.Equals(
-                method.ContainingType.OriginalDefinition,
-                enumerable
-            )
-            && method.Name == "Where"
-            && method.Parameters.Length == 2
-            && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
-            && TryGetInlineAnonymousFunction(
-                invocation
-                    .Arguments.FirstOrDefault(argument =>
-                        argument.Parameter?.Ordinal == (invocation.Instance == null ? 1 : 0)
-                    )
-                    ?.Value
-            )
-                is { } predicate
-            && predicate.Symbol.Parameters.Length == 1
-            && IsEffectFreeCallback(predicate)
+        return IsElementPreservingInMemoryView(invocation, compilation)
             && IsProvenMaterializedCollectionSource(
                 GetQuerySource(invocation),
                 materializer,
                 resultLocal,
                 compilation
+            );
+    }
+
+    /// <summary>
+    /// True when the invocation is an element-preserving in-memory view whose source is the
+    /// proven materialized collection. Such a view neither reshapes the sequence nor hands the
+    /// entities to user code, so it is not an escape and it carries the collection's origin.
+    /// </summary>
+    private static bool IsElementPreservingMaterializedCollectionView(
+        IInvocationOperation invocation,
+        IInvocationOperation? materializer,
+        ILocalSymbol? resultLocal
+    )
+    {
+        var compilation = invocation.SemanticModel?.Compilation;
+        return materializer != null
+            && compilation != null
+            && IsElementPreservingInMemoryView(invocation, compilation)
+            && IsProvenMaterializedCollectionSource(
+                GetQuerySource(invocation),
+                materializer,
+                resultLocal,
+                compilation
+            );
+    }
+
+    /// <summary>
+    /// True when the invocation is an exact <c>System.Linq.Enumerable</c> operator that yields
+    /// the same element instances its source holds — a filter, an ordering, a page, or a
+    /// widening. The entities are already materialized, so such a view is the same read as one
+    /// over the collection itself. Callback-taking operators additionally require an inline,
+    /// effect-free lambda: a predicate or key selector that hands the entity to a helper could
+    /// have loaded the navigation itself.
+    /// </summary>
+    private static bool IsElementPreservingInMemoryView(
+        IInvocationOperation invocation,
+        Compilation compilation
+    )
+    {
+        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        if (
+            !SymbolEqualityComparer.Default.Equals(
+                method.ContainingType.OriginalDefinition,
+                enumerable
+            )
+            || method.Parameters.Length == 0
+        )
+        {
+            return false;
+        }
+
+        var callbackOrdinal = method.Name switch
+        {
+            "Where" when method.Parameters.Length == 2 => 1,
+            "OrderBy"
+            or "OrderByDescending"
+            or "ThenBy"
+            or "ThenByDescending" when method.Parameters.Length == 2 => 1,
+            "Skip" or "Take" when method.Parameters.Length == 2 => -1,
+            "Distinct" or "Reverse" or "AsEnumerable" when method.Parameters.Length == 1 => -1,
+            _ => -2,
+        };
+
+        if (callbackOrdinal == -2)
+            return false;
+
+        // ThenBy chains from IOrderedEnumerable<T>; every other operator takes IEnumerable<T>.
+        var takesOrderedSource = method.Name is "ThenBy" or "ThenByDescending";
+        if (
+            takesOrderedSource
+                ? !IsIOrderedEnumerableSourceParameter(method.Parameters[0], compilation)
+                : !IsIEnumerableSourceParameter(method.Parameters[0], compilation)
+        )
+        {
+            return false;
+        }
+
+        if (callbackOrdinal < 0)
+            return true;
+
+        var callbackArgument = invocation
+            .Arguments.FirstOrDefault(argument =>
+                argument.Parameter?.Ordinal == callbackOrdinal
+            )
+            ?.Value;
+        return TryGetInlineAnonymousFunction(callbackArgument) is { } callback
+            && callback.Symbol.Parameters.Length == 1
+            && IsEffectFreeCallback(callback);
+    }
+
+    private static bool IsIOrderedEnumerableSourceParameter(
+        IParameterSymbol parameter,
+        Compilation compilation
+    )
+    {
+        var ordered = compilation.GetTypeByMetadataName("System.Linq.IOrderedEnumerable`1");
+        return ordered != null
+            && SymbolEqualityComparer.Default.Equals(
+                parameter.Type.OriginalDefinition,
+                ordered
             );
     }
 

@@ -759,9 +759,23 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsResultCollection(IOperation operation)
         {
-            return resultLocal != null
-                && operation.UnwrapConversions() is ILocalReferenceOperation localReference
-                && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal);
+            if (resultLocal == null)
+                return false;
+
+            var unwrapped = operation.UnwrapConversions();
+            if (
+                unwrapped is ILocalReferenceOperation localReference
+                && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal)
+            )
+            {
+                return true;
+            }
+
+            // `foreach (var o in orders.Where(o => o.IsActive))` iterates the very instances the
+            // materialized collection holds, so the loop variable carries the same origin. The
+            // proof is shared with the callback path, including its effect-free requirement.
+            return unwrapped is IInvocationOperation view
+                && IsElementPreservingMaterializedCollectionView(view, materializer, resultLocal);
         }
 
         private bool IsMaterializer(IInvocationOperation invocation)
