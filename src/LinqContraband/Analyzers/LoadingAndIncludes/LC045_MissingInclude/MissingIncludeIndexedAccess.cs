@@ -22,11 +22,8 @@ public sealed partial class MissingIncludeAnalyzer
             if (instance is IConditionalAccessInstanceOperation)
                 instance = ResolveConditionalAccessReceiver(propertyReference)?.UnwrapConversions();
 
-            if (instance is ILocalReferenceOperation localReference &&
-                SymbolEqualityComparer.Default.Equals(localReference.Local, collectionLocal))
-            {
+            if (IsCollectionLocalOrCopyOfIt(instance, collectionLocal))
                 return true;
-            }
         }
 
         if (unwrapped is IArrayElementReferenceOperation arrayElement)
@@ -35,11 +32,38 @@ public sealed partial class MissingIncludeAnalyzer
             if (arrayReference is IConditionalAccessInstanceOperation)
                 arrayReference = ResolveConditionalAccessReceiver(arrayElement)?.UnwrapConversions();
 
-            if (arrayReference is ILocalReferenceOperation arrayLocal &&
-                SymbolEqualityComparer.Default.Equals(arrayLocal.Local, collectionLocal))
-            {
+            if (IsCollectionLocalOrCopyOfIt(arrayReference, collectionLocal))
                 return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The collection local itself, or an element-preserving view or copy chain that ends at it —
+    /// `orders.ToList()[0]` indexes a different collection holding the same entity instances.
+    /// The chain must end at the result local, so a query materializer, whose receiver is a
+    /// DbSet, can never match.
+    /// </summary>
+    private static bool IsCollectionLocalOrCopyOfIt(IOperation? operation, ILocalSymbol collectionLocal)
+    {
+        var compilation = operation?.SemanticModel?.Compilation;
+
+        while (operation != null)
+        {
+            if (operation is ILocalReferenceOperation localReference)
+            {
+                return SymbolEqualityComparer.Default.Equals(localReference.Local, collectionLocal);
             }
+
+            if (compilation == null ||
+                operation is not IInvocationOperation view ||
+                !(IsElementPreservingInMemoryView(view, compilation) || IsSequenceCopy(view, compilation)))
+            {
+                return false;
+            }
+
+            operation = GetQuerySource(view)?.UnwrapConversions();
         }
 
         return false;
