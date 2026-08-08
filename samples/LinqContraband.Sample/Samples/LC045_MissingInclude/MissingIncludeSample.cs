@@ -90,6 +90,9 @@ public class MissingIncludeSample
             {
                 Console.WriteLine(item.Product.Name);
             }
+
+            // VIOLATION: the aggregate reads Product once per item — an N+1 inside a Sum.
+            Console.WriteLine(order.Items.Sum(item => item.Product.Id));
         }
     }
 }
