@@ -120,6 +120,11 @@ public sealed partial class MissingIncludeAnalyzer
         public List<FlowAccessCandidate> Candidates { get; } = new();
         public Dictionary<int, List<FlowEvent>> EventsByBlock { get; } = new();
 
+        /// <summary>The block each analysed access lives in, keyed by access id.</summary>
+        public Dictionary<int, int> AccessBlockByAccessId { get; } = new();
+
+        public MissingIncludeFlowCache FlowCache => flowCache;
+
         public FlowAccessCandidate AddRootProbe(SyntaxNode syntax)
         {
             var candidate = new FlowAccessCandidate(
@@ -207,6 +212,9 @@ public sealed partial class MissingIncludeAnalyzer
                 }
 
                 blockEvents.Add(flowEvent);
+
+                if (flowEvent.Kind == FlowEventKind.Access && flowEvent.AccessId >= 0)
+                    AccessBlockByAccessId[flowEvent.AccessId] = blockOrdinal;
             }
 
             foreach (var binding in iterationBindings)
