@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.21] - 2026-08-08
+
 ### Fixed
 - LC045 now follows indexing into a navigation collection. `order.Items[0].Product` yields one of the instances that collection holds, exactly like `order.Items.ElementAt(0)` which 5.7.20 already followed, but the idiomatic indexer spelling — inline or into a local — was silent.
 
