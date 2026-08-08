@@ -52,8 +52,11 @@ class Program
     }
 
     [Fact]
-    public async Task FixCrime_WidenedEnumerableAlias_DiagnosticOnly()
+    public async Task FixCrime_WidenedEnumerableAlias_AddsIncludeWhereTheQueryWasAssigned()
     {
+        // Until 5.7.31 this shape was deliberately diagnostic-only: `Include` is declared on
+        // IQueryable<T>, so it cannot go where the widened local is consumed. It can go where the
+        // local was given the query, and the result still converts to the declared type.
         var test = Usings + @"
 class Program
 {
@@ -76,7 +79,7 @@ class Program
     void Main()
     {
         var db = new MyDbContext();
-        IEnumerable<Order> source = db.Orders;
+        IEnumerable<Order> source = db.Orders.Include(x => x.Customer);
         var orders = source.ToList();
         foreach (var o in orders)
         {
@@ -97,14 +100,10 @@ class Program
                 .WithLocation(0)
                 .WithArguments("Customer", "Order")
                 .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
-        testObj.FixedState.ExpectedDiagnostics.Add(
-            new DiagnosticResult("LC045", DiagnosticSeverity.Warning)
-                .WithSpan(19, 31, 19, 41)
-                .WithArguments("Customer", "Order")
-                .WithOptions(DiagnosticOptions.IgnoreAdditionalLocations));
 
         await testObj.RunAsync();
     }
+
 
     [Fact]
     public async Task FixCrime_KeywordNamedNavigation_EscapesTheIdentifier()
