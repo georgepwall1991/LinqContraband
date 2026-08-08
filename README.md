@@ -42,13 +42,13 @@ When the analyzer cannot prove an EF-backed query shape statically, it **stays q
 ## Install
 
 ```xml
-  <PackageReference Include="LinqContraband" Version="5.7.20" PrivateAssets="all" />
+  <PackageReference Include="LinqContraband" Version="5.7.21" PrivateAssets="all" />
 ```
 
 Or:
 
 ```bash
-dotnet add package LinqContraband --version 5.7.20
+dotnet add package LinqContraband --version 5.7.21
 ```
 
 **No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
