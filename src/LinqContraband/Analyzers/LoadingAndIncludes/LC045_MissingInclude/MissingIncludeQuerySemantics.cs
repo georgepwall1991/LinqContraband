@@ -46,6 +46,16 @@ public sealed partial class MissingIncludeAnalyzer
                     // An ordering key selector reads the entity exactly like a predicate does.
                     or "OrderBy"
                     or "OrderByDescending"
+                    // So does an aggregate selector, a counting predicate, and a partition
+                    // predicate: each is invoked once per element of the materialized sequence.
+                    or "Count"
+                    or "LongCount"
+                    or "Sum"
+                    or "Average"
+                    or "Min"
+                    or "Max"
+                    or "SkipWhile"
+                    or "TakeWhile"
             && method.Parameters.Length == 2
             && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
         )
@@ -191,7 +201,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         var callbackOrdinal = method.Name switch
         {
-            "Where" when method.Parameters.Length == 2 => 1,
+            "Where" or "SkipWhile" or "TakeWhile" when method.Parameters.Length == 2 => 1,
             "OrderBy"
             or "OrderByDescending"
             or "ThenBy"
@@ -270,8 +280,13 @@ public sealed partial class MissingIncludeAnalyzer
         )
             return false;
 
+        // Select, Min and Max hand their callback's result back to the caller, so an
+        // entity-returning callback is a projection boundary rather than a scalar read.
         if (
-            (invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod).Name == "Select"
+            (invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod).Name
+                is "Select"
+                    or "Min"
+                    or "Max"
             && !IsProvablyScalarSelectResult(callback)
         )
         {

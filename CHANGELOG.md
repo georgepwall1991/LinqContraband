@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now reads aggregate and partition callbacks over a materialized collection. `orders.Sum(o => o.Customer.Rating)`, `orders.Count(o => o.Customer.Name != null)`, and the `LongCount`/`Average`/`Min`/`Max`/`SkipWhile`/`TakeWhile` forms each invoke their callback once per element, so a navigation read inside one is a per-element read — an N+1 hidden inside an aggregate with lazy-loading proxies, or an aggregate computed over nulls without one. Only `Where`, `Select`, `Any`, `All`, the ordering key selectors and `List<T>.ForEach` were followed before. `SkipWhile` and `TakeWhile` also join the element-preserving views, so iterating their result carries the collection's origin. `Select`, `Min` and `Max` hand their callback's result back to the caller, so an entity-returning callback reports its own read but stays an escape for later ones, and a method-group callback remains a boundary.
+
 ## [5.7.13] - 2026-08-08
 
 ### Changed

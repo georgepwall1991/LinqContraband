@@ -39,6 +39,11 @@ public class MissingIncludeSample
             Console.WriteLine(c.Id);
         }
 
+        // VIOLATION: the aggregate selector runs once per element, so the N+1 hides inside a
+        // Sum rather than a loop body.
+        var streetLengths = customers.Sum(c => c.ShippingAddress.Street.Length);
+        Console.WriteLine(streetLengths);
+
         // CORRECT: project exactly the data the loop needs — no entity, no Include.
         var streets = db.Customers.Select(c => c.ShippingAddress.Street).ToList();
         foreach (var street in streets)
