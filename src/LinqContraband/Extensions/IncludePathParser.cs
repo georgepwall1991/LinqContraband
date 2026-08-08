@@ -45,8 +45,8 @@ internal sealed class IncludePath
 
 /// <summary>
 /// Parses EF Core Include/ThenInclude invocations (lambda, filtered-lambda, and constant-string
-/// overloads) into <see cref="IncludePath"/> values. Shared by LC006 (cartesian explosion) and
-/// LC045 (missing include).
+/// overloads) plus EntityTypeBuilder.Navigation paths into <see cref="IncludePath"/> values.
+/// Shared by LC006 (cartesian explosion) and LC045 (missing include).
 /// </summary>
 internal static partial class IncludePathParser
 {
@@ -62,6 +62,14 @@ internal static partial class IncludePathParser
         if (
             invocation.TargetMethod.Name == "Include"
             && TryGetStringIncludePath(invocation, out includePath)
+        )
+        {
+            return true;
+        }
+
+        if (
+            invocation.TargetMethod.Name == "Navigation"
+            && TryGetStringNavigationPath(invocation, out includePath)
         )
         {
             return true;
@@ -136,6 +144,38 @@ internal static partial class IncludePathParser
         }
 
         includePath = new IncludePath(builder.ToImmutable());
+        return true;
+    }
+
+    private static bool TryGetStringNavigationPath(
+        IInvocationOperation invocation,
+        out IncludePath includePath
+    )
+    {
+        includePath = new IncludePath(ImmutableArray<NavigationSegment>.Empty);
+        var navigationArgument = invocation.Arguments.FirstOrDefault(argument =>
+            argument.Parameter?.Ordinal == 0
+        );
+        if (
+            navigationArgument?.Value.ConstantValue is not { HasValue: true, Value: string pathText }
+            || string.IsNullOrWhiteSpace(pathText)
+            || pathText.IndexOf('.') >= 0
+            || invocation.Instance?.Type is not INamedTypeSymbol builderType
+            || builderType.TypeArguments.Length != 1
+        )
+        {
+            return false;
+        }
+
+        var property = TryFindProperty(builderType.TypeArguments[0], pathText.Trim());
+        if (property == null)
+            return false;
+
+        includePath = new IncludePath(
+            ImmutableArray.Create(
+                new NavigationSegment(property.Name, IsCollection(property.Type))
+            )
+        );
         return true;
     }
 
