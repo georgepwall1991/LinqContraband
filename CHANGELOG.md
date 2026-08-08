@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now sees through a copy of the materialized collection, completing the copy handling that 5.7.22 added for navigation collections. `foreach (var order in orders.ToList())` and the `ToArray`, extractor and aggregate forms hold the very same entity instances the query produced, but the copy hid every read behind it. The query materializer is itself a `ToList`, so a copy is accepted only where the source is already proven to be the materialized collection — the materializer's own source is a `DbSet`, which can never satisfy that, and an inline `foreach (var o in db.Orders.ToList())` keeps reporting exactly once.
+
 ## [5.7.22] - 2026-08-08
 
 ### Fixed

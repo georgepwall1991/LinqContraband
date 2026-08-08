@@ -522,39 +522,6 @@ public sealed partial class MissingIncludeAnalyzer
             return operation;
         }
 
-        /// <summary>
-        /// An exact <c>Enumerable</c> copy of a sequence. The copy is a different collection but
-        /// holds the same element references, so the entities it yields have the same origin.
-        /// </summary>
-        private static bool IsSequenceCopy(IInvocationOperation invocation, Compilation compilation)
-        {
-            var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-            var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
-            if (
-                SymbolEqualityComparer.Default.Equals(
-                    method.ContainingType.OriginalDefinition,
-                    enumerable
-                )
-            )
-            {
-                return method.Name is "ToList" or "ToArray" or "ToHashSet"
-                    && method.Parameters.Length == 1
-                    && IsIEnumerableSourceParameter(method.Parameters[0], compilation);
-            }
-
-            // `items.ToArray()` on a List<T> binds to the instance method, not to Enumerable —
-            // the same trap as List<T>.Reverse(), which returns void and is deliberately not an
-            // element-preserving view.
-            var list = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
-            return list != null
-                && SymbolEqualityComparer.Default.Equals(
-                    method.ContainingType.OriginalDefinition,
-                    list
-                )
-                && method.Name == "ToArray"
-                && method.Parameters.Length == 0
-                && invocation.Instance != null;
-        }
 
         private bool TryResolveCollectionNavigationIteration(
             IOperation collection,
