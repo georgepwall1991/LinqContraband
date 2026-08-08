@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now follows element extraction beyond the bare overloads. `orders.First(o => o.Id == id)`, the `FirstOrDefault`/`Single`/`SingleOrDefault`/`Last`/`LastOrDefault` filtered forms, `MinBy`/`MaxBy`, and extraction from an element-preserving view such as `orders.Where(...).First()` or `orders.OrderBy(...).First()` all return one of the instances the query materialized, but only the no-argument overloads over the collection itself were followed, so reading a navigation on the extracted entity went unreported. The extraction predicate and key selector are themselves per-element callbacks, so a navigation read inside one now reports too. The default-value overloads stay excluded: their default can be an entity the query never produced. Method-group and effectful callbacks remain boundaries.
+
 ## [5.7.14] - 2026-08-08
 
 ### Fixed

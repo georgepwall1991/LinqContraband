@@ -616,10 +616,21 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
         {
-            return IsExactCollectionElementExtraction(invocation)
-                && GetQuerySource(invocation) is { } source
-                && TryResolveTrackedSource(source, out var isRoot, out _)
-                && isRoot;
+            if (
+                !IsExactCollectionElementExtraction(invocation)
+                || GetQuerySource(invocation) is not { } source
+            )
+            {
+                return false;
+            }
+
+            if (TryResolveTrackedSource(source, out var isRoot, out _) && isRoot)
+                return true;
+
+            // `orders.Where(...).First()` extracts from a view that yields the collection's own
+            // instances, so the extracted entity has the same origin as one taken directly.
+            return source.UnwrapConversions() is IInvocationOperation view
+                && IsElementPreservingMaterializedCollectionView(view, materializer, resultLocal);
         }
 
         private void AddEscapeForSource(IOperation source, SyntaxNode syntax, int position)

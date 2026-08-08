@@ -56,6 +56,16 @@ public sealed partial class MissingIncludeAnalyzer
                     or "Max"
                     or "SkipWhile"
                     or "TakeWhile"
+                    // The extraction predicates and key selectors run per element too. Their
+                    // result is a tracked extraction rather than an escape, so no scalar guard.
+                    or "First"
+                    or "FirstOrDefault"
+                    or "Single"
+                    or "SingleOrDefault"
+                    or "Last"
+                    or "LastOrDefault"
+                    or "MinBy"
+                    or "MaxBy"
             && method.Parameters.Length == 2
             && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
         )
