@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.16</Version>
+        <Version>5.7.17</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045&apos;s code fix now extends an existing Include instead of restating its path. A nested finding on a query that already included the prefix produced a redundant second Include; it now appends ThenInclude to the existing chain.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reads the grouping callbacks over a materialized collection. orders.ToDictionary(o =&gt; o.Customer.Name) and the ToLookup/GroupBy/SelectMany/DistinctBy forms invoke their callback once per element, so a navigation read inside one is a per-element read that went unreported. Their results carry the entities onward, so the call still counts as an escape.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

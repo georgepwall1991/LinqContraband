@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.17] - 2026-08-08
+
 ### Fixed
 - LC045 now reads the grouping callbacks over a materialized collection. `orders.ToDictionary(o => o.Customer.Name)` and the `ToLookup`/`GroupBy`/`SelectMany`/`DistinctBy` forms each invoke their callback once per element, so a navigation read inside one is a per-element read that went unreported. Unlike the aggregates, these keep the entities in their result — a dictionary, a lookup, groupings, a flattened sequence — so the call still counts as an escape and a later read of a different navigation stays quiet, whatever the callback returns.
 
