@@ -25,6 +25,13 @@ public class MissingIncludeSample
             Console.WriteLine(c.ShippingAddress.Street);
         }
 
+        // VIOLATION: filtering and ordering in memory yields the very same entity instances,
+        // so the loop still reads a navigation the query never loaded.
+        foreach (var c in customers.Where(c => c.Id > 0).OrderBy(c => c.Id).Take(10))
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
+        }
+
         // CORRECT: project exactly the data the loop needs — no entity, no Include.
         var streets = db.Customers.Select(c => c.ShippingAddress.Street).ToList();
         foreach (var street in streets)

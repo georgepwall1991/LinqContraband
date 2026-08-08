@@ -57,6 +57,11 @@ public sealed partial class MissingIncludeAnalyzer
                             invocation,
                             materializer,
                             resultLocal
+                        )
+                        && !IsElementPreservingMaterializedCollectionView(
+                            invocation,
+                            materializer,
+                            resultLocal
                         ):
                     CollectInvocationEscapeEvents(invocation);
                     break;
