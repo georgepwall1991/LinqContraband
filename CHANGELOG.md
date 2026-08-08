@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.33] - 2026-08-08
+
 ### Fixed
 - LC045 now reports a `foreach` directly over a query widened to `IEnumerable<T>`. `IEnumerable<Order> source = db.Orders; foreach (var o in source)` runs the query exactly as iterating `db.Orders` does, and the same loop over `source.ToList()` was already reported, so the direct form staying quiet was an inconsistency rather than a deliberate limit. The declared type no longer decides it: the chain proof resolves the local and still has to reach a DbSet root, so a plain `List<T>`, a LINQ-to-objects query, and a reassigned or conditionally bound local all stay quiet. The code fix added in 5.7.32 already covers the shape, so these findings are actionable rather than diagnostic-only.
 
