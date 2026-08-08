@@ -729,6 +729,22 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (originsByLocal.TryGetValue(localReference.Local, out origin))
                     return true;
+
+                // A local that was given the collection — `var active = orders.Where(...);` —
+                // stands in for it, so handing that local out is an escape of the collection.
+                if (IsResultCollectionReference(localReference))
+                {
+                    if (returnsCollection)
+                    {
+                        isRoot = true;
+                    }
+                    else
+                    {
+                        origin = rootEntityOrigin;
+                    }
+
+                    return true;
+                }
             }
 
             if (
@@ -1075,23 +1091,31 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsResultCollection(IOperation operation)
         {
-            if (resultLocal == null)
-                return false;
+            return IsResultCollectionReference(operation);
+        }
 
-            var unwrapped = UnwrapTranslatedQuery(operation);
-            if (
-                unwrapped is ILocalReferenceOperation localReference
-                && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal)
-            )
-            {
-                return true;
-            }
-
-            // `foreach (var o in orders.Where(o => o.IsActive))` iterates the very instances the
-            // materialized collection holds, so the loop variable carries the same origin. The
-            // proof is shared with the callback path, including its effect-free requirement.
-            return unwrapped is IInvocationOperation view
-                && IsElementPreservingMaterializedCollectionView(view, materializer, resultLocal);
+        /// <summary>
+        /// True when the operation refers to the materialized collection: the result local itself,
+        /// an element-preserving view or copy of it, or a single-assignment local that was given
+        /// either. `foreach (var o in orders.Where(o => o.IsActive))` iterates the very instances
+        /// the collection holds, and naming that view — `var active = orders.Where(...);` — is the
+        /// ordinary way to write the same read, so hoisting it into a variable must not hide it.
+        /// The single-assignment requirement keeps a reassigned or conditionally bound local out,
+        /// and resolving through the alias is what makes an escape of the alias an escape of the
+        /// collection itself.
+        /// </summary>
+        private bool IsResultCollectionReference(IOperation? operation)
+        {
+            return resultLocal != null
+                && materializer != null
+                && operation != null
+                && executableRoot.SemanticModel?.Compilation is { } compilation
+                && IsProvenMaterializedCollectionSource(
+                    operation,
+                    materializer,
+                    resultLocal,
+                    compilation
+                );
         }
 
         private bool IsMaterializer(IInvocationOperation invocation)
