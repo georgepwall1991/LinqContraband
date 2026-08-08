@@ -49,16 +49,24 @@ public sealed partial class MissingIncludeAnalyzer
             if (querySource == null)
                 return;
         }
+        else if (forEach.Collection.Type.IsIQueryable())
+        {
+            querySource = forEach.Collection;
+        }
+        else if (
+            IsWidenedQueryableLocal(collection, forEach.Collection.Type, context.CancellationToken)
+        )
+        {
+            // `IEnumerable<Order> source = db.Orders;` then `foreach (var o in source)` runs the
+            // query exactly as iterating `db.Orders` does, and the same loop over
+            // `source.ToList()` is already reported. Widening the static type changes nothing
+            // about what EF does, so the chain proof — which resolves the local and still has to
+            // reach a DbSet root — decides it, rather than the declared type.
+            querySource = forEach.Collection;
+        }
         else
         {
-            // Synchronous direct enumeration is only safe to analyse when the expression
-            // remains statically IQueryable. Widened materialized IEnumerable results stay
-            // diagnostic-only through the existing materializer path; widened direct-query
-            // roots remain intentionally quiet.
-            if (!forEach.Collection.Type.IsIQueryable())
-                return;
-
-            querySource = forEach.Collection;
+            return;
         }
 
         if (!TryAnalyzeQueryChain(querySource, context.CancellationToken, out var query))
@@ -89,6 +97,35 @@ public sealed partial class MissingIncludeAnalyzer
             context.CancellationToken
         );
         ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
+    }
+
+    /// <summary>
+    /// A cheap gate deciding whether a widened name is worth asking the chain proof about: a local
+    /// that holds a sequence, is not itself statically <c>IQueryable</c>, and was assigned a
+    /// queryable exactly once before this point.
+    /// Correctness is carried by the chain proof rather than here — it resolves the same local
+    /// through the same single-assignment lookup and still has to reach a DbSet root, so a
+    /// reassigned local, a conditionally bound one, a plain <c>List&lt;T&gt;</c> and a
+    /// LINQ-to-objects query are all rejected there too. This gate exists so the walk is not run
+    /// for every <c>foreach</c> over an ordinary collection.
+    /// </summary>
+    private static bool IsWidenedQueryableLocal(
+        IOperation collection,
+        ITypeSymbol? declaredType,
+        CancellationToken cancellationToken
+    )
+    {
+        return CouldHoldASequence(declaredType)
+            && collection is ILocalReferenceOperation localReference
+            && localReference.FindOwningExecutableRoot() is { } executableRoot
+            && LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                executableRoot,
+                localReference.Local,
+                localReference.Syntax.SpanStart,
+                out var assignedValue,
+                cancellationToken
+            )
+            && assignedValue.Type.IsIQueryable();
     }
 
     /// <summary>
