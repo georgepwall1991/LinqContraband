@@ -31,12 +31,12 @@ public partial class MissingIncludeEdgeCasesTests
         );
     }
 
-    // `orders.ToList()[0]` is NOT covered: the top-level indexed-access pre-pass matches an
-    // indexer whose receiver is a local reference, and it runs before any compilation context is
-    // available to prove a view or copy chain. Recorded in the analyzer-health candidate queue.
     [Theory]
     [InlineData("orders.ToList().First()")]
     [InlineData("orders.ToList().Last()")]
+    [InlineData("orders.ToList()[0]")]
+    [InlineData("orders.ToArray()[0]")]
+    [InlineData("orders.Where(o => o.Id > 0).ToList()[0]")]
     public async Task TestCrime_ElementFromAMaterializedCollectionCopy_Reports(string extraction)
     {
         await VerifyOriginFlowAsync(
@@ -145,6 +145,22 @@ public partial class MissingIncludeEdgeCasesTests
     }
 ",
             Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_IndexerIntoACopyOfAnUnrelatedCollection_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main(List<Order> other)
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        var order = other.ToList()[0];
+        Console.WriteLine(order.Customer.Name);
+    }
+"
         );
     }
 }
