@@ -185,11 +185,11 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestCrime_IdentityProjectedAliasEscapes_StillReports()
+    public async Task TestInnocent_IdentityProjectedAliasEscapes_StaysQuiet()
     {
-        // Handing out a *derived* collection is not an escape of the collection the proof is
-        // held against — `orders.Where(...).ToList()` behaves identically. Only escaping
-        // `orders` itself discards the fact, which the next test pins.
+        // 5.7.28 reported here, because the alias was not understood to be the collection.
+        // Now that it is, handing it to a helper that could load the navigation discards the
+        // proof exactly as handing out `orders` itself does.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -200,13 +200,12 @@ public partial class MissingIncludeEdgeCasesTests
         Hydrate(aliases);
         foreach (var order in orders)
         {
-            Console.WriteLine({|#0:order.Customer|}.Name);
+            Console.WriteLine(order.Customer.Name);
         }
     }
 
     void Hydrate(List<Order> orders) { }
-",
-            Diagnostic(0, "Customer", "Order")
+"
         );
     }
 
@@ -232,12 +231,10 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestInnocent_ReadThroughAnIdentityProjectedAliasLocal_StaysQuiet()
+    public async Task TestCrime_ReadThroughAnIdentityProjectedAliasLocal_Reports()
     {
-        // KNOWN RESIDUAL, shared with every view and copy: a view held in its own local
-        // (`var subset = orders.Where(...).ToList();`) does not carry the collection's origin
-        // across that assignment, so reads through the alias are missed. Identity projection
-        // inherits the same limit rather than introducing it. Pinned so closing it is deliberate.
+        // The residual 5.7.28 recorded here — a view or copy held in its own local not carrying
+        // the collection's origin — is closed: the alias now stands in for the collection.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -247,10 +244,11 @@ public partial class MissingIncludeEdgeCasesTests
         var aliases = orders.Select(o => o).ToList();
         foreach (var order in aliases)
         {
-            Console.WriteLine(order.Customer.Name);
+            Console.WriteLine({|#0:order.Customer|}.Name);
         }
     }
-"
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 }

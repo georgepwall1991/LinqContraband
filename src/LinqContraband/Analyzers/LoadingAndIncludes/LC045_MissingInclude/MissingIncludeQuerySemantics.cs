@@ -135,11 +135,27 @@ public sealed partial class MissingIncludeAnalyzer
         return true;
     }
 
+    /// <summary>
+    /// A cheap pre-filter for collection-alias resolution: a sequence local is either an array or
+    /// a constructed generic such as <c>List&lt;T&gt;</c>, <c>IEnumerable&lt;T&gt;</c> or
+    /// <c>IOrderedEnumerable&lt;T&gt;</c>. Entity and <c>DbContext</c> locals are neither, so they
+    /// never reach the assignment lookup.
+    /// </summary>
+    private static bool CouldHoldASequence(ITypeSymbol? type)
+    {
+        return type is IArrayTypeSymbol
+            || type is INamedTypeSymbol { TypeArguments.Length: > 0 };
+    }
+
+    /// <summary>Bounds alias-of-alias resolution so a pathological chain cannot walk far.</summary>
+    private const int MaxCollectionAliasDepth = 8;
+
     private static bool IsProvenMaterializedCollectionSource(
         IOperation? source,
         IInvocationOperation materializer,
         ILocalSymbol? resultLocal,
-        Compilation compilation
+        Compilation compilation,
+        int depth = 0
     )
     {
         source = source == null ? null : UnwrapTranslatedQuery(source);
@@ -153,7 +169,33 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         if (resultLocal != null && source is ILocalReferenceOperation localReference)
-            return SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal);
+        {
+            if (SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal))
+                return true;
+
+            // `var active = orders.Where(...);` names the collection. Following the local back to
+            // the single value it was given lets every consumer — a loop, an extraction, a
+            // callback — read through that name exactly as it reads through the collection.
+            // Only a local that could hold a sequence is worth walking the tree for: this check
+            // keeps entity and context locals off the resolution path entirely.
+            return CouldHoldASequence(localReference.Type)
+                && depth < MaxCollectionAliasDepth
+                && localReference.FindOwningExecutableRoot() is { } aliasRoot
+                && LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                    aliasRoot,
+                    localReference.Local,
+                    localReference.Syntax.SpanStart,
+                    out var aliasValue,
+                    default
+                )
+                && IsProvenMaterializedCollectionSource(
+                    aliasValue,
+                    materializer,
+                    resultLocal,
+                    compilation,
+                    depth + 1
+                );
+        }
 
         if (source is not IInvocationOperation invocation)
             return false;
@@ -170,7 +212,8 @@ public sealed partial class MissingIncludeAnalyzer
                 GetQuerySource(invocation),
                 materializer,
                 resultLocal,
-                compilation
+                compilation,
+                depth + 1
             );
     }
 
