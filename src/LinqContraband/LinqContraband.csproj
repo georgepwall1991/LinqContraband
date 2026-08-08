@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.32</Version>
+        <Version>5.7.33</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>The LC045 code fix now handles a query widened to IEnumerable&lt;T&gt;. IEnumerable&lt;Order&gt; source = db.Orders; was diagnostic-only because Include is declared on IQueryable&lt;T&gt;; the fix now lands where the local was given the query, which still converts to the declared type. The local must be declared with a queryable initializer and never reassigned.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reports a foreach directly over a query widened to IEnumerable&lt;T&gt;. IEnumerable&lt;Order&gt; source = db.Orders; foreach (var o in source) runs the query exactly as iterating db.Orders does, and the same loop over source.ToList() was already reported. The chain proof decides it rather than the declared type, so a plain List, a LINQ-to-objects query and a reassigned local stay quiet. The 5.7.32 code fix already covers the shape.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
