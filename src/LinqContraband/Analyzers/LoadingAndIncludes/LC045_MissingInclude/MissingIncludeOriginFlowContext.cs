@@ -356,8 +356,9 @@ public sealed partial class MissingIncludeAnalyzer
             }
 
             if (
-                GetQuerySource(invocation)?.UnwrapConversions() is not IPropertyReferenceOperation
-                    navigation
+                PeelNavigationCollectionSource(
+                    GetQuerySource(invocation)?.UnwrapConversions() ?? invocation
+                ) is not IPropertyReferenceOperation navigation
                 || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
                 || !TryGetNavigationTarget(
                     navigation.Property,
@@ -484,13 +485,34 @@ public sealed partial class MissingIncludeAnalyzer
         /// </summary>
         private IOperation PeelElementPreservingViews(IOperation operation)
         {
+            return PeelViews(operation, includeCopies: false);
+        }
+
+        /// <summary>
+        /// As <see cref="PeelElementPreservingViews"/>, but also sees through a copy of the
+        /// sequence — `order.Items.ToList()` holds the very same entity instances, and copying a
+        /// child collection before iterating it is the ordinary way to avoid mutating during
+        /// enumeration. This is only ever reached while resolving something rooted at a
+        /// navigation property of a tracked entity, so it cannot see a query materializer such as
+        /// `db.Orders.ToList()`, whose receiver is a DbSet rather than a navigation.
+        /// </summary>
+        private IOperation PeelNavigationCollectionSource(IOperation operation)
+        {
+            return PeelViews(operation, includeCopies: true);
+        }
+
+        private IOperation PeelViews(IOperation operation, bool includeCopies)
+        {
             var compilation = executableRoot.SemanticModel?.Compilation;
             if (compilation == null)
                 return operation;
 
             while (
                 operation is IInvocationOperation view
-                && IsElementPreservingInMemoryView(view, compilation)
+                && (
+                    IsElementPreservingInMemoryView(view, compilation)
+                    || (includeCopies && IsSequenceCopy(view, compilation))
+                )
                 && GetQuerySource(view)?.UnwrapConversions() is { } source
             )
             {
@@ -498,6 +520,40 @@ public sealed partial class MissingIncludeAnalyzer
             }
 
             return operation;
+        }
+
+        /// <summary>
+        /// An exact <c>Enumerable</c> copy of a sequence. The copy is a different collection but
+        /// holds the same element references, so the entities it yields have the same origin.
+        /// </summary>
+        private static bool IsSequenceCopy(IInvocationOperation invocation, Compilation compilation)
+        {
+            var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+            var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+            if (
+                SymbolEqualityComparer.Default.Equals(
+                    method.ContainingType.OriginalDefinition,
+                    enumerable
+                )
+            )
+            {
+                return method.Name is "ToList" or "ToArray" or "ToHashSet"
+                    && method.Parameters.Length == 1
+                    && IsIEnumerableSourceParameter(method.Parameters[0], compilation);
+            }
+
+            // `items.ToArray()` on a List<T> binds to the instance method, not to Enumerable —
+            // the same trap as List<T>.Reverse(), which returns void and is deliberately not an
+            // element-preserving view.
+            var list = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
+            return list != null
+                && SymbolEqualityComparer.Default.Equals(
+                    method.ContainingType.OriginalDefinition,
+                    list
+                )
+                && method.Name == "ToArray"
+                && method.Parameters.Length == 0
+                && invocation.Instance != null;
         }
 
         private bool TryResolveCollectionNavigationIteration(
@@ -511,7 +567,7 @@ public sealed partial class MissingIncludeAnalyzer
             elementEntityType = null!;
             navigationPrefix = null!;
 
-            var unwrapped = PeelElementPreservingViews(collection.UnwrapConversions());
+            var unwrapped = PeelNavigationCollectionSource(collection.UnwrapConversions());
             if (
                 unwrapped is not IPropertyReferenceOperation propertyReference
                 || !TryResolveEntityOrigin(propertyReference.Instance, out parentOrigin)
@@ -784,7 +840,10 @@ public sealed partial class MissingIncludeAnalyzer
             // consumption one step earlier in the chain.
             var compilation = invocation.SemanticModel?.Compilation;
             return compilation != null
-                && IsElementPreservingInMemoryView(invocation, compilation)
+                && (
+                    IsElementPreservingInMemoryView(invocation, compilation)
+                    || IsSequenceCopy(invocation, compilation)
+                )
                 && IsNavigationCollectionSource(invocation);
         }
 
@@ -795,7 +854,7 @@ public sealed partial class MissingIncludeAnalyzer
         private bool IsNavigationCollectionSource(IInvocationOperation invocation)
         {
             return GetQuerySource(invocation) is { } source
-                && PeelElementPreservingViews(source.UnwrapConversions())
+                && PeelNavigationCollectionSource(source.UnwrapConversions())
                     is IPropertyReferenceOperation navigation
                 && TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
                 && TryGetNavigationTarget(
@@ -831,7 +890,7 @@ public sealed partial class MissingIncludeAnalyzer
         {
             origin = null!;
             if (
-                PeelElementPreservingViews(collectionExpression.UnwrapConversions())
+                PeelNavigationCollectionSource(collectionExpression.UnwrapConversions())
                     is not IPropertyReferenceOperation navigation
                 || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
                 || !TryGetNavigationTarget(
