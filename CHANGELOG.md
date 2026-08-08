@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now follows element extraction out of a navigation collection. `var item = order.Items.First(i => i.Id > 0);` yields an instance that collection holds, so reading a navigation on it is the same nested read as the `foreach` over `order.Items`, but every extractor spelling was silent — including through a view, `order.Items.Where(...).First()`. Two proofs were needed: the extracted expression resolves to a navigation origin derived from the receiver, and handing the collection to an `Enumerable` extractor or an element-preserving view stops counting as an escape of that navigation. Passing the collection to your own helper is still a real escape, because the helper may load it.
+
 ## [5.7.19] - 2026-08-08
 
 ### Fixed
