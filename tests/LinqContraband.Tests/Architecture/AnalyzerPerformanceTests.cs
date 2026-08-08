@@ -15,10 +15,14 @@ namespace LinqContraband.Tests.Architecture;
 
 public partial class AnalyzerPerformanceTests
 {
-    // 30s headroom keeps the CI Linux runners reliable on cold-JIT compilation
-    // while still failing fast on real analyzer-loop regressions. Local M-class
-    // hardware completes each stress source in well under a second.
-    private static readonly TimeSpan AnalyzerTimeout = TimeSpan.FromSeconds(30);
+    // These tests exist to catch a runaway analyzer loop — the class of defect that once
+    // killed csc outright — not to measure drift. The ceiling therefore has to sit far above
+    // the worst honest run, and 30s did not: three CI runs failed on unchanged code, twice on
+    // LC045 and once on LC015, because the workflow fans out to three target frameworks on one
+    // runner and starves whichever leg is analysing. Measured locally on this suite the slowest
+    // case is LC045 at ~4s and the next is LC015 at ~2s, so 120s still fails loudly on the 10x
+    // blow-up these guards are for while leaving no room for a starved runner to cry wolf.
+    private static readonly TimeSpan AnalyzerTimeout = TimeSpan.FromSeconds(120);
 
     [Fact]
     public async Task LC023_PrimaryKeyLookup_CompletesOnLargeCompilation()
