@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.32] - 2026-08-08
+
 ### Added
 - The LC045 code fix now handles a query widened to `IEnumerable<T>`. `IEnumerable<Order> source = db.Orders;` was deliberately diagnostic-only, because `Include` is declared on `IQueryable<T>` and cannot go where the widened local is consumed. It can go where the local was given the query, so the fix now lands there: `IEnumerable<Order> source = db.Orders.Include(x => x.Customer);`, which still converts to the declared type because `Include` returns an `IIncludableQueryable<T, P>`. The local must be declared with an initializer that is itself queryable and never reassigned.
 
