@@ -66,6 +66,13 @@ public sealed partial class MissingIncludeAnalyzer
                     or "LastOrDefault"
                     or "MinBy"
                     or "MaxBy"
+                    // These run per element too, but their result carries the entities onward,
+                    // so they are read-analysed without becoming escape-exempt below.
+                    or "ToDictionary"
+                    or "ToLookup"
+                    or "GroupBy"
+                    or "SelectMany"
+                    or "DistinctBy"
             && method.Parameters.Length == 2
             && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
         )
@@ -290,15 +297,26 @@ public sealed partial class MissingIncludeAnalyzer
         )
             return false;
 
+        var operatorName = (invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod).Name;
+
+        // These keep the entities in their result — a dictionary, a lookup, groupings, a
+        // flattened sequence — so whoever holds it may load the navigation. The callback read is
+        // still analysed; the call itself stays an escape regardless of what the callback returns.
+        if (
+            operatorName
+            is "ToDictionary"
+                or "ToLookup"
+                or "GroupBy"
+                or "SelectMany"
+                or "DistinctBy"
+        )
+        {
+            return false;
+        }
+
         // Select, Min and Max hand their callback's result back to the caller, so an
         // entity-returning callback is a projection boundary rather than a scalar read.
-        if (
-            (invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod).Name
-                is "Select"
-                    or "Min"
-                    or "Max"
-            && !IsProvablyScalarSelectResult(callback)
-        )
+        if (operatorName is "Select" or "Min" or "Max" && !IsProvablyScalarSelectResult(callback))
         {
             return false;
         }

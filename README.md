@@ -1851,8 +1851,10 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   predicate/default-value element extraction overloads, custom lookalikes, and repository or `IQueryable` parameter
   roots remain conservative boundaries. Exact inline
   `List<T>.ForEach` and single-source `Enumerable` callbacks — `Where`/`Select`/`Any`/`All`, ordering key selectors,
-  `SkipWhile`/`TakeWhile`, and the `Count`/`Sum`/`Average`/`Min`/`Max` aggregates — plus property-pattern reads, use the
-  same origin-flow proof while the original materialized collection generation remains active. Effectful
+  `SkipWhile`/`TakeWhile`, the `Count`/`Sum`/`Average`/`Min`/`Max` aggregates, and the
+  `ToDictionary`/`ToLookup`/`GroupBy`/`SelectMany`/`DistinctBy` grouping callbacks — plus property-pattern reads, use
+  the same origin-flow proof while the original materialized collection generation remains active. The grouping
+  operators keep the entities in their result, so they report the read inside the callback and still count as an escape. Effectful
   `Where` predicates and entity-returning `Select` projections stay conservative; scalar `Select` projections do
   not suppress later proven reads.
 - Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without
