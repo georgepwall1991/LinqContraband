@@ -44,6 +44,11 @@ public class MissingIncludeSample
         var streetLengths = customers.Sum(c => c.ShippingAddress.Street.Length);
         Console.WriteLine(streetLengths);
 
+        // VIOLATION: the filtered extractor returns one of the materialized instances, so the
+        // navigation is just as unloaded as it is inside the loop above.
+        var chosen = customers.First(c => c.Id > 0);
+        Console.WriteLine(chosen.ShippingAddress.Street);
+
         // CORRECT: project exactly the data the loop needs — no entity, no Include.
         var streets = db.Customers.Select(c => c.ShippingAddress.Street).ToList();
         foreach (var street in streets)

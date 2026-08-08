@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -264,10 +265,44 @@ public sealed partial class MissingIncludeAnalyzer
             or "Single"
             or "SingleOrDefault"
             or "Last"
-            or "LastOrDefault" => method.Parameters.Length == 1,
+            or "LastOrDefault" => method.Parameters.Length == 1
+                || (
+                    // The filtered overload still returns one of the sequence's own instances.
+                    // The default-value overloads take TSource instead of a predicate and can
+                    // hand back an entity the query never produced, so they stay excluded.
+                    method.Parameters.Length == 2
+                    && IsPredicateParameter(
+                        method.Parameters[1],
+                        compilation,
+                        expressionWrapped: false
+                    )
+                    && HasInlineEffectFreeCallback(invocation, callbackOrdinal: 1)
+                ),
+            // MinBy/MaxBy choose an element by key; the three-parameter comparer overloads are
+            // excluded by the inline-callback requirement.
+            "MinBy" or "MaxBy" => method.Parameters.Length == 2
+                && HasInlineEffectFreeCallback(invocation, callbackOrdinal: 1),
             "ElementAt" or "ElementAtOrDefault" => method.Parameters.Length == 2
                 && method.Parameters[1].Type.SpecialType == SpecialType.System_Int32,
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// True when the argument at <paramref name="callbackOrdinal"/> is a single-parameter inline
+    /// lambda that cannot itself have loaded the navigation. A method group or a captured
+    /// delegate could, so it stays a boundary.
+    /// </summary>
+    private static bool HasInlineEffectFreeCallback(
+        IInvocationOperation invocation,
+        int callbackOrdinal
+    )
+    {
+        var callbackValue = invocation
+            .Arguments.FirstOrDefault(argument => argument.Parameter?.Ordinal == callbackOrdinal)
+            ?.Value;
+        return TryGetInlineAnonymousFunction(callbackValue) is { } callback
+            && callback.Symbol.Parameters.Length == 1
+            && IsEffectFreeCallback(callback);
     }
 }

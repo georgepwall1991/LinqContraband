@@ -1829,7 +1829,8 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 - LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
   operators (`Where`, `OrderBy`, `Include`, …), a proven materialized, synchronously `foreach`-enumerated, or
   `await foreach`-streamed entity origin, and a navigation access on it. Inline collection materializers, direct query
-  roots, nested collection paths, exact `Enumerable` element extraction, and iteration over an element-preserving
+  roots, nested collection paths, exact `Enumerable` element extraction — including the filtered `First`/`Single`/`Last`
+  overloads, `MinBy`/`MaxBy`, and extraction from a view — and iteration over an element-preserving
   in-memory view of the materialized collection (`Where`, `OrderBy`, `Skip`, `Take`, `Distinct`, `Reverse`,
   `AsEnumerable`) are covered.
 - Any `Select`/`Join`/custom operator or dynamic `Include(variable)` makes the query stay quiet. A later reassignment
