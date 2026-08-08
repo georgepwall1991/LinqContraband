@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.13] - 2026-08-08
+
 ### Changed
 - LC045 no longer walks the whole control-flow graph to decide a single navigation access. The origin-flow probe reaches its verdict only where the analysed access lives, so blocks from which that access is unreachable can never influence it — yet every one of them was queued with its own state set. The probe now walks only the blocks that can reach the access, halving the block visits it performs (410,240 to 205,760 on a 320-materializer method, and ~2x at every size measured). Diagnostics are unchanged.
 
