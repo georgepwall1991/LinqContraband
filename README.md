@@ -1840,6 +1840,8 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 - Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
   and are not flagged. A setter satisfies a later read only for the same entity and only when every path to the read
   performs the write; a one-branch or different-entity write does not hide a missing `Include`.
+- The code fix extends an existing lambda `Include` when the query already covers a prefix of the flagged path, so a
+  nested finding appends `.ThenInclude(...)` instead of restating the prefix as a second `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
   to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you. On an `await foreach` the fix
   restores the async bridge — `db.Set.Include(x => x.Nav).AsAsyncEnumerable()` — because `Include` alone would leave a

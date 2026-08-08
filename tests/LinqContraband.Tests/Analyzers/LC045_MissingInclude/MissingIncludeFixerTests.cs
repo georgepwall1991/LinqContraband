@@ -247,7 +247,7 @@ class Program
     void Main()
     {
         var db = new MyDbContext();
-        var orders = db.Orders.Include(o => o.Customer).Include(x => x.Customer).ThenInclude(x => x.Address).ToList();
+        var orders = db.Orders.Include(o => o.Customer).ThenInclude(x => x.Address).ToList();
         foreach (var o in orders)
         {
             Console.WriteLine(o.Customer.Address.City);
@@ -610,4 +610,280 @@ class Program
         await testObj.RunAsync();
     }
 
+
+    [Fact]
+    public async Task FixCrime_NestedPath_ExtendsAnIncludeFollowedByOtherOperators()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).Where(o => o.Id > 0).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer.Address|}.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ThenInclude(x => x.Address).Where(o => o.Id > 0).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Address.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_NestedPath_ExtendsTheLongestMatchingInclude()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).Include(o => o.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer.Address|}.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).Include(o => o.Customer).ThenInclude(x => x.Address).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Address.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_NestedPath_StringIncludeOverloadStillWrapsTheSource()
+    {
+        // The string overload returns IQueryable, not IIncludableQueryable, so ThenInclude
+        // cannot be appended to it; wrapping the source stays the only compiling rewrite.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(""Customer"").ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer.Address|}.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(""Customer"").Include(x => x.Customer).ThenInclude(x => x.Address).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Address.City);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_UnrelatedIncludeStillWrapsTheSource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine({|LC045:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Items).Include(x => x.Customer).ToList();
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_ViewIteration_WrapsTheQuerySource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var o in orders.Where(x => x.Id > 0))
+        {
+            Console.WriteLine({|LC045:o.Customer|}.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.Customer).ToList();
+        foreach (var o in orders.Where(x => x.Id > 0))
+        {
+            Console.WriteLine(o.Customer.Name);
+        }
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_AggregateCallbackRead_WrapsTheQuerySource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        var count = orders.Count(o => {|LC045:o.Customer|}.Name != null);
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.Customer).ToList();
+        var count = orders.Count(o => o.Customer.Name != null);
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_FilteredElementExtraction_WrapsTheQuerySource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        var order = orders.First(x => x.Id == 1);
+        Console.WriteLine({|LC045:order.Customer|}.Name);
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.Customer).ToList();
+        var order = orders.First(x => x.Id == 1);
+        Console.WriteLine(order.Customer.Name);
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
+    [Fact]
+    public async Task FixCrime_ExtractionFromOrderedView_WrapsTheQuerySource()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        var order = orders.OrderBy(x => x.Id).First();
+        Console.WriteLine({|LC045:order.Customer|}.Name);
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(x => x.Customer).ToList();
+        var order = orders.OrderBy(x => x.Id).First();
+        Console.WriteLine(order.Customer.Name);
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
 }
