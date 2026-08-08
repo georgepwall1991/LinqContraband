@@ -158,6 +158,7 @@ namespace TestNamespace
     public class Customer
     {
         public int Id { get; set; }
+        public int Rating { get; set; }
         public string Name { get; set; }
         public Address Address { get; set; }
         public Customer GetDetached() => new Customer { Address = new Address() };
