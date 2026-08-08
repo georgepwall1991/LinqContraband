@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -178,6 +179,9 @@ public sealed partial class MissingIncludeAnalyzer
                     continue;
                 }
 
+                if (operation is IInvocationOperation nestedCallback)
+                    CollectNavigationCollectionCallbackEvents(nestedCallback);
+
                 CollectBindingAndEscapeEvents(operation);
 
                 if (operation is IPropertyReferenceOperation propertyReference)
@@ -326,6 +330,126 @@ public sealed partial class MissingIncludeAnalyzer
                         break;
                 }
             }
+        }
+
+        /// <summary>
+        /// Collects the navigation reads inside an inline callback over a navigation collection —
+        /// `order.Items.Sum(i => i.Product.Price)` reads `Items.Product` once per item, exactly
+        /// like the `foreach` over `order.Items` that LC045 already follows.
+        /// </summary>
+        /// <remarks>
+        /// The callback parameter binds to a navigation origin derived from the receiver's own
+        /// origin, so an escape of the parent entity makes these reads uncertain for free, and
+        /// the events map to the block holding the invocation because the lambda body has no
+        /// block of its own in this graph.
+        /// </remarks>
+        private void CollectNavigationCollectionCallbackEvents(IInvocationOperation invocation)
+        {
+            var compilation = invocation.SemanticModel?.Compilation;
+            if (
+                compilation == null
+                || !IsElementPreservingInMemoryView(invocation, compilation)
+                    && !IsNavigationCollectionReadCallback(invocation, compilation)
+            )
+            {
+                return;
+            }
+
+            if (
+                GetQuerySource(invocation)?.UnwrapConversions() is not IPropertyReferenceOperation
+                    navigation
+                || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                || !TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out var elementEntityType,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType)
+            )
+            {
+                return;
+            }
+
+            var callback = GetInlineCallback(invocation);
+            if (callback == null)
+                return;
+
+            var prefix = CombineNavigationPath(
+                parentOrigin.NavigationPrefix,
+                navigation.Property.Name
+            );
+            var elementOrigin = GetOrCreateNavigationOrigin(parentOrigin, elementEntityType, prefix);
+            originsByParameter[callback.Symbol.Parameters[0]] = elementOrigin;
+
+            foreach (var descendant in callback.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (descendant is IPropertyReferenceOperation read)
+                    CollectNavigationEvent(read);
+            }
+        }
+
+        /// <summary>
+        /// The exact <c>Enumerable</c> operators whose inline callback reads each element once and
+        /// whose own result is not an element of the sequence. The element-preserving views are
+        /// handled by the same caller, so they are not repeated here.
+        /// </summary>
+        private static bool IsNavigationCollectionReadCallback(
+            IInvocationOperation invocation,
+            Compilation compilation
+        )
+        {
+            var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+            var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+            return SymbolEqualityComparer.Default.Equals(
+                    method.ContainingType.OriginalDefinition,
+                    enumerable
+                )
+                && method.Parameters.Length == 2
+                && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
+                && method.Name
+                    is "Where"
+                        or "Any"
+                        or "All"
+                        or "Count"
+                        or "LongCount"
+                        or "Sum"
+                        or "Average"
+                        or "Min"
+                        or "Max"
+                        or "First"
+                        or "FirstOrDefault"
+                        or "Single"
+                        or "SingleOrDefault"
+                        or "Last"
+                        or "LastOrDefault"
+                        or "MinBy"
+                        or "MaxBy"
+                        or "ToDictionary"
+                        or "ToLookup"
+                        or "GroupBy"
+                        or "OrderBy"
+                        or "OrderByDescending";
+        }
+
+        private static IAnonymousFunctionOperation? GetInlineCallback(
+            IInvocationOperation invocation
+        )
+        {
+            var callbackOrdinal = invocation.Instance == null ? 1 : 0;
+            var callbackValue = invocation
+                .Arguments.FirstOrDefault(argument =>
+                    argument.Parameter?.Ordinal == callbackOrdinal
+                )
+                ?.Value;
+            var callback = TryGetInlineAnonymousFunction(callbackValue);
+            return callback != null
+                && callback.Symbol.Parameters.Length == 1
+                && IsEffectFreeCallback(callback)
+                ? callback
+                : null;
         }
 
         private void AddIterationOrigins(

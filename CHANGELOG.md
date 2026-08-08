@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now reads inline callbacks over a navigation collection. `order.Items.Sum(i => i.Product.Price)` invokes its callback once per item, so a navigation read inside one is a per-item read — an N+1 hidden inside an aggregate — but only a `foreach` over `order.Items` was followed. The `Where`/`Any`/`All`/`Count`/`Sum`/`Average`/`Min`/`Max`/`First`/`Single`/`Last`/`MinBy`/`MaxBy`/`ToDictionary`/`ToLookup`/`GroupBy`/`OrderBy` forms are covered. The callback parameter binds to a navigation origin derived from the receiver's own origin, so an escape of the parent entity makes those nested reads uncertain as well, and the callback must be an inline effect-free lambda.
+
 ## [5.7.18] - 2026-08-08
 
 ### Fixed

@@ -1854,7 +1854,9 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
   `SkipWhile`/`TakeWhile`, the `Count`/`Sum`/`Average`/`Min`/`Max` aggregates, and the
   `ToDictionary`/`ToLookup`/`GroupBy`/`SelectMany`/`DistinctBy` grouping callbacks — plus property-pattern reads, use
   the same origin-flow proof while the original materialized collection generation remains active. The grouping
-  operators keep the entities in their result, so they report the read inside the callback and still count as an escape. Effectful
+  operators keep the entities in their result, so they report the read inside the callback and still count as an escape.
+- Nested reads carry the navigation prefix through both a `foreach` over a navigation collection and an inline callback
+  over it, so `order.Items.Sum(i => i.Product.Price)` reports `Items.Product`. Effectful
   `Where` predicates and entity-returning `Select` projections stay conservative; scalar `Select` projections do
   not suppress later proven reads.
 - Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without
