@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.11] - 2026-08-08
+
 ### Fixed
 - LC045 now follows a materialized collection through an element-preserving in-memory view. `foreach (var o in orders.Where(o => o.IsActive))` — and the same loop over `OrderBy`/`OrderByDescending`/`ThenBy`/`ThenByDescending`, `Skip`, `Take`, `Distinct`, `Reverse`, `AsEnumerable`, chained in any order — iterates the very entity instances the query produced, but only a direct loop over the collection local was recognized, so the missing `Include` went unreported. The view must be an exact `System.Linq.Enumerable` operator, and callback-taking operators still require an inline effect-free lambda: a predicate that hands the entity to a helper could have loaded the navigation itself. `Select`, custom extensions, and instance methods such as `List<T>.Reverse()` remain boundaries.
 
