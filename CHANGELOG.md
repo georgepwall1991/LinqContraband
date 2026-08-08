@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.12] - 2026-08-08
+
 ### Fixed
 - LC045 now reads ordering key selectors over a materialized collection. `orders.OrderBy(o => o.Customer.Name)` reads the navigation once per element exactly like a `Where` predicate does — with lazy-loading proxies that is an N+1 hidden inside a sort, and without one the whole list sorts by a null — but only predicate and projection callbacks were followed. `OrderBy`, `OrderByDescending`, `ThenBy` and `ThenByDescending` now use the same inline-callback provenance, with the same requirement that the materialized collection origin is proven active at the call.
 
