@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.22] - 2026-08-08
+
 ### Fixed
 - LC045 now sees through a copy of a navigation collection. `foreach (var item in order.Items.ToList())` — the ordinary way to avoid mutating a child collection while enumerating it — holds the very same entity instances, but the copy hid every nested read behind it, as did `order.Items.ToArray()`, `order.Items.ToList()[0]` and `order.Items.ToList().Sum(i => i.Product.Id)`. The copy proof is reached only while resolving something rooted at a navigation property of a tracked entity, so it cannot see a query materializer such as `db.Orders.ToList()`, whose receiver is a `DbSet` rather than a navigation. `List<T>.ToArray()` binds to the instance method rather than to `Enumerable`, and is recognised explicitly.
 
