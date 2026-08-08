@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.16] - 2026-08-08
+
 ### Changed
 - LC045's code fix extends an existing `Include` instead of restating its path. A nested finding on a query that already had `Include(o => o.Customer)` produced `.Include(o => o.Customer).Include(x => x.Customer).ThenInclude(x => x.Address)` — valid, but redundant code the user had to clean up by hand. The fix now appends `.ThenInclude(x => x.Address)` to the existing chain, choosing the longest matching prefix and leaving later operators in place. String `Include` overloads return `IQueryable` rather than `IIncludableQueryable`, so nothing can be appended to them and the query source is wrapped as before.
 
