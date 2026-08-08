@@ -460,6 +460,11 @@ public sealed partial class MissingIncludeAnalyzer
             EntityOrigin? aliasSourceOrigin
         )
         {
+            var iteratesWholeCollection =
+                resultLocal != null
+                && forEach.Collection.UnwrapConversions() is ILocalReferenceOperation direct
+                && SymbolEqualityComparer.Default.Equals(direct.Local, resultLocal);
+
             foreach (var local in forEach.Locals)
             {
                 var origin = CreateOrigin(
@@ -472,7 +477,9 @@ public sealed partial class MissingIncludeAnalyzer
                     navigationPrefix,
                     aliasSourceOrigin
                 );
-                iterationBindings.Add(new IterationBinding(origin, forEach.Body.Syntax));
+                iterationBindings.Add(
+                    new IterationBinding(origin, forEach.Body.Syntax, iteratesWholeCollection)
+                );
             }
         }
 

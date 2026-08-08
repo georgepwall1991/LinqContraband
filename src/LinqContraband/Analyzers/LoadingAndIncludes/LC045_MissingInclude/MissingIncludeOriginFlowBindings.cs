@@ -464,14 +464,22 @@ public sealed partial class MissingIncludeAnalyzer
 
     private sealed class IterationBinding
     {
-        public IterationBinding(EntityOrigin origin, SyntaxNode body)
+        public IterationBinding(EntityOrigin origin, SyntaxNode body, bool iteratesWholeCollection)
         {
             Origin = origin;
             Body = body;
+            IteratesWholeCollection = iteratesWholeCollection;
         }
 
         public EntityOrigin Origin { get; }
         public SyntaxNode Body { get; }
+
+        /// <summary>
+        /// True only for a loop over the collection itself. A view such as
+        /// `orders.Where(...)` yields the same instances but not necessarily all of them, so it
+        /// cannot establish that every element was written.
+        /// </summary>
+        public bool IteratesWholeCollection { get; }
     }
 
     private readonly struct BindingDescriptor
