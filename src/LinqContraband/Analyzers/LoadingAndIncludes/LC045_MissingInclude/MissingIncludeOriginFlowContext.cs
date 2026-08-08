@@ -515,7 +515,7 @@ public sealed partial class MissingIncludeAnalyzer
                 return operation;
 
             while (
-                operation is IInvocationOperation view
+                UnwrapTranslatedQuery(operation) is IInvocationOperation view
                 && (
                     IsElementPreservingInMemoryView(view, compilation)
                     || (includeCopies && IsSequenceCopy(view, compilation))
@@ -1078,7 +1078,7 @@ public sealed partial class MissingIncludeAnalyzer
             if (resultLocal == null)
                 return false;
 
-            var unwrapped = operation.UnwrapConversions();
+            var unwrapped = UnwrapTranslatedQuery(operation);
             if (
                 unwrapped is ILocalReferenceOperation localReference
                 && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal)

@@ -270,6 +270,29 @@ class Program
     [Fact]
     public async Task TestInnocent_AwaitForeachOverProjection_StaysQuiet()
     {
+        // A real projection reshapes the stream and is out of scope. The example deliberately
+        // uses a rewrapping selector: `Select(o => o)` reshapes nothing and is proven below.
+        await VerifyAsync(
+            @"
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        await foreach (var order in db.Orders.Select(o => Rewrap(o)).AsAsyncEnumerable())
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+
+    static Order Rewrap(Order order) => order;
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_AwaitForeachOverIdentityProjection_Reports()
+    {
+        // `Select(o => o)` is what query syntax lowers `select o` to. It yields the very
+        // entities the stream produced, so it must not hide the missing eager load.
         await VerifyAsync(
             @"
     async Task Main()
@@ -277,10 +300,11 @@ class Program
         var db = new MyDbContext();
         await foreach (var order in db.Orders.Select(o => o).AsAsyncEnumerable())
         {
-            Console.WriteLine(order.Customer.Name);
+            Console.WriteLine({|#0:order.Customer|}.Name);
         }
     }
-"
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 

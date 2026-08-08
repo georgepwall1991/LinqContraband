@@ -142,7 +142,7 @@ public sealed partial class MissingIncludeAnalyzer
         Compilation compilation
     )
     {
-        source = source?.UnwrapConversions();
+        source = source == null ? null : UnwrapTranslatedQuery(source);
         if (
             source is IInvocationOperation directMaterializer
             && directMaterializer.Syntax.SyntaxTree == materializer.Syntax.SyntaxTree
@@ -259,6 +259,9 @@ public sealed partial class MissingIncludeAnalyzer
         {
             return false;
         }
+
+        if (IsIdentityProjection(invocation, enumerable))
+            return true;
 
         var callbackOrdinal = method.Name switch
         {
@@ -471,6 +474,77 @@ public sealed partial class MissingIncludeAnalyzer
         return false;
     }
 
+    /// <summary>
+    /// Query-comprehension syntax wraps its lowered method chain in an
+    /// <see cref="ITranslatedQueryOperation"/>. Peeling it lets one chain walk serve both
+    /// <c>from o in db.Orders select o</c> and the <c>db.Orders.Select(o =&gt; o)</c> it lowers to.
+    /// </summary>
+    private static IOperation UnwrapTranslatedQuery(IOperation operation)
+    {
+        var current = operation.UnwrapConversions();
+        while (current is ITranslatedQueryOperation translated)
+            current = translated.Operation.UnwrapConversions();
+
+        return current;
+    }
+
+    /// <summary>
+    /// <c>Select(x =&gt; x)</c> reshapes nothing: it yields the very instances its source produced.
+    /// LINQ query syntax lowers every trailing <c>select x</c> to exactly this projection, so
+    /// refusing to see through it would hide the missing eager load behind ordinary
+    /// query-comprehension syntax. Only an inline single-parameter lambda whose body is that same
+    /// parameter qualifies, and its return type must be the parameter's own type — an upcast or any
+    /// other selector is a real projection and stays out of scope.
+    /// </summary>
+    private static bool IsIdentityProjection(
+        IInvocationOperation invocation,
+        INamedTypeSymbol? linqType
+    )
+    {
+        if (linqType == null)
+            return false;
+
+        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        if (
+            method.Name != "Select"
+            || !SymbolEqualityComparer.Default.Equals(
+                method.ContainingType.OriginalDefinition,
+                linqType
+            )
+        )
+        {
+            return false;
+        }
+
+        var selector = invocation
+            .Arguments.FirstOrDefault(argument => argument.Parameter?.Ordinal == 1)
+            ?.Value;
+        if (
+            TryGetInlineAnonymousFunction(selector) is not { } callback
+            || callback.Symbol.Parameters.Length != 1
+        )
+        {
+            return false;
+        }
+
+        var parameter = callback.Symbol.Parameters[0];
+        return SymbolEqualityComparer.Default.Equals(parameter.Type, callback.Symbol.ReturnType)
+            && TryGetCallbackReturnedValue(callback) is { } returned
+            && IsDirectParameterReference(returned, parameter);
+    }
+
+    /// <summary>
+    /// The single value an expression-bodied or single-<c>return</c> callback yields, or
+    /// <see langword="null"/> when the body does anything else.
+    /// </summary>
+    private static IOperation? TryGetCallbackReturnedValue(IAnonymousFunctionOperation callback)
+    {
+        if (callback.Body is not { } body || body.Operations.Length != 1)
+            return null;
+
+        return body.Operations[0] is IReturnOperation { ReturnedValue: { } value } ? value : null;
+    }
+
     private static bool IsExactShapePreservingQueryStep(IInvocationOperation invocation)
     {
         var compilation = invocation.SemanticModel?.Compilation;
@@ -481,7 +555,10 @@ public sealed partial class MissingIncludeAnalyzer
         var containingType = method.ContainingType.OriginalDefinition;
         var queryable = compilation.GetTypeByMetadataName("System.Linq.Queryable");
         if (SymbolEqualityComparer.Default.Equals(containingType, queryable))
-            return ShapePreservingQueryableOperators.Contains(method.Name);
+        {
+            return ShapePreservingQueryableOperators.Contains(method.Name)
+                || IsIdentityProjection(invocation, queryable);
+        }
 
         var entityFramework = compilation.GetTypeByMetadataName(
             "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"

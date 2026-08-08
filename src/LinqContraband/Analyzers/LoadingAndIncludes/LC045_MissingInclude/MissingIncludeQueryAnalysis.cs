@@ -48,7 +48,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         while (current != null)
         {
-            current = current.UnwrapConversions();
+            current = UnwrapTranslatedQuery(current);
 
             if (current is IInvocationOperation invocation)
             {
