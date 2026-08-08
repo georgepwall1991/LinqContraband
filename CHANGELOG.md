@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now sees through an element-preserving view of a navigation collection. `foreach (var item in order.Items.Where(i => i.Active))` — and the `OrderBy`/`OrderByDescending`/`ThenBy`/`Skip`/`Take`/`Distinct`/`AsEnumerable` forms, chained in any order — iterates the very instances `order.Items` holds, but only a direct `order.Items` reference was recognised, so the nested missing `Include` went unreported. The operator set and its effect-free inline callback requirement are shared with the collection-level view proof, so `Select`, custom extensions and effectful predicates remain boundaries.
+
 ## [5.7.17] - 2026-08-08
 
 ### Fixed
