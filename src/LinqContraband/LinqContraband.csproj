@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.30</Version>
+        <Version>5.7.31</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>The LC045 code fix no longer emits code that does not compile for LINQ query syntax. It wrapped the lowered identity projection, producing select o.Include(...) where the range variable is an entity rather than a queryable (CS0411); every query-syntax diagnostic was affected since 5.7.28. The fix now goes on the expression the query draws from: from o in db.Orders becomes from o in db.Orders.Include(x =&gt; x.Customer), and an existing chain is extended in place.</PackageReleaseNotes>
+        <PackageReleaseNotes>Adds a fixer-coverage contract for LC045: every shape the analyzer reports must offer a fix that clears the diagnostic and still emits. This is the guard whose absence let 5.7.28 ship an uncompilable query-syntax rewrite. Auditing the 25-shape corpus against this release found no further defects. No analyzer or fixer behaviour changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
