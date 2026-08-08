@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now sees through an identity projection `Select(x => x)`, which is what LINQ query syntax lowers a trailing `select x` to. `from o in db.Orders where o.Id > 0 select o` was invisible to the rule — every query-comprehension form was, because the lowered projection bailed the chain proof — so a missing `Include` written in query syntax went unreported. The same proof covers the in-memory view form (`from x in orders ... select x`) and the query-comprehension wrapper is peeled so both spellings share one walk. The selector must be an inline single-parameter lambda whose body is that same parameter and whose return type is the parameter's own type: an upcast, a rewrapping call, a method group, and the indexed `(x, i)` overload all remain real projections and stay out of scope.
+
 ## [5.7.27] - 2026-08-08
 
 ### Fixed

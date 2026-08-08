@@ -516,8 +516,8 @@ namespace Microsoft.EntityFrameworkCore
     }
 
     [Theory]
-    [InlineData("var aliases = orders.Select(order => order).ToList();")]
     [InlineData("var aliases = orders.Select(order => (object)order).ToList();")]
+    [InlineData("var aliases = orders.Select(order => Rewrap(order)).ToList();")]
     public async Task TestInnocent_EntityReturningSelectKeepsLaterReadsConservative(string select)
     {
         await VerifyQueryConsumerAsync(
@@ -534,7 +534,31 @@ namespace Microsoft.EntityFrameworkCore
             Console.WriteLine(order.Customer.Name);
         }
     }
+
+    static Order Rewrap(Order order) => order;
 "
+        );
+    }
+
+    [Fact]
+    public async Task TestCrime_IdentityProjectedAliasKeepsLaterReadsReportable()
+    {
+        // `orders.Select(order => order)` runs no user code and loads nothing, so unlike an
+        // entity-returning projection it cannot be the loading mechanism the later read needs.
+        await VerifyQueryConsumerAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        var aliases = orders.Select(order => order).ToList();
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 
