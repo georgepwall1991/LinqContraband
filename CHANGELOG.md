@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A fixer-coverage contract test for LC045: for every shape the analyzer reports, a fix must be offered, applying it must clear the diagnostic, and the fixed document must **emit**. This is the guard whose absence let 5.7.28 ship a code fix that produced uncompilable code — widening what the analyzer reported silently widened what the fixer had to handle, and no test asked the fixer about the new shapes. The corpus covers 25 shapes, and the test is verified against the 5.7.28 defect: reintroducing it fails three cases.
+
 ## [5.7.30] - 2026-08-08
 
 ### Fixed
