@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.11</Version>
+        <Version>5.7.12</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now follows a materialized collection through an element-preserving in-memory view. Iterating orders.Where(...), .OrderBy(...), .Skip/.Take, .Distinct, .Reverse or .AsEnumerable yields the same entity instances the query produced, but only a direct loop over the collection was recognized, so the missing Include went unreported.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reads ordering key selectors over a materialized collection. orders.OrderBy(o =&gt; o.Customer.Name) reads the navigation once per element exactly like a Where predicate does — an N+1 hidden inside a sort with lazy-loading proxies, or a list sorted entirely by null without one.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
