@@ -23,6 +23,13 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 /// silently widened what the fixer had to handle, and the fixer went on wrapping the node it was
 /// handed — producing <c>select o.Include(...)</c> for every query-syntax finding, which does not
 /// compile. Nothing failed, because no test asked the fixer about the newly reported shapes.
+/// One shape deliberately stays out: `await foreach (var o in db.Orders)`, whose fix must restore
+/// the AsAsyncEnumerable bridge. Modelling it needs a DbSet that is also an IAsyncEnumerable, and
+/// adding that to this shared mock makes `Select` ambiguous between the queryable and async query
+/// patterns (CS0121/CS1940), which silently stops the query-syntax and identity-projection shapes
+/// here from reporting at all. That rewrite is covered by its own test with its own mock, and
+/// mutation isolation confirms that test fails when the bridge restoration is removed.
+///
 /// Adding a shape to the analyzer means adding it here IN THE SAME CHANGE. That is part of the
 /// rule, not an optional extra: this corpus went stale for three releases — the widened-source
 /// shapes of 5.7.32/5.7.33 and the expression-conditional shapes of 5.7.38 were reportable but
@@ -108,7 +115,10 @@ public sealed class MissingIncludeFixerCoverageContractTests
         new object[] { "CoalesceNavigationRead", @"        var orders = db.Orders.ToList();
         foreach (var o in orders) { var c = o.Customer ?? new Customer(); System.Console.WriteLine(c.Name); }" },
         new object[] { "IfElseRead", @"        var orders = db.Orders.ToList();
-        foreach (var o in orders) { string s; if (o.Id > 0) s = o.Customer.Name; else s = """"; System.Console.WriteLine(s); }" }
+        foreach (var o in orders) { string s; if (o.Id > 0) s = o.Customer.Name; else s = """"; System.Console.WriteLine(s); }" },
+        new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
+        new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }
         };
     }
 
@@ -238,11 +248,16 @@ public sealed class MissingIncludeFixerCoverageContractTests
 
     private static string BuildSource(string body)
     {
+        // An await-bearing shape needs an async signature; the bridge-restoring rewrite it
+        // exercises is the most intricate fix the rule performs.
+        var signature = body.Contains("await ") ? "async Task Main()" : "void Main()";
         return Usings
             + @"
 class Program
 {
-    void Main()
+    "
+            + signature
+            + @"
     {
         var db = new MyDbContext();
 "
@@ -313,6 +328,7 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IQueryable<T> source) => null;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => null;
     }
 }
