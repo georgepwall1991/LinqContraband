@@ -402,4 +402,101 @@ public partial class MissingIncludeEdgeCasesTests
 "
         );
     }
+
+    [Fact]
+    public async Task TestCrime_PrivateMethodTakingTheCollection_Reports()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Print(orders);
+    }
+
+    private void Print(List<Order> orders)
+    {
+        foreach (var order in orders)
+        {
+            Console.WriteLine({|#0:order.Customer|}.Name);
+        }
+    }
+",
+            Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_PrivateMethodTakingAnIncludedCollection_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ToList();
+        Print(orders);
+    }
+
+    private void Print(List<Order> orders)
+    {
+        foreach (var order in orders)
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_CollectionCalleeThatHandsTheCollectionOn_MustStayQuiet()
+    {
+        // The callee passes the collection to a helper that could load the navigation.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Print(orders);
+    }
+
+    private void Print(List<Order> orders)
+    {
+        Hydrate(orders);
+        foreach (var order in orders)
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+
+    void Hydrate(List<Order> orders) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_PublicMethodTakingTheCollection_MustStayQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Print(orders);
+    }
+
+    public void Print(List<Order> orders)
+    {
+        foreach (var order in orders)
+        {
+            Console.WriteLine(order.Customer.Name);
+        }
+    }
+"
+        );
+    }
 }
