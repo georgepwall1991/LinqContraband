@@ -615,6 +615,14 @@ public sealed partial class MissingIncludeAnalyzer
             if (callSite != null && TryLiftEntityCalleeReads(targetMethod, arguments, syntax, callSite))
                 return;
 
+            if (
+                callSite != null
+                && TryLiftCollectionCalleeReads(targetMethod, arguments, syntax, callSite)
+            )
+            {
+                return;
+            }
+
             AddCallSource(instance);
             foreach (var argument in arguments)
                 AddCallSource(argument.Value);
@@ -1190,6 +1198,122 @@ public sealed partial class MissingIncludeAnalyzer
             }
 
             return null;
+        }
+
+
+        /// <summary>
+        /// Lifts the reads of a private method in the same file that is handed the collection and
+        /// only iterates it: <c>private void Print(List&lt;Order&gt; orders) { foreach ... }</c>.
+        /// The callee's loop variable gets an iteration origin bound at the call, exactly as the
+        /// closure form does, so every existing fact applies unchanged.
+        /// </summary>
+        private bool TryLiftCollectionCalleeReads(
+            IMethodSymbol? targetMethod,
+            IEnumerable<IArgumentOperation> arguments,
+            SyntaxNode callSyntax,
+            IOperation callSite
+        )
+        {
+            if (
+                targetMethod is not { MethodKind: MethodKind.Ordinary }
+                || targetMethod.Parameters.Length != 1
+                || TryGetSameFilePrivateMethodBody(targetMethod, callSite) is not { } declaration
+            )
+            {
+                return false;
+            }
+
+            var parameter = targetMethod.Parameters[0];
+
+            IOperation? argumentValue = null;
+            foreach (var argument in arguments)
+            {
+                if (SymbolEqualityComparer.Default.Equals(argument.Parameter, parameter))
+                    argumentValue = argument.Value;
+            }
+
+            if (argumentValue == null || !IsResultCollectionReference(argumentValue))
+                return false;
+
+            if (!IsParameterOnlyIterated(declaration, parameter))
+                return false;
+
+            var lifted = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IForEachLoopOperation forEach
+                    || forEach.Collection.UnwrapConversions()
+                        is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter)
+                )
+                {
+                    continue;
+                }
+
+                foreach (var local in forEach.Locals)
+                {
+                    CreateOrigin(
+                        local,
+                        initiallyBound: true,
+                        canDetachFromRoot: true,
+                        isIteration: true,
+                        bindingPosition: callSyntax.SpanStart,
+                        entityType,
+                        navigationPrefix: string.Empty
+                    );
+                }
+
+                foreach (var inner in forEach.Body.Descendants())
+                {
+                    if (inner is IPropertyReferenceOperation read)
+                        CollectNavigationEvent(read, callSyntax);
+                }
+
+                lifted = true;
+            }
+
+            return lifted;
+        }
+
+        /// <summary>
+        /// True when every reference to the parameter is the collection of a <c>foreach</c>. Any
+        /// other use — passing it on, indexing it, materializing it again — leaves the argument an
+        /// escape, because the callee could then hand the entities somewhere that loads them.
+        /// </summary>
+        private bool IsParameterOnlyIterated(IOperation declaration, IParameterSymbol parameter)
+        {
+            var sawLoop = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter)
+                )
+                {
+                    continue;
+                }
+
+                var node = (IOperation)reference;
+                while (node.Parent is IConversionOperation or IParenthesizedOperation)
+                    node = node.Parent;
+
+                if (
+                    node.Parent is not IForEachLoopOperation forEach
+                    || !ReferenceEquals(forEach.Collection.UnwrapConversions(), reference)
+                )
+                {
+                    return false;
+                }
+
+                sawLoop = true;
+            }
+
+            return sawLoop;
         }
 
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
