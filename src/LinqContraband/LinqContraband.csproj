@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.38</Version>
+        <Version>5.7.39</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reports a navigation read on a loop variable inside an expression-level conditional (a ternary, a switch expression, ?. on the navigation, or ??), closing the gap 5.7.37 recorded. The loop variable's binding was attached to the block holding the body's earliest-starting operation, which for that shape is the merge block after the branches; it is now attached to the block the body is entered through.</PackageReleaseNotes>
+        <PackageReleaseNotes>Sizes the LC045 non-EF perf guardrail to run in seconds rather than minutes. It took 124s on a CI runner against a 120s budget and flaked; a smaller corpus still exercises the per-invocation decision it protects. Test-only; no analyzer behaviour changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
