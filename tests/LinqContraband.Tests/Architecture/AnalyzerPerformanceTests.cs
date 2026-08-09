@@ -138,8 +138,12 @@ public partial class AnalyzerPerformanceTests
 
     private static string GenerateLc045NonEfInvocationSource()
     {
-        const int methodCount = 200;
-        const int callsPerMethod = 10;
+        // Sized to run in seconds like its siblings rather than minutes. The first version used
+        // 200 x 10 and took 124s on a CI runner against a 120s budget, so it flaked — a guardrail
+        // that fails on a slow machine reports load, not a regression. 500 invocations still
+        // exercise the per-invocation decision this test exists to protect.
+        const int methodCount = 100;
+        const int callsPerMethod = 5;
         var source = new StringBuilder();
         source.AppendLine(
             """
