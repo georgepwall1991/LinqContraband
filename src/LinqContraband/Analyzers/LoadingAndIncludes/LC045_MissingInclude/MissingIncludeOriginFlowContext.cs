@@ -403,7 +403,7 @@ public sealed partial class MissingIncludeAnalyzer
         )
         {
             var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-            var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+            var enumerable = WellKnownSymbols.For(compilation).Enumerable;
             return SymbolEqualityComparer.Default.Equals(
                     method.ContainingType.OriginalDefinition,
                     enumerable

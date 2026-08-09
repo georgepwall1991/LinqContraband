@@ -120,6 +120,56 @@ public partial class AnalyzerPerformanceTests
         Assert.Contains(diagnostics, diagnostic => diagnostic.Id == MissingIncludeAnalyzer.DiagnosticId);
     }
 
+    [Fact]
+    public async Task LC045_NonEfInvocationHeavyFile_CompletesWithinBudget()
+    {
+        // LC045 examines every invocation to decide whether it materializes entities. A file with
+        // thousands of ordinary calls and no EF code at all is the shape that pays for that
+        // decision without ever producing a diagnostic, so it is where per-operation work shows up.
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc045NonEfInvocationSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new MissingIncludeAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == MissingIncludeAnalyzer.DiagnosticId);
+    }
+
+    private static string GenerateLc045NonEfInvocationSource()
+    {
+        const int methodCount = 200;
+        const int callsPerMethod = 10;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System.Collections.Generic;
+            using System.Linq;
+
+            namespace PerfApp;
+
+            public class NonEfCalls
+            {
+            """);
+
+        for (var m = 0; m < methodCount; m++)
+        {
+            source.AppendLine($"    public void M{m}()");
+            source.AppendLine("    {");
+            source.AppendLine("        var values = new List<int>();");
+            for (var i = 0; i < callsPerMethod; i++)
+            {
+                source.AppendLine($"        var q{i} = values.Where(x => x > {i}).OrderBy(x => x).ToList();");
+                source.AppendLine($"        System.Console.WriteLine(q{i}.Count);");
+            }
+
+            source.AppendLine("    }");
+        }
+
+        source.AppendLine("}");
+        return source.ToString();
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> GetDiagnosticsWithinAsync(
         DiagnosticAnalyzer analyzer,
         Compilation compilation,

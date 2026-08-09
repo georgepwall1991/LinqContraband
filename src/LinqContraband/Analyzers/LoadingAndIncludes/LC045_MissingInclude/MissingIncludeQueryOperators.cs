@@ -78,8 +78,8 @@ public sealed partial class MissingIncludeAnalyzer
         if (method.Parameters.Length == 0)
             return false;
 
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
-        var queryable = compilation.GetTypeByMetadataName("System.Linq.Queryable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
+        var queryable = WellKnownSymbols.For(compilation).Queryable;
         var containingType = method.ContainingType.OriginalDefinition;
         var isEnumerable = SymbolEqualityComparer.Default.Equals(containingType, enumerable);
         var isQueryable = SymbolEqualityComparer.Default.Equals(containingType, queryable);
@@ -136,12 +136,8 @@ public sealed partial class MissingIncludeAnalyzer
             };
         }
 
-        var entityFramework = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
-        var cancellationToken = compilation.GetTypeByMetadataName(
-            "System.Threading.CancellationToken"
-        );
+        var entityFramework = WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
+        var cancellationToken = WellKnownSymbols.For(compilation).CancellationToken;
         if (
             !SymbolEqualityComparer.Default.Equals(containingType, entityFramework)
             || method.Parameters.Length == 0
@@ -208,9 +204,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         if (expressionWrapped)
         {
-            var expression = compilation.GetTypeByMetadataName(
-                "System.Linq.Expressions.Expression`1"
-            );
+            var expression = WellKnownSymbols.For(compilation).Expression;
             if (
                 !SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, expression)
                 || type.TypeArguments.Length != 1
@@ -224,7 +218,7 @@ public sealed partial class MissingIncludeAnalyzer
                 return false;
         }
 
-        var func = compilation.GetTypeByMetadataName("System.Func`2");
+        var func = WellKnownSymbols.For(compilation).Func;
         return SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, func)
             && type.TypeArguments.Length == 2
             && type.TypeArguments[1].SpecialType == SpecialType.System_Boolean;
@@ -242,7 +236,7 @@ public sealed partial class MissingIncludeAnalyzer
         if (compilation == null || method.Parameters.Length == 0)
             return false;
 
-        var frameworkEnumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var frameworkEnumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             frameworkEnumerable == null
             || !SymbolEqualityComparer.Default.Equals(
