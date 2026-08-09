@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.50] - 2026-08-09
+
 ### Fixed
 - LC045 now reports a navigation read inside a private method in the same file that is handed the entity and only reads navigations on it. `private void Render(Order o) => Console.WriteLine(o.Customer.Name);` called from a loop over the collection was silenced, because passing the entity was an escape. This is the shape real code uses, where 5.7.48 covered only local functions. A private method cannot be overridden, so the body found is the body that runs, and requiring the same syntax tree keeps the semantic model free. Anything callable from outside the type, a callee that loads the navigation, and a callee that passes the entity on all keep the escape.
 - This also closes a false negative in an existing case: `orders.ToDictionary(o => Key(o))` where `Key` reads a navigation was quiet because the helper call was an escape, and now reports.
