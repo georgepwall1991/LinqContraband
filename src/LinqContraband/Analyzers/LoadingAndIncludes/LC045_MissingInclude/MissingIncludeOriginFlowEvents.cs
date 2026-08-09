@@ -581,7 +581,8 @@ public sealed partial class MissingIncludeAnalyzer
                 invocation.Syntax.Span.End,
                 invocation.Instance,
                 invocation.Arguments,
-                invocation.TargetMethod
+                invocation.TargetMethod,
+                invocation
             );
         }
 
@@ -601,7 +602,8 @@ public sealed partial class MissingIncludeAnalyzer
             int completionPosition,
             IOperation? instance,
             IEnumerable<IArgumentOperation> arguments,
-            IMethodSymbol? targetMethod
+            IMethodSymbol? targetMethod,
+            IOperation? callSite = null
         )
         {
             var escapedOrigins = new Dictionary<int, List<string?>>();
@@ -610,7 +612,7 @@ public sealed partial class MissingIncludeAnalyzer
             // A callee whose only use of the entity it is handed is reading navigations on it
             // cannot be the loading mechanism those reads need, so the argument is not an escape
             // and the reads belong to this call.
-            if (TryLiftEntityCalleeReads(targetMethod, arguments, syntax))
+            if (callSite != null && TryLiftEntityCalleeReads(targetMethod, arguments, syntax, callSite))
                 return;
 
             AddCallSource(instance);
@@ -1029,12 +1031,13 @@ public sealed partial class MissingIncludeAnalyzer
         private bool TryLiftEntityCalleeReads(
             IMethodSymbol? targetMethod,
             IEnumerable<IArgumentOperation> arguments,
-            SyntaxNode callSyntax
+            SyntaxNode callSyntax,
+            IOperation callSite
         )
         {
             if (
-                targetMethod is not { MethodKind: MethodKind.LocalFunction }
-                || !TryGetEntityReadOnlyCallee(targetMethod, out var declaration, out var parameter)
+                targetMethod is not { MethodKind: MethodKind.LocalFunction or MethodKind.Ordinary }
+                || !TryGetEntityReadOnlyCallee(targetMethod, callSite, out var declaration, out var parameter)
             )
             {
                 return false;
@@ -1092,24 +1095,27 @@ public sealed partial class MissingIncludeAnalyzer
         /// </summary>
         private bool TryGetEntityReadOnlyCallee(
             IMethodSymbol targetMethod,
-            out ILocalFunctionOperation declaration,
+            IOperation callSite,
+            out IOperation declaration,
             out IParameterSymbol parameter
         )
         {
             declaration = null!;
             parameter = null!;
 
-            ILocalFunctionOperation? found = null;
+            IOperation? found = null;
             foreach (var candidate in scope.LocalFunctions)
             {
                 if (SymbolEqualityComparer.Default.Equals(candidate.Symbol, targetMethod))
                     found = candidate;
             }
 
-            if (found == null || found.Symbol.Parameters.Length != 1)
+            found ??= TryGetSameFilePrivateMethodBody(targetMethod, callSite);
+
+            if (found == null || targetMethod.Parameters.Length != 1)
                 return false;
 
-            var candidateParameter = found.Symbol.Parameters[0];
+            var candidateParameter = targetMethod.Parameters[0];
             if (!entityTypes.Contains(candidateParameter.Type as INamedTypeSymbol ?? entityType))
                 return false;
 
@@ -1140,6 +1146,50 @@ public sealed partial class MissingIncludeAnalyzer
             declaration = found;
             parameter = candidateParameter;
             return true;
+        }
+
+        /// <summary>
+        /// The body of an ordinary private method declared in the same syntax tree as the call.
+        /// Same tree keeps this free: the semantic model already covers it, so no other file is
+        /// bound to answer the question. A private method cannot be overridden, so the body found
+        /// here is the body that runs.
+        ///
+        /// Callers elsewhere in the compilation are not a problem, because each call site is judged
+        /// against the analysis that owns its argument; a call this analysis does not track
+        /// resolves nothing and is skipped.
+        ///
+        /// The same-tree requirement cannot be pinned by a test — the analyzer test harness compiles
+        /// a single file — but it is not decoration: <c>GetOperation</c> is only valid for syntax
+        /// belonging to the model's own tree, so without it this would ask a semantic model about a
+        /// tree it does not own.
+        /// </summary>
+        private IOperation? TryGetSameFilePrivateMethodBody(
+            IMethodSymbol targetMethod,
+            IOperation callSite
+        )
+        {
+            if (
+                targetMethod.MethodKind != MethodKind.Ordinary
+                || targetMethod.DeclaredAccessibility != Accessibility.Private
+                || targetMethod.IsAbstract
+                || targetMethod.PartialImplementationPart != null
+                || callSite.SemanticModel is not { } semanticModel
+            )
+            {
+                return null;
+            }
+
+            foreach (var reference in targetMethod.DeclaringSyntaxReferences)
+            {
+                if (reference.SyntaxTree != callSite.Syntax.SyntaxTree)
+                    continue;
+
+                var declaration = reference.GetSyntax(cancellationToken);
+                if (semanticModel.GetOperation(declaration, cancellationToken) is { } body)
+                    return body;
+            }
+
+            return null;
         }
 
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
