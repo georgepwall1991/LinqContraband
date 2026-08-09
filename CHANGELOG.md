@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.51] - 2026-08-09
+
 ### Fixed
 - LC045 now reports a navigation read inside a private method in the same file that is handed the materialized collection and only iterates it. `Print(orders)` where `private void Print(List<Order> orders) { foreach (var o in orders) ... }` was silenced, because passing the collection was an escape. This is the collection-passing counterpart to the closure form of 5.7.47 and the entity-passing form of 5.7.50. The callee's loop variable gets an iteration origin bound at the call, so every existing fact applies unchanged. Handing the collection on, indexing it, re-materializing it, or declaring the method anything other than private all keep the escape.
 

@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.50</Version>
+        <Version>5.7.51</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reports a navigation read inside a private method in the same file that is handed the entity and only reads navigations on it — the shape real code uses, where 5.7.48 covered only local functions. A private method cannot be overridden and the same-tree requirement keeps the semantic model free. Anything callable from outside the type, a callee that loads, and one that passes the entity on all stay escapes.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reports a navigation read inside a private method in the same file that is handed the materialized collection and only iterates it — the collection-passing counterpart to 5.7.47 and 5.7.50. Handing the collection on, indexing it, re-materializing it, or a non-private method all keep the escape.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
