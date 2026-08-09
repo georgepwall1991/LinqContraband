@@ -285,7 +285,76 @@ public sealed partial class MissingIncludeAnalyzer
             && invocation.Instance != null;
     }
 
+    private static readonly object TrueBox = true;
+    private static readonly object FalseBox = false;
+
+    /// <summary>
+    /// Whether an invocation is an element-preserving in-memory view is asked repeatedly for the
+    /// same operation — the peeling loop, the result-collection test, the callback proof and the
+    /// materialized-source recursion all ask independently, which measured at 7x per operation on
+    /// a plain materializer and 17x on a chained view. Each callback-bearing answer walks the
+    /// lambda body, so the repetition was the rule's largest avoidable cost.
+    ///
+    /// The verdict depends only on the operation and its compilation, so it is memoized weakly by
+    /// operation: entries die with the operation tree, which an IDE discards on every edit.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        IOperation,
+        object
+    > ElementPreservingViewCache = new();
+
+    /// <summary>
+    /// The operator names an element-preserving view can have. Checked before the cache is
+    /// probed, because most invocations asked about — every <c>Console.WriteLine</c> and every
+    /// materializer — are not view operators at all, and for those a set lookup is cheaper than
+    /// a weak-table probe.
+    /// </summary>
+    private static readonly System.Collections.Immutable.ImmutableHashSet<string> ElementPreservingOperatorNames =
+        System.Collections.Immutable.ImmutableHashSet.Create(
+            System.StringComparer.Ordinal,
+            "Where",
+            "SkipWhile",
+            "TakeWhile",
+            "OrderBy",
+            "OrderByDescending",
+            "ThenBy",
+            "ThenByDescending",
+            "Skip",
+            "Take",
+            "Distinct",
+            "Reverse",
+            "AsEnumerable",
+            // An identity projection is element preserving too; the verdict for it is decided
+            // below rather than by name alone.
+            "Select"
+        );
+
     private static bool IsElementPreservingInMemoryView(
+        IInvocationOperation invocation,
+        Compilation compilation
+    )
+    {
+        var candidate = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        if (!ElementPreservingOperatorNames.Contains(candidate.Name))
+            return false;
+
+        if (ElementPreservingViewCache.TryGetValue(invocation, out var cached))
+            return ReferenceEquals(cached, TrueBox);
+
+        var computed = ComputeIsElementPreservingInMemoryView(invocation, compilation);
+        try
+        {
+            ElementPreservingViewCache.Add(invocation, computed ? TrueBox : FalseBox);
+        }
+        catch (System.ArgumentException)
+        {
+            // Raced with another thread; both computed the same verdict.
+        }
+
+        return computed;
+    }
+
+    private static bool ComputeIsElementPreservingInMemoryView(
         IInvocationOperation invocation,
         Compilation compilation
     )
