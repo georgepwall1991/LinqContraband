@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The LC045 non-EF perf guardrail added in 5.7.34 is sized to run in seconds rather than minutes. It used a 2,000-invocation corpus and took 124s on a CI runner against a 120s budget, so it flaked on an unrelated release commit — a guardrail that fails on a slow machine reports load, not a regression. A 500-invocation corpus still exercises the per-invocation decision it protects, with headroom.
+
 ## [5.7.38] - 2026-08-09
 
 ### Fixed
