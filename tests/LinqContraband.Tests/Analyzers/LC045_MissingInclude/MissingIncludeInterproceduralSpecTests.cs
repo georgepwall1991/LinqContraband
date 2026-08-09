@@ -101,10 +101,11 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestDeliberate_EntityCalleeInvokedFromTwoPlaces_MustStayQuiet()
+    public async Task TestCrime_EntityCalleeInvokedFromTwoPlaces_ReportsOnlyTheUnincludedCall()
     {
-        // Two call sites can hand the callee different entities, so the parameter's origin is
-        // ambiguous.
+        // Each call site is judged on its own: the loop over the included query is satisfied, the
+        // loop over the bare query is not. The parameter binds per call, so one report, attributed
+        // to the query that is actually missing the Include.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -113,7 +114,7 @@ public partial class MissingIncludeEdgeCasesTests
         var orders = db.Orders.Include(o => o.Customer).ToList();
         var others = db.Orders.ToList();
 
-        void Show(Order order) => Console.WriteLine(order.Customer.Name);
+        void Show(Order order) => Console.WriteLine({|#0:order.Customer|}.Name);
 
         foreach (var order in orders)
         {
@@ -125,7 +126,8 @@ public partial class MissingIncludeEdgeCasesTests
             Show(order);
         }
     }
-"
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 

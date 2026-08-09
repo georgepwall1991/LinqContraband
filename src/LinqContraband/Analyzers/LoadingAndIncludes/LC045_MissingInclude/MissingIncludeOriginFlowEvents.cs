@@ -1050,17 +1050,36 @@ public sealed partial class MissingIncludeAnalyzer
             if (argumentValue == null || !TryResolveEntityOrigin(argumentValue, out var origin))
                 return false;
 
+            // Bound only while this call's reads are collected. Each call site hands the callee a
+            // different entity, and origins are resolved as the reads are collected, so the reads
+            // of one call cannot pick up another's binding. A call whose argument this analysis
+            // does not track resolves nothing above and is skipped, which is what lets a helper
+            // shared between an included query and a bare one report only for the bare one.
+            //
+            // The restore below states that the binding is scoped to this call rather than
+            // guarding a reachable bug: the next lift overwrites it first, so no test can pin it.
+            var hadPrevious = originsByParameter.TryGetValue(parameter, out var previous);
             originsByParameter[parameter] = origin;
 
             var lifted = false;
-            foreach (var descendant in declaration.Descendants())
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (descendant is IPropertyReferenceOperation read)
+                foreach (var descendant in declaration.Descendants())
                 {
-                    CollectNavigationEvent(read, callSyntax);
-                    lifted = true;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (descendant is IPropertyReferenceOperation read)
+                    {
+                        CollectNavigationEvent(read, callSyntax);
+                        lifted = true;
+                    }
                 }
+            }
+            finally
+            {
+                if (hadPrevious)
+                    originsByParameter[parameter] = previous!;
+                else
+                    originsByParameter.Remove(parameter);
             }
 
             return lifted;
@@ -1088,9 +1107,6 @@ public sealed partial class MissingIncludeAnalyzer
             }
 
             if (found == null || found.Symbol.Parameters.Length != 1)
-                return false;
-
-            if (CountCallsTo(targetMethod) != 1)
                 return false;
 
             var candidateParameter = found.Symbol.Parameters[0];
