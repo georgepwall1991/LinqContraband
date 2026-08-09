@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.33</Version>
+        <Version>5.7.34</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reports a foreach directly over a query widened to IEnumerable&lt;T&gt;. IEnumerable&lt;Order&gt; source = db.Orders; foreach (var o in source) runs the query exactly as iterating db.Orders does, and the same loop over source.ToList() was already reported. The chain proof decides it rather than the declared type, so a plain List, a LINQ-to-objects query and a reassigned local stay quiet. The 5.7.32 code fix already covers the shape.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 resolves the well-known symbols it compares against once per compilation instead of at each comparison. Every invocation in a file previously paid several GetTypeByMetadataName lookups before being rejected, so files with no EF code paid the most. Interleaved A/B: faster in five of six paired runs, by 14% on an invocation-heavy corpus. Diagnostics are unchanged.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
