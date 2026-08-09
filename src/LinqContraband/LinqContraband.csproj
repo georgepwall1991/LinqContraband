@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.41</Version>
+        <Version>5.7.42</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>The LC045 fixer-coverage contract now holds async shapes: await foreach over an AsAsyncEnumerable bridge, the same with a conditional read, and the same with a nested ThenInclude path. Sync and async paths were also verified symmetric for the 5.7.38 conditional fix. Test-only; no analyzer behaviour changes.</PackageReleaseNotes>
+        <PackageReleaseNotes>Records external corpus validation for LC045: the rule was run against ten real Entity Framework Core projects from dotnet/EntityFramework.Docs, built against the real EF Core 10 packages, and produced zero diagnostics, with a self-contained canary firing in every project. Docs-only; no code changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
