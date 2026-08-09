@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- External corpus validation for LC045, recorded in `docs/analyzer-health.md`. The rule was run against ten real Entity Framework Core projects from `dotnet/EntityFramework.Docs` — including the canonical eager/explicit/lazy loading guide, which exercises `Include`, `ThenInclude`, filtered includes, split queries, explicit loading and `AutoInclude` — building against the real EF Core 10 packages. Zero diagnostics across all ten, with a self-contained canary firing in every project so the clean result cannot be confused with an analyzer that never ran.
+
 ## [5.7.41] - 2026-08-09
 
 ### Added
