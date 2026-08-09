@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.46</Version>
+        <Version>5.7.47</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Pins the specification for LC045's interprocedural gap before implementing it: two cases an implementation should make report, and five it must keep quiet — a callee that explicitly loads, one invoked twice, one after an escape, one over an included query, and a delegate variable. The design note gains the implementation shape found by reading the code. No analyzer behaviour changes.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reports a navigation read inside a local function that only iterates the materialized collection — the same loop written one level down, previously silenced because capturing the collection was treated as an escape. The reads are proven at the call site, so an escape before the call, an Include, a fix-up and an explicit load all apply unchanged. Requires one call site and a callee whose only use of the collection is iterating it.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
