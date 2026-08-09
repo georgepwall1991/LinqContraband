@@ -1,7 +1,10 @@
 # LC045 — interprocedural scope: design notes
 
-> **Status:** the closure slice described here was implemented in 5.7.47. The entity-taking form
-> remains open, and the constraints and oracles below still apply to it.
+> **Status:** both local-function slices described here are implemented — the closure form in
+> 5.7.47 and the entity-taking form in 5.7.48. What remains is genuinely cross-method:
+> `IQueryable` parameters and repository-returned queries as roots, where the callee is not
+> declared in the analysed method and its body may not be available at all. The constraints and
+> oracles below still apply.
 
 LC045 is intra-procedural by design. Reads reached only through a callee are quiet:
 

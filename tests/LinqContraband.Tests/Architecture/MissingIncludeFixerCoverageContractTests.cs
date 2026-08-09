@@ -119,6 +119,9 @@ public sealed class MissingIncludeFixerCoverageContractTests
         new object[] { "LocalFunctionClosure", @"        var orders = db.Orders.ToList();
         void Print() { foreach (var o in orders) System.Console.WriteLine(o.Customer.Name); }
         Print();" },
+        new object[] { "EntityTakingLocalFunction", @"        var orders = db.Orders.ToList();
+        void Show(Order o) => System.Console.WriteLine(o.Customer.Name);
+        foreach (var o in orders) Show(o);" },
         new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
         new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now reports a navigation read inside a local function that is handed the entity and only reads navigations on it. `void Show(Order o) => Console.WriteLine(o.Customer.Name);` called from a loop over the collection was silenced, because passing the entity was treated as an escape. Such a callee cannot be the loading mechanism the read needs, so its parameter binds to the argument's origin and the read is proven where the caller's own read would be. Any other use of the parameter leaves the argument an escape — passing it on, assigning it, calling through it, and above all `db.Entry(o).Reference(...).Load()`, since a callee that loads before reading is correct code. Two call sites also keep the escape, because each may hand the callee a different entity.
+
 ## [5.7.47] - 2026-08-09
 
 ### Fixed
