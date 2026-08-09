@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/LC045_InterproceduralScope.md`, recording what closing LC045's largest remaining false-negative family — reads reached only through a callee — would require. It documents why the case is quiet today, the narrowest defensible slice, two structural constraints found by investigating the code rather than assumed (attribution can avoid the nested control-flow graph; reporting stays local only because LC045 registers per operation block), the open question that is the real work (which origin the access binds to), and the conditions and existing validation oracles any implementation should use. Nothing is implemented; this is a design record so the work starts from analysis rather than discovery.
+
 ## [5.7.44] - 2026-08-09
 
 ### Added
