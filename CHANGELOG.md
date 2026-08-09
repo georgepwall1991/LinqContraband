@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The LC045 fixer-coverage contract covers the shapes made reportable since it was introduced. Its corpus had gone stale for three releases: the widened-`IEnumerable<T>` source of 5.7.32/5.7.33 and the ternary, switch-expression, `?.` and `??` reads of 5.7.38 were reportable but never asked whether the fixer handled them — the same blind spot that let 5.7.28 ship a code fix producing uncompilable code. All seven added shapes pass, so no defect was hiding behind the omission, and the contract's own rule now says plainly that a release making a shape reportable adds it to the corpus in the same change.
+
 ## [5.7.39] - 2026-08-09
 
 ### Changed
