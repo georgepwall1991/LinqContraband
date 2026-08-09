@@ -44,12 +44,51 @@ public sealed partial class MissingIncludeAnalyzer
             "ThenInclude"
         );
 
+    /// <summary>
+    /// Every name any materializer proof below can accept. Checked first because the proofs
+    /// resolve well-known symbols and compare containing types before they ever look at the name,
+    /// and this runs for every invocation in a file — <c>Console.WriteLine</c> included. Most
+    /// files contain no EF code at all, so the cheapest possible rejection is the common path.
+    ///
+    /// This set must stay the union of the names the three proofs accept; a name missing here is
+    /// a materializer that silently stops being detected.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> MaterializerNames = ImmutableHashSet.Create(
+        System.StringComparer.Ordinal,
+        "ElementAt",
+        "ElementAtAsync",
+        "ElementAtOrDefault",
+        "ElementAtOrDefaultAsync",
+        "First",
+        "FirstAsync",
+        "FirstOrDefault",
+        "FirstOrDefaultAsync",
+        "Last",
+        "LastAsync",
+        "LastOrDefault",
+        "LastOrDefaultAsync",
+        "Single",
+        "SingleAsync",
+        "SingleOrDefault",
+        "SingleOrDefaultAsync",
+        "ToArray",
+        "ToArrayAsync",
+        "ToHashSet",
+        "ToHashSetAsync",
+        "ToList",
+        "ToListAsync"
+    );
+
     private static bool IsEntityMaterializer(
         IInvocationOperation invocation,
         out bool returnsCollection
     )
     {
         returnsCollection = false;
+
+        var candidate = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        if (!MaterializerNames.Contains(candidate.Name))
+            return false;
 
         var compilation = invocation.SemanticModel?.Compilation;
         if (compilation == null)
