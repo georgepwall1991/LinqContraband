@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.37</Version>
+        <Version>5.7.38</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>An adversarial audit of LC045's reporting surface: 15 shapes that must stay quiet and 14 that must report were all confirmed correct. One false-negative family is recorded and pinned — a navigation read on a loop variable inside an expression-level conditional (ternary, switch expression, ?. or ??) is not reported, while the equivalent if/else and the single-entity form are. No analyzer behaviour changes.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now reports a navigation read on a loop variable inside an expression-level conditional (a ternary, a switch expression, ?. on the navigation, or ??), closing the gap 5.7.37 recorded. The loop variable's binding was attached to the block holding the body's earliest-starting operation, which for that shape is the merge block after the branches; it is now attached to the block the body is entered through.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
