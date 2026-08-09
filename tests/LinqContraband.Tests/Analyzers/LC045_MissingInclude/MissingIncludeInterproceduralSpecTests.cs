@@ -49,16 +49,95 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestFutureGap_LocalFunctionTakingTheEntity_StaysQuiet()
+    public async Task TestCrime_LocalFunctionTakingTheEntity_Reports()
     {
-        // Harder than the closure case: the callee receives the entity, so an implementation must
-        // prove the body does not load the navigation before reporting.
+        // The callee receives the entity and only reads a navigation on it, so it cannot be the
+        // loading mechanism the read needs. The parameter binds to the argument's origin.
         await VerifyOriginFlowAsync(
             @"
     void Main()
     {
         var db = new MyDbContext();
         var orders = db.Orders.ToList();
+
+        void Show(Order order) => Console.WriteLine({|#0:order.Customer|}.Name);
+
+        foreach (var order in orders)
+        {
+            Show(order);
+        }
+    }
+",
+            Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_EntityCalleeThatPassesTheEntityOn_MustStayQuiet()
+    {
+        // The callee hands the entity to another method, which could load the navigation.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+
+        void Show(Order order)
+        {
+            Hydrate(order);
+            Console.WriteLine(order.Customer.Name);
+        }
+
+        foreach (var order in orders)
+        {
+            Show(order);
+        }
+    }
+
+    void Hydrate(Order order) { }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_EntityCalleeInvokedFromTwoPlaces_MustStayQuiet()
+    {
+        // Two call sites can hand the callee different entities, so the parameter's origin is
+        // ambiguous.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ToList();
+        var others = db.Orders.ToList();
+
+        void Show(Order order) => Console.WriteLine(order.Customer.Name);
+
+        foreach (var order in orders)
+        {
+            Show(order);
+        }
+
+        foreach (var order in others)
+        {
+            Show(order);
+        }
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_EntityCalleeOverAnIncludedQuery_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ToList();
 
         void Show(Order order) => Console.WriteLine(order.Customer.Name);
 

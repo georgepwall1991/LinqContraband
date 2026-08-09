@@ -607,6 +607,12 @@ public sealed partial class MissingIncludeAnalyzer
             var escapedOrigins = new Dictionary<int, List<string?>>();
             var escapedRoot = false;
 
+            // A callee whose only use of the entity it is handed is reading navigations on it
+            // cannot be the loading mechanism those reads need, so the argument is not an escape
+            // and the reads belong to this call.
+            if (TryLiftEntityCalleeReads(targetMethod, arguments, syntax))
+                return;
+
             AddCallSource(instance);
             foreach (var argument in arguments)
                 AddCallSource(argument.Value);
@@ -1006,6 +1012,118 @@ public sealed partial class MissingIncludeAnalyzer
             }
 
             return count;
+        }
+
+
+        /// <summary>
+        /// Lifts the reads of a local function that is handed a tracked entity and only reads
+        /// navigations on it: <c>void Show(Order o) =&gt; ...o.Customer...;</c> called from a loop
+        /// over the collection. The parameter binds to the argument's origin, so the reads are
+        /// proven exactly where the caller's own reads would be.
+        ///
+        /// Any other use of the parameter leaves the argument an escape. That matters most for
+        /// <c>db.Entry(o).Reference(...).Load()</c>, which LC045 has recognised as a loading
+        /// mechanism since 5.7.36: a callee that loads before reading is correct code, and lifting
+        /// its reads would report it.
+        /// </summary>
+        private bool TryLiftEntityCalleeReads(
+            IMethodSymbol? targetMethod,
+            IEnumerable<IArgumentOperation> arguments,
+            SyntaxNode callSyntax
+        )
+        {
+            if (
+                targetMethod is not { MethodKind: MethodKind.LocalFunction }
+                || !TryGetEntityReadOnlyCallee(targetMethod, out var declaration, out var parameter)
+            )
+            {
+                return false;
+            }
+
+            IOperation? argumentValue = null;
+            foreach (var argument in arguments)
+            {
+                if (SymbolEqualityComparer.Default.Equals(argument.Parameter, parameter))
+                    argumentValue = argument.Value;
+            }
+
+            if (argumentValue == null || !TryResolveEntityOrigin(argumentValue, out var origin))
+                return false;
+
+            originsByParameter[parameter] = origin;
+
+            var lifted = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (descendant is IPropertyReferenceOperation read)
+                {
+                    CollectNavigationEvent(read, callSyntax);
+                    lifted = true;
+                }
+            }
+
+            return lifted;
+        }
+
+        /// <summary>
+        /// A local function declared in this root with one entity parameter whose every use is a
+        /// navigation read on it, called from exactly one place. More than one call site would make
+        /// the parameter's origin ambiguous, since each caller may hand it a different entity.
+        /// </summary>
+        private bool TryGetEntityReadOnlyCallee(
+            IMethodSymbol targetMethod,
+            out ILocalFunctionOperation declaration,
+            out IParameterSymbol parameter
+        )
+        {
+            declaration = null!;
+            parameter = null!;
+
+            ILocalFunctionOperation? found = null;
+            foreach (var candidate in scope.LocalFunctions)
+            {
+                if (SymbolEqualityComparer.Default.Equals(candidate.Symbol, targetMethod))
+                    found = candidate;
+            }
+
+            if (found == null || found.Symbol.Parameters.Length != 1)
+                return false;
+
+            if (CountCallsTo(targetMethod) != 1)
+                return false;
+
+            var candidateParameter = found.Symbol.Parameters[0];
+            if (!entityTypes.Contains(candidateParameter.Type as INamedTypeSymbol ?? entityType))
+                return false;
+
+            foreach (var descendant in found.Descendants())
+            {
+                if (
+                    descendant is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(
+                        reference.Parameter,
+                        candidateParameter
+                    )
+                )
+                {
+                    continue;
+                }
+
+                // Only `o.Something` counts as a read. Passing `o` anywhere, assigning it, or
+                // using it as a receiver for a call leaves the argument an escape.
+                if (
+                    reference.Parent is not IPropertyReferenceOperation property
+                    || !ReferenceEquals(property.Instance, reference)
+                )
+                {
+                    return false;
+                }
+            }
+
+            declaration = found;
+            parameter = candidateParameter;
+            return true;
         }
 
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
