@@ -934,6 +934,32 @@ Base audited commit: master at `16442eb7f5c40529b44317f3a832c2d8cb1a08ad` (LC045
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
+### Real-EF detection validation (2026-08-09, LC045)
+
+The corpus validation above shows LC045 is silent on correct EF code. This is its complement: does
+LC045 actually **fire** on real Entity Framework Core types, rather than only on the analyzer's own
+mocks? The concern was concrete — the real `DbSet<T>` implements `IAsyncEnumerable<T>` as well as
+`IQueryable<T>`, and an attempt to model that in a test mock made `Select` ambiguous and silently
+stopped the query-syntax and identity-projection shapes reporting.
+
+Nine shapes were compiled against the real `Microsoft.EntityFrameworkCore` 10.0.0 packages, with a
+real `DbContext` and real `DbSet<T>` properties:
+
+| shape | shipped in | expected | result |
+| --- | --- | --- | --- |
+| baseline materializer | — | reports | reports |
+| LINQ query syntax | 5.7.28 | reports | reports |
+| identity projection | 5.7.28 | reports | reports |
+| collection alias | 5.7.29 | reports | reports |
+| widened `IEnumerable<T>` | 5.7.33 | reports | reports |
+| expression conditional (ternary) | 5.7.38 | reports | reports |
+| null-conditional navigation read | 5.7.38 | reports | reports |
+| explicit loading | 5.7.36 | quiet | quiet |
+| `Include` | — | quiet | quiet |
+
+All nine behave correctly. The mock ambiguity was self-inflicted rather than a property of real EF:
+the real BCL and EF overloads resolve cleanly where the hand-written mock's did not.
+
 ### External corpus validation (2026-08-09, LC045)
 
 LC045 was run against ten real Entity Framework Core projects taken from `dotnet/EntityFramework.Docs`

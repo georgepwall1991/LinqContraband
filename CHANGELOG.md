@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Real-EF detection validation for LC045, recorded in `docs/analyzer-health.md`. The external corpus validation in 5.7.42 showed the rule is silent on correct EF code; this is its complement, checking that the rule actually fires against real Entity Framework Core types rather than only against the analyzer's own mocks. Nine shapes — query syntax, identity projection, collection alias, widened `IEnumerable<T>`, expression conditionals, null-conditional reads, plus the explicit-loading and `Include` cases that must stay quiet — were compiled against the real EF Core 10 packages and all nine behaved correctly. This settles a specific concern: the real `DbSet<T>` implements `IAsyncEnumerable<T>`, and modelling that in a test mock had made `Select` ambiguous and silently stopped query syntax reporting; the ambiguity was an artefact of the mock, not a property of real EF.
+
 ## [5.7.43] - 2026-08-09
 
 ### Changed
