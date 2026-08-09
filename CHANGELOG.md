@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- LC045 rejects a non-materializer invocation by name before doing any symbol work. The materializer proofs resolved well-known symbols and compared containing types before ever looking at the method name, and that runs for every invocation in a file — `Console.WriteLine` included. Most files contain no EF code at all, so the cheapest possible rejection is now the common path. The name set is the union of what the three proofs accept, and mutation isolation confirms it is load-bearing: removing `ToHashSet` fails five tests, removing `ElementAt` fails three. Diagnostics are unchanged — a 160-location differential across every supported materializer form matches exactly.
+
 ## [5.7.42] - 2026-08-09
 
 ### Added
