@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.34</Version>
+        <Version>5.7.35</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 resolves the well-known symbols it compares against once per compilation instead of at each comparison. Every invocation in a file previously paid several GetTypeByMetadataName lookups before being rejected, so files with no EF code paid the most. Interleaved A/B: faster in five of six paired runs, by 14% on an invocation-heavy corpus. Diagnostics are unchanged.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 decides whether an invocation is an element-preserving in-memory view once per operation instead of every time it is asked, and rejects non-view operators before probing the cache. Each callback-bearing answer walked the lambda body, so the repetition dominated the rule's cost: lambda-body walks fall 56% on an inline view, 80% on a chained view and 67% on an alias. Diagnostics are unchanged.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
