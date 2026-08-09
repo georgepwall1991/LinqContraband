@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.37] - 2026-08-09
+
 ### Added
 - An adversarial audit of LC045's reporting surface, with its one finding pinned. Fifteen shapes that must stay quiet — string and nested `Include`, `ThenInclude` chains, split query, projections, `IsLoaded` guards, owned types, `nameof`, explicit loading in its `Collection`/`LoadAsync` forms — were all confirmed silent, and fourteen shapes that must report were confirmed reported, including `List.ForEach`, indexer loops, string interpolation, property patterns, `GroupBy` keys and query-syntax `where`.
 - The audit found one false-negative family, now recorded and pinned: a navigation read on a loop variable inside an **expression-level conditional** — a ternary, a switch expression, `?.` on the navigation, or `??` — is not reported, while the equivalent `if`/`else` statement is, and while the same read on a single materialized entity is. It is not branch conservatism: the ternary stays quiet even when both arms read the navigation. The fix belongs in the origin-flow prover's event-to-block mapping, so it is recorded with a reproduction rather than patched at the edges. No analyzer behaviour changes in this release.

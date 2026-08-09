@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.36</Version>
+        <Version>5.7.37</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 no longer reports a navigation that EF's explicit loading has populated: a db.Entry(o).Reference(x =&gt; x.Customer).Load() over the whole collection is recorded as the same fact a manual write records, so the fix-up rules apply unchanged and a conditional load, one over a filtered view, or one for another navigation still reports. Also closes a pre-existing hole where a conditional fix-up written as the loop body was credited to the whole collection.</PackageReleaseNotes>
+        <PackageReleaseNotes>An adversarial audit of LC045's reporting surface: 15 shapes that must stay quiet and 14 that must report were all confirmed correct. One false-negative family is recorded and pinned — a navigation read on a loop variable inside an expression-level conditional (ternary, switch expression, ?. or ??) is not reported, while the equivalent if/else and the single-entity form are. No analyzer behaviour changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
