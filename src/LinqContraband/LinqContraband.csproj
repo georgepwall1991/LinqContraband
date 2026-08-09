@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.45</Version>
+        <Version>5.7.46</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Adds a design record for LC045's remaining interprocedural false-negative family: why reads reached only through a callee are quiet by design, the narrowest defensible slice, the two structural constraints an implementation must respect, and the open question that is the real work. Docs-only; no code changes.</PackageReleaseNotes>
+        <PackageReleaseNotes>Pins the specification for LC045's interprocedural gap before implementing it: two cases an implementation should make report, and five it must keep quiet — a callee that explicitly loads, one invoked twice, one after an escape, one over an included query, and a delegate variable. The design note gains the implementation shape found by reading the code. No analyzer behaviour changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
