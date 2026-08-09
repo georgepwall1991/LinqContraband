@@ -23,7 +23,10 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 /// silently widened what the fixer had to handle, and the fixer went on wrapping the node it was
 /// handed — producing <c>select o.Include(...)</c> for every query-syntax finding, which does not
 /// compile. Nothing failed, because no test asked the fixer about the newly reported shapes.
-/// Adding a shape to the analyzer now means adding it here.
+/// Adding a shape to the analyzer means adding it here IN THE SAME CHANGE. That is part of the
+/// rule, not an optional extra: this corpus went stale for three releases — the widened-source
+/// shapes of 5.7.32/5.7.33 and the expression-conditional shapes of 5.7.38 were reportable but
+/// never asked about here — which is the same blind spot that let 5.7.28 ship an uncompilable fix.
 ///
 /// Emit is deliberate rather than <see cref="Compilation.GetDiagnostics"/>: binding alone does not
 /// surface lowering-phase failures, so a fix can bind and still fail to build.
@@ -90,7 +93,22 @@ public sealed class MissingIncludeFixerCoverageContractTests
         new object[] { "InMemoryQuerySyntaxView", @"        var orders = db.Orders.ToList();
         foreach (var o in from x in orders where x.Id > 0 select x) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "IdentityProjection", @"        var orders = db.Orders.Select(o => o).ToList();
-        foreach (var o in orders) System.Console.WriteLine(o.Customer.Name);" }
+        foreach (var o in orders) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "WidenedEnumerableLocalForeach", @"        IEnumerable<Order> source = db.Orders;
+        foreach (var o in source) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "WidenedEnumerableLocalMaterialized", @"        IEnumerable<Order> source = db.Orders;
+        var orders = source.ToList();
+        foreach (var o in orders) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "TernaryRead", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
+        new object[] { "SwitchExpressionRead", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) { var s = o.Id switch { 1 => o.Customer.Name, _ => """" }; System.Console.WriteLine(s); }" },
+        new object[] { "NullConditionalNavigationRead", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) { var s = o.Customer?.Name; System.Console.WriteLine(s); }" },
+        new object[] { "CoalesceNavigationRead", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) { var c = o.Customer ?? new Customer(); System.Console.WriteLine(c.Name); }" },
+        new object[] { "IfElseRead", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) { string s; if (o.Id > 0) s = o.Customer.Name; else s = """"; System.Console.WriteLine(s); }" }
         };
     }
 
