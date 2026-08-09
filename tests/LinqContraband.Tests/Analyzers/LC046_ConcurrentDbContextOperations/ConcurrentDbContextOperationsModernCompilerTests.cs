@@ -216,6 +216,22 @@ public sealed class ConcurrentDbContextOperationsModernCompilerTests
     }
 
     [Fact]
+    public async Task InterfaceCollectionExpressionAccumulation_ShouldNotTrigger()
+    {
+        await VerifyCurrentCompilerAsync(
+            """
+                        ICollection<Task<bool>> tasks = [];
+                        foreach (var id in new[] { 1, 2 })
+                        {
+                            tasks.Add(db.Users.AnyAsync());
+                        }
+
+                        await Task.WhenAll(tasks);
+            """,
+            expectsLc046: false);
+    }
+
+    [Fact]
     public async Task MetadataBackedDatabaseFacadeLoopAccumulation_ShouldTrigger()
     {
         await VerifyMetadataBackedDatabaseFacadeAsync();

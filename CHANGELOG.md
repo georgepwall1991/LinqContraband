@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC046 now reports repeated same-context EF tasks added through an `ICollection<T>` or `IList<T>` local when the local is proven to be a fresh framework `List<T>`. Interface parameters, interface-targeted collection expressions, and other unproven collection implementations remain quiet, so the broader source type does not weaken the runtime collection proof.
+
 ## [5.7.52] - 2026-08-09
 
 ### Added

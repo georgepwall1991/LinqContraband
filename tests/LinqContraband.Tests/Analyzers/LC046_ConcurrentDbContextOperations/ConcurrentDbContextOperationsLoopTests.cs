@@ -160,6 +160,78 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachOverTwoElementArray_AddsEfTasksToStableListThroughCollectionInterface_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            ICollection<Task<bool>> tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#0:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ForeachOverTwoElementArray_AddsEfTasksToStableListThroughListInterface_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+	using System.Collections.Generic;
+	using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            IList<Task<bool>> tasks = new List<Task<bool>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#0:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ForeachOverTwoElementArray_ConditionallyAddsEfTasksToProvenNonNullList_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
@@ -260,6 +332,8 @@ namespace TestApp
         public void Add(Task<bool> task) { }
     }
 
+    public sealed class CustomTaskCollection : List<Task<bool>> { }
+
     public sealed class Program
     {
         public async Task Singleton(AppDbContext db)
@@ -297,6 +371,23 @@ namespace TestApp
         public void CustomCollector(AppDbContext db)
         {
             var tasks = new TaskCollector();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
+        public void UnknownCollection(AppDbContext db, ICollection<Task<bool>> tasks)
+        {
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+        }
+
+        public void CustomInterfaceCollection(AppDbContext db)
+        {
+            ICollection<Task<bool>> tasks = new CustomTaskCollection();
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Add(db.Users.AnyAsync());
