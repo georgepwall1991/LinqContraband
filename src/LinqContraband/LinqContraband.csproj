@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.48</Version>
+        <Version>5.7.49</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now reports a navigation read inside a local function handed the entity whose only use of it is reading navigations. Such a callee cannot be the loading mechanism the read needs, so the parameter binds to the argument's origin. Passing the entity on, assigning it, calling through it, or explicitly loading it all keep the argument an escape, as do two call sites.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC045 now judges each call site of an entity-taking local function on its own. 5.7.48 required exactly one call site; binding the parameter per call removes that restriction and is more accurate. A helper shared between a loop over an included query and a loop over a bare one now reports once, attributed to the query actually missing the Include.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
