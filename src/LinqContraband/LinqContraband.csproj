@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.43</Version>
+        <Version>5.7.44</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 rejects a non-materializer invocation by name before doing any symbol work. The proofs previously resolved well-known symbols and compared containing types first, which every invocation in a file paid for, including files with no EF code at all. Diagnostics are unchanged, verified by a 160-location differential across every supported materializer form.</PackageReleaseNotes>
+        <PackageReleaseNotes>Records real-EF detection validation for LC045. Nine shapes — query syntax, identity projection, collection alias, widened IEnumerable, expression conditionals, null-conditional reads, plus the explicit-loading and Include cases that must stay quiet — were compiled against the real EF Core 10 packages and all nine behaved correctly. Docs-only; no code changes.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
