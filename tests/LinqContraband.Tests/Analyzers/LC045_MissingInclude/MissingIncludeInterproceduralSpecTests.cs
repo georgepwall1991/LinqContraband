@@ -9,10 +9,11 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 /// callee may load the navigation itself, so capturing the collection is treated as an escape.
 /// `docs/design/lc045-interprocedural-scope.md` records what closing that would require.
 ///
-/// These tests exist so the work is specified before it is attempted. A `TestFutureGap_` case is
-/// one an implementation should make report — flipping it is the point. A `TestDeliberate_` case
-/// must stay quiet whatever happens, because reporting it would be a false positive; those are the
-/// boundary the implementation has to respect, and they are the reason this is not a small change.
+/// The closure case was closed in 5.7.47: a callee whose only use of the collection is iterating it
+/// and reading navigations is not an escape, so its reads are proven at the call site. The
+/// entity-taking case remains open — it needs proof that the callee does not load the navigation.
+/// A `TestDeliberate_` case must stay quiet whatever happens, because reporting it would be a false
+/// positive; those are the boundary, and they are why this was specified before it was attempted.
 ///
 /// This mirrors 5.7.37, where pinning a gap with its control cases made the fix in 5.7.38 a matter
 /// of reading the evidence rather than hunting for it.
@@ -20,10 +21,11 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 public partial class MissingIncludeEdgeCasesTests
 {
     [Fact]
-    public async Task TestFutureGap_LocalFunctionClosingOverTheCollection_StaysQuiet()
+    public async Task TestCrime_LocalFunctionClosingOverTheCollection_Reports()
     {
-        // The narrowest slice: same method, body fully visible, one call site, and the loop is the
-        // same loop that reports when written inline.
+        // The narrowest slice, closed: same method, body fully visible, one call site, and the loop
+        // is the same loop that reports when written inline. The read is proven at the call, where
+        // the collection's state is known, and reported on the read itself.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -35,13 +37,14 @@ public partial class MissingIncludeEdgeCasesTests
         {
             foreach (var order in orders)
             {
-                Console.WriteLine(order.Customer.Name);
+                Console.WriteLine({|#0:order.Customer|}.Name);
             }
         }
 
         Print();
     }
-"
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 
@@ -196,6 +199,36 @@ public partial class MissingIncludeEdgeCasesTests
             show(order);
         }
     }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_LocalFunctionThatAlsoHandsTheCollectionOut_MustStayQuiet()
+    {
+        // The callee reads the collection but also passes it to a helper that could load the
+        // navigation. Only a callee whose sole use is reading may be lifted; anything else stays
+        // an escape.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+
+        void Print()
+        {
+            Hydrate(orders);
+            foreach (var order in orders)
+            {
+                Console.WriteLine(order.Customer.Name);
+            }
+        }
+
+        Print();
+    }
+
+    void Hydrate(List<Order> orders) { }
 "
         );
     }

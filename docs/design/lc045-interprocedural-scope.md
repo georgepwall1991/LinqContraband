@@ -1,5 +1,8 @@
 # LC045 — interprocedural scope: design notes
 
+> **Status:** the closure slice described here was implemented in 5.7.47. The entity-taking form
+> remains open, and the constraints and oracles below still apply to it.
+
 LC045 is intra-procedural by design. Reads reached only through a callee are quiet:
 
 ```csharp
