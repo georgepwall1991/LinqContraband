@@ -31,9 +31,12 @@ namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 /// mutation isolation confirms that test fails when the bridge restoration is removed.
 ///
 /// Adding a shape to the analyzer means adding it here IN THE SAME CHANGE. That is part of the
-/// rule, not an optional extra: this corpus went stale for three releases — the widened-source
-/// shapes of 5.7.32/5.7.33 and the expression-conditional shapes of 5.7.38 were reportable but
-/// never asked about here — which is the same blind spot that let 5.7.28 ship an uncompilable fix.
+/// rule, not an optional extra, and it has been missed twice: the corpus went stale for three
+/// releases before 5.7.40 (the widened-source shapes of 5.7.32/5.7.33 and the expression-conditional
+/// shapes of 5.7.38), and again for the collection-callee shape of 5.7.51, caught in 5.7.52.
+/// Neither lapse hid a defect, but both were found by looking rather than by failing — nothing here
+/// enforces the rule mechanically, so it is worth checking this list whenever a shape starts
+/// reporting. That is the same blind spot that let 5.7.28 ship an uncompilable fix.
 ///
 /// Emit is deliberate rather than <see cref="Compilation.GetDiagnostics"/>: binding alone does not
 /// surface lowering-phase failures, so a fix can bind and still fail to build.
@@ -128,6 +131,8 @@ public sealed class MissingIncludeFixerCoverageContractTests
         foreach (var o in orders) Show(o);" },
         new object[] { "PrivateMethodCallee", @"        var orders = db.Orders.ToList();
         foreach (var o in orders) RenderShape(o);" },
+        new object[] { "CollectionCallee", @"        var orders = db.Orders.ToList();
+        RenderAll(orders);" },
         new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
         new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }
@@ -265,7 +270,9 @@ public sealed class MissingIncludeFixerCoverageContractTests
         var signature = body.Contains("await ") ? "async Task Main()" : "void Main()";
         // A shape may call a private helper; declare one the corpus can use.
         const string helper =
-            "\n    private void RenderShape(Order o) => System.Console.WriteLine(o.Customer.Name);\n";
+            "\n    private void RenderShape(Order o) => System.Console.WriteLine(o.Customer.Name);\n"
+            + "    private void RenderAll(System.Collections.Generic.List<Order> all)\n"
+            + "    {\n        foreach (var o in all) System.Console.WriteLine(o.Customer.Name);\n    }\n";
         return Usings
             + @"
 class Program

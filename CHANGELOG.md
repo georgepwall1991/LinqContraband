@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The collection-callee shape introduced in 5.7.51 joins the LC045 fixer-coverage contract, which its own rule required in that change. The fixer handles it correctly — a fix is offered, it compiles, and it clears the diagnostic — so nothing was hidden by the omission, but this is the second time the corpus has gone stale, and the contract now records both lapses. Nothing enforces the rule mechanically, so it is worth checking the corpus whenever a shape starts reporting.
+
 ## [5.7.51] - 2026-08-09
 
 ### Fixed
