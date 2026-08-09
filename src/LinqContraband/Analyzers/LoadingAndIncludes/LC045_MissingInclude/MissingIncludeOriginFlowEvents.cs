@@ -51,6 +51,11 @@ public sealed partial class MissingIncludeAnalyzer
                     );
                     break;
 
+                // Explicit loading is one of EF's own loading mechanisms, and it populates the
+                // navigation exactly as writing it would, so it is recorded as the same fact.
+                case IInvocationOperation load when TryCollectExplicitLoadEvents(load):
+                    break;
+
                 case IInvocationOperation invocation
                     when !IsMaterializer(invocation)
                         && !IsExactMaterializedCollectionElementExtraction(invocation)
@@ -811,6 +816,108 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+
+        /// <summary>
+        /// <c>db.Entry(order).Reference(o =&gt; o.Customer).Load()</c> is EF's explicit loading:
+        /// after it runs, that navigation is populated on that entity. It is therefore recorded
+        /// as the same fact a manual write records, which is what lets the surrounding machinery
+        /// apply unchanged — an unconditional load in a loop over the whole collection is credited
+        /// to the collection, while a conditional one, or one for a different navigation, is not.
+        /// </summary>
+        private bool TryCollectExplicitLoadEvents(IInvocationOperation invocation)
+        {
+            if (invocation.TargetMethod.Name is not ("Load" or "LoadAsync"))
+                return false;
+
+            if (
+                invocation.GetInvocationReceiver()
+                is not IInvocationOperation { TargetMethod.Name: "Reference" or "Collection" } entry
+            )
+            {
+                return false;
+            }
+
+            if (
+                entry.GetInvocationReceiver()
+                is not IInvocationOperation { TargetMethod.Name: "Entry" } entryCall
+                || !entryCall.TargetMethod.ContainingType.IsDbContext()
+                || entryCall.Arguments.Length != 1
+            )
+            {
+                return false;
+            }
+
+            var tracked = entryCall.Arguments[0].Value;
+            if (!TryResolveEntityOrigin(tracked, out var origin))
+                return false;
+
+            if (!TryGetLoadedNavigationName(entry, out var navigation))
+                return false;
+
+            // Only a load that reaches every element speaks for the collection. A conditional
+            // one leaves elements unloaded, so it is left to the ordinary escape handling and
+            // the read is still reported.
+            if (!IsUnconditionalLoadOverTheWholeCollection(invocation, origin))
+                return false;
+
+            var path = string.IsNullOrEmpty(origin.NavigationPrefix)
+                ? navigation
+                : origin.NavigationPrefix + "." + navigation;
+            var completion = invocation.Syntax.Span.End;
+
+            events.Add(
+                new FlowEvent(FlowEventKind.SatisfyPath, invocation.Syntax, completion, origin, path)
+            );
+            events.Add(
+                new FlowEvent(
+                    FlowEventKind.SatisfyCollectionPath,
+                    invocation.Syntax,
+                    completion,
+                    origin,
+                    path
+                )
+            );
+
+            return true;
+        }
+
+        private static bool TryGetLoadedNavigationName(
+            IInvocationOperation entry,
+            out string navigation
+        )
+        {
+            navigation = null!;
+            if (entry.Arguments.Length != 1)
+                return false;
+
+            var argument = entry.Arguments[0].Value;
+            if (argument.ConstantValue is { HasValue: true, Value: string name })
+            {
+                navigation = name;
+                return !string.IsNullOrWhiteSpace(navigation);
+            }
+
+            if (
+                TryGetInlineAnonymousFunction(argument) is not { } callback
+                || callback.Symbol.Parameters.Length != 1
+                || TryGetCallbackReturnedValue(callback) is not { } returned
+            )
+            {
+                return false;
+            }
+
+            if (
+                returned.UnwrapConversions() is not IPropertyReferenceOperation property
+                || property.Instance?.UnwrapConversions() is not IParameterReferenceOperation
+            )
+            {
+                return false;
+            }
+
+            navigation = property.Property.Name;
+            return true;
+        }
+
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
         {
             if (IsInsideNameOf(propertyReference))
@@ -923,6 +1030,23 @@ public sealed partial class MissingIncludeAnalyzer
             EntityOrigin origin
         )
         {
+            return IsUnconditionalOverTheWholeCollection(write.Syntax, origin);
+        }
+
+        /// <summary>
+        /// An explicit load reaches every element on the same terms a write does: the statement
+        /// must sit directly in the body of a loop over the whole collection.
+        /// </summary>
+        private bool IsUnconditionalLoadOverTheWholeCollection(
+            IInvocationOperation load,
+            EntityOrigin origin
+        )
+        {
+            return IsUnconditionalOverTheWholeCollection(load.Syntax, origin);
+        }
+
+        private bool IsUnconditionalOverTheWholeCollection(SyntaxNode syntax, EntityOrigin origin)
+        {
             if (
                 !origin.IsIteration
                 || origin.AliasSourceOrigin != null
@@ -937,7 +1061,13 @@ public sealed partial class MissingIncludeAnalyzer
             if (loopBody == null)
                 return false;
 
-            for (var node = write.Syntax.Parent; node != null; node = node.Parent)
+            // `foreach (var o in orders) if (c) o.Customer = x;` makes the `if` itself the loop
+            // body, so walking up to it would accept a write that only some elements receive.
+            // Only a block or a bare statement is straight-line.
+            if (loopBody is not (BlockSyntax or ExpressionStatementSyntax))
+                return false;
+
+            for (var node = syntax.Parent; node != null; node = node.Parent)
             {
                 if (ReferenceEquals(node, loopBody))
                     return true;
@@ -950,6 +1080,9 @@ public sealed partial class MissingIncludeAnalyzer
                         or ExpressionStatementSyntax
                         or AssignmentExpressionSyntax
                         or MemberAccessExpressionSyntax
+                        // An explicit load is a call chain rather than an assignment.
+                        or InvocationExpressionSyntax
+                        or AwaitExpressionSyntax
                     )
                 )
                 {

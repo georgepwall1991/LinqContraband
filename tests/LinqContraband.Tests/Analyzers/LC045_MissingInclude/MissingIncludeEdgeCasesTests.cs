@@ -89,7 +89,15 @@ namespace Microsoft.EntityFrameworkCore
         }
     }
 
-    public class EntityEntry<T> where T : class { }
+    public class EntityEntry<T> where T : class
+    {
+        public ChangeTracking.ReferenceEntry<T, TProperty> Reference<TProperty>(
+            System.Linq.Expressions.Expression<Func<T, TProperty>> path) where TProperty : class => null;
+        public ChangeTracking.ReferenceEntry<T, object> Reference(string name) => null;
+        public ChangeTracking.CollectionEntry<T, TProperty> Collection<TProperty>(
+            System.Linq.Expressions.Expression<Func<T, IEnumerable<TProperty>>> path) where TProperty : class => null;
+        public ChangeTracking.CollectionEntry<T, object> Collection(string name) => null;
+    }
 
     public static class RelationalEntityTypeBuilderExtensions
     {
@@ -155,6 +163,26 @@ namespace Microsoft.EntityFrameworkCore
             this IQueryable<T> source,
             System.Linq.Expressions.Expression<Func<T, bool>> predicate,
             System.Threading.CancellationToken cancellationToken = default) => null;
+    }
+}
+
+namespace Microsoft.EntityFrameworkCore.ChangeTracking
+{
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    public class ReferenceEntry<TEntity, TProperty> where TEntity : class
+    {
+        public bool IsLoaded { get; set; }
+        public void Load() { }
+        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    public class CollectionEntry<TEntity, TProperty> where TEntity : class
+    {
+        public bool IsLoaded { get; set; }
+        public void Load() { }
+        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
 
