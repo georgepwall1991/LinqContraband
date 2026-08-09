@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.46] - 2026-08-09
+
 ### Added
 - A pinned specification for LC045's interprocedural gap, `MissingIncludeInterproceduralSpecTests`. Two `TestFutureGap_` cases record the shapes an implementation should make report — a local function closing over the collection, and one taking the entity — and five `TestDeliberate_` cases record the boundary it must not cross: a callee that explicitly loads, one invoked twice, one invoked after an escape, one over an already-included query, and a delegate variable. This mirrors 5.7.37, where pinning a gap with its control cases made the fix in 5.7.38 a matter of reading evidence rather than hunting for it. The design note gains the implementation shape found by reading the code: the callback machinery is the pattern to mirror, and the three moves it needs are an origin for the callee's loop variable, an event position separate from the diagnostic location, and suppression of the escape that would otherwise silence the lifted reads.
 
