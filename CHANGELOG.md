@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.36] - 2026-08-09
+
 ### Fixed
 - LC045 no longer reports a navigation that EF's explicit loading has populated. `foreach (var o in orders) db.Entry(o).Reference(x => x.Customer).Load();` followed by a read of `o.Customer` is the documented explicit-loading pattern, and the rule's own description names explicit loading as a loading mechanism, but it was reported as a missing `Include`. A load is now recorded as the same fact a manual write records, so the relationship fix-up rules apply to it unchanged: a load that reaches every element speaks for the collection, while a conditional one, one over a filtered view, or one for a different navigation still reports. The `Collection`, string-named and `LoadAsync` forms are recognised too.
 - A conditional relationship fix-up written as the loop body — `foreach (var o in orders) if (c) o.Customer = x;` — was credited to the whole collection and silenced later reads. The `if` *is* the loop body in that spelling, so walking up to the body accepted a write only some elements receive. A loop body that is not a block or a bare statement is no longer straight-line.
