@@ -154,9 +154,10 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
 
         var compilation = invocation.SemanticModel?.Compilation;
-        var entityFramework = compilation?.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
+        var entityFramework =
+            compilation == null
+                ? null
+                : WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
         if (
             entityFramework == null

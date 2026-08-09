@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- LC045 resolves the well-known symbols it compares against once per compilation instead of at each comparison. They were looked up with `GetTypeByMetadataName` per operation, so every invocation in a file — `Console.WriteLine` included — paid several metadata name lookups before being rejected, which is the cost paid by files containing no EF code at all. 27 call sites now read from a cache keyed weakly by `Compilation`, so the entry dies with it in an IDE that produces a new compilation on nearly every keystroke. Interleaved A/B measurement over three rounds: the cached build was faster in five of six paired runs, by 14% on an invocation-heavy corpus and 4% on a LINQ-heavy one. Diagnostics are unchanged — a 122-location differential against 5.7.33 matches exactly.
+
 ## [5.7.33] - 2026-08-08
 
 ### Fixed

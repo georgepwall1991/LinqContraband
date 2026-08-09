@@ -183,7 +183,8 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
     {
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         var extensions = semanticModel?.Compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions");
+            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
+        );
         return extensions?.GetMembers("AsAsyncEnumerable").Length > 0;
     }
 

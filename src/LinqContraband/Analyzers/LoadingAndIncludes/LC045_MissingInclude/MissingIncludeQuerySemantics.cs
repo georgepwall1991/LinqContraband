@@ -32,7 +32,7 @@ public sealed partial class MissingIncludeAnalyzer
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
         IOperation? source;
         var callbackOrdinal = -1;
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -97,7 +97,7 @@ public sealed partial class MissingIncludeAnalyzer
         }
         else
         {
-            var list = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
+            var list = WellKnownSymbols.For(compilation).List;
             if (
                 !SymbolEqualityComparer.Default.Equals(
                     method.ContainingType.OriginalDefinition,
@@ -258,7 +258,7 @@ public sealed partial class MissingIncludeAnalyzer
     private static bool IsSequenceCopy(IInvocationOperation invocation, Compilation compilation)
     {
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -274,7 +274,7 @@ public sealed partial class MissingIncludeAnalyzer
         // `items.ToArray()` on a List<T> binds to the instance method, not to Enumerable —
         // the same trap as List<T>.Reverse(), which returns void and is deliberately not an
         // element-preserving view.
-        var list = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
+        var list = WellKnownSymbols.For(compilation).List;
         return list != null
             && SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -291,7 +291,7 @@ public sealed partial class MissingIncludeAnalyzer
     )
     {
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             !SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -350,7 +350,7 @@ public sealed partial class MissingIncludeAnalyzer
         Compilation compilation
     )
     {
-        var ordered = compilation.GetTypeByMetadataName("System.Linq.IOrderedEnumerable`1");
+        var ordered = WellKnownSymbols.For(compilation).OrderedEnumerable;
         return ordered != null
             && SymbolEqualityComparer.Default.Equals(
                 parameter.Type.OriginalDefinition,
@@ -596,22 +596,18 @@ public sealed partial class MissingIncludeAnalyzer
 
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
         var containingType = method.ContainingType.OriginalDefinition;
-        var queryable = compilation.GetTypeByMetadataName("System.Linq.Queryable");
+        var queryable = WellKnownSymbols.For(compilation).Queryable;
         if (SymbolEqualityComparer.Default.Equals(containingType, queryable))
         {
             return ShapePreservingQueryableOperators.Contains(method.Name)
                 || IsIdentityProjection(invocation, queryable);
         }
 
-        var entityFramework = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
+        var entityFramework = WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
         if (SymbolEqualityComparer.Default.Equals(containingType, entityFramework))
             return ShapePreservingEntityFrameworkOperators.Contains(method.Name);
 
-        var relational = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.RelationalQueryableExtensions"
-        );
+        var relational = WellKnownSymbols.For(compilation).RelationalQueryableExtensions;
         if (SymbolEqualityComparer.Default.Equals(containingType, relational))
         {
             return method.Name is "AsSplitQuery" or "AsSingleQuery"
@@ -631,7 +627,7 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var dbSet = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbSet`1");
+        var dbSet = WellKnownSymbols.For(compilation).DbSet;
         if (
             !SymbolEqualityComparer.Default.Equals(
                 method.Parameters[0].Type.OriginalDefinition,
@@ -642,7 +638,7 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var formattableString = compilation.GetTypeByMetadataName("System.FormattableString");
+        var formattableString = WellKnownSymbols.For(compilation).FormattableString;
         return method.Name switch
         {
             "FromSql" or "FromSqlInterpolated" => method.Parameters.Length == 2
@@ -663,7 +659,7 @@ public sealed partial class MissingIncludeAnalyzer
     )
     {
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -676,9 +672,7 @@ public sealed partial class MissingIncludeAnalyzer
                 && IsIEnumerableSourceParameter(method.Parameters[0], compilation);
         }
 
-        var entityFramework = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
+        var entityFramework = WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
         if (
             !SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -691,12 +685,8 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var cancellationToken = compilation.GetTypeByMetadataName(
-            "System.Threading.CancellationToken"
-        );
-        var comparer = compilation.GetTypeByMetadataName(
-            "System.Collections.Generic.IEqualityComparer`1"
-        );
+        var cancellationToken = WellKnownSymbols.For(compilation).CancellationToken;
+        var comparer = WellKnownSymbols.For(compilation).EqualityComparer;
         return method.Parameters.Length == 2
                 && SymbolEqualityComparer.Default.Equals(
                     method.Parameters[1].Type,
@@ -719,7 +709,7 @@ public sealed partial class MissingIncludeAnalyzer
     )
     {
         var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        var queryable = compilation.GetTypeByMetadataName("System.Linq.Queryable");
+        var queryable = WellKnownSymbols.For(compilation).Queryable;
         if (
             SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
@@ -733,12 +723,8 @@ public sealed partial class MissingIncludeAnalyzer
                 && method.Parameters[1].Type.SpecialType == SpecialType.System_Int32;
         }
 
-        var entityFramework = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
-        var cancellationToken = compilation.GetTypeByMetadataName(
-            "System.Threading.CancellationToken"
-        );
+        var entityFramework = WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
+        var cancellationToken = WellKnownSymbols.For(compilation).CancellationToken;
         return SymbolEqualityComparer.Default.Equals(
                 method.ContainingType.OriginalDefinition,
                 entityFramework
