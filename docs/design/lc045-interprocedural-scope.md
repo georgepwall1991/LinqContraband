@@ -75,3 +75,33 @@ The oracles already exist:
   zero diagnostics, with the self-contained canary still firing;
 - the nine real-EF shapes recorded alongside them, which must keep their current verdicts;
 - the fixer-coverage contract, which any newly reportable shape must join in the same change.
+
+## The implementation shape, from reading the code
+
+The pattern to mirror already exists: `CollectNavigationCollectionCallbackEvents` binds a callback
+parameter to an origin (`originsByParameter[...] = elementOrigin`) and then walks the callback body
+calling `CollectNavigationEvent` for each read. Its own comment records why that works — the lambda
+body has no block in this graph, so the events map to the block holding the invocation.
+
+A local function needs the same three moves:
+
+- **Origin.** `CreateOrigin(local, ..., isIteration: true, bindingPosition: <invocation position>)`
+  for the `foreach` variable declared inside the callee, or `CreateParameterOrigin` for the
+  entity-taking form.
+- **Event position.** `CollectNavigationEvent` currently uses the read's own syntax for both the
+  block mapping and the diagnostic location. It needs to take them separately: the **invocation**
+  syntax for the event, the **read** syntax for the `NavigationAccess`.
+- **Escape suppression.** `DiscoverLocalFunctionCaptures` must stop setting `EscapesRoot` for the
+  lifted case, or the escape it emits at the invocation will silence the reads that were just added.
+
+Each of those is small. The risk is not in any one of them; it is that they interact with the
+existing escape and satisfy events, and a mistake shows up as a false positive rather than as a
+failing build.
+
+## The specification is already written
+
+`MissingIncludeInterproceduralSpecTests` pins these shapes as current behaviour. `TestFutureGap_`
+cases are the ones an implementation should make report — flipping them is the point.
+`TestDeliberate_` cases must stay quiet whatever happens: a callee that explicitly loads, a callee
+invoked twice, a callee invoked after an escape, a callee over an already-included query, and a
+delegate variable. Those are the boundary, and they are why this is a feature rather than a fix.
