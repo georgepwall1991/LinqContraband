@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now judges each call site of an entity-taking local function on its own. 5.7.48 required exactly one call site, on the reasoning that two callers may hand the callee different entities; binding the parameter per call makes that unnecessary, and more accurate. A helper shared between a loop over an `Include`d query and a loop over a bare one now reports once, attributed to the query that is actually missing the `Include`, where before it stayed silent for both.
+
 ## [5.7.48] - 2026-08-09
 
 ### Fixed
