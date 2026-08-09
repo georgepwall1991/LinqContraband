@@ -616,6 +616,13 @@ public sealed partial class MissingIncludeAnalyzer
                 && localFunctionCaptures.TryGetValue(targetMethod, out var capture)
             )
             {
+                // A callee whose only use of the collection is reading it is not an escape: its
+                // reads are the caller's reads, proven at this call. Anything else stays an escape.
+                if (capture.ReadsOnly && TryLiftCalleeReads(capture, syntax, targetMethod))
+                {
+                    return;
+                }
+
                 escapedRoot |= capture.EscapesRoot;
                 foreach (var originId in capture.OriginIds)
                     AddEscapedOrigin(originId, navigationPath: null);
@@ -918,7 +925,103 @@ public sealed partial class MissingIncludeAnalyzer
             return true;
         }
 
+
+        /// <summary>
+        /// Attributes a read-only callee's navigation reads to this call. The callee's loop
+        /// variable gets an iteration origin bound at the call, so every existing fact — an escape
+        /// before it, an <c>Include</c>, a fix-up, an explicit load — already applies. The events
+        /// map to this call's block because the callee body has none in this graph, while each
+        /// diagnostic still lands on the read itself.
+        ///
+        /// Requires exactly one call site: with two, the collection's state can differ at each and
+        /// attributing the read to one of them would be a guess.
+        /// </summary>
+        private bool TryLiftCalleeReads(
+            LocalFunctionCapture capture,
+            SyntaxNode callSyntax,
+            IMethodSymbol targetMethod
+        )
+        {
+            if (capture.Declaration is not { } declaration || resultLocal == null)
+                return false;
+
+            if (CountCallsTo(targetMethod) != 1)
+                return false;
+
+            var lifted = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IForEachLoopOperation forEach
+                    || forEach.Collection.UnwrapConversions()
+                        is not ILocalReferenceOperation collection
+                    || !SymbolEqualityComparer.Default.Equals(collection.Local, resultLocal)
+                )
+                {
+                    continue;
+                }
+
+                foreach (var local in forEach.Locals)
+                {
+                    CreateOrigin(
+                        local,
+                        initiallyBound: true,
+                        canDetachFromRoot: true,
+                        isIteration: true,
+                        bindingPosition: callSyntax.SpanStart,
+                        entityType,
+                        navigationPrefix: string.Empty
+                    );
+                }
+
+                foreach (var inner in forEach.Body.Descendants())
+                {
+                    if (inner is IPropertyReferenceOperation read)
+                        CollectNavigationEvent(read, callSyntax);
+                }
+
+                lifted = true;
+            }
+
+            return lifted;
+        }
+
+        private int CountCallsTo(IMethodSymbol targetMethod)
+        {
+            var count = 0;
+            foreach (var operation in executableRoot.Descendants())
+            {
+                if (
+                    operation is IInvocationOperation invocation
+                    && SymbolEqualityComparer.Default.Equals(
+                        invocation.TargetMethod,
+                        targetMethod
+                    )
+                )
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
+        {
+            CollectNavigationEvent(propertyReference, eventSyntax: null);
+        }
+
+        /// <summary>
+        /// <paramref name="eventSyntax"/> separates where the read is <i>proven</i> from where it is
+        /// <i>reported</i>. A read inside a local function has no block in this graph, so the event
+        /// must map to the block holding the call; the diagnostic still lands on the read itself.
+        /// </summary>
+        private void CollectNavigationEvent(
+            IPropertyReferenceOperation propertyReference,
+            SyntaxNode? eventSyntax
+        )
         {
             if (IsInsideNameOf(propertyReference))
                 return;
@@ -1005,8 +1108,8 @@ public sealed partial class MissingIncludeAnalyzer
             events.Add(
                 new FlowEvent(
                     FlowEventKind.Access,
-                    propertyReference.Syntax,
-                    propertyReference.Syntax.SpanStart,
+                    eventSyntax ?? propertyReference.Syntax,
+                    (eventSyntax ?? propertyReference.Syntax).SpanStart,
                     origin,
                     path,
                     accessId

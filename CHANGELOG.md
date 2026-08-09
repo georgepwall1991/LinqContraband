@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now reports a navigation read inside a local function that only iterates the materialized collection. `void Print() { foreach (var o in orders) Console.WriteLine(o.Customer.Name); }` followed by `Print();` is the same loop written one level down, but capturing the collection was treated as an escape and silenced it. The callee's reads are now proven at the call site, where the collection's state is already known, and reported on the read itself — so an escape before the call, an `Include`, a fix-up and an explicit load all apply unchanged. The lift requires exactly one call site and a callee whose only use of the collection is iterating it; a callee that also hands the collection out, one invoked twice, one invoked after an escape, a delegate variable, and a callee taking the entity rather than the collection all keep today's behaviour.
+
 ## [5.7.46] - 2026-08-09
 
 ### Added

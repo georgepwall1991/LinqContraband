@@ -399,9 +399,59 @@ public sealed partial class MissingIncludeAnalyzer
                         capture.OriginIds.Add(origin.Id);
                 }
 
+                capture.Declaration = localFunction;
+                capture.ReadsOnly =
+                    capture.EscapesRoot
+                    && capture.OriginIds.Count == 0
+                    && IsWholeCollectionReadOnlyCallee(localFunction);
+
                 if (capture.EscapesRoot || capture.OriginIds.Count > 0)
                     localFunctionCaptures[localFunction.Symbol] = capture;
             }
+        }
+
+
+        /// <summary>
+        /// True when every reference the callee makes to the tracked collection is a
+        /// <c>foreach</c> over it, and the loop body only reads navigations on the element. Any
+        /// other use — passing it to a method, assigning it, indexing it — leaves the capture an
+        /// escape, because the callee could then load the navigation itself or hand it somewhere
+        /// that does.
+        /// </summary>
+        private bool IsWholeCollectionReadOnlyCallee(ILocalFunctionOperation localFunction)
+        {
+            if (resultLocal == null)
+                return false;
+
+            var sawLoop = false;
+            foreach (var descendant in localFunction.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (descendant is not ILocalReferenceOperation reference)
+                    continue;
+
+                if (!SymbolEqualityComparer.Default.Equals(reference.Local, resultLocal))
+                    continue;
+
+                // The loop collection is normally wrapped in a conversion to IEnumerable, so walk
+                // up through conversions before deciding what the reference is used for.
+                var node = (IOperation)reference;
+                while (node.Parent is IConversionOperation or IParenthesizedOperation)
+                    node = node.Parent;
+
+                if (
+                    node.Parent is not IForEachLoopOperation forEach
+                    || !ReferenceEquals(forEach.Collection.UnwrapConversions(), reference)
+                )
+                {
+                    return false;
+                }
+
+                sawLoop = true;
+            }
+
+            return sawLoop;
         }
 
         private static string GetDirectIndexOriginKey(IOperation operation, out bool isUnstable)
@@ -504,5 +554,14 @@ public sealed partial class MissingIncludeAnalyzer
     {
         public bool EscapesRoot { get; set; }
         public HashSet<int> OriginIds { get; } = new();
+
+        /// <summary>
+        /// Set when the callee's only use of the collection is iterating it and reading navigations
+        /// on the elements. The capture is then lifted to reads at the call site instead of being
+        /// treated as an escape — see <c>docs/design/lc045-interprocedural-scope.md</c>.
+        /// </summary>
+        public bool ReadsOnly { get; set; }
+
+        public ILocalFunctionOperation? Declaration { get; set; }
     }
 }
