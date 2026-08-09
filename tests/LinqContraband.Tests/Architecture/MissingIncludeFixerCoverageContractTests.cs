@@ -126,6 +126,8 @@ public sealed class MissingIncludeFixerCoverageContractTests
         void Show(Order o) => System.Console.WriteLine(o.Customer.Name);
         foreach (var o in orders) Show(o);
         foreach (var o in orders) Show(o);" },
+        new object[] { "PrivateMethodCallee", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) RenderShape(o);" },
         new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
         new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }
@@ -261,6 +263,9 @@ public sealed class MissingIncludeFixerCoverageContractTests
         // An await-bearing shape needs an async signature; the bridge-restoring rewrite it
         // exercises is the most intricate fix the rule performs.
         var signature = body.Contains("await ") ? "async Task Main()" : "void Main()";
+        // A shape may call a private helper; declare one the corpus can use.
+        const string helper =
+            "\n    private void RenderShape(Order o) => System.Console.WriteLine(o.Customer.Name);\n";
         return Usings
             + @"
 class Program
@@ -274,7 +279,9 @@ class Program
             + body
             + @"
     }
-}
+"
+            + helper
+            + @"}
 "
             + MockNamespace;
     }

@@ -70,8 +70,11 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestInnocent_GroupingCallbackWithHelperCall_StaysQuiet()
+    public async Task TestCrime_GroupingCallbackWithHelperCall_Reports()
     {
+        // Until 5.7.50 the helper call was an escape, which made this quiet. The helper only reads
+        // a navigation on the entity it is handed, so it cannot be the loading mechanism the read
+        // needs — and the read is a genuine missing Include.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -81,8 +84,9 @@ public partial class MissingIncludeEdgeCasesTests
         var map = orders.ToDictionary(o => Key(o));
     }
 
-    string Key(Order order) => order.Customer.Name;
-"
+    string Key(Order order) => {|#0:order.Customer|}.Name;
+",
+            Diagnostic(0, "Customer", "Order")
         );
     }
 

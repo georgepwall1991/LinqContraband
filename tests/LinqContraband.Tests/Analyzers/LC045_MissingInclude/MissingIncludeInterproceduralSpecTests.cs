@@ -313,4 +313,93 @@ public partial class MissingIncludeEdgeCasesTests
 "
         );
     }
+
+    [Fact]
+    public async Task TestCrime_PrivateMethodTakingTheEntity_Reports()
+    {
+        // Same reasoning as the local-function form, for the shape real code actually uses: a
+        // private helper in the same file, whose body is available and cannot be overridden.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Render(order);
+        }
+    }
+
+    private void Render(Order order) => Console.WriteLine({|#0:order.Customer|}.Name);
+",
+            Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_PrivateMethodOverAnIncludedQuery_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ToList();
+        foreach (var order in orders)
+        {
+            Render(order);
+        }
+    }
+
+    private void Render(Order order) => Console.WriteLine(order.Customer.Name);
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_PrivateMethodThatExplicitlyLoads_MustStayQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Render(order, db);
+        }
+    }
+
+    private void Render(Order order, MyDbContext db)
+    {
+        db.Entry(order).Reference(o => o.Customer).Load();
+        Console.WriteLine(order.Customer.Name);
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_PublicMethodTakingTheEntity_MustStayQuiet()
+    {
+        // Only private methods qualify: anything callable from outside could be overridden or
+        // called with entities this analysis knows nothing about.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        foreach (var order in orders)
+        {
+            Render(order);
+        }
+    }
+
+    public void Render(Order order) => Console.WriteLine(order.Customer.Name);
+"
+        );
+    }
 }

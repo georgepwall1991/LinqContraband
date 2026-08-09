@@ -1,7 +1,8 @@
 # LC045 — interprocedural scope: design notes
 
-> **Status:** both local-function slices described here are implemented — the closure form in
-> 5.7.47 and the entity-taking form in 5.7.48. What remains is genuinely cross-method:
+> **Status:** the local-function slices are implemented — the closure form in 5.7.47, the
+> entity-taking form in 5.7.48, per-call-site binding in 5.7.49, and same-file private methods in
+> 5.7.50. What remains is genuinely cross-method:
 > `IQueryable` parameters and repository-returned queries as roots, where the callee is not
 > declared in the analysed method and its body may not be available at all. The constraints and
 > oracles below still apply.
