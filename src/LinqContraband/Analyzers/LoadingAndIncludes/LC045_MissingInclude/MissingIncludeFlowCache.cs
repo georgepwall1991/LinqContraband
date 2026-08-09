@@ -288,10 +288,22 @@ public sealed partial class MissingIncludeAnalyzer
         /// The ordinal of the reachable block holding the earliest operation nested inside
         /// <paramref name="body"/>, or -1.
         /// </summary>
+        /// <summary>
+        /// The block the body is entered through: the lowest ordinal among the blocks holding
+        /// operations inside <paramref name="body"/>. Block ordinals follow control flow, so the
+        /// entry block has the lowest one.
+        ///
+        /// Choosing by syntax position instead put the loop variable's binding in the wrong block
+        /// whenever the body's first statement evaluated a conditional — `var s = c ? o.Nav : "";`
+        /// starts earliest at the declarator, but the declarator's operation lives in the merge
+        /// block, which runs *after* the branch that reads the navigation. The read was then
+        /// visited with the origin unbound, and an unbound visit makes the whole access uncertain.
+        /// </summary>
         public int FindFirstBlockInside(SyntaxNode body)
         {
             var bodySpan = body.Span;
             var index = LowerBound(bodySpan.Start);
+            var entryOrdinal = -1;
 
             for (; index < reachableByStart.Length; index++)
             {
@@ -302,10 +314,11 @@ public sealed partial class MissingIncludeAnalyzer
                 if (entry.Tree != body.SyntaxTree || entry.Span.End > bodySpan.End)
                     continue;
 
-                return entry.Ordinal;
+                if (entryOrdinal < 0 || entry.Ordinal < entryOrdinal)
+                    entryOrdinal = entry.Ordinal;
             }
 
-            return -1;
+            return entryOrdinal;
         }
 
         private int LowerBound(int start)

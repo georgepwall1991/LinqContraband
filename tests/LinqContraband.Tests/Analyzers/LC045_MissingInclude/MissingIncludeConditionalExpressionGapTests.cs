@@ -3,25 +3,20 @@ using Microsoft.CodeAnalysis.Testing;
 namespace LinqContraband.Tests.Analyzers.LC045_MissingInclude;
 
 /// <summary>
-/// KNOWN GAP, pinned so closing it is deliberate and so it cannot widen unnoticed.
+/// A navigation read on a loop variable inside an expression-level conditional — a ternary, a
+/// switch expression, <c>?.</c> on the navigation, or <c>??</c> — is reported, exactly as the
+/// equivalent <c>if</c>/<c>else</c> statement and the single-entity form already were.
 ///
-/// A navigation read on a loop variable inside an <b>expression-level conditional</b> — a ternary,
-/// a switch expression, <c>?.</c> on the navigation itself, or <c>??</c> — is not reported, while
-/// the equivalent <c>if</c>/<c>else</c> statement is. It is not branch conservatism: the ternary
-/// stays quiet even when <b>both arms</b> read the navigation, so there is no path on which the
-/// read does not happen. The same read on a single materialized entity is reported, so the gap is
-/// specific to the loop-variable flow proof.
-///
-/// The fix belongs in the origin-flow prover's event-to-block mapping rather than in read
-/// collection, which is why it is recorded here rather than patched at the edges.
+/// 5.7.37 recorded this as a gap. The cause was that the loop variable's binding was attached to
+/// the block holding the body's earliest-starting operation, which for `var s = c ? o.Nav : "";`
+/// is the merge block — after the branch that reads the navigation. The read was then visited with
+/// the origin unbound, and one unbound visit makes the whole access uncertain.
 /// </summary>
 public partial class MissingIncludeEdgeCasesTests
 {
     [Fact]
     public async Task TestCrime_ReadInsideAnIfElseOnTheLoopVariable_Reports()
     {
-        // The control case: the statement form works, which is what makes the expression form a
-        // defect rather than a decision.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -62,18 +57,15 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Theory]
-    [InlineData(@"var name = order.Id > 0 ? order.Customer.Name : """";")]
-    [InlineData(@"var name = order.Id > 0 ? order.Customer.Name : order.Customer.Name;")]
-    [InlineData(@"var name = order.Id switch { 1 => order.Customer.Name, _ => """" };")]
-    [InlineData(@"var name = order.Customer?.Name;")]
-    [InlineData(@"var name = order.Customer?.Name ?? """";")]
-    [InlineData(@"var customer = order.Customer ?? new Customer();")]
-    public async Task TestKnownGap_ReadInsideAnExpressionConditionalOnTheLoopVariable_StaysQuiet(
+    [InlineData(@"var name = order.Id > 0 ? {|#0:order.Customer|}.Name : """";")]
+    [InlineData(@"var name = order.Id switch { 1 => {|#0:order.Customer|}.Name, _ => """" };")]
+    [InlineData(@"var name = {|#0:order.Customer|}?.Name;")]
+    [InlineData(@"var name = {|#0:order.Customer|}?.Name ?? """";")]
+    [InlineData(@"var customer = {|#0:order.Customer|} ?? new Customer();")]
+    public async Task TestCrime_ReadInsideAnExpressionConditionalOnTheLoopVariable_Reports(
         string read
     )
     {
-        // Every one of these should report. The second reads the navigation in BOTH arms, so no
-        // path avoids it — the silence is a defect in the flow proof, not conservatism.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -88,6 +80,48 @@ public partial class MissingIncludeEdgeCasesTests
             Console.WriteLine(1);
         }
     }
+",
+            Diagnostic(0, "Customer", "Order")
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_ExpressionConditionalOverAnIncludedQuery_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.Include(o => o.Customer).ToList();
+        foreach (var order in orders)
+        {
+            var name = order.Id > 0 ? order.Customer.Name : """";
+            Console.WriteLine(name);
+        }
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestInnocent_ExpressionConditionalAfterAnEscape_StaysQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+        Hydrate(orders);
+        foreach (var order in orders)
+        {
+            var name = order.Id > 0 ? order.Customer.Name : """";
+            Console.WriteLine(name);
+        }
+    }
+
+    void Hydrate(List<Order> orders) { }
 "
         );
     }
