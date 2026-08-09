@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The LC045 fixer-coverage contract covers async shapes. `await foreach` over an `AsAsyncEnumerable()` bridge, the same with a conditional read, and the same with a nested `ThenInclude` path are now held to the contract that a fix is offered, clears the diagnostic, and emits. The `await foreach (var o in db.Orders)` shape, whose fix must restore the bridge, deliberately stays with its own test: modelling it needs a `DbSet` that is also an `IAsyncEnumerable`, and adding that to the shared mock makes `Select` ambiguous between the queryable and async query patterns, which silently stops unrelated shapes reporting.
+- Sync and async paths were verified symmetric: `ToListAsync`, `await foreach`, and query syntax all report the ternary and `?.` reads that 5.7.38 fixed, and explicit loading silences them on both.
+
 ## [5.7.40] - 2026-08-09
 
 ### Added
