@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.35] - 2026-08-09
+
 ### Changed
 - LC045 answers "is this an element-preserving in-memory view?" once per operation instead of every time it is asked. The peeling loop, the result-collection test, the callback proof and the materialized-source recursion each asked independently, and every callback-bearing answer re-walked the lambda body to prove it effect-free. Counting the walks: an inline view did 1,800 for 200 loops, a three-operator chain 12,200. The verdict is now memoized weakly by operation, and invocations whose name is not a view operator are rejected before the cache is probed, so the common case — every `Console.WriteLine` and every materializer — stays a single set lookup. Lambda-body walks fall 56% on an inline view, 80% on a chained view and 67% on an alias, with diagnostics unchanged.
 
