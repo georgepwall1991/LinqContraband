@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC045 now reports a navigation read on a loop variable inside an expression-level conditional. `var name = order.Id > 0 ? order.Customer.Name : "";` was silent, as were the switch-expression, `order.Customer?.Name` and `??` spellings, while the equivalent `if`/`else` statement reported and the same read on a single materialized entity reported — the gap 5.7.37 recorded. The loop variable's binding was attached to the block holding the body's earliest-starting operation, which for that shape is the merge block after the branches, so the read was visited with the origin unbound and one unbound visit makes the whole access uncertain. The binding is now attached to the block the body is entered through, which is what "bound on entry" means in control-flow terms.
+
 ## [5.7.37] - 2026-08-09
 
 ### Added
