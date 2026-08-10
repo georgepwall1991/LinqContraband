@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC046 now reports repeated calls to a direct two-parameter local helper when exactly one parameter is the `DbContext` used directly by the returned EF task, both calls bind it to the same proven context, the context argument is evaluated first, and the remaining parameter is unused or used only in non-throwing direct EF arguments. Reordered named arguments and an omitted optional companion can retain the diagnostic, and source-earlier named arguments can establish a required local used by the EF call. Distinct or reassigned contexts, explicit context-receiver conversions, throwing call or helper-body arguments including nullable instance method-group receivers, throwing parameter transforms, invalid required values including directly bound or captured stable locals, transformed required values, wrapped or definitely cancelled forwarded tokens, helpers whose returned operation ambiguously depends on two context parameters, and helpers with three or more parameters remain quiet.
+
 ## [5.7.57] - 2026-08-10
 
 ### Fixed

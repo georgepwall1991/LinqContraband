@@ -167,17 +167,54 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return false;
             }
 
-            var parameter = localFunction.Symbol.Parameters[0];
-            if (localFunction.Symbol.Parameters.Length == 1 &&
-                parameter.Type.IsDbContext() &&
-                SymbolEqualityComparer.Default.Equals(returnedOperation.Origin.Symbol, parameter))
+            var contextParameters = localFunction.Symbol.Parameters
+                .Where(parameter => parameter.Type.IsDbContext())
+                .ToArray();
+            if (contextParameters.Length == 1 &&
+                SymbolEqualityComparer.Default.Equals(
+                    returnedOperation.Origin.Symbol,
+                    contextParameters[0]))
             {
+                var contextParameter = contextParameters[0];
+                if (!ParameterIsUsedOnlyByInvocationReceiver(
+                        contextParameter,
+                        returnedInvocation) ||
+                    ContextReceiverHasExplicitConversion(
+                        contextParameter,
+                        returnedInvocation) ||
+                    !ReturnedInvocationInputsAreDefinitelyNonThrowing(
+                        returnedInvocation,
+                        localFunction.Body) ||
+                    localFunction.Symbol.Parameters.Any(parameter =>
+                        !SymbolEqualityComparer.Default.Equals(
+                            parameter,
+                            contextParameter) &&
+                        (!ParameterIsUsedOnlyByNonThrowingArguments(
+                             parameter,
+                             returnedInvocation,
+                             localFunction.Body) ||
+                         !CancellationTokenParameterIsUsedDirectly(
+                             parameter,
+                             returnedInvocation))) ||
+                    BoundRequiredArgumentIsDefinitelyInvalid(
+                        invocation,
+                        returnedInvocation,
+                        executableRoot,
+                        localFunction.Body))
+                {
+                    return false;
+                }
+
                 var argument = invocation.Arguments.FirstOrDefault(candidate =>
                     SymbolEqualityComparer.Default.Equals(
                         candidate.Parameter?.OriginalDefinition,
-                        parameter.OriginalDefinition));
+                        contextParameter.OriginalDefinition));
                 if (argument == null ||
                     argument.IsImplicit ||
+                    invocation.Arguments.Any(candidate =>
+                        !candidate.IsImplicit &&
+                        candidate.Value.Syntax.SpanStart <
+                        argument.Value.Syntax.SpanStart) ||
                     !TryResolveContextOrigin(
                         argument.Value,
                         executableRoot,
@@ -192,11 +229,22 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return true;
             }
 
-            if (localFunction.Symbol.Parameters.Any(candidate =>
+            if (!ReturnedInvocationInputsAreDefinitelyNonThrowing(
+                    returnedInvocation,
+                    localFunction.Body) ||
+                localFunction.Symbol.Parameters.Any(candidate =>
                     !ParameterIsUsedOnlyByNonThrowingArguments(
                         candidate,
                         returnedInvocation,
-                        localFunction.Body)))
+                        localFunction.Body) ||
+                    !CancellationTokenParameterIsUsedDirectly(
+                        candidate,
+                        returnedInvocation)) ||
+                BoundRequiredArgumentIsDefinitelyInvalid(
+                    invocation,
+                    returnedInvocation,
+                    executableRoot,
+                    localFunction.Body))
             {
                 return false;
             }
@@ -232,7 +280,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IInvocationOperation returnedInvocation,
         IOperation executableRoot)
     {
-        foreach (var returnedArgument in returnedInvocation.Arguments)
+        foreach (var returnedArgument in EnumerateOutsideNestedExecutables(returnedInvocation)
+                     .OfType<IArgumentOperation>())
         {
             if (!IsCancellationTokenParameter(returnedArgument.Parameter) ||
                 returnedArgument.Value.UnwrapConversions() is not
@@ -260,12 +309,272 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
-    private static bool ParameterIsUsedOnlyByNonThrowingArguments(
-        IParameterSymbol parameter,
+    private static bool BoundRequiredArgumentIsDefinitelyInvalid(
+        IInvocationOperation invocation,
+        IInvocationOperation returnedInvocation,
+        IOperation executableRoot,
+        IOperation localFunctionBody)
+    {
+        foreach (var returnedArgument in EnumerateOutsideNestedExecutables(returnedInvocation)
+                     .OfType<IArgumentOperation>())
+        {
+            if (returnedArgument.Parent is not IInvocationOperation argumentInvocation)
+                continue;
+
+            var value = returnedArgument.Value.UnwrapConversions();
+            if (value is not IParameterReferenceOperation parameterReference)
+            {
+                var valueBeforePosition = invocation.Syntax.SpanStart;
+                if (value is ILocalReferenceOperation localReference)
+                {
+                    if (CallArgumentsHaveDeconstructionWrite(
+                            invocation,
+                            localReference.Local) ||
+                        HelperBodyMayWriteLocalBeforeArgument(
+                            localFunctionBody,
+                            localReference.Local,
+                            returnedArgument.Value.Syntax.SpanStart))
+                    {
+                        return true;
+                    }
+
+                    if (TryGetDefinitelyEvaluatedCallArgumentAssignment(
+                            invocation,
+                            localReference.Local,
+                            out var assignment))
+                    {
+                        value = assignment.Value.UnwrapConversions();
+                        valueBeforePosition = assignment.Syntax.SpanStart;
+                    }
+                }
+
+                var requiredArgumentMustBeProven = RequiredArgumentMustBeProven(
+                    argumentInvocation,
+                    returnedArgument.Parameter);
+                var isCancellationToken = IsCancellationTokenParameter(
+                    returnedArgument.Parameter);
+                if (requiredArgumentMustBeProven &&
+                    !RequiredArgumentValueIsDirect(value) ||
+                    isCancellationToken &&
+                    !RequiredArgumentValueIsDirect(value) &&
+                    ValueReferencesBoundHelperParameter(value, invocation) ||
+                    (requiredArgumentMustBeProven || isCancellationToken) &&
+                    RequiredArgumentValueIsDefinitelyInvalid(
+                        argumentInvocation,
+                        returnedArgument.Parameter,
+                        value,
+                        executableRoot,
+                        valueBeforePosition))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            var callArgument = invocation.Arguments.FirstOrDefault(candidate =>
+                SymbolEqualityComparer.Default.Equals(
+                    candidate.Parameter?.OriginalDefinition,
+                    parameterReference.Parameter.OriginalDefinition));
+            if (callArgument != null &&
+                (RequiredArgumentMustBeProven(
+                     argumentInvocation,
+                     returnedArgument.Parameter) &&
+                 !RequiredArgumentValueIsDirect(
+                     callArgument.Value.UnwrapConversions()) ||
+                 RequiredArgumentValueIsDefinitelyInvalid(
+                     argumentInvocation,
+                     returnedArgument.Parameter,
+                     callArgument.Value,
+                     executableRoot,
+                     callArgument.Value.Syntax.SpanStart)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool CallArgumentsHaveDeconstructionWrite(
+        IInvocationOperation invocation,
+        ILocalSymbol local)
+    {
+        return invocation.Arguments
+            .Where(argument => !argument.IsImplicit)
+            .SelectMany(argument => new[] { argument.Value }
+                .Concat(EnumerateOutsideNestedExecutables(argument.Value)))
+            .OfType<IDeconstructionAssignmentOperation>()
+            .Any(assignment => assignment.Target.ReferencesLocal(local));
+    }
+
+    private static bool HelperBodyMayWriteLocalBeforeArgument(
+        IOperation localFunctionBody,
+        ILocalSymbol local,
+        int beforePosition)
+    {
+        return EnumerateOutsideNestedExecutables(localFunctionBody)
+            .Where(operation => operation.Syntax.SpanStart < beforePosition)
+            .Any(operation =>
+                operation is IAssignmentOperation assignment &&
+                assignment.Target.ReferencesLocal(local) ||
+                operation is IDynamicInvocationOperation dynamicInvocation &&
+                DynamicInvocationMayWriteLocal(dynamicInvocation, local) ||
+                operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out &&
+                argument.Value.ReferencesLocal(local));
+    }
+
+    private static bool ValueReferencesBoundHelperParameter(
+        IOperation value,
+        IInvocationOperation invocation)
+    {
+        return new[] { value }
+            .Concat(EnumerateOutsideNestedExecutables(value))
+            .OfType<IParameterReferenceOperation>()
+            .Any(reference => invocation.TargetMethod.Parameters.Any(parameter =>
+                SymbolEqualityComparer.Default.Equals(
+                    reference.Parameter.OriginalDefinition,
+                    parameter.OriginalDefinition)));
+    }
+
+    private static bool TryGetDefinitelyEvaluatedCallArgumentAssignment(
+        IInvocationOperation invocation,
+        ILocalSymbol local,
+        out ISimpleAssignmentOperation assignment)
+    {
+        assignment = null!;
+        foreach (var candidate in invocation.Arguments
+                     .Where(argument => !argument.IsImplicit)
+                     .SelectMany(argument => new[] { argument.Value }
+                         .Concat(EnumerateOutsideNestedExecutables(argument.Value))
+                         .OfType<ISimpleAssignmentOperation>())
+                     .Where(candidate =>
+                         candidate.Target.UnwrapConversions() is
+                             ILocalReferenceOperation localReference &&
+                         SymbolEqualityComparer.Default.Equals(
+                             localReference.Local,
+                             local))
+                     .OrderBy(candidate => candidate.Syntax.SpanStart))
+        {
+            if (!AssignmentIsDefinitelyEvaluatedByArgument(candidate))
+                continue;
+
+            assignment = candidate;
+        }
+
+        return assignment != null;
+    }
+
+    private static bool AssignmentIsDefinitelyEvaluatedByArgument(
+        ISimpleAssignmentOperation assignment)
+    {
+        for (var current = assignment.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            switch (current)
+            {
+                case IArgumentOperation:
+                    return true;
+
+                case IConversionOperation:
+                case IParenthesizedOperation:
+                    continue;
+
+                case IBinaryOperation binary
+                    when binary.OperatorKind is not (
+                        BinaryOperatorKind.ConditionalAnd or
+                        BinaryOperatorKind.ConditionalOr):
+                    continue;
+
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool RequiredArgumentMustBeProven(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter)
+    {
+        return IsRequiredCallableParameter(parameter) ||
+               IsRequiredQueryArgument(invocation, parameter) ||
+               IsRequiredTerminalArgument(invocation, parameter) ||
+               IsRequiredRawSqlParametersArgument(invocation, parameter) ||
+               IsRequiredSqlArgument(invocation, parameter) ||
+               IsDbContextSetNameArgument(invocation, parameter);
+    }
+
+    private static bool ReturnedInvocationInputsAreDefinitelyNonThrowing(
         IInvocationOperation returnedInvocation,
         IOperation localFunctionBody)
     {
-        var parameterReferences = returnedInvocation.Descendants()
+        var receiver = GetSemanticInvocationReceiver(returnedInvocation);
+        return EnumerateOutsideNestedExecutables(returnedInvocation)
+            .OfType<IArgumentOperation>()
+            .Where(argument =>
+                !argument.IsImplicit &&
+                (receiver == null ||
+                 argument.Value.Syntax.Span != receiver.Syntax.Span))
+            .All(argument =>
+                OperationEvaluationIsDefinitelyNonThrowing(
+                    argument.Value,
+                    localFunctionBody) &&
+                MethodReferenceReceiversAreDefinitelyNonThrowing(
+                    argument.Value,
+                    localFunctionBody));
+    }
+
+    private static bool MethodReferenceReceiversAreDefinitelyNonThrowing(
+        IOperation operation,
+        IOperation executableRoot)
+    {
+        return new[] { operation }
+            .Concat(EnumerateOutsideNestedExecutables(operation))
+            .OfType<IMethodReferenceOperation>()
+            .All(reference =>
+                reference.Instance == null ||
+                QueryReceiverEvaluationIsDefinitelyNonThrowing(
+                    reference.Instance,
+                    executableRoot));
+    }
+
+    private static bool ParameterIsUsedOnlyByInvocationReceiver(
+        IParameterSymbol parameter,
+        IInvocationOperation invocation)
+    {
+        var receiver = GetSemanticInvocationReceiver(invocation);
+        return receiver != null &&
+               EnumerateOutsideNestedExecutables(invocation)
+                   .OfType<IParameterReferenceOperation>()
+                   .Where(reference => SymbolEqualityComparer.Default.Equals(
+                       reference.Parameter,
+                       parameter))
+                   .All(reference => receiver.Syntax.Span.Contains(reference.Syntax.Span));
+    }
+
+    private static bool ContextReceiverHasExplicitConversion(
+        IParameterSymbol parameter,
+        IInvocationOperation invocation)
+    {
+        return EnumerateOutsideNestedExecutables(invocation)
+            .OfType<IConversionOperation>()
+            .Any(conversion =>
+                !conversion.IsImplicit &&
+                conversion.Operand.ReferencesParameter(parameter));
+    }
+
+    private static bool CancellationTokenParameterIsUsedDirectly(
+        IParameterSymbol parameter,
+        IInvocationOperation returnedInvocation)
+    {
+        if (!IsCancellationTokenParameter(parameter))
+            return true;
+
+        var parameterReferences = EnumerateOutsideNestedExecutables(returnedInvocation)
             .OfType<IParameterReferenceOperation>()
             .Where(reference => SymbolEqualityComparer.Default.Equals(
                 reference.Parameter,
@@ -274,9 +583,50 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         if (parameterReferences.Length == 0)
             return true;
 
-        var parameterArguments = returnedInvocation.Arguments
+        var parameterArguments = EnumerateOutsideNestedExecutables(returnedInvocation)
+            .OfType<IArgumentOperation>()
             .Where(argument => parameterReferences.Any(reference =>
-                argument.Value.Syntax.Span.Contains(reference.Syntax.Span)))
+                argument.Value.Syntax.Span.Contains(reference.Syntax.Span)) &&
+                !EnumerateOutsideNestedExecutables(argument.Value)
+                    .OfType<IArgumentOperation>()
+                    .Any(nestedArgument => parameterReferences.Any(reference =>
+                        nestedArgument.Value.Syntax.Span.Contains(
+                            reference.Syntax.Span))))
+            .ToArray();
+        return parameterArguments.Length > 0 &&
+               parameterReferences.All(reference => parameterArguments.Any(argument =>
+                   argument.Value.Syntax.Span.Contains(reference.Syntax.Span))) &&
+               parameterArguments.All(argument =>
+                   argument.Value.UnwrapConversions() is
+                       IParameterReferenceOperation parameterReference &&
+                   SymbolEqualityComparer.Default.Equals(
+                       parameterReference.Parameter,
+                       parameter));
+    }
+
+    private static bool ParameterIsUsedOnlyByNonThrowingArguments(
+        IParameterSymbol parameter,
+        IInvocationOperation returnedInvocation,
+        IOperation localFunctionBody)
+    {
+        var parameterReferences = EnumerateOutsideNestedExecutables(returnedInvocation)
+            .OfType<IParameterReferenceOperation>()
+            .Where(reference => SymbolEqualityComparer.Default.Equals(
+                reference.Parameter,
+                parameter))
+            .ToArray();
+        if (parameterReferences.Length == 0)
+            return true;
+
+        var parameterArguments = EnumerateOutsideNestedExecutables(returnedInvocation)
+            .OfType<IArgumentOperation>()
+            .Where(argument => parameterReferences.Any(reference =>
+                argument.Value.Syntax.Span.Contains(reference.Syntax.Span)) &&
+                !EnumerateOutsideNestedExecutables(argument.Value)
+                    .OfType<IArgumentOperation>()
+                    .Any(nestedArgument => parameterReferences.Any(reference =>
+                        nestedArgument.Value.Syntax.Span.Contains(
+                            reference.Syntax.Span))))
             .ToArray();
         return parameterArguments.Length > 0 &&
                parameterReferences.All(reference => parameterArguments.Any(argument =>
@@ -671,6 +1021,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (!CanOperationRunBefore(operation, executableRoot, beforePosition))
                 continue;
 
+            if (operation is IDynamicInvocationOperation dynamicInvocation &&
+                DynamicInvocationMayWriteParameter(dynamicInvocation, parameter))
+            {
+                return false;
+            }
+
             if (operation is IAssignmentOperation assignment &&
                 assignment.Target.ReferencesParameter(parameter))
             {
@@ -898,41 +1254,176 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         foreach (var argument in invocation.Arguments)
         {
-            var parameter = argument.Parameter;
-            var isRequired =
-                IsRequiredCallableParameter(parameter) ||
-                IsRequiredQueryArgument(invocation, parameter) ||
-                IsRequiredTerminalArgument(invocation, parameter) ||
-                IsRequiredRawSqlParametersArgument(invocation, parameter) ||
-                IsRequiredSqlArgument(invocation, parameter) ||
-                IsDbContextSetNameArgument(invocation, parameter);
-
-            var value = argument.Value.UnwrapConversions();
-
-            if (isRequired && value.ConstantValue is { HasValue: true, Value: null })
-                return true;
-
-            if ((IsRequiredSqlArgument(invocation, parameter) ||
-                 IsDbContextSetNameArgument(invocation, parameter)) &&
-                value.ConstantValue is { HasValue: true, Value: string text } &&
-                text.All(char.IsWhiteSpace))
-            {
-                return true;
-            }
-
-            if (IsCancellationTokenParameter(parameter) &&
-                OperationIsDefinitelyCancelledToken(
+            if (RequiredArgumentValueIsDefinitelyInvalid(
+                    invocation,
+                    argument.Parameter,
                     argument.Value,
                     executableRoot,
-                    invocation.Syntax.SpanStart,
-                    new HashSet<ILocalSymbol>(
-                        SymbolEqualityComparer.Default)))
+                    argument.Value.Syntax.SpanStart))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool RequiredArgumentValueIsDefinitelyInvalid(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter,
+        IOperation argumentValue,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        return RequiredArgumentValueIsDefinitelyInvalid(
+            invocation,
+            parameter,
+            argumentValue,
+            executableRoot,
+            beforePosition,
+            new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private static bool RequiredArgumentValueIsDefinitelyInvalid(
+        IInvocationOperation invocation,
+        IParameterSymbol? parameter,
+        IOperation argumentValue,
+        IOperation executableRoot,
+        int beforePosition,
+        ISet<ILocalSymbol> visitedLocals)
+    {
+        var isRequired =
+            IsRequiredCallableParameter(parameter) ||
+            IsRequiredQueryArgument(invocation, parameter) ||
+            IsRequiredTerminalArgument(invocation, parameter) ||
+            IsRequiredRawSqlParametersArgument(invocation, parameter) ||
+            IsRequiredSqlArgument(invocation, parameter) ||
+            IsDbContextSetNameArgument(invocation, parameter);
+        if (!isRequired && !IsCancellationTokenParameter(parameter))
+            return false;
+
+        var value = argumentValue.UnwrapConversions();
+        if (value is ISimpleAssignmentOperation assignment)
+        {
+            return RequiredArgumentValueIsDefinitelyInvalid(
+                invocation,
+                parameter,
+                assignment.Value,
+                executableRoot,
+                beforePosition,
+                visitedLocals);
+        }
+
+        if (value is ILocalReferenceOperation localReference &&
+            visitedLocals.Add(localReference.Local) &&
+            LocalHasNoUntrackedWritesBefore(
+                executableRoot,
+                localReference.Local,
+                beforePosition))
+        {
+            var assignments = LocalAssignmentCache.GetAssignments(
+                    executableRoot,
+                    localReference.Local,
+                    default)
+                .Where(assignment => assignment.SpanStart < beforePosition)
+                .ToArray();
+            if (assignments.Length == 1)
+            {
+                return RequiredArgumentValueIsDefinitelyInvalid(
+                    invocation,
+                    parameter,
+                    assignments[0].Value,
+                    executableRoot,
+                    assignments[0].SpanStart,
+                    visitedLocals);
+            }
+        }
+
+        if (isRequired && value.ConstantValue is { HasValue: true, Value: null })
+            return true;
+
+        if (IsFindKeyValuesArgument(invocation, parameter) &&
+            ValueIsDefinitelyEmptyArray(value))
+        {
+            return true;
+        }
+
+        if ((IsRequiredSqlArgument(invocation, parameter) ||
+             IsDbContextSetNameArgument(invocation, parameter)) &&
+            ValueIsDefinitelyBlankString(value))
+        {
+            return true;
+        }
+
+        return IsCancellationTokenParameter(parameter) &&
+               OperationIsDefinitelyCancelledToken(
+                   argumentValue,
+                   executableRoot,
+                   beforePosition,
+                   new HashSet<ILocalSymbol>(
+                       SymbolEqualityComparer.Default));
+    }
+
+    private static bool RequiredArgumentValueIsDirect(IOperation value)
+    {
+        return value is IParameterReferenceOperation or
+            ILocalReferenceOperation or
+            IFieldReferenceOperation or
+            IPropertyReferenceOperation or
+            ILiteralOperation or
+            IDefaultValueOperation or
+            IArrayCreationOperation or
+            IAnonymousFunctionOperation or
+            IMethodReferenceOperation or
+            IDelegateCreationOperation
+            {
+                Target: IAnonymousFunctionOperation or IMethodReferenceOperation
+            };
+    }
+
+    private static bool ValueIsDefinitelyEmptyArray(IOperation value)
+    {
+        value = value.UnwrapConversions();
+        if (value is IArrayCreationOperation arrayCreation)
+        {
+            if (arrayCreation.Initializer != null)
+                return arrayCreation.Initializer.ElementValues.Length == 0;
+
+            return arrayCreation.DimensionSizes.Length == 1 &&
+                   arrayCreation.DimensionSizes[0].ConstantValue is
+                       { HasValue: true, Value: 0 };
+        }
+
+        if (value.Kind.ToString() == "CollectionExpression" &&
+            !value.Descendants().Any())
+        {
+            return true;
+        }
+
+        return value is IInvocationOperation arrayEmpty &&
+               arrayEmpty.TargetMethod is
+               {
+                   IsStatic: true,
+                   Name: "Empty",
+                   Arity: 1,
+                   ContainingType.SpecialType: SpecialType.System_Array
+               };
+    }
+
+    private static bool ValueIsDefinitelyBlankString(IOperation value)
+    {
+        if (value.ConstantValue is { HasValue: true, Value: string text })
+            return text.All(char.IsWhiteSpace);
+
+        return value is IFieldReferenceOperation
+               {
+                   Field:
+                   {
+                       IsStatic: true,
+                       Name: "Empty",
+                       ContainingType.SpecialType: SpecialType.System_String
+                   }
+               };
     }
 
     private static bool DbContextSetNameIsDefinitelyValid(
