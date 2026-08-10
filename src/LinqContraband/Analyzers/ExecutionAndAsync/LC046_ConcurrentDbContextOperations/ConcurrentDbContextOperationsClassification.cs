@@ -151,13 +151,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         if (localFunction.Symbol.Parameters.Length == 1)
         {
-            var parameter = localFunction.Symbol.Parameters[0];
-            if (!parameter.Type.IsDbContext())
+            if (invocation.Arguments.Any(argument =>
+                    !OperationEvaluationIsDefinitelyNonThrowing(
+                        argument.Value,
+                        executableRoot)))
             {
                 return false;
             }
 
-            if (SymbolEqualityComparer.Default.Equals(returnedOperation.Origin.Symbol, parameter))
+            var parameter = localFunction.Symbol.Parameters[0];
+            if (parameter.Type.IsDbContext() &&
+                SymbolEqualityComparer.Default.Equals(returnedOperation.Origin.Symbol, parameter))
             {
                 var argument = invocation.Arguments.FirstOrDefault(candidate =>
                     SymbolEqualityComparer.Default.Equals(
@@ -177,6 +181,14 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
                 operation = new EfOperation(invocation, argumentOrigin);
                 return true;
+            }
+
+            if (!ParameterIsUsedOnlyByNonThrowingArguments(
+                    parameter,
+                    returnedInvocation,
+                    localFunction.Body))
+            {
+                return false;
             }
 
             if (IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
@@ -203,6 +215,33 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         operation = new EfOperation(invocation, returnedOperation.Origin);
         return true;
+    }
+
+    private static bool ParameterIsUsedOnlyByNonThrowingArguments(
+        IParameterSymbol parameter,
+        IInvocationOperation returnedInvocation,
+        IOperation localFunctionBody)
+    {
+        var parameterReferences = returnedInvocation.Descendants()
+            .OfType<IParameterReferenceOperation>()
+            .Where(reference => SymbolEqualityComparer.Default.Equals(
+                reference.Parameter,
+                parameter))
+            .ToArray();
+        if (parameterReferences.Length == 0)
+            return true;
+
+        var parameterArguments = returnedInvocation.Arguments
+            .Where(argument => parameterReferences.Any(reference =>
+                argument.Value.Syntax.Span.Contains(reference.Syntax.Span)))
+            .ToArray();
+        return parameterArguments.Length > 0 &&
+               parameterReferences.All(reference => parameterArguments.Any(argument =>
+                   argument.Value.Syntax.Span.Contains(reference.Syntax.Span))) &&
+               parameterArguments.All(argument =>
+                   OperationEvaluationIsDefinitelyNonThrowing(
+                       argument.Value,
+                       localFunctionBody));
     }
 
     private static bool CapturedParameterOriginsHaveNoWritesBefore(
