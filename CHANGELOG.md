@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.56] - 2026-08-10
+
 ### Fixed
-- LC046 now reports repeated calls to a direct local helper with one non-`DbContext` parameter when the helper returns the task over a stable captured context, each call argument is proven non-throwing, and any use of the parameter is limited to non-throwing direct EF arguments. The same safety proof now prevents existing one-`DbContext`-parameter helper forms from reporting when property or factory call arguments, or a captured-context helper's use of that parameter, can fault before a task starts. Helper-local or reassigned captured contexts and potentially throwing argument evaluation remain quiet; multiple parameters, helper chains, and richer bodies remain outside the proof.
+- LC046 now reports repeated calls to a direct local helper with one parameter when the helper returns the task over a stable captured context, each call argument is proven non-throwing, and any use of the parameter is limited to non-throwing direct EF arguments. The same safety proof now prevents existing one-`DbContext`-parameter helper forms from reporting when property or factory call arguments, or a captured-context helper's use of that parameter, can fault before a task starts. Helper-local or reassigned captured contexts and potentially throwing argument evaluation remain quiet; multiple parameters, helper chains, and richer bodies remain outside the proof.
 
 ## [5.7.55] - 2026-08-10
 

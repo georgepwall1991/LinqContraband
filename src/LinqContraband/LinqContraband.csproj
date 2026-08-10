@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.55</Version>
+        <Version>5.7.56</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 now reports repeated calls to a direct local helper with exactly one DbContext parameter when each call passes the same proven context, while preserving stable captured-context detection when an unused context parameter is added. Distinct or reassigned context arguments and captures, plus helper-local contexts, remain quiet.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC046 now reports repeated calls to direct one-parameter local helpers that return EF tasks over a stable captured DbContext when call arguments and any direct EF use of the parameter are proven non-throwing. Existing one-DbContext-parameter forms now also stay quiet when call or in-helper parameter evaluation can fault before a task starts.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
