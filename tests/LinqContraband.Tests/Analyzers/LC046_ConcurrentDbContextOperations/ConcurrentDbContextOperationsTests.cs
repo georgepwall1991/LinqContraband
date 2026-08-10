@@ -335,6 +335,169 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithTwoSafeParametersAndCapturedContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token) =>
+                db.Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                {|#0:Load(0, CancellationToken.None)|},
+                {|#1:Load(1, CancellationToken.None)|});
+        }
+
+        public async Task OptionalToken(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token = default) =>
+                db.Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                {|#2:Load(0)|},
+                {|#3:Load(1)|});
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        var optionalToken = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected, optionalToken);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_WithUnprovenTwoParameterLocalFunctionCalls_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task ThrowingCallArgument(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token) =>
+                db.Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                Load(GetIndex(), CancellationToken.None),
+                Load(GetIndex(), CancellationToken.None));
+        }
+
+        public async Task ThrowingParameterUse(AppDbContext db)
+        {
+            Task<User> Load(int divisor, CancellationToken token) =>
+                db.Users.ElementAtAsync(10 / divisor, token);
+
+            await Task.WhenAll(
+                Load(1, CancellationToken.None),
+                Load(2, CancellationToken.None));
+        }
+
+        public async Task ThrowingSecondCallArgument(AppDbContext db)
+        {
+            Task<User> Load(CancellationToken token, int index) =>
+                db.Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                Load(CancellationToken.None, GetIndex()),
+                Load(CancellationToken.None, GetIndex()));
+        }
+
+        public async Task ThrowingSecondParameterUse(AppDbContext db)
+        {
+            Task<User> Load(CancellationToken token, int divisor) =>
+                db.Users.ElementAtAsync(10 / divisor, token);
+
+            await Task.WhenAll(
+                Load(CancellationToken.None, 1),
+                Load(CancellationToken.None, 2));
+        }
+
+        public async Task DefinitelyCancelledToken(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token) =>
+                db.Users.ElementAtAsync(index, token);
+
+            var canceled = new CancellationToken(true);
+            await Task.WhenAll(Load(0, canceled), Load(1, canceled));
+        }
+
+        public async Task ReassignedCapture(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token) =>
+                db.Users.ElementAtAsync(index, token);
+
+            var first = Load(0, CancellationToken.None);
+            db = new AppDbContext();
+            var second = Load(1, CancellationToken.None);
+            await Task.WhenAll(first, second);
+        }
+
+        public async Task FreshContext(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token) =>
+                new AppDbContext().Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                Load(0, CancellationToken.None),
+                Load(1, CancellationToken.None));
+        }
+
+        public async Task DirectContextParameter(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int index) =>
+                current.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(Load(db, 0), Load(db, 1));
+        }
+
+        public async Task ThreeParameters(AppDbContext db)
+        {
+            Task<User> Load(int index, CancellationToken token, bool ignored) =>
+                db.Users.ElementAtAsync(index, token);
+
+            await Task.WhenAll(
+                Load(0, CancellationToken.None, true),
+                Load(1, CancellationToken.None, true));
+        }
+
+        private static int GetIndex() => 0;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_WithUnprovenOneParameterLocalFunctionCalls_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

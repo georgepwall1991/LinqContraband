@@ -135,7 +135,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 candidate.Symbol.OriginalDefinition,
                 invocation.TargetMethod.OriginalDefinition));
         if (localFunction?.Body == null ||
-            localFunction.Symbol.Parameters.Length > 1 ||
+            localFunction.Symbol.Parameters.Length > 2 ||
             localFunction.Body.Operations.Length != 1 ||
             localFunction.Body.Operations[0] is not IReturnOperation { ReturnedValue: { } returnedValue } ||
             returnedValue.UnwrapConversions() is not IInvocationOperation returnedInvocation ||
@@ -149,7 +149,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             return false;
         }
 
-        if (localFunction.Symbol.Parameters.Length == 1)
+        if (localFunction.Symbol.Parameters.Length > 0)
         {
             if (invocation.Arguments.Any(argument =>
                     !OperationEvaluationIsDefinitelyNonThrowing(
@@ -159,8 +159,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return false;
             }
 
+            if (BoundCancellationTokenArgumentIsDefinitelyCancelled(
+                    invocation,
+                    returnedInvocation,
+                    executableRoot))
+            {
+                return false;
+            }
+
             var parameter = localFunction.Symbol.Parameters[0];
-            if (parameter.Type.IsDbContext() &&
+            if (localFunction.Symbol.Parameters.Length == 1 &&
+                parameter.Type.IsDbContext() &&
                 SymbolEqualityComparer.Default.Equals(returnedOperation.Origin.Symbol, parameter))
             {
                 var argument = invocation.Arguments.FirstOrDefault(candidate =>
@@ -183,10 +192,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return true;
             }
 
-            if (!ParameterIsUsedOnlyByNonThrowingArguments(
-                    parameter,
-                    returnedInvocation,
-                    localFunction.Body))
+            if (localFunction.Symbol.Parameters.Any(candidate =>
+                    !ParameterIsUsedOnlyByNonThrowingArguments(
+                        candidate,
+                        returnedInvocation,
+                        localFunction.Body)))
             {
                 return false;
             }
@@ -215,6 +225,39 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         operation = new EfOperation(invocation, returnedOperation.Origin);
         return true;
+    }
+
+    private static bool BoundCancellationTokenArgumentIsDefinitelyCancelled(
+        IInvocationOperation invocation,
+        IInvocationOperation returnedInvocation,
+        IOperation executableRoot)
+    {
+        foreach (var returnedArgument in returnedInvocation.Arguments)
+        {
+            if (!IsCancellationTokenParameter(returnedArgument.Parameter) ||
+                returnedArgument.Value.UnwrapConversions() is not
+                    IParameterReferenceOperation parameterReference)
+            {
+                continue;
+            }
+
+            var callArgument = invocation.Arguments.FirstOrDefault(candidate =>
+                SymbolEqualityComparer.Default.Equals(
+                    candidate.Parameter?.OriginalDefinition,
+                    parameterReference.Parameter.OriginalDefinition));
+            if (callArgument != null &&
+                OperationIsDefinitelyCancelledToken(
+                    callArgument.Value,
+                    executableRoot,
+                    invocation.Syntax.SpanStart,
+                    new HashSet<ILocalSymbol>(
+                        SymbolEqualityComparer.Default)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ParameterIsUsedOnlyByNonThrowingArguments(
