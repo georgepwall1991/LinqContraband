@@ -1822,6 +1822,24 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (!CanOperationRunBefore(operation, executableRoot, beforePosition))
                 continue;
 
+            if (operation is IDynamicInvocationOperation dynamicInvocation &&
+                DynamicInvocationMayWriteLocal(dynamicInvocation, local))
+            {
+                return false;
+            }
+
+            if (operation is ISimpleAssignmentOperation
+                {
+                    Target: IInvocationOperation refReturningInvocation
+                } &&
+                refReturningInvocation.TargetMethod.ReturnsByRef &&
+                refReturningInvocation.Arguments.Any(argument =>
+                    argument.Parameter?.RefKind == RefKind.In &&
+                    argument.Value.ReferencesLocal(local)))
+            {
+                return false;
+            }
+
             if (operation is IAssignmentOperation assignment &&
                 assignment.Target.ReferencesLocal(local) &&
                 (operation is not ISimpleAssignmentOperation ||
@@ -1846,6 +1864,52 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         }
 
         return true;
+    }
+
+    private static bool DynamicInvocationMayWriteLocal(
+        IDynamicInvocationOperation invocation,
+        ILocalSymbol local)
+    {
+        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax ||
+            invocationSyntax.ArgumentList.Arguments.Count != invocation.Arguments.Length)
+        {
+            return invocation.ReferencesLocal(local);
+        }
+
+        for (var index = 0; index < invocation.Arguments.Length; index++)
+        {
+            var refKind = invocationSyntax.ArgumentList.Arguments[index].RefKindKeyword.Kind();
+            if (refKind is SyntaxKind.RefKeyword or SyntaxKind.OutKeyword &&
+                invocation.Arguments[index].ReferencesLocal(local))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DynamicInvocationMayWriteParameter(
+        IDynamicInvocationOperation invocation,
+        IParameterSymbol parameter)
+    {
+        if (invocation.Syntax is not InvocationExpressionSyntax invocationSyntax ||
+            invocationSyntax.ArgumentList.Arguments.Count != invocation.Arguments.Length)
+        {
+            return invocation.ReferencesParameter(parameter);
+        }
+
+        for (var index = 0; index < invocation.Arguments.Length; index++)
+        {
+            var refKind = invocationSyntax.ArgumentList.Arguments[index].RefKindKeyword.Kind();
+            if (refKind is SyntaxKind.RefKeyword or SyntaxKind.OutKeyword &&
+                invocation.Arguments[index].ReferencesParameter(parameter))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryGetTaskCombinatorInputException(
