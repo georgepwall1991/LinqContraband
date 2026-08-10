@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.53</Version>
+        <Version>5.7.54</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 now reports provably repeated same-context EF tasks added through ICollection&lt;T&gt; or IList&lt;T&gt; when the local resolves to a fresh empty framework List&lt;T&gt;. Unknown interface implementations and interface-targeted collection expressions remain quiet.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC046 now reports same-context overlaps hidden behind repeated calls to a parameterless local function whose only body operation directly returns a recognised EF Core task over a captured stable context. Parameterized helpers, helper chains, richer bodies, fresh helper-local contexts, and reassigned captured parameters remain quiet.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
