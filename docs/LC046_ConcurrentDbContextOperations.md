@@ -60,15 +60,15 @@ For direct overlap, the analyzer also follows a source-visible local function wh
 return of a recognised EF Core async invocation. A parameterless helper may use a stable context captured from
 outside the helper. A helper with exactly one `DbContext` parameter may use that parameter when each call-site
 argument resolves to a proven context origin; repeated calls with the same origin report, while distinct or
-reassigned arguments stay quiet. A one-`DbContext`-parameter helper that instead returns an EF task over a stable
-captured context retains the captured-context diagnostic when its parameter is unused or appears only in non-throwing
-direct EF arguments. A helper with exactly one non-`DbContext` parameter may likewise use a stable captured context;
-the parameter may be unused, but any use must appear only in non-throwing direct arguments to the EF terminal. Every one-parameter
-helper form also requires each call-site argument to be proven non-throwing, so argument
-evaluation cannot prevent the later EF task from starting. The diagnostic is reported on the repeated helper call,
-with the earlier call as an additional location. Helper-local or reassigned captured contexts and potentially throwing argument evaluation,
-multiple parameters, helper chains, and branch or multi-operation bodies remain outside this deliberately narrow
-interprocedural proof.
+reassigned arguments stay quiet. A helper with one or two parameters may instead return an EF task over a stable
+captured context; each parameter may be unused, but any use must appear only in non-throwing direct arguments to the
+EF terminal. Every parameterized helper form also requires each call-site argument to be proven non-throwing, and a
+`CancellationToken` forwarded to the EF terminal must not be definitely cancelled, so argument evaluation or cancellation
+cannot prevent the later EF task from starting. The diagnostic is reported on the repeated helper call,
+with the earlier call as an additional location. For two-parameter helpers, the context itself must be the stable capture;
+binding a context parameter remains outside this slice. Helper-local or reassigned captured contexts and potentially
+throwing argument evaluation, helpers with three or more parameters, helper chains, and branch or multi-operation bodies
+remain outside this deliberately narrow interprocedural proof.
 
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
