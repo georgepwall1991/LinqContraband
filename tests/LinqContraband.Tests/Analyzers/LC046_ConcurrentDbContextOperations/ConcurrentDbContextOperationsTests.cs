@@ -287,6 +287,143 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithSafeNonContextParameterAndCapturedContext_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            Task<User> Load(int index) => db.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(
+                {|#0:Load(0)|},
+                {|#1:Load(1)|});
+        }
+
+        public async Task UnusedParameter(AppDbContext db)
+        {
+            Task<bool> Load(int ignored) => db.Users.AnyAsync();
+
+            await Task.WhenAll(
+                {|#2:Load(0)|},
+                {|#3:Load(1)|});
+        }
+    }
+}";
+
+        var queryParameter = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        var unusedParameter = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, queryParameter, unusedParameter);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_WithUnprovenOneParameterLocalFunctionCalls_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+        public int Index { get; }
+    }
+
+    public sealed class ContextHolder
+    {
+        public AppDbContext Context { get; } = new AppDbContext();
+    }
+
+    public sealed class Program
+    {
+        public async Task FreshContext(AppDbContext db)
+        {
+            Task<User> Load(int index) =>
+                new AppDbContext().Users.ElementAtAsync(index);
+
+            await Task.WhenAll(Load(0), Load(1));
+        }
+
+        public async Task ReassignedCapture(AppDbContext db)
+        {
+            Task<User> Load(int index) => db.Users.ElementAtAsync(index);
+
+            var first = Load(0);
+            db = new AppDbContext();
+            var second = Load(1);
+            await Task.WhenAll(first, second);
+        }
+
+        public async Task ThrowingArguments(AppDbContext db)
+        {
+            Task<User> Load(int index) => db.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(Load(GetIndex()), Load(GetIndex()));
+        }
+
+        public async Task ThrowingParameterUse(AppDbContext db)
+        {
+            Task<User> Load(int divisor) =>
+                db.Users.ElementAtAsync(10 / divisor);
+
+            await Task.WhenAll(Load(0), Load(1));
+        }
+
+        public async Task ThrowingContextProperty(ContextHolder holder)
+        {
+            Task<bool> Load(AppDbContext current) => current.Users.AnyAsync();
+
+            await Task.WhenAll(
+                Load(holder.Context),
+                Load(holder.Context));
+        }
+
+        public async Task ThrowingUnusedContextArgument(AppDbContext db)
+        {
+            Task<bool> Load(AppDbContext ignored) => db.Users.AnyAsync();
+
+            await Task.WhenAll(Load(CreateContext()), Load(CreateContext()));
+        }
+
+        public async Task ThrowingContextParameterUse(
+            AppDbContext db,
+            AppDbContext other)
+        {
+            Task<User> Load(AppDbContext current) =>
+                db.Users.ElementAtAsync(current.Index);
+
+            await Task.WhenAll(Load(other), Load(other));
+        }
+
+        private static int GetIndex() => 0;
+        private static AppDbContext CreateContext() => new AppDbContext();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_WithParameterizedLocalFunctionOutsideDirectContextBinding_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
