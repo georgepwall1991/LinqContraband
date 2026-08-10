@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.57</Version>
+        <Version>5.7.58</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 now reports repeated calls to direct two-parameter local helpers that return EF tasks over a stable captured DbContext when every call argument and direct EF parameter use is proven non-throwing. Definitely cancelled forwarded tokens, two-parameter context binding, three-or-more parameters, fresh or reassigned contexts, and richer helper bodies remain quiet.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC046 now reports repeated calls to direct two-parameter local helpers when exactly one parameter is the DbContext used by the returned EF task, both calls bind it to the same proven context, and every evaluated argument is proven safe. Distinct or reassigned contexts, throwing arguments including nullable instance method-group receivers, invalid required values, wrapped or definitely cancelled tokens, ambiguous context parameters, and richer helper bodies remain quiet.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
