@@ -135,7 +135,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 candidate.Symbol.OriginalDefinition,
                 invocation.TargetMethod.OriginalDefinition));
         if (localFunction?.Body == null ||
-            localFunction.Symbol.Parameters.Length != 0 ||
+            localFunction.Symbol.Parameters.Length > 1 ||
             localFunction.Body.Operations.Length != 1 ||
             localFunction.Body.Operations[0] is not IReturnOperation { ReturnedValue: { } returnedValue } ||
             returnedValue.UnwrapConversions() is not IInvocationOperation returnedInvocation ||
@@ -144,8 +144,55 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 returnedInvocation,
                 localFunction.Body,
                 cancellationToken,
-                out var returnedOperation) ||
-            IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
+                out var returnedOperation))
+        {
+            return false;
+        }
+
+        if (localFunction.Symbol.Parameters.Length == 1)
+        {
+            var parameter = localFunction.Symbol.Parameters[0];
+            if (!parameter.Type.IsDbContext())
+            {
+                return false;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(returnedOperation.Origin.Symbol, parameter))
+            {
+                var argument = invocation.Arguments.FirstOrDefault(candidate =>
+                    SymbolEqualityComparer.Default.Equals(
+                        candidate.Parameter?.OriginalDefinition,
+                        parameter.OriginalDefinition));
+                if (argument == null ||
+                    argument.IsImplicit ||
+                    !TryResolveContextOrigin(
+                        argument.Value,
+                        executableRoot,
+                        invocation.Syntax.SpanStart,
+                        cancellationToken,
+                        out var argumentOrigin))
+                {
+                    return false;
+                }
+
+                operation = new EfOperation(invocation, argumentOrigin);
+                return true;
+            }
+
+            if (IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
+                !CapturedParameterOriginsHaveNoWritesBefore(
+                    returnedOperation.Origin,
+                    executableRoot,
+                    invocation.Syntax.SpanStart))
+            {
+                return false;
+            }
+
+            operation = new EfOperation(invocation, returnedOperation.Origin);
+            return true;
+        }
+
+        if (IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
             !CapturedParameterOriginsHaveNoWritesBefore(
                 returnedOperation.Origin,
                 executableRoot,
