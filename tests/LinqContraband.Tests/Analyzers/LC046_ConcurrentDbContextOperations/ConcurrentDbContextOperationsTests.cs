@@ -164,6 +164,81 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithDirectLocalFunctionReturns_ShouldTriggerOnlyForCapturedContext()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task CapturedContext(AppDbContext db)
+        {
+            Task<bool> Start() => db.Users.AnyAsync();
+
+            await Task.WhenAll(
+                {|#0:Start()|},
+                {|#1:Start()|});
+        }
+
+        public async Task FreshContextPerCall()
+        {
+            Task<bool> Start() => new AppDbContext().Users.AnyAsync();
+
+            await Task.WhenAll(
+                Start(),
+                Start());
+        }
+
+        public async Task ParameterizedDifferentContexts(
+            AppDbContext first,
+            AppDbContext second)
+        {
+            Task<bool> Start(AppDbContext current) => current.Users.AnyAsync();
+
+            await Task.WhenAll(
+                Start(first),
+                Start(second));
+        }
+
+        public async Task HelperChain(AppDbContext db)
+        {
+            Task<bool> Start() => db.Users.AnyAsync();
+            Task<bool> Wrapped() => Start();
+
+            await Task.WhenAll(
+                Wrapped(),
+                Wrapped());
+        }
+
+        public async Task ReassignedCapturedParameter(AppDbContext db)
+        {
+            Task<bool> Start() => db.Users.AnyAsync();
+
+            var first = Start();
+            db = new AppDbContext();
+            var second = Start();
+            await Task.WhenAll(first, second);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskLocals_WithSameContext_ShouldTriggerOnSecondOperation()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

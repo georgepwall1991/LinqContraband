@@ -56,6 +56,12 @@ operation as an additional location. It recognises async query terminals, includ
 `ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
 `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
 
+For direct overlap, the analyzer also follows a parameterless source-visible local function when its body consists of
+one direct return of a recognised EF Core async invocation over a context captured from outside the helper. The
+diagnostic is reported on the repeated helper call, with the earlier call as an additional location. Parameterized
+helpers, helper chains, branch or multi-operation bodies, and contexts constructed inside the helper remain outside
+this deliberately narrow interprocedural proof.
+
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
 `Task.WhenAll(items.Select(...))` when the selector captures one outer context and the source can contain multiple

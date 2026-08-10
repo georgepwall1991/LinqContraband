@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC046 now reports same-context overlaps hidden behind repeated calls to a parameterless local function whose only body operation directly returns a recognised EF Core task over a captured stable context. Parameterized helpers, helper chains, multi-operation bodies, and contexts created inside the helper remain quiet.
+
 ## [5.7.53] - 2026-08-10
 
 ### Fixed

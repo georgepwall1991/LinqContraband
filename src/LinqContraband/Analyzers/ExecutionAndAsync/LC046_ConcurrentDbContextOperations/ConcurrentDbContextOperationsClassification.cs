@@ -119,6 +119,62 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return true;
     }
 
+    private static bool TryClassifyDirectLocalFunctionEfTask(
+        IInvocationOperation invocation,
+        IOperation executableRoot,
+        CancellationToken cancellationToken,
+        out EfOperation operation)
+    {
+        operation = default;
+        if (invocation.TargetMethod.MethodKind != MethodKind.LocalFunction)
+            return false;
+
+        var localFunction = executableRoot.Descendants()
+            .OfType<ILocalFunctionOperation>()
+            .FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(
+                candidate.Symbol.OriginalDefinition,
+                invocation.TargetMethod.OriginalDefinition));
+        if (localFunction?.Body == null ||
+            localFunction.Symbol.Parameters.Length != 0 ||
+            localFunction.Body.Operations.Length != 1 ||
+            localFunction.Body.Operations[0] is not IReturnOperation { ReturnedValue: { } returnedValue } ||
+            returnedValue.UnwrapConversions() is not IInvocationOperation returnedInvocation ||
+            returnedInvocation.TargetMethod.MethodKind == MethodKind.LocalFunction ||
+            !TryClassifyEfAsyncOperation(
+                returnedInvocation,
+                localFunction.Body,
+                cancellationToken,
+                out var returnedOperation) ||
+            IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
+            !CapturedParameterOriginsHaveNoWritesBefore(
+                returnedOperation.Origin,
+                executableRoot,
+                invocation.Syntax.SpanStart))
+        {
+            return false;
+        }
+
+        operation = new EfOperation(invocation, returnedOperation.Origin);
+        return true;
+    }
+
+    private static bool CapturedParameterOriginsHaveNoWritesBefore(
+        ContextOrigin origin,
+        IOperation executableRoot,
+        int beforePosition)
+    {
+        return (origin.Symbol is not IParameterSymbol parameter ||
+                ParameterHasNoWritesBefore(
+                    executableRoot,
+                    parameter,
+                    beforePosition)) &&
+               (origin.ReceiverSymbol is not IParameterSymbol receiverParameter ||
+                ParameterHasNoWritesBefore(
+                    executableRoot,
+                    receiverParameter,
+                    beforePosition));
+    }
+
     private static bool IsDbContextAsyncSink(IInvocationOperation invocation)
     {
         var method = invocation.TargetMethod;

@@ -39,7 +39,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     invocation,
                     executableRoot,
                     context.CancellationToken,
-                    out var operation)
+                    out var operation) ||
+                TryClassifyDirectLocalFunctionEfTask(
+                    invocation,
+                    executableRoot,
+                    context.CancellationToken,
+                    out operation)
                     ? operation
                     : (EfOperation?)null)
             .Where(operation => operation.HasValue)
