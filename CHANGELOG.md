@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.57] - 2026-08-10
+
 ### Fixed
 - LC046 now reports repeated calls to a direct two-parameter local helper returning an EF task over a stable captured context when both call arguments and every direct EF use of either parameter are proven non-throwing. A definitely cancelled token forwarded to the EF operation remains quiet because it can prevent the task from starting. Two-parameter helpers whose context comes from a parameter, helpers with three or more parameters, helper-local or reassigned contexts, throwing argument evaluation, chains, branches, and multi-operation bodies remain outside the proof.
 
