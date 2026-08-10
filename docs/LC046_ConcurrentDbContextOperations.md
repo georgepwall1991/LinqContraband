@@ -56,11 +56,15 @@ operation as an additional location. It recognises async query terminals, includ
 `ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
 `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
 
-For direct overlap, the analyzer also follows a parameterless source-visible local function when its body consists of
-one direct return of a recognised EF Core async invocation over a context captured from outside the helper. The
-diagnostic is reported on the repeated helper call, with the earlier call as an additional location. Parameterized
-helpers, helper chains, branch or multi-operation bodies, and contexts constructed inside the helper remain outside
-this deliberately narrow interprocedural proof.
+For direct overlap, the analyzer also follows a source-visible local function when its body consists of one direct
+return of a recognised EF Core async invocation. A parameterless helper may use a stable context captured from
+outside the helper. A helper with exactly one `DbContext` parameter may use that parameter when each call-site
+argument resolves to a proven context origin; repeated calls with the same origin report, while distinct or
+reassigned arguments stay quiet. A one-`DbContext`-parameter helper that instead returns an EF task over a stable
+captured context retains the captured-context diagnostic. The diagnostic is reported on the repeated helper call,
+with the earlier call as an additional location. Helper-local contexts, a single non-`DbContext` parameter, multiple
+parameters, helper chains, and branch or multi-operation bodies remain outside this deliberately narrow
+interprocedural proof.
 
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports

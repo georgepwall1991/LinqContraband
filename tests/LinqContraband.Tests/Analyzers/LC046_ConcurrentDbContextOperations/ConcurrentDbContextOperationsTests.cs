@@ -239,6 +239,107 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithDirectParameterizedLocalFunctionReturns_ShouldTriggerForSameContextOrCapture()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            Task<bool> Start(AppDbContext current) => current.Users.AnyAsync();
+
+            await Task.WhenAll(
+                {|#0:Start(db)|},
+                {|#1:Start(db)|});
+        }
+
+        public async Task CapturedContext(AppDbContext db, AppDbContext ignored)
+        {
+            Task<bool> Start(AppDbContext current) => db.Users.AnyAsync();
+
+            await Task.WhenAll(
+                {|#2:Start(ignored)|},
+                {|#3:Start(ignored)|});
+        }
+    }
+}";
+
+        var directParameter = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        var capturedContext = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, directParameter, capturedContext);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_WithParameterizedLocalFunctionOutsideDirectContextBinding_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task FreshInsteadOfParameter(AppDbContext db)
+        {
+            Task<bool> Start(AppDbContext current) =>
+                new AppDbContext().Users.AnyAsync();
+
+            await Task.WhenAll(
+                Start(db),
+                Start(db));
+        }
+
+        public async Task ReassignedArgument(AppDbContext db)
+        {
+            Task<bool> Start(AppDbContext current) => current.Users.AnyAsync();
+
+            var first = Start(db);
+            db = new AppDbContext();
+            var second = Start(db);
+            await Task.WhenAll(first, second);
+        }
+
+        public async Task ReassignedCapturedContext(
+            AppDbContext db,
+            AppDbContext ignored)
+        {
+            Task<bool> Start(AppDbContext current) => db.Users.AnyAsync();
+
+            var first = Start(ignored);
+            db = new AppDbContext();
+            var second = Start(ignored);
+            await Task.WhenAll(first, second);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskLocals_WithSameContext_ShouldTriggerOnSecondOperation()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

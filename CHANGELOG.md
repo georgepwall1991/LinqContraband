@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC046 now reports repeated calls to a source-visible local function whose sole parameter is a `DbContext` and whose only body operation directly returns a recognised EF Core task over that parameter, when each call passes the same proven context. A stable context captured instead of the parameter continues to report. Distinct or reassigned context arguments, helper-local contexts, a single non-`DbContext` parameter, multiple parameters, helper chains, and richer bodies remain outside the direct parameter-binding proof.
+
 ## [5.7.54] - 2026-08-10
 
 ### Fixed
