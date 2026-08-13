@@ -137,6 +137,104 @@ class Test
     }
 
     [Fact]
+    public async Task StaticQueryableOrderBy_RewritesToThenBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = Queryable.{|LC005:OrderBy|}(list.AsQueryable().OrderBy(x => x), x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        var q = Queryable.ThenBy(list.AsQueryable().OrderBy(x => x), x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task ExplicitOrderedQueryableLocal_RewritesToThenBy()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IOrderedQueryable<int> sorted = list.AsQueryable().OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+        var fix = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IOrderedQueryable<int> sorted = list.AsQueryable().OrderBy(x => x);
+        var q = sorted.ThenBy(x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, fix);
+    }
+
+    [Fact]
+    public async Task WidenedEnumerableSortedLocal_ReportsWithoutFix()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IEnumerable<int> sorted = list.OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task WidenedQueryableSortedLocal_ReportsWithoutFix()
+    {
+        var test = @"
+using System.Linq;
+using System.Collections.Generic;
+
+class Test
+{
+    void Method(List<int> list)
+    {
+        IQueryable<int> sorted = list.AsQueryable().OrderBy(x => x);
+        var q = sorted.{|LC005:OrderBy|}(x => x);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
     public async Task FixAll_ReplacesAllConsecutiveOrderBysWithThenBy()
     {
         var test = @"
