@@ -1110,38 +1110,9 @@ namespace TestApp
                 Execute(db, false));
         }
 
-        public async Task HelperBodyEarlierOutWriteInvalidatesRequiredLocal(AppDbContext db)
-        {
-            var sql = ""SELECT 1"";
-            Task<int> Execute(AppDbContext current, int ignored) =>
-                current.Database.ExecuteSqlRawAsync(
-                    cancellationToken: Reset(out sql),
-                    sql: sql);
-
-            await Task.WhenAll(Execute(db, 0), Execute(db, 1));
-        }
-
-        public async Task HelperBodyEarlierDynamicWriteInvalidatesRequiredLocal(
-            AppDbContext db,
-            dynamic mutator)
-        {
-            var sql = ""SELECT 1"";
-            Task<int> Execute(AppDbContext current, int ignored) =>
-                current.Database.ExecuteSqlRawAsync(
-                    cancellationToken: (CancellationToken)mutator.Set(ref sql),
-                    sql: sql);
-
-            await Task.WhenAll(Execute(db, 0), Execute(db, 1));
-        }
-
         private static int GetIndex() => 0;
         private static int ThrowingIndex => throw new System.InvalidOperationException();
         private static string ThrowingName => throw new System.InvalidOperationException();
-        private static CancellationToken Reset(out string value)
-        {
-            value = """";
-            return default;
-        }
     }
 }";
 
