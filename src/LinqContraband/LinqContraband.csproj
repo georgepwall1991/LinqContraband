@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.58</Version>
+        <Version>5.7.59</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC046 now reports repeated calls to direct two-parameter local helpers when exactly one parameter is the DbContext used by the returned EF task, both calls bind it to the same proven context, and every evaluated argument is proven safe. Distinct or reassigned contexts, throwing arguments including nullable instance method-group receivers, invalid required values, wrapped or definitely cancelled tokens, ambiguous context parameters, and richer helper bodies remain quiet.</PackageReleaseNotes>
+        <PackageReleaseNotes>Code fixes that add a using after rewriting a descendant no longer crash on files with no file-level using directives (common with implicit/global usings). Duplicate EnsureUsing calls for the same namespace are skipped.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
@@ -52,7 +52,7 @@
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.3.0">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-
+        <InternalsVisibleTo Include="LinqContraband.Tests" />
     </ItemGroup>
 
 </Project>
