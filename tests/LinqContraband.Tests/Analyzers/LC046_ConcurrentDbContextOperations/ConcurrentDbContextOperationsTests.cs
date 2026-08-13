@@ -1128,7 +1128,7 @@ namespace TestApp
             var sql = ""SELECT 1"";
             Task<int> Execute(AppDbContext current, int ignored) =>
                 current.Database.ExecuteSqlRawAsync(
-                    cancellationToken: mutator.Set(ref sql),
+                    cancellationToken: (CancellationToken)mutator.Set(ref sql),
                     sql: sql);
 
             await Task.WhenAll(Execute(db, 0), Execute(db, 1));
