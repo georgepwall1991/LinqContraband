@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **46 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.7.58
+- Package version: 5.7.59
 - Base audited commit: c9d5698b558a1cc1484ad81326f3e2118a652f12
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.58`
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.7.59`
 
 ## Rubric
 
@@ -959,7 +959,7 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.7.58**
+Package version: **5.7.59**
 
 Base audited commit: master at `c9d5698b558a1cc1484ad81326f3e2118a652f12` (LC046 direct two-parameter context-binding proof, merged for 5.7.58). Since the 2026-06-04 baseline (5.5.13): descriptor hygiene (helpLinkUri on all rules, sealed/FixAll architecture tests), repo/CI hardening, the `IncludePathParser` extraction shared by LC006/LC045, **LC045 shipped in 5.6.0** (four pre-ship review-hardening rounds), the **5.6.1 hot-fix** for the LC045 chained-`?.` StackOverflowException that killed csc on 5.6.0, the July 2026 raw-SQL/fixer hardening, LC046 concurrent same-context operation detection in 5.7.0, NuGet/GitHub discoverability assets in 5.7.1, LC046 completion-bypass precision hardening in 5.7.2, LC046 loop-built task-list detection with named-`Set` and `CancellationToken.None` review closure in 5.7.3, the shared named-`Set` non-blank-name proof in 5.7.4, the non-loop argument-fault proof with its polarity correction in 5.7.5, LC045 split-query shape preservation in 5.7.6, LC045 `Reverse` shape preservation in 5.7.7, the diagnostic-locality, LC008 ref-struct and LC030 partial-property fixes in 5.7.8, the LC045 origin-flow scan-cost reduction in 5.7.9, LC045 `await foreach` detection in 5.7.10, LC045 in-memory collection views in 5.7.11, LC045 ordering key-selector reads in 5.7.12, the LC045 probe reachability pruning in 5.7.13, LC045 aggregate callback reads in 5.7.14, LC045 element-extraction completion in 5.7.15, the LC045 fixer Include-chain extension in 5.7.16, LC045 grouping callback reads in 5.7.17, LC045 navigation-collection views in 5.7.18, LC045 navigation-collection callbacks in 5.7.19, LC045 navigation-collection element extraction in 5.7.20, LC045 navigation-collection indexing in 5.7.21, LC045 navigation-collection copies in 5.7.22, LC045 materialized-collection copies in 5.7.23, LC045 indexed access into a collection copy in 5.7.24, the LC045 manual fix-up false-positive fix in 5.7.25, its callback coverage in 5.7.26, LC045 applied-`AutoInclude` recognition in 5.7.27, LC045 identity-projection recognition in 5.7.28, LC045 collection-alias resolution in 5.7.29, the LC045 query-syntax code-fix correction in 5.7.30, the LC045 fixer-coverage contract in 5.7.31, the LC045 widened-source code fix in 5.7.32, the LC045 widened-query foreach anchor in 5.7.33, the LC045 well-known symbol cache in 5.7.34, the LC045 view-verdict cache in 5.7.35, LC045 explicit-loading recognition in 5.7.36, the LC045 reporting-surface audit in 5.7.37, the LC045 loop-binding entry-block fix in 5.7.38, the LC045 perf-guardrail calibration in 5.7.39, the LC045 fixer-corpus refresh in 5.7.40, the LC045 async fixer-contract coverage in 5.7.41, the LC045 external corpus validation in 5.7.42, the LC045 materializer name pre-filter in 5.7.43, the LC045 real-EF detection validation in 5.7.44, the LC045 interprocedural design record in 5.7.45, the LC045 interprocedural specification in 5.7.46, LC045 local-function read lifting in 5.7.47, LC045 entity-callee read lifting in 5.7.48, LC045 per-call-site binding in 5.7.49, LC045 private-method read lifting in 5.7.50, LC045 collection-callee read lifting in 5.7.51, the LC045 fixer-corpus completion in 5.7.52, LC046 collection-interface task-list proof in 5.7.53, LC046 direct local-function task-return proof in 5.7.54, LC046 direct single-context-parameter local-function task-return proof in 5.7.55, LC046 captured-context query-parameter local-function proof in 5.7.56, LC046 two-parameter captured-context local-function proof in 5.7.57, and LC046 direct two-parameter context-binding proof in 5.7.58.
 
@@ -1012,6 +1012,9 @@ ten**. Without it, "zero diagnostics" is indistinguishable from an analyzer that
 is exactly how a corpus comparison silently passes. A first attempt at the canary read a navigation
 whose type had no `DbSet` on the context and so was correctly not a navigation at all; that produced
 a misleading silent run until the canary itself was corrected.
+
+Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
+3,048 full net10.0 tests pass, including three DocumentEditor EnsureUsing regressions.
 
 Latest verification (2026-08-10, LC046 direct two-parameter context-binding proof for 5.7.58):
 379 focused net10.0 tests and 3,045 full net10.0 tests pass.

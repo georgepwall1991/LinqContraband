@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.59] - 2026-08-13
+
+### Fixed
+- Shared code-fix helper `EnsureUsing` no longer crashes after an in-flight `ReplaceNode` when the file has no file-level `using` directives. That shape is common with implicit/global usings. The helper now applies `AddUsings` to the current compilation unit so inner replacements survive, and a second call for the same namespace is a no-op.
+
 ## [5.7.58] - 2026-08-10
 
 ### Fixed
