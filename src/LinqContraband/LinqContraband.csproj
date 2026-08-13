@@ -52,7 +52,7 @@
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.3.0">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-
+        <InternalsVisibleTo Include="LinqContraband.Tests" />
     </ItemGroup>
 
 </Project>
