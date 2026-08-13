@@ -615,6 +615,32 @@ namespace TestApp
                 {|#21:Save(db, 1)|});
         }
 
+        public async Task ShortCircuitCompanionAssignmentDoesNotInvalidateValidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                {|#22:Execute(db, flag && (sql = """") != null)|},
+                {|#23:Execute(db, false)|});
+        }
+
+        public async Task TernaryCompanionAssignmentDoesNotInvalidateValidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                {|#24:Execute(db, flag ? (sql = """") != null : false)|},
+                {|#25:Execute(db, false)|});
+        }
+
         private static bool Observe(CancellationToken token) =>
             token.IsCancellationRequested;
     }
@@ -664,6 +690,14 @@ namespace TestApp
             .WithLocation(21)
             .WithLocation(20)
             .WithArguments("db");
+        var shortCircuitDoesNotInvalidate = VerifyCS.Diagnostic()
+            .WithLocation(23)
+            .WithLocation(22)
+            .WithArguments("db");
+        var ternaryDoesNotInvalidate = VerifyCS.Diagnostic()
+            .WithLocation(25)
+            .WithLocation(24)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
@@ -677,7 +711,9 @@ namespace TestApp
             writableInRefEscape,
             validatedCapturedRequiredLocal,
             uninvokedLambdaTokenReference,
-            uninvokedLambdaInvalidRequiredValue);
+            uninvokedLambdaInvalidRequiredValue,
+            shortCircuitDoesNotInvalidate,
+            ternaryDoesNotInvalidate);
     }
 
     [Fact]
@@ -1048,9 +1084,64 @@ namespace TestApp
             await Task.WhenAll(first, second);
         }
 
+        public async Task ShortCircuitCompanionAssignmentDoesNotValidateInvalidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = """";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, flag && (sql = ""SELECT 1"") != null),
+                Execute(db, false));
+        }
+
+        public async Task TernaryCompanionAssignmentDoesNotValidateInvalidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = """";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, flag ? (sql = ""SELECT 1"") != null : false),
+                Execute(db, false));
+        }
+
+        public async Task HelperBodyEarlierOutWriteInvalidatesRequiredLocal(AppDbContext db)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(
+                    cancellationToken: Reset(out sql),
+                    sql: sql);
+
+            await Task.WhenAll(Execute(db, 0), Execute(db, 1));
+        }
+
+        public async Task HelperBodyEarlierDynamicWriteInvalidatesRequiredLocal(
+            AppDbContext db,
+            dynamic mutator)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(
+                    cancellationToken: mutator.Set(ref sql),
+                    sql: sql);
+
+            await Task.WhenAll(Execute(db, 0), Execute(db, 1));
+        }
+
         private static int GetIndex() => 0;
         private static int ThrowingIndex => throw new System.InvalidOperationException();
         private static string ThrowingName => throw new System.InvalidOperationException();
+        private static CancellationToken Reset(out string value)
+        {
+            value = """";
+            return default;
+        }
     }
 }";
 
