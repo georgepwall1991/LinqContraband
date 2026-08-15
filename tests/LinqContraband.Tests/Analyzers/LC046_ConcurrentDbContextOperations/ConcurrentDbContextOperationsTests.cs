@@ -1074,6 +1074,14 @@ namespace TestApp
             await Task.WhenAll(Save(db, 0), Save(db, 1));
         }
 
+        public async Task ContextParameterUsedOutsideReceiver(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int ignored) =>
+                current.Users.ElementAtAsync(current != null ? 0 : 1);
+
+            await Task.WhenAll(Load(db, 0), Load(db, 1));
+        }
+
         private static int GetIndex() => 0;
         private static int ThrowingIndex => throw new System.InvalidOperationException();
         private static string ThrowingName => throw new System.InvalidOperationException();
