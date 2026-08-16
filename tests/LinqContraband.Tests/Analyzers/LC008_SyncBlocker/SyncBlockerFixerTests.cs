@@ -394,4 +394,36 @@ class Program
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task NoFix_WhenTheInsertedAwaitWouldStrandARefStructLocal()
+    {
+        // The rewrite compiles under binding but fails at emit with CS4007: the Span is
+        // live across the inserted await. Verified independently with dotnet build.
+        var test = Usings + @"
+class Program
+{
+    async Task Main()
+    {
+        var db = new MyDbContext();
+        Span<int> values = stackalloc int[1];
+        var users = db.Users.ToList();
+        _ = values[0];
+        await Task.Yield();
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test,
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC008", DiagnosticSeverity.Warning)
+            .WithSpan(15, 21, 15, 38)
+            .WithArguments("ToList", "ToListAsync"));
+
+        await testObj.RunAsync();
+    }
 }

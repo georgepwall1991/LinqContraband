@@ -56,6 +56,27 @@ operation as an additional location. It recognises async query terminals, includ
 `ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
 `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
 
+For direct overlap, the analyzer also follows a source-visible local function when its body consists of one direct
+return of a recognised EF Core async invocation. A parameterless helper may use a stable context captured from
+outside the helper. A helper with one or two parameters may use exactly one `DbContext` parameter as the returned
+operation's context when that context argument is evaluated first and resolves to a proven context origin; repeated
+calls with the same origin report, while distinct or reassigned arguments stay quiet. Implicit optional defaults do not
+participate in source evaluation order, and an explicit conversion in the context receiver stays outside the direct
+proof because a downcast may throw. Any remaining parameter may be unused, but any use
+must appear only in non-throwing direct arguments to the EF terminal. A helper with one or two parameters may instead
+return an EF task over a stable captured context under that same argument-use proof. Every parameterized helper form
+also requires each explicit call-site and nested helper-body argument to be proven non-throwing, and a
+nullable instance method-group receiver remains outside that proof. A
+`CancellationToken` forwarded directly to the EF terminal must not be definitely cancelled; wrapped forwarding remains
+outside the proof. Required arguments, including directly bound or captured stable locals, are revalidated at their source argument's evaluation point; transformed required values remain outside the
+proof, so argument evaluation, an invalid value, or cancellation
+cannot prevent the later EF task from starting. The diagnostic is reported on the repeated helper call, with the earlier
+call as an additional location. A returned operation that uses one of two `DbContext` parameters remains ambiguous and
+quiet; a stable captured context still uses the captured-context proof even when helper parameters are context-typed.
+Helper-local or reassigned captured contexts and potentially throwing argument evaluation,
+helpers with three or more parameters, helper chains, and branch or multi-operation bodies
+remain outside this deliberately narrow interprocedural proof.
+
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
 `DbContext.Set<TEntity>()`, and transparent LINQ or EF query chains. It also reports
 `Task.WhenAll(items.Select(...))` when the selector captures one outer context and the source can contain multiple
@@ -64,9 +85,12 @@ different holder objects is not conflated.
 
 A separate loop pass reports the loop-body invocation itself when a `foreach` iterates an inline array initializer with
 at least two elements and the loop body's only statement either discards the EF Core async invocation or passes it
-directly to framework `List<T>.Add` on a single-assignment local constructed with `new` or a collection expression
+directly to `Add` on a single-assignment local whose proven runtime construction is a framework `List<T>`, including
+when the local is declared through `ICollection<T>` or `IList<T>`. The list must be constructed with `new` or, when the
+local's target type is itself `List<T>`, a collection expression
 before the loop, either at declaration or by one later simple assignment. The accepted accumulator construction is
-an empty parameterless `new` or empty collection expression. The task-list branch additionally requires
+an empty parameterless `new` or empty collection expression; an interface parameter or other unproven collection
+implementation remains outside the proof. The task-list branch additionally requires
 a synchronous, non-deconstructing loop over a direct inline array with at least two compile-time-constant elements and
 an identity iteration-variable conversion. It does not report that branch for an unknown, empty, or singleton source,
 an asynchronous or deconstructing loop, a source whose setup can throw before repetition, a user-defined source or

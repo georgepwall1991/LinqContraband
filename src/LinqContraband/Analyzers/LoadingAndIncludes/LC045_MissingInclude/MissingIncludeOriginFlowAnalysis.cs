@@ -21,7 +21,7 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -32,7 +32,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 materializer.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -46,6 +46,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
 
@@ -81,7 +82,7 @@ public sealed partial class MissingIncludeAnalyzer
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
         IInvocationOperation invocation,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -89,7 +90,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 materializer.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -105,6 +106,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection: true,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
         context.Build();
@@ -113,6 +115,97 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
 
         return IsProvenActiveAtProbe(graph, context, probe, cancellationToken);
+    }
+
+    /// <summary>
+    /// The navigation paths a preceding whole-collection fix-up loop has written by the time
+    /// <paramref name="invocation"/> runs. A callback body is analysed in its own control-flow
+    /// graph, which never sees the outer collection facts, so the outer walk is asked for them
+    /// here and the callback's reads are filtered against the answer.
+    /// </summary>
+    private static HashSet<string> GetCollectionSatisfiedPathsAtInvocation(
+        IOperation executableRoot,
+        IInvocationOperation materializer,
+        ILocalSymbol resultLocal,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        IInvocationOperation invocation,
+        MissingIncludeFlowCache flowCache,
+        CancellationToken cancellationToken
+    )
+    {
+        var satisfied = new HashSet<string>(StringComparer.Ordinal);
+        if (
+            !TryGetFlowGraph(
+                executableRoot,
+                materializer.SemanticModel,
+                flowCache,
+                cancellationToken,
+                out var graph
+            )
+        )
+        {
+            return satisfied;
+        }
+
+        var context = new OriginFlowContext(
+            executableRoot,
+            materializer,
+            resultLocal,
+            returnsCollection: true,
+            entityType,
+            entityTypes,
+            flowCache,
+            cancellationToken
+        );
+        context.Build();
+        var probe = context.AddRootProbe(invocation.Syntax);
+        if (!context.TryMapEventsToBlocks(graph))
+            return satisfied;
+
+        var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
+        var worklist = new Queue<FlowWorkItem>();
+        var canReachProbe = GetBlocksThatCanReachAccess(graph, context, probe.AccessId);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachProbe);
+
+        while (worklist.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = worklist.Dequeue();
+            var state = item.State;
+            var reachedProbe = false;
+
+            if (context.EventsByBlock.TryGetValue(item.Block.Ordinal, out var events))
+            {
+                foreach (var flowEvent in events)
+                {
+                    if (
+                        flowEvent.Kind == FlowEventKind.Access
+                        && flowEvent.AccessId == probe.AccessId
+                    )
+                    {
+                        reachedProbe = true;
+                        if (state.CollectionSatisfiedPaths != null)
+                        {
+                            foreach (var path in state.CollectionSatisfiedPaths)
+                                satisfied.Add(path);
+                        }
+
+                        break;
+                    }
+
+                    ApplyEvent(flowEvent, probe, ref state);
+                }
+            }
+
+            if (reachedProbe)
+                continue;
+
+            foreach (var successor in GetSuccessors(item.Block))
+                Enqueue(successor, state, statesByBlock, worklist, canReachProbe);
+        }
+
+        return satisfied;
     }
 
     private static bool IsProvenActiveAtProbe(
@@ -124,7 +217,8 @@ public sealed partial class MissingIncludeAnalyzer
     {
         var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
         var worklist = new Queue<FlowWorkItem>();
-        Enqueue(graph.Blocks[0], default, statesByBlock, worklist);
+        var canReachProbe = GetBlocksThatCanReachAccess(graph, context, probe.AccessId);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachProbe);
 
         var sawActive = false;
         var sawUncertain = false;
@@ -160,7 +254,7 @@ public sealed partial class MissingIncludeAnalyzer
                 continue;
 
             foreach (var successor in GetSuccessors(item.Block))
-                Enqueue(successor, state, statesByBlock, worklist);
+                Enqueue(successor, state, statesByBlock, worklist, canReachProbe);
         }
 
         return sawActive && !sawUncertain;
@@ -172,7 +266,7 @@ public sealed partial class MissingIncludeAnalyzer
         IParameterSymbol callbackParameter,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -182,7 +276,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 parentExecutableRoot,
                 callback.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var parentGraph
             ) || !TryGetCallbackFlowGraph(parentGraph, callback, cancellationToken, out var graph)
@@ -196,6 +290,7 @@ public sealed partial class MissingIncludeAnalyzer
             callbackParameter,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
         context.Build();
@@ -310,7 +405,7 @@ public sealed partial class MissingIncludeAnalyzer
         IForEachLoopOperation rootForEach,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out List<NavigationAccess> accesses
     )
@@ -321,7 +416,7 @@ public sealed partial class MissingIncludeAnalyzer
             !TryGetFlowGraph(
                 executableRoot,
                 rootForEach.SemanticModel,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var graph
             )
@@ -333,6 +428,7 @@ public sealed partial class MissingIncludeAnalyzer
             rootForEach,
             entityType,
             entityTypes,
+            flowCache,
             cancellationToken
         );
 
@@ -364,12 +460,12 @@ public sealed partial class MissingIncludeAnalyzer
     private static bool TryGetFlowGraph(
         IOperation executableRoot,
         SemanticModel? semanticModel,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken,
         out ControlFlowGraph graph
     )
     {
-        if (flowGraphCache.TryGetValue(executableRoot, out var cached))
+        if (flowCache.TryGetGraph(executableRoot, out var cached))
         {
             graph = cached.Graph!;
             return graph != null;
@@ -401,16 +497,7 @@ public sealed partial class MissingIncludeAnalyzer
             created = null;
         }
 
-        var holder = new FlowGraphHolder(created);
-        try
-        {
-            flowGraphCache.Add(executableRoot, holder);
-        }
-        catch (ArgumentException)
-        {
-            if (flowGraphCache.TryGetValue(executableRoot, out var raced))
-                holder = raced;
-        }
+        var holder = flowCache.AddGraph(executableRoot, new FlowGraphHolder(created));
 
         graph = holder.Graph!;
         return graph != null;
@@ -427,11 +514,13 @@ public sealed partial class MissingIncludeAnalyzer
         provenAccess = candidate.Access;
         var statesByBlock = new Dictionary<int, HashSet<FlowProbeState>>();
         var worklist = new Queue<FlowWorkItem>();
+        var canReachAccess = GetBlocksThatCanReachAccess(graph, context, candidate.AccessId);
 
-        Enqueue(graph.Blocks[0], default, statesByBlock, worklist);
+        Enqueue(graph.Blocks[0], default, statesByBlock, worklist, canReachAccess);
 
         var sawKnownUnsatisfied = false;
         var sawUncertain = false;
+        var sawCollectionSatisfied = false;
         var knownBindings = new HashSet<string>(StringComparer.Ordinal);
         var knownPaths = new HashSet<string>(StringComparer.Ordinal);
 
@@ -453,6 +542,19 @@ public sealed partial class MissingIncludeAnalyzer
                             continue;
 
                         reachedCandidate = true;
+                        if (
+                            state.CollectionSatisfiedPaths != null
+                            && PathIsCollectionSatisfied(candidate, state)
+                        )
+                        {
+                            // A preceding unconditional loop wrote this navigation on every
+                            // element. Only the path where that loop's body never ran lacks the
+                            // fact, and on that path the collection is empty, so this read does
+                            // not happen either — one witness is therefore enough.
+                            sawCollectionSatisfied = true;
+                            break;
+                        }
+
                         if (
                             !state.IsActive
                             || !state.OriginBound
@@ -491,12 +593,13 @@ public sealed partial class MissingIncludeAnalyzer
                 continue;
 
             foreach (var successor in GetSuccessors(item.Block))
-                Enqueue(successor, state, statesByBlock, worklist);
+                Enqueue(successor, state, statesByBlock, worklist, canReachAccess);
         }
 
         if (
             !sawKnownUnsatisfied
             || sawUncertain
+            || sawCollectionSatisfied
             || knownBindings.Count != 1
             || knownPaths.Count != 1
         )
@@ -511,6 +614,25 @@ public sealed partial class MissingIncludeAnalyzer
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when a preceding whole-collection loop wrote a navigation that covers the path this
+    /// candidate reads.
+    /// </summary>
+    private static bool PathIsCollectionSatisfied(
+        FlowAccessCandidate candidate,
+        FlowProbeState state
+    )
+    {
+        var effectivePath = GetEffectiveAccessPath(candidate, state) ?? candidate.Access.Path;
+        foreach (var written in state.CollectionSatisfiedPaths!)
+        {
+            if (PathCovers(written, effectivePath))
+                return true;
+        }
+
+        return false;
     }
 
     private static void ApplyEvent(
@@ -820,11 +942,16 @@ public sealed partial class MissingIncludeAnalyzer
                         state = state.WithAliasSourceLinked(false);
                 }
 
+                state = state.WithoutCollectionSatisfiedPaths();
                 break;
 
             case FlowEventKind.EscapeRoot:
                 if (state.IsActive && !(state.RootUnknown && state.OriginIndependentOfRoot))
                     state = state.WithRootEscape();
+
+                // A helper holding the collection may repopulate or replace its elements, so
+                // the fix-up loop no longer speaks for what the collection now contains.
+                state = state.WithoutCollectionSatisfiedPaths();
                 break;
 
             case FlowEventKind.EscapeOrigin when flowEvent.Origin != null:
@@ -893,6 +1020,11 @@ public sealed partial class MissingIncludeAnalyzer
                     state = state.WithUnknownGeneration(invalidatedGeneration, flowEvent.Path);
                 }
 
+                break;
+
+            case FlowEventKind.SatisfyCollectionPath when flowEvent.Path != null:
+                if (state.IsActive && !state.RootUnknown)
+                    state = state.WithCollectionSatisfiedPath(flowEvent.Path);
                 break;
 
             case FlowEventKind.SatisfyPath when flowEvent.Origin != null && flowEvent.Path != null:
@@ -1188,14 +1320,36 @@ public sealed partial class MissingIncludeAnalyzer
             yield return conditional;
     }
 
+    /// <summary>
+    /// The blocks from which the analysed access is reachable. The verdict is decided only where
+    /// the access lives, so states that can never arrive there cannot change it — and in a method
+    /// holding many materialized queries, most of the graph lies past the access being analysed.
+    /// </summary>
+    private static bool[] GetBlocksThatCanReachAccess(
+        ControlFlowGraph graph,
+        OriginFlowContext context,
+        int accessId
+    )
+    {
+        return context
+            .FlowCache.GetBlockReachability(graph)
+            .BlocksThatCanReach(
+                context.AccessBlockByAccessId.TryGetValue(accessId, out var ordinal) ? ordinal : -1
+            );
+    }
+
     private static void Enqueue(
         BasicBlock block,
         FlowProbeState state,
         Dictionary<int, HashSet<FlowProbeState>> statesByBlock,
-        Queue<FlowWorkItem> worklist
+        Queue<FlowWorkItem> worklist,
+        bool[] canReachAccess
     )
     {
         if (!block.IsReachable)
+            return;
+
+        if (block.Ordinal >= 0 && block.Ordinal < canReachAccess.Length && !canReachAccess[block.Ordinal])
             return;
 
         if (!statesByBlock.TryGetValue(block.Ordinal, out var states))

@@ -17,7 +17,7 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -29,7 +29,7 @@ public sealed partial class MissingIncludeAnalyzer
                 returnsCollection,
                 entityType,
                 entityTypes,
-                flowGraphCache,
+                flowCache,
                 cancellationToken,
                 out var flowAccesses
             )

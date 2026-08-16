@@ -1,944 +1,944 @@
 {
   "version": 1,
   "manifestHash": "88B44CF3981F65A2CD77856473814E31D7D70259693D5B52F165B268B9B5BCAE",
-  "generatedAtUtc": "2026-08-16T11:36:06Z",
+  "generatedAtUtc": "2026-08-16T11:46:39Z",
   "entries": [
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC001",
-      "milliseconds": 38,
+      "milliseconds": 9,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC002,LC002",
-      "milliseconds": 28,
+      "milliseconds": 14,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC003",
-      "milliseconds": 63,
+      "milliseconds": 10,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC004",
-      "milliseconds": 55,
+      "milliseconds": 10,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC005",
-      "milliseconds": 60,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC006",
-      "milliseconds": 79,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC007",
-      "milliseconds": 131,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC008",
-      "milliseconds": 62,
-      "diagnostics": 3
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC009",
-      "milliseconds": 76,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC010",
-      "milliseconds": 80,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC011",
-      "milliseconds": 42,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC012",
-      "milliseconds": 38,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC013",
-      "milliseconds": 63,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC014",
-      "milliseconds": 32,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC015,LC015",
-      "milliseconds": 30,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC016",
-      "milliseconds": 38,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC017",
-      "milliseconds": 27,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC018",
-      "milliseconds": 19,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC019",
-      "milliseconds": 29,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC020",
-      "milliseconds": 19,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC021",
-      "milliseconds": 24,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC022",
-      "milliseconds": 35,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC023",
-      "milliseconds": 41,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC024",
-      "milliseconds": 29,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC025",
       "milliseconds": 25,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC006",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC007",
+      "milliseconds": 17,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC008",
+      "milliseconds": 21,
+      "diagnostics": 3
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC009",
+      "milliseconds": 11,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC010",
+      "milliseconds": 10,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC011",
+      "milliseconds": 10,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC012",
+      "milliseconds": 16,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC013",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC014",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC016",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC017",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC018",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC019",
+      "milliseconds": 10,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC020",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC021",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC022",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC023",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC024",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC025",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC026",
-      "milliseconds": 70,
+      "milliseconds": 16,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC027",
-      "milliseconds": 30,
+      "milliseconds": 15,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC028",
-      "milliseconds": 26,
+      "milliseconds": 9,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC029",
-      "milliseconds": 53,
+      "milliseconds": 8,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC030",
-      "milliseconds": 35,
+      "milliseconds": 17,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC031",
-      "milliseconds": 70,
+      "milliseconds": 9,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC032",
-      "milliseconds": 123,
+      "milliseconds": 10,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC033",
-      "milliseconds": 13,
+      "milliseconds": 1,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC034",
-      "milliseconds": 30,
+      "milliseconds": 15,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC035",
-      "milliseconds": 31,
+      "milliseconds": 10,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC036",
-      "milliseconds": 32,
+      "milliseconds": 9,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC037",
-      "milliseconds": 49,
+      "milliseconds": 14,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC038",
-      "milliseconds": 26,
+      "milliseconds": 10,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC039",
-      "milliseconds": 31,
+      "milliseconds": 11,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC040",
-      "milliseconds": 49,
+      "milliseconds": 11,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC041",
-      "milliseconds": 41,
+      "milliseconds": 16,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC042",
-      "milliseconds": 39,
+      "milliseconds": 12,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC043",
-      "milliseconds": 42,
+      "milliseconds": 11,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC044",
-      "milliseconds": 38,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC045",
       "milliseconds": 20,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC045",
+      "milliseconds": 10,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC046",
+      "milliseconds": 11,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC001",
       "milliseconds": 24,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
-      "analyzer": "LC001",
-      "milliseconds": 166,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
       "analyzer": "LC002,LC002",
-      "milliseconds": 113,
+      "milliseconds": 38,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC003",
-      "milliseconds": 46,
+      "milliseconds": 34,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC004",
-      "milliseconds": 32,
+      "milliseconds": 17,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC005",
-      "milliseconds": 38,
+      "milliseconds": 20,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC006",
-      "milliseconds": 47,
+      "milliseconds": 22,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC007",
-      "milliseconds": 44,
+      "milliseconds": 25,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC008",
-      "milliseconds": 22,
+      "milliseconds": 14,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC009",
-      "milliseconds": 44,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC010",
-      "milliseconds": 44,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC011",
-      "milliseconds": 23,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC012",
-      "milliseconds": 39,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC013",
-      "milliseconds": 40,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC014",
-      "milliseconds": 47,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC015,LC015",
-      "milliseconds": 31,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC016",
-      "milliseconds": 58,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC017",
-      "milliseconds": 123,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC018",
-      "milliseconds": 62,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC019",
-      "milliseconds": 63,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC020",
-      "milliseconds": 99,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC021",
-      "milliseconds": 30,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC022",
-      "milliseconds": 34,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC023",
-      "milliseconds": 51,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC024",
-      "milliseconds": 44,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC025",
-      "milliseconds": 44,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC026",
-      "milliseconds": 29,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC027",
-      "milliseconds": 37,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC028",
-      "milliseconds": 22,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC029",
-      "milliseconds": 33,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC030",
-      "milliseconds": 38,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC031",
-      "milliseconds": 47,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC032",
-      "milliseconds": 32,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC033",
-      "milliseconds": 4,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC034",
-      "milliseconds": 46,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC035",
-      "milliseconds": 60,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC036",
-      "milliseconds": 33,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC037",
-      "milliseconds": 34,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC038",
-      "milliseconds": 36,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC039",
-      "milliseconds": 43,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC040",
-      "milliseconds": 42,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC041",
-      "milliseconds": 49,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC042",
-      "milliseconds": 35,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC043",
-      "milliseconds": 37,
-      "diagnostics": 0
-    },
-    {
-      "repository": "CleanArchitecture",
-      "project": "src/Web/Web.csproj",
-      "analyzer": "LC044",
       "milliseconds": 21,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
+      "analyzer": "LC010",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC011",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC012",
+      "milliseconds": 11,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC013",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC014",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC016",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC017",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC018",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC019",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC020",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC021",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC022",
+      "milliseconds": 23,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC023",
+      "milliseconds": 28,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC024",
+      "milliseconds": 32,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC025",
+      "milliseconds": 25,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC026",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC027",
+      "milliseconds": 23,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC028",
+      "milliseconds": 25,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC029",
+      "milliseconds": 16,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC030",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC031",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC032",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC033",
+      "milliseconds": 3,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC034",
+      "milliseconds": 27,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC035",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC036",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC037",
+      "milliseconds": 27,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC038",
+      "milliseconds": 26,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC039",
+      "milliseconds": 16,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC040",
+      "milliseconds": 26,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC041",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC042",
+      "milliseconds": 29,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC043",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
+      "analyzer": "LC044",
+      "milliseconds": 26,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Web/Web.csproj",
       "analyzer": "LC045",
-      "milliseconds": 39,
+      "milliseconds": 33,
       "diagnostics": 0
     },
     {
       "repository": "CleanArchitecture",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC046",
-      "milliseconds": 47,
+      "milliseconds": 32,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC001",
-      "milliseconds": 203,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC002,LC002",
-      "milliseconds": 94,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC003",
-      "milliseconds": 119,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC004",
-      "milliseconds": 172,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC005",
-      "milliseconds": 131,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC006",
-      "milliseconds": 125,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC007",
-      "milliseconds": 110,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC008",
-      "milliseconds": 135,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC009",
-      "milliseconds": 162,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC010",
-      "milliseconds": 153,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC011",
-      "milliseconds": 144,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC012",
-      "milliseconds": 182,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC013",
-      "milliseconds": 154,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC014",
-      "milliseconds": 139,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC015,LC015",
-      "milliseconds": 199,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC016",
-      "milliseconds": 142,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC017",
       "milliseconds": 114,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC018",
-      "milliseconds": 115,
+      "analyzer": "LC002,LC002",
+      "milliseconds": 145,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC019",
-      "milliseconds": 174,
+      "analyzer": "LC003",
+      "milliseconds": 93,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC020",
-      "milliseconds": 147,
+      "analyzer": "LC004",
+      "milliseconds": 85,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC021",
-      "milliseconds": 96,
+      "analyzer": "LC005",
+      "milliseconds": 84,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC022",
-      "milliseconds": 107,
+      "analyzer": "LC006",
+      "milliseconds": 98,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC023",
-      "milliseconds": 138,
+      "analyzer": "LC007",
+      "milliseconds": 86,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC024",
-      "milliseconds": 97,
+      "analyzer": "LC008",
+      "milliseconds": 99,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC025",
-      "milliseconds": 112,
+      "analyzer": "LC009",
+      "milliseconds": 94,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC026",
-      "milliseconds": 118,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC027",
-      "milliseconds": 106,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC028",
-      "milliseconds": 127,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC029",
-      "milliseconds": 121,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC030",
-      "milliseconds": 148,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC031",
-      "milliseconds": 116,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC032",
-      "milliseconds": 3,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC033",
-      "milliseconds": 2,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC034",
-      "milliseconds": 117,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC035",
-      "milliseconds": 109,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC036",
-      "milliseconds": 119,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC037",
-      "milliseconds": 91,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC038",
-      "milliseconds": 96,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC039",
-      "milliseconds": 136,
-      "diagnostics": 2
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC040",
-      "milliseconds": 91,
-      "diagnostics": 0
-    },
-    {
-      "repository": "eShopOnWeb",
-      "project": "src/Infrastructure/Infrastructure.csproj",
-      "analyzer": "LC041",
+      "analyzer": "LC010",
       "milliseconds": 102,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC011",
+      "milliseconds": 108,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC012",
+      "milliseconds": 123,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC013",
+      "milliseconds": 111,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC014",
+      "milliseconds": 132,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 120,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC016",
+      "milliseconds": 100,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC017",
+      "milliseconds": 118,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC018",
+      "milliseconds": 103,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC019",
+      "milliseconds": 106,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC020",
+      "milliseconds": 115,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC021",
+      "milliseconds": 118,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC022",
+      "milliseconds": 122,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC023",
+      "milliseconds": 122,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC024",
+      "milliseconds": 96,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC025",
+      "milliseconds": 117,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC026",
+      "milliseconds": 161,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC027",
+      "milliseconds": 121,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC028",
+      "milliseconds": 148,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC029",
+      "milliseconds": 111,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC030",
+      "milliseconds": 120,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC031",
+      "milliseconds": 117,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC032",
+      "milliseconds": 2,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC033",
+      "milliseconds": 5,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC034",
+      "milliseconds": 109,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC035",
+      "milliseconds": 145,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC036",
+      "milliseconds": 127,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC037",
+      "milliseconds": 120,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC038",
+      "milliseconds": 132,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC039",
+      "milliseconds": 146,
+      "diagnostics": 2
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC040",
+      "milliseconds": 104,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "analyzer": "LC041",
+      "milliseconds": 126,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC042",
-      "milliseconds": 88,
+      "milliseconds": 123,
       "diagnostics": 0
     },
     {
@@ -952,343 +952,343 @@
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC044",
-      "milliseconds": 128,
+      "milliseconds": 137,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC045",
-      "milliseconds": 132,
+      "milliseconds": 141,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Infrastructure/Infrastructure.csproj",
       "analyzer": "LC046",
-      "milliseconds": 109,
+      "milliseconds": 116,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC001",
-      "milliseconds": 1893,
+      "milliseconds": 115,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC002,LC002",
-      "milliseconds": 546,
+      "milliseconds": 82,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC003",
-      "milliseconds": 318,
+      "milliseconds": 82,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC004",
-      "milliseconds": 318,
+      "milliseconds": 64,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC005",
-      "milliseconds": 386,
+      "milliseconds": 72,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC006",
-      "milliseconds": 370,
+      "milliseconds": 78,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC007",
-      "milliseconds": 344,
+      "milliseconds": 65,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC008",
-      "milliseconds": 295,
+      "milliseconds": 72,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC009",
-      "milliseconds": 277,
+      "milliseconds": 71,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC010",
-      "milliseconds": 344,
+      "milliseconds": 71,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC011",
-      "milliseconds": 370,
+      "milliseconds": 72,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC012",
-      "milliseconds": 421,
+      "milliseconds": 68,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC013",
-      "milliseconds": 771,
+      "milliseconds": 87,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC014",
-      "milliseconds": 330,
+      "milliseconds": 74,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC015,LC015",
-      "milliseconds": 341,
+      "milliseconds": 68,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC016",
-      "milliseconds": 332,
+      "milliseconds": 69,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC017",
-      "milliseconds": 282,
+      "milliseconds": 74,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC018",
-      "milliseconds": 2258,
+      "milliseconds": 63,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC019",
-      "milliseconds": 3494,
+      "milliseconds": 72,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC020",
-      "milliseconds": 2494,
+      "milliseconds": 73,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC021",
-      "milliseconds": 1205,
+      "milliseconds": 67,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC022",
-      "milliseconds": 643,
+      "milliseconds": 80,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC023",
-      "milliseconds": 294,
+      "milliseconds": 74,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC024",
-      "milliseconds": 477,
+      "milliseconds": 68,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC025",
-      "milliseconds": 457,
+      "milliseconds": 74,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC026",
-      "milliseconds": 288,
+      "milliseconds": 69,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC027",
-      "milliseconds": 296,
+      "milliseconds": 68,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC028",
-      "milliseconds": 579,
+      "milliseconds": 69,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC029",
-      "milliseconds": 419,
+      "milliseconds": 66,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC030",
-      "milliseconds": 438,
+      "milliseconds": 76,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC031",
-      "milliseconds": 386,
+      "milliseconds": 72,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC032",
-      "milliseconds": 23,
+      "milliseconds": 3,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC033",
-      "milliseconds": 24,
+      "milliseconds": 8,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC034",
-      "milliseconds": 351,
+      "milliseconds": 71,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC035",
-      "milliseconds": 435,
+      "milliseconds": 68,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC036",
-      "milliseconds": 358,
+      "milliseconds": 74,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC037",
-      "milliseconds": 308,
+      "milliseconds": 71,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC038",
-      "milliseconds": 783,
+      "milliseconds": 71,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC039",
-      "milliseconds": 363,
+      "milliseconds": 70,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC040",
-      "milliseconds": 512,
+      "milliseconds": 73,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC041",
-      "milliseconds": 471,
+      "milliseconds": 70,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC042",
-      "milliseconds": 368,
+      "milliseconds": 77,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC043",
-      "milliseconds": 300,
+      "milliseconds": 101,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC044",
-      "milliseconds": 302,
+      "milliseconds": 73,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC045",
-      "milliseconds": 380,
+      "milliseconds": 86,
       "diagnostics": 0
     },
     {
       "repository": "eShopOnWeb",
       "project": "src/Web/Web.csproj",
       "analyzer": "LC046",
-      "milliseconds": 449,
+      "milliseconds": 77,
       "diagnostics": 0
     }
   ]

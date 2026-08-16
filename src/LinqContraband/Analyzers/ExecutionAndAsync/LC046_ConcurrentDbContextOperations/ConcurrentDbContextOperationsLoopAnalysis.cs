@@ -1351,11 +1351,17 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
     {
         var listType = invocation.SemanticModel?.Compilation.GetTypeByMetadataName(
             "System.Collections.Generic.List`1");
+        var collectionType = invocation.SemanticModel?.Compilation.GetTypeByMetadataName(
+            "System.Collections.Generic.ICollection`1");
+        var containingType = invocation.TargetMethod.ContainingType.OriginalDefinition;
+        var isSupportedAdd =
+            (listType != null &&
+             SymbolEqualityComparer.Default.Equals(containingType, listType)) ||
+            (collectionType != null &&
+             SymbolEqualityComparer.Default.Equals(containingType, collectionType));
         if (listType == null ||
             invocation.TargetMethod.Name != "Add" ||
-            !SymbolEqualityComparer.Default.Equals(
-                invocation.TargetMethod.ContainingType.OriginalDefinition,
-                listType) ||
+            !isSupportedAdd ||
             receiver?.UnwrapConversions() is not
                 ILocalReferenceOperation listLocal ||
             !LocalAssignmentCache.TryGetSingleAssignedValueBefore(

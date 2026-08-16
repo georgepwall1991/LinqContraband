@@ -1832,9 +1832,12 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 
 **🛡️ Reliability Notes:**
 - LC045 only fires when the whole story is provable inside one method: a DbSet-rooted chain of shape-preserving
-  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized or synchronously `foreach`-enumerated entity
-  origin, and a navigation access on it. Inline collection materializers, direct query roots, nested collection paths,
-  and exact `Enumerable` element extraction are covered.
+  operators (`Where`, `OrderBy`, `Include`, …), a proven materialized, synchronously `foreach`-enumerated, or
+  `await foreach`-streamed entity origin, and a navigation access on it. Inline collection materializers, direct query
+  roots, nested collection paths, exact `Enumerable` element extraction — including the filtered `First`/`Single`/`Last`
+  overloads, `MinBy`/`MaxBy`, and extraction from a view — and iteration over an element-preserving
+  in-memory view of the materialized collection (`Where`, `OrderBy`, `Skip`, `Take`, `Distinct`, `Reverse`,
+  `AsEnumerable`) are covered.
 - Any `Select`/`Join`/custom operator or dynamic `Include(variable)` makes the query stay quiet. A later reassignment
   or escape (return, helper call, lambda capture, or external store) suppresses only subsequent uncertain reads of
   that entity origin; a proven read before it still reports. Escaping one extracted entity does not poison a sibling,
@@ -1842,12 +1845,23 @@ var rows = db.Orders.Select(o => new { o.Id, CustomerName = o.Customer.Name }).T
 - Navigation setters (`o.Customer = c`) and collection mutations (`o.Items.Add(...)`) are recognized write patterns
   and are not flagged. A setter satisfies a later read only for the same entity and only when every path to the read
   performs the write; a one-branch or different-entity write does not hide a missing `Include`.
+- The code fix extends an existing lambda `Include` when the query already covers a prefix of the flagged path, so a
+  nested finding appends `.ThenInclude(...)` instead of restating the prefix as a second `Include`.
 - The code fix only wraps sources that are statically `IQueryable<T>`; if a DbSet-rooted query has already been widened
-  to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you.
-- `await foreach`, arbitrary callbacks/delegate forms, predicate/default-value element extraction overloads, custom
-  lookalikes, and repository or `IQueryable` parameter roots remain conservative boundaries. Exact inline
-  `List<T>.ForEach` and single-source `Enumerable.Where`/`Select`/`Any`/`All` callbacks and property-pattern reads
-  use the same origin-flow proof while the original materialized collection generation remains active. Effectful
+  to `IEnumerable<T>`, LC045 still reports but leaves the Include placement to you. On an `await foreach` the fix
+  restores the async bridge — `db.Set.Include(x => x.Nav).AsAsyncEnumerable()` — because `Include` alone would leave a
+  source that is no longer an `IAsyncEnumerable<T>`.
+- `await foreach` is analysed only over a proven EF stream (the exact `AsAsyncEnumerable()` bridge, or a source that is
+  still statically `IQueryable<T>`); an arbitrary `IAsyncEnumerable<T>` stays quiet. Arbitrary callbacks/delegate forms,
+  predicate/default-value element extraction overloads, custom lookalikes, and repository or `IQueryable` parameter
+  roots remain conservative boundaries. Exact inline
+  `List<T>.ForEach` and single-source `Enumerable` callbacks — `Where`/`Select`/`Any`/`All`, ordering key selectors,
+  `SkipWhile`/`TakeWhile`, the `Count`/`Sum`/`Average`/`Min`/`Max` aggregates, and the
+  `ToDictionary`/`ToLookup`/`GroupBy`/`SelectMany`/`DistinctBy` grouping callbacks — plus property-pattern reads, use
+  the same origin-flow proof while the original materialized collection generation remains active. The grouping
+  operators keep the entities in their result, so they report the read inside the callback and still count as an escape.
+- Nested reads carry the navigation prefix through both a `foreach` over a navigation collection and an inline callback
+  over it, so `order.Items.Sum(i => i.Product.Price)` reports `Items.Product`. Effectful
   `Where` predicates and entity-returning `Select` projections stay conservative; scalar `Select` projections do
   not suppress later proven reads.
 - Null-guarded reads still fire deliberately: under proxies the null check itself can trigger the N+1, and without

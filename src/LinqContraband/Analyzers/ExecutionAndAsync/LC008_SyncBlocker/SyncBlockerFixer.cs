@@ -40,6 +40,13 @@ public sealed partial class SyncBlockerFixer : CodeFixProvider
 
         if (IsInvalidAwaitContext(invocation)) return;
 
+        var semanticModel = await context.Document
+            .GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null) return;
+
+        if (WouldStrandRefStructLocal(invocation, semanticModel, context.CancellationToken)) return;
+
         // We need the method name to find the replacement
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {

@@ -18,11 +18,9 @@ public sealed partial class MissingIncludeAnalyzer
             var deconstructionAssignments = new Dictionary<ILocalSymbol, List<LocalAssignment>>(
                 SymbolEqualityComparer.Default
             );
-            foreach (var operation in executableRoot.Descendants())
+            // Mirrors FlowScopeIndex.AliasBindings: keep the two in step when adding a case.
+            foreach (var operation in scope.AliasBindings)
             {
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
-
                 switch (operation)
                 {
                     case IVariableDeclaratorOperation declarator:
@@ -378,20 +376,9 @@ public sealed partial class MissingIncludeAnalyzer
 
         private void DiscoverLocalFunctionCaptures()
         {
-            foreach (var operation in executableRoot.Descendants())
+            foreach (var localFunction in scope.LocalFunctions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (
-                    operation is not ILocalFunctionOperation localFunction
-                    || localFunction.Parent == null
-                    || !ReferenceEquals(
-                        localFunction.Parent.FindOwningExecutableRoot(),
-                        executableRoot
-                    )
-                )
-                {
-                    continue;
-                }
 
                 var capture = new LocalFunctionCapture();
                 foreach (var descendant in localFunction.Descendants())
@@ -412,46 +399,59 @@ public sealed partial class MissingIncludeAnalyzer
                         capture.OriginIds.Add(origin.Id);
                 }
 
+                capture.Declaration = localFunction;
+                capture.ReadsOnly =
+                    capture.EscapesRoot
+                    && capture.OriginIds.Count == 0
+                    && IsWholeCollectionReadOnlyCallee(localFunction);
+
                 if (capture.EscapesRoot || capture.OriginIds.Count > 0)
                     localFunctionCaptures[localFunction.Symbol] = capture;
             }
         }
 
-        private static int FindFirstBlockOrdinalInside(ControlFlowGraph graph, SyntaxNode body)
-        {
-            var bestOrdinal = -1;
-            var bestPosition = int.MaxValue;
 
-            foreach (var block in graph.Blocks)
+        /// <summary>
+        /// True when every reference the callee makes to the tracked collection is a
+        /// <c>foreach</c> over it, and the loop body only reads navigations on the element. Any
+        /// other use — passing it to a method, assigning it, indexing it — leaves the capture an
+        /// escape, because the callee could then load the navigation itself or hand it somewhere
+        /// that does.
+        /// </summary>
+        private bool IsWholeCollectionReadOnlyCallee(ILocalFunctionOperation localFunction)
+        {
+            if (resultLocal == null)
+                return false;
+
+            var sawLoop = false;
+            foreach (var descendant in localFunction.Descendants())
             {
-                if (!block.IsReachable)
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (descendant is not ILocalReferenceOperation reference)
                     continue;
 
-                foreach (var operation in block.Operations)
-                    Consider(operation, block.Ordinal);
+                if (!SymbolEqualityComparer.Default.Equals(reference.Local, resultLocal))
+                    continue;
 
-                if (block.BranchValue != null)
-                    Consider(block.BranchValue, block.Ordinal);
-            }
+                // The loop collection is normally wrapped in a conversion to IEnumerable, so walk
+                // up through conversions before deciding what the reference is used for.
+                var node = (IOperation)reference;
+                while (node.Parent is IConversionOperation or IParenthesizedOperation)
+                    node = node.Parent;
 
-            return bestOrdinal;
-
-            void Consider(IOperation operation, int ordinal)
-            {
-                if (operation.Syntax.SyntaxTree != body.SyntaxTree)
-                    return;
-
-                var span = operation.Syntax.Span;
-                var bodySpan = body.Span;
-                if (span.Start < bodySpan.Start || span.End > bodySpan.End)
-                    return;
-
-                if (span.Start < bestPosition)
+                if (
+                    node.Parent is not IForEachLoopOperation forEach
+                    || !ReferenceEquals(forEach.Collection.UnwrapConversions(), reference)
+                )
                 {
-                    bestPosition = span.Start;
-                    bestOrdinal = ordinal;
+                    return false;
                 }
+
+                sawLoop = true;
             }
+
+            return sawLoop;
         }
 
         private static string GetDirectIndexOriginKey(IOperation operation, out bool isUnstable)
@@ -514,14 +514,22 @@ public sealed partial class MissingIncludeAnalyzer
 
     private sealed class IterationBinding
     {
-        public IterationBinding(EntityOrigin origin, SyntaxNode body)
+        public IterationBinding(EntityOrigin origin, SyntaxNode body, bool iteratesWholeCollection)
         {
             Origin = origin;
             Body = body;
+            IteratesWholeCollection = iteratesWholeCollection;
         }
 
         public EntityOrigin Origin { get; }
         public SyntaxNode Body { get; }
+
+        /// <summary>
+        /// True only for a loop over the collection itself. A view such as
+        /// `orders.Where(...)` yields the same instances but not necessarily all of them, so it
+        /// cannot establish that every element was written.
+        /// </summary>
+        public bool IteratesWholeCollection { get; }
     }
 
     private readonly struct BindingDescriptor
@@ -546,5 +554,14 @@ public sealed partial class MissingIncludeAnalyzer
     {
         public bool EscapesRoot { get; set; }
         public HashSet<int> OriginIds { get; } = new();
+
+        /// <summary>
+        /// Set when the callee's only use of the collection is iterating it and reading navigations
+        /// on the elements. The capture is then lifted to reads at the call site instead of being
+        /// treated as an escape — see <c>docs/design/lc045-interprocedural-scope.md</c>.
+        /// </summary>
+        public bool ReadsOnly { get; set; }
+
+        public ILocalFunctionOperation? Declaration { get; set; }
     }
 }

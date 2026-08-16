@@ -128,6 +128,7 @@ Before submitting a PR, ensure:
 - [ ] All tests pass (`dotnet test`)
 - [ ] Build succeeds with no warnings (`dotnet build`)
 - [ ] New analyzers have both "crime" and "innocent" test cases
+- [ ] **If a change makes a new code shape report, that shape was added to the analyzer's fixer-coverage corpus in the same change.** For LC045 that is `MissingIncludeFixerCoverageContractTests`. Nothing enforces this mechanically, and it has been missed twice — a shape that reports but is never asked whether it has a compiling fix is how 5.7.28 shipped a code fix that produced uncompilable code.
 - [ ] Code follows existing patterns in the codebase
 - [ ] README/docs taxonomy are updated if adding a new analyzer
 - [ ] RuleCatalog entry was added or updated

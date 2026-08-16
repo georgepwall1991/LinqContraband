@@ -15,6 +15,278 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - LC004 no longer crashes on multi-project solutions. When a callee whose body LC004 inspects lives in a referenced project, the method-summary walk called `GetSemanticModel` on a syntax tree outside the current compilation and threw `ArgumentException` (surfacing as AD0000 in the IDE). Cross-project callee bodies are now skipped conservatively, matching LC004's existing non-source-callee boundary. The same guard was applied to the equivalent declaration walks in LC045 (`AutoInclude` configuration discovery) and LC046 (member and constructor declaration analysis), which had the identical latent crash.
 
+===
+## [5.7.59] - 2026-08-13
+
+### Fixed
+- Shared code-fix helper `EnsureUsing` no longer crashes after an in-flight `ReplaceNode` when the file has no file-level `using` directives. That shape is common with implicit/global usings. The helper now applies `AddUsings` to the current compilation unit so inner replacements survive, and a second call for the same namespace is a no-op.
+
+## [5.7.58] - 2026-08-10
+
+### Fixed
+- LC046 now reports repeated calls to a direct two-parameter local helper when exactly one parameter is the `DbContext` used directly by the returned EF task, both calls bind it to the same proven context, the context argument is evaluated first, and the remaining parameter is unused or used only in non-throwing direct EF arguments. Reordered named arguments and an omitted optional companion can retain the diagnostic, and source-earlier named arguments can establish a required local used by the EF call. Distinct or reassigned contexts, explicit context-receiver conversions, throwing call or helper-body arguments including nullable instance method-group receivers, throwing parameter transforms, invalid required values including directly bound or captured stable locals, transformed required values, wrapped or definitely cancelled forwarded tokens, helpers whose returned operation ambiguously depends on two context parameters, and helpers with three or more parameters remain quiet.
+
+## [5.7.57] - 2026-08-10
+
+### Fixed
+- LC046 now reports repeated calls to a direct two-parameter local helper returning an EF task over a stable captured context when both call arguments and every direct EF use of either parameter are proven non-throwing. A definitely cancelled token forwarded to the EF operation remains quiet because it can prevent the task from starting. Two-parameter helpers whose context comes from a parameter, helpers with three or more parameters, helper-local or reassigned contexts, throwing argument evaluation, chains, branches, and multi-operation bodies remain outside the proof.
+
+## [5.7.56] - 2026-08-10
+
+### Fixed
+- LC046 now reports repeated calls to a direct local helper with one parameter when the helper returns the task over a stable captured context, each call argument is proven non-throwing, and any use of the parameter is limited to non-throwing direct EF arguments. The same safety proof now prevents existing one-`DbContext`-parameter helper forms from reporting when property or factory call arguments, or a captured-context helper's use of that parameter, can fault before a task starts. Helper-local or reassigned captured contexts and potentially throwing argument evaluation remain quiet; multiple parameters, helper chains, and richer bodies remain outside the proof.
+
+## [5.7.55] - 2026-08-10
+
+### Fixed
+- LC046 now reports repeated calls to a source-visible local function whose sole parameter is a `DbContext` and whose only body operation directly returns a recognised EF Core task over that parameter, when each call passes the same proven context. A stable context captured instead of the parameter continues to report. Distinct or reassigned context arguments, helper-local contexts, a single non-`DbContext` parameter, multiple parameters, helper chains, and richer bodies remain outside the direct parameter-binding proof.
+
+## [5.7.54] - 2026-08-10
+
+### Fixed
+- LC046 now reports same-context overlaps hidden behind repeated calls to a parameterless local function whose only body operation directly returns a recognised EF Core task over a captured stable context. Parameterized helpers, helper chains, multi-operation bodies, and contexts created inside the helper remain quiet.
+
+## [5.7.53] - 2026-08-10
+
+### Fixed
+- LC046 now reports repeated same-context EF tasks added through an `ICollection<T>` or `IList<T>` local when the local is proven to be a fresh empty framework `List<T>`. Interface parameters, interface-targeted collection expressions, and other unproven collection implementations remain quiet, so the broader source type does not weaken the runtime collection proof.
+
+## [5.7.52] - 2026-08-09
+
+### Added
+- The collection-callee shape introduced in 5.7.51 joins the LC045 fixer-coverage contract, which its own rule required in that change. The fixer handles it correctly — a fix is offered, it compiles, and it clears the diagnostic — so nothing was hidden by the omission, but this is the second time the corpus has gone stale, and the contract now records both lapses. Nothing enforces the rule mechanically, so it is worth checking the corpus whenever a shape starts reporting.
+
+## [5.7.51] - 2026-08-09
+
+### Fixed
+- LC045 now reports a navigation read inside a private method in the same file that is handed the materialized collection and only iterates it. `Print(orders)` where `private void Print(List<Order> orders) { foreach (var o in orders) ... }` was silenced, because passing the collection was an escape. This is the collection-passing counterpart to the closure form of 5.7.47 and the entity-passing form of 5.7.50. The callee's loop variable gets an iteration origin bound at the call, so every existing fact applies unchanged. Handing the collection on, indexing it, re-materializing it, or declaring the method anything other than private all keep the escape.
+
+## [5.7.50] - 2026-08-09
+
+### Fixed
+- LC045 now reports a navigation read inside a private method in the same file that is handed the entity and only reads navigations on it. `private void Render(Order o) => Console.WriteLine(o.Customer.Name);` called from a loop over the collection was silenced, because passing the entity was an escape. This is the shape real code uses, where 5.7.48 covered only local functions. A private method cannot be overridden, so the body found is the body that runs, and requiring the same syntax tree keeps the semantic model free. Anything callable from outside the type, a callee that loads the navigation, and a callee that passes the entity on all keep the escape.
+- This also closes a false negative in an existing case: `orders.ToDictionary(o => Key(o))` where `Key` reads a navigation was quiet because the helper call was an escape, and now reports.
+
+## [5.7.49] - 2026-08-09
+
+### Fixed
+- LC045 now judges each call site of an entity-taking local function on its own. 5.7.48 required exactly one call site, on the reasoning that two callers may hand the callee different entities; binding the parameter per call makes that unnecessary, and more accurate. A helper shared between a loop over an `Include`d query and a loop over a bare one now reports once, attributed to the query that is actually missing the `Include`, where before it stayed silent for both.
+
+## [5.7.48] - 2026-08-09
+
+### Fixed
+- LC045 now reports a navigation read inside a local function that is handed the entity and only reads navigations on it. `void Show(Order o) => Console.WriteLine(o.Customer.Name);` called from a loop over the collection was silenced, because passing the entity was treated as an escape. Such a callee cannot be the loading mechanism the read needs, so its parameter binds to the argument's origin and the read is proven where the caller's own read would be. Any other use of the parameter leaves the argument an escape — passing it on, assigning it, calling through it, and above all `db.Entry(o).Reference(...).Load()`, since a callee that loads before reading is correct code. Two call sites also keep the escape, because each may hand the callee a different entity.
+
+## [5.7.47] - 2026-08-09
+
+### Fixed
+- LC045 now reports a navigation read inside a local function that only iterates the materialized collection. `void Print() { foreach (var o in orders) Console.WriteLine(o.Customer.Name); }` followed by `Print();` is the same loop written one level down, but capturing the collection was treated as an escape and silenced it. The callee's reads are now proven at the call site, where the collection's state is already known, and reported on the read itself — so an escape before the call, an `Include`, a fix-up and an explicit load all apply unchanged. The lift requires exactly one call site and a callee whose only use of the collection is iterating it; a callee that also hands the collection out, one invoked twice, one invoked after an escape, a delegate variable, and a callee taking the entity rather than the collection all keep today's behaviour.
+
+## [5.7.46] - 2026-08-09
+
+### Added
+- A pinned specification for LC045's interprocedural gap, `MissingIncludeInterproceduralSpecTests`. Two `TestFutureGap_` cases record the shapes an implementation should make report — a local function closing over the collection, and one taking the entity — and five `TestDeliberate_` cases record the boundary it must not cross: a callee that explicitly loads, one invoked twice, one invoked after an escape, one over an already-included query, and a delegate variable. This mirrors 5.7.37, where pinning a gap with its control cases made the fix in 5.7.38 a matter of reading evidence rather than hunting for it. The design note gains the implementation shape found by reading the code: the callback machinery is the pattern to mirror, and the three moves it needs are an origin for the callee's loop variable, an event position separate from the diagnostic location, and suppression of the escape that would otherwise silence the lifted reads.
+
+## [5.7.45] - 2026-08-09
+
+### Added
+- `docs/LC045_InterproceduralScope.md`, recording what closing LC045's largest remaining false-negative family — reads reached only through a callee — would require. It documents why the case is quiet today, the narrowest defensible slice, two structural constraints found by investigating the code rather than assumed (attribution can avoid the nested control-flow graph; reporting stays local only because LC045 registers per operation block), the open question that is the real work (which origin the access binds to), and the conditions and existing validation oracles any implementation should use. Nothing is implemented; this is a design record so the work starts from analysis rather than discovery.
+
+## [5.7.44] - 2026-08-09
+
+### Added
+- Real-EF detection validation for LC045, recorded in `docs/analyzer-health.md`. The external corpus validation in 5.7.42 showed the rule is silent on correct EF code; this is its complement, checking that the rule actually fires against real Entity Framework Core types rather than only against the analyzer's own mocks. Nine shapes — query syntax, identity projection, collection alias, widened `IEnumerable<T>`, expression conditionals, null-conditional reads, plus the explicit-loading and `Include` cases that must stay quiet — were compiled against the real EF Core 10 packages and all nine behaved correctly. This settles a specific concern: the real `DbSet<T>` implements `IAsyncEnumerable<T>`, and modelling that in a test mock had made `Select` ambiguous and silently stopped query syntax reporting; the ambiguity was an artefact of the mock, not a property of real EF.
+
+## [5.7.43] - 2026-08-09
+
+### Changed
+- LC045 rejects a non-materializer invocation by name before doing any symbol work. The materializer proofs resolved well-known symbols and compared containing types before ever looking at the method name, and that runs for every invocation in a file — `Console.WriteLine` included. Most files contain no EF code at all, so the cheapest possible rejection is now the common path. The name set is the union of what the three proofs accept, and mutation isolation confirms it is load-bearing: removing `ToHashSet` fails five tests, removing `ElementAt` fails three. Diagnostics are unchanged — a 160-location differential across every supported materializer form matches exactly.
+
+## [5.7.42] - 2026-08-09
+
+### Added
+- External corpus validation for LC045, recorded in `docs/analyzer-health.md`. The rule was run against ten real Entity Framework Core projects from `dotnet/EntityFramework.Docs` — including the canonical eager/explicit/lazy loading guide, which exercises `Include`, `ThenInclude`, filtered includes, split queries, explicit loading and `AutoInclude` — building against the real EF Core 10 packages. Zero diagnostics across all ten, with a self-contained canary firing in every project so the clean result cannot be confused with an analyzer that never ran.
+
+## [5.7.41] - 2026-08-09
+
+### Added
+- The LC045 fixer-coverage contract covers async shapes. `await foreach` over an `AsAsyncEnumerable()` bridge, the same with a conditional read, and the same with a nested `ThenInclude` path are now held to the contract that a fix is offered, clears the diagnostic, and emits. The `await foreach (var o in db.Orders)` shape, whose fix must restore the bridge, deliberately stays with its own test: modelling it needs a `DbSet` that is also an `IAsyncEnumerable`, and adding that to the shared mock makes `Select` ambiguous between the queryable and async query patterns, which silently stops unrelated shapes reporting.
+- Sync and async paths were verified symmetric: `ToListAsync`, `await foreach`, and query syntax all report the ternary and `?.` reads that 5.7.38 fixed, and explicit loading silences them on both.
+
+## [5.7.40] - 2026-08-09
+
+### Added
+- The LC045 fixer-coverage contract covers the shapes made reportable since it was introduced. Its corpus had gone stale for three releases: the widened-`IEnumerable<T>` source of 5.7.32/5.7.33 and the ternary, switch-expression, `?.` and `??` reads of 5.7.38 were reportable but never asked whether the fixer handled them — the same blind spot that let 5.7.28 ship a code fix producing uncompilable code. All seven added shapes pass, so no defect was hiding behind the omission, and the contract's own rule now says plainly that a release making a shape reportable adds it to the corpus in the same change.
+
+## [5.7.39] - 2026-08-09
+
+### Changed
+- The LC045 non-EF perf guardrail added in 5.7.34 is sized to run in seconds rather than minutes. It used a 2,000-invocation corpus and took 124s on a CI runner against a 120s budget, so it flaked on an unrelated release commit — a guardrail that fails on a slow machine reports load, not a regression. A 500-invocation corpus still exercises the per-invocation decision it protects, with headroom.
+
+## [5.7.38] - 2026-08-09
+
+### Fixed
+- LC045 now reports a navigation read on a loop variable inside an expression-level conditional. `var name = order.Id > 0 ? order.Customer.Name : "";` was silent, as were the switch-expression, `order.Customer?.Name` and `??` spellings, while the equivalent `if`/`else` statement reported and the same read on a single materialized entity reported — the gap 5.7.37 recorded. The loop variable's binding was attached to the block holding the body's earliest-starting operation, which for that shape is the merge block after the branches, so the read was visited with the origin unbound and one unbound visit makes the whole access uncertain. The binding is now attached to the block the body is entered through, which is what "bound on entry" means in control-flow terms.
+
+## [5.7.37] - 2026-08-09
+
+### Added
+- An adversarial audit of LC045's reporting surface, with its one finding pinned. Fifteen shapes that must stay quiet — string and nested `Include`, `ThenInclude` chains, split query, projections, `IsLoaded` guards, owned types, `nameof`, explicit loading in its `Collection`/`LoadAsync` forms — were all confirmed silent, and fourteen shapes that must report were confirmed reported, including `List.ForEach`, indexer loops, string interpolation, property patterns, `GroupBy` keys and query-syntax `where`.
+- The audit found one false-negative family, now recorded and pinned: a navigation read on a loop variable inside an **expression-level conditional** — a ternary, a switch expression, `?.` on the navigation, or `??` — is not reported, while the equivalent `if`/`else` statement is, and while the same read on a single materialized entity is. It is not branch conservatism: the ternary stays quiet even when both arms read the navigation. The fix belongs in the origin-flow prover's event-to-block mapping, so it is recorded with a reproduction rather than patched at the edges. No analyzer behaviour changes in this release.
+
+## [5.7.36] - 2026-08-09
+
+### Fixed
+- LC045 no longer reports a navigation that EF's explicit loading has populated. `foreach (var o in orders) db.Entry(o).Reference(x => x.Customer).Load();` followed by a read of `o.Customer` is the documented explicit-loading pattern, and the rule's own description names explicit loading as a loading mechanism, but it was reported as a missing `Include`. A load is now recorded as the same fact a manual write records, so the relationship fix-up rules apply to it unchanged: a load that reaches every element speaks for the collection, while a conditional one, one over a filtered view, or one for a different navigation still reports. The `Collection`, string-named and `LoadAsync` forms are recognised too.
+- A conditional relationship fix-up written as the loop body — `foreach (var o in orders) if (c) o.Customer = x;` — was credited to the whole collection and silenced later reads. The `if` *is* the loop body in that spelling, so walking up to the body accepted a write only some elements receive. A loop body that is not a block or a bare statement is no longer straight-line.
+
+## [5.7.35] - 2026-08-09
+
+### Changed
+- LC045 answers "is this an element-preserving in-memory view?" once per operation instead of every time it is asked. The peeling loop, the result-collection test, the callback proof and the materialized-source recursion each asked independently, and every callback-bearing answer re-walked the lambda body to prove it effect-free. Counting the walks: an inline view did 1,800 for 200 loops, a three-operator chain 12,200. The verdict is now memoized weakly by operation, and invocations whose name is not a view operator are rejected before the cache is probed, so the common case — every `Console.WriteLine` and every materializer — stays a single set lookup. Lambda-body walks fall 56% on an inline view, 80% on a chained view and 67% on an alias, with diagnostics unchanged.
+
+## [5.7.34] - 2026-08-09
+
+### Changed
+- LC045 resolves the well-known symbols it compares against once per compilation instead of at each comparison. They were looked up with `GetTypeByMetadataName` per operation, so every invocation in a file — `Console.WriteLine` included — paid several metadata name lookups before being rejected, which is the cost paid by files containing no EF code at all. 27 call sites now read from a cache keyed weakly by `Compilation`, so the entry dies with it in an IDE that produces a new compilation on nearly every keystroke. Interleaved A/B measurement over three rounds: the cached build was faster in five of six paired runs, by 14% on an invocation-heavy corpus and 4% on a LINQ-heavy one. Diagnostics are unchanged — a 122-location differential against 5.7.33 matches exactly.
+
+## [5.7.33] - 2026-08-08
+
+### Fixed
+- LC045 now reports a `foreach` directly over a query widened to `IEnumerable<T>`. `IEnumerable<Order> source = db.Orders; foreach (var o in source)` runs the query exactly as iterating `db.Orders` does, and the same loop over `source.ToList()` was already reported, so the direct form staying quiet was an inconsistency rather than a deliberate limit. The declared type no longer decides it: the chain proof resolves the local and still has to reach a DbSet root, so a plain `List<T>`, a LINQ-to-objects query, and a reassigned or conditionally bound local all stay quiet. The code fix added in 5.7.32 already covers the shape, so these findings are actionable rather than diagnostic-only.
+
+## [5.7.32] - 2026-08-08
+
+### Added
+- The LC045 code fix now handles a query widened to `IEnumerable<T>`. `IEnumerable<Order> source = db.Orders;` was deliberately diagnostic-only, because `Include` is declared on `IQueryable<T>` and cannot go where the widened local is consumed. It can go where the local was given the query, so the fix now lands there: `IEnumerable<Order> source = db.Orders.Include(x => x.Customer);`, which still converts to the declared type because `Include` returns an `IIncludableQueryable<T, P>`. The local must be declared with an initializer that is itself queryable and never reassigned.
+
+## [5.7.31] - 2026-08-08
+
+### Added
+- A fixer-coverage contract test for LC045: for every shape the analyzer reports, a fix must be offered, applying it must clear the diagnostic, and the fixed document must **emit**. This is the guard whose absence let 5.7.28 ship a code fix that produced uncompilable code — widening what the analyzer reported silently widened what the fixer had to handle, and no test asked the fixer about the new shapes. The corpus covers 25 shapes, and the test is verified against the 5.7.28 defect: reintroducing it fails three cases.
+
+## [5.7.30] - 2026-08-08
+
+### Fixed
+- The LC045 code fix no longer emits code that does not compile for LINQ query syntax. Because query syntax lowers its trailing `select o` to an identity projection, the query source the analyzer reports is a node inside the query expression, and the fix wrapped it — producing `select o.Include(x => x.Customer)`, where the range variable is an entity rather than a queryable (CS0411). Every query-syntax diagnostic was affected, from the moment 5.7.28 began reporting them. The fix now goes on the expression the query draws from: `from o in db.Orders` becomes `from o in db.Orders.Include(x => x.Customer)`, and an existing chain is extended in place. A query with a continuation, or with a clause other than `where`/`orderby`, offers no fix rather than guessing.
+
+## [5.7.29] - 2026-08-08
+
+### Fixed
+- LC045 now reads through a local that names the materialized collection. `var active = orders.Where(o => o.Active);` followed by a loop, an element extraction, or a callback over `active` was silent, because the proof was held against one local and an assignment to a second was not tracked — so hoisting a view into a variable, which is how the same read is ordinarily written, hid it. A local assigned exactly once from the collection, from an element-preserving view or copy of it, or from another such alias now stands in for the collection. A reassigned or conditionally bound local still does not.
+- LC045 no longer reports a read whose entities escaped through such an alias. Handing `active` to a helper that could load the navigation now discards the proof exactly as handing out the collection itself does; 5.7.28 reported here because the alias was not understood to be the collection.
+
+## [5.7.28] - 2026-08-08
+
+### Fixed
+- LC045 now sees through an identity projection `Select(x => x)`, which is what LINQ query syntax lowers a trailing `select x` to. `from o in db.Orders where o.Id > 0 select o` was invisible to the rule — every query-comprehension form was, because the lowered projection bailed the chain proof — so a missing `Include` written in query syntax went unreported. The same proof covers the in-memory view form (`from x in orders ... select x`) and the query-comprehension wrapper is peeled so both spellings share one walk. The selector must be an inline single-parameter lambda whose body is that same parameter and whose return type is the parameter's own type: an upcast, a rewrapping call, a method group, and the indexed `(x, i)` overload all remain real projections and stay out of scope.
+
+## [5.7.27] - 2026-08-08
+
+### Fixed
+- LC045 now recognises `AutoInclude()` applied through `modelBuilder.ApplyConfiguration(new TConfiguration())`. A navigation configured as auto-included inside an `IEntityTypeConfiguration<TEntity>.Configure` implementation is loaded by EF on every query, but only a settings chain written directly in `OnModelCreating` counted as proof, so the read was reported as a missing `Include`. The same proof now follows an unconditional `ApplyConfiguration` into the source-visible `Configure` method and applies its top-level `builder.Navigation(...).AutoInclude()` settings in execution order. A query-level `IgnoreAutoIncludes()`, a later disablement, a different navigation, and conditional or runtime configuration each still report.
+
+## [5.7.26] - 2026-08-08
+
+### Fixed
+- LC045's manual fix-up handling now covers reads inside a callback. `orders.Sum(o => o.Customer.Id)` after a loop that wrote `Customer` on every element was the one shape 5.7.25 left reporting, because a callback body is analysed in its own control-flow graph which the collection-level write fact never reaches. The outer walk is now asked what the collection has been given by the time the call runs, and the callback's reads are filtered against that answer. A callback reading a different navigation, or following a merely conditional fix-up, still reports.
+
+## [5.7.25] - 2026-08-08
+
+### Fixed
+- LC045 no longer reports manual relationship fix-up. A loop over the whole materialized collection that unconditionally writes a navigation on every element leaves no element unwritten, so a later read of that navigation — in a second loop, through an indexer, or on a nested path beneath it — is no longer flagged. The write is credited to the collection rather than to the loop variable, which is what lets it survive a fresh iteration binding. Three requirements keep it sound and each is pinned by its own test: the loop must iterate the collection itself rather than a filtered view, nothing between the loop body and the write may skip it, and a later escape or reassignment of the collection discards the fact. A read inside a callback body still reports, because a callback is analysed in its own control-flow graph which the collection-level fact does not reach.
+
+## [5.7.24] - 2026-08-08
+
+### Fixed
+- LC045 now follows an indexer into a copy or view of the materialized collection. `orders.ToList()[0].Customer` was the one spelling 5.7.23 left uncovered, because the indexed-access pre-pass matched an indexer whose receiver was a local reference. It now walks an element-preserving view or copy chain, which must end at the result local — so a query materializer, whose receiver is a `DbSet`, still cannot match.
+
+## [5.7.23] - 2026-08-08
+
+### Fixed
+- LC045 now sees through a copy of the materialized collection, completing the copy handling that 5.7.22 added for navigation collections. `foreach (var order in orders.ToList())` and the `ToArray`, extractor and aggregate forms hold the very same entity instances the query produced, but the copy hid every read behind it. The query materializer is itself a `ToList`, so a copy is accepted only where the source is already proven to be the materialized collection — the materializer's own source is a `DbSet`, which can never satisfy that, and an inline `foreach (var o in db.Orders.ToList())` keeps reporting exactly once.
+
+## [5.7.22] - 2026-08-08
+
+### Fixed
+- LC045 now sees through a copy of a navigation collection. `foreach (var item in order.Items.ToList())` — the ordinary way to avoid mutating a child collection while enumerating it — holds the very same entity instances, but the copy hid every nested read behind it, as did `order.Items.ToArray()`, `order.Items.ToList()[0]` and `order.Items.ToList().Sum(i => i.Product.Id)`. The copy proof is reached only while resolving something rooted at a navigation property of a tracked entity, so it cannot see a query materializer such as `db.Orders.ToList()`, whose receiver is a `DbSet` rather than a navigation. `List<T>.ToArray()` binds to the instance method rather than to `Enumerable`, and is recognised explicitly.
+
+## [5.7.21] - 2026-08-08
+
+### Fixed
+- LC045 now follows indexing into a navigation collection. `order.Items[0].Product` yields one of the instances that collection holds, exactly like `order.Items.ElementAt(0)` which 5.7.20 already followed, but the idiomatic indexer spelling — inline or into a local — was silent.
+
+## [5.7.20] - 2026-08-08
+
+### Fixed
+- LC045 now follows element extraction out of a navigation collection. `var item = order.Items.First(i => i.Id > 0);` yields an instance that collection holds, so reading a navigation on it is the same nested read as the `foreach` over `order.Items`, but every extractor spelling was silent — including through a view, `order.Items.Where(...).First()`. Two proofs were needed: the extracted expression resolves to a navigation origin derived from the receiver, and handing the collection to an `Enumerable` extractor or an element-preserving view stops counting as an escape of that navigation. Passing the collection to your own helper is still a real escape, because the helper may load it.
+
+## [5.7.19] - 2026-08-08
+
+### Fixed
+- LC045 now reads inline callbacks over a navigation collection. `order.Items.Sum(i => i.Product.Price)` invokes its callback once per item, so a navigation read inside one is a per-item read — an N+1 hidden inside an aggregate — but only a `foreach` over `order.Items` was followed. The `Where`/`Any`/`All`/`Count`/`Sum`/`Average`/`Min`/`Max`/`First`/`Single`/`Last`/`MinBy`/`MaxBy`/`ToDictionary`/`ToLookup`/`GroupBy`/`OrderBy` forms are covered. The callback parameter binds to a navigation origin derived from the receiver's own origin, so an escape of the parent entity makes those nested reads uncertain as well, and the callback must be an inline effect-free lambda.
+
+## [5.7.18] - 2026-08-08
+
+### Fixed
+- LC045 now sees through an element-preserving view of a navigation collection. `foreach (var item in order.Items.Where(i => i.Active))` — and the `OrderBy`/`OrderByDescending`/`ThenBy`/`Skip`/`Take`/`Distinct`/`AsEnumerable` forms, chained in any order — iterates the very instances `order.Items` holds, but only a direct `order.Items` reference was recognised, so the nested missing `Include` went unreported. The operator set and its effect-free inline callback requirement are shared with the collection-level view proof, so `Select`, custom extensions and effectful predicates remain boundaries.
+
+## [5.7.17] - 2026-08-08
+
+### Fixed
+- LC045 now reads the grouping callbacks over a materialized collection. `orders.ToDictionary(o => o.Customer.Name)` and the `ToLookup`/`GroupBy`/`SelectMany`/`DistinctBy` forms each invoke their callback once per element, so a navigation read inside one is a per-element read that went unreported. Unlike the aggregates, these keep the entities in their result — a dictionary, a lookup, groupings, a flattened sequence — so the call still counts as an escape and a later read of a different navigation stays quiet, whatever the callback returns.
+
+## [5.7.16] - 2026-08-08
+
+### Changed
+- LC045's code fix extends an existing `Include` instead of restating its path. A nested finding on a query that already had `Include(o => o.Customer)` produced `.Include(o => o.Customer).Include(x => x.Customer).ThenInclude(x => x.Address)` — valid, but redundant code the user had to clean up by hand. The fix now appends `.ThenInclude(x => x.Address)` to the existing chain, choosing the longest matching prefix and leaving later operators in place. String `Include` overloads return `IQueryable` rather than `IIncludableQueryable`, so nothing can be appended to them and the query source is wrapped as before.
+
+## [5.7.15] - 2026-08-08
+
+### Fixed
+- LC045 now follows element extraction beyond the bare overloads. `orders.First(o => o.Id == id)`, the `FirstOrDefault`/`Single`/`SingleOrDefault`/`Last`/`LastOrDefault` filtered forms, `MinBy`/`MaxBy`, and extraction from an element-preserving view such as `orders.Where(...).First()` or `orders.OrderBy(...).First()` all return one of the instances the query materialized, but only the no-argument overloads over the collection itself were followed, so reading a navigation on the extracted entity went unreported. The extraction predicate and key selector are themselves per-element callbacks, so a navigation read inside one now reports too. The default-value overloads stay excluded: their default can be an entity the query never produced. Method-group and effectful callbacks remain boundaries.
+
+## [5.7.14] - 2026-08-08
+
+### Fixed
+- LC045 now reads aggregate and partition callbacks over a materialized collection. `orders.Sum(o => o.Customer.Rating)`, `orders.Count(o => o.Customer.Name != null)`, and the `LongCount`/`Average`/`Min`/`Max`/`SkipWhile`/`TakeWhile` forms each invoke their callback once per element, so a navigation read inside one is a per-element read — an N+1 hidden inside an aggregate with lazy-loading proxies, or an aggregate computed over nulls without one. Only `Where`, `Select`, `Any`, `All`, the ordering key selectors and `List<T>.ForEach` were followed before. `SkipWhile` and `TakeWhile` also join the element-preserving views, so iterating their result carries the collection's origin. `Select`, `Min` and `Max` hand their callback's result back to the caller, so an entity-returning callback reports its own read but stays an escape for later ones, and a method-group callback remains a boundary.
+
+## [5.7.13] - 2026-08-08
+
+### Changed
+- LC045 no longer walks the whole control-flow graph to decide a single navigation access. The origin-flow probe reaches its verdict only where the analysed access lives, so blocks from which that access is unreachable can never influence it — yet every one of them was queued with its own state set. The probe now walks only the blocks that can reach the access, halving the block visits it performs (410,240 to 205,760 on a 320-materializer method, and ~2x at every size measured). Diagnostics are unchanged.
+
+## [5.7.12] - 2026-08-08
+
+### Fixed
+- LC045 now reads ordering key selectors over a materialized collection. `orders.OrderBy(o => o.Customer.Name)` reads the navigation once per element exactly like a `Where` predicate does — with lazy-loading proxies that is an N+1 hidden inside a sort, and without one the whole list sorts by a null — but only predicate and projection callbacks were followed. `OrderBy`, `OrderByDescending`, `ThenBy` and `ThenByDescending` now use the same inline-callback provenance, with the same requirement that the materialized collection origin is proven active at the call.
+
+## [5.7.11] - 2026-08-08
+
+### Fixed
+- LC045 now follows a materialized collection through an element-preserving in-memory view. `foreach (var o in orders.Where(o => o.IsActive))` — and the same loop over `OrderBy`/`OrderByDescending`/`ThenBy`/`ThenByDescending`, `Skip`, `Take`, `Distinct`, `Reverse`, `AsEnumerable`, chained in any order — iterates the very entity instances the query produced, but only a direct loop over the collection local was recognized, so the missing `Include` went unreported. The view must be an exact `System.Linq.Enumerable` operator, and callback-taking operators still require an inline effect-free lambda: a predicate that hands the entity to a helper could have loaded the navigation itself. `Select`, custom extensions, and instance methods such as `List<T>.Reverse()` remain boundaries.
+
+## [5.7.10] - 2026-08-08
+
+### Fixed
+- LC045 now analyses `await foreach` over an EF Core query. The async spelling materializes the same entities one row at a time, so a navigation the query never asked for has exactly the same failure modes, but the loop was skipped outright and the missing `Include` went unreported. Both EF stream shapes are covered: the exact `AsAsyncEnumerable()` bridge and a source that is still statically `IQueryable<T>` (a `DbSet<T>` is directly awaitable). An arbitrary `IAsyncEnumerable<T>` is not a proven EF stream and stays quiet.
+- LC045's code fix restores the async bridge when it wraps the source of an `await foreach`: `Include` alone leaves an `IQueryable<T>` that is no longer an `IAsyncEnumerable<T>`, so the loop would not compile (CS8415). The fix now emits `db.Set.Include(x => x.Nav).AsAsyncEnumerable()`, and withholds itself entirely when the compilation has no `AsAsyncEnumerable` to bridge with.
+
+## [5.7.9] - 2026-08-08
+
+### Changed
+- LC045 derives its origin-aware flow analysis once per method instead of once per materializer. The per-materializer walk re-derived the same executable-root partition and re-scanned the whole control-flow graph for every mapped event, so a method holding many materialized queries paid for the whole method on each one. The executable-root partition and a span-indexed block lookup are now cached per compilation. On a 320-materializer method the analyzer examines 1,035,521 operations instead of 10,036,480 — a 9.7x reduction — and no diagnostic changes.
+
+## [5.7.8] - 2026-08-07
+
+### Fixed
+- LC008's code fix is withheld when inserting the `await` would leave a ref struct such as `Span<T>` live across the suspension point. The rewrite compiled under binding but failed the build with CS4007, which the async rewriter only raises during emit.
+- LC030 no longer treats the defining half of a partial property as backing storage, so a computed partial property is no longer reported as stored `DbContext` state.
+- LC032, LC043 and LC045 report diagnostics on a node outside the operation that triggers analysis. They now register per operation block, so Roslyn classifies those reports as local rather than compilation-level. Diagnostic locations are unchanged; live IDE analysis and the code fixes behave reliably.
+
+### Changed
+- The analyzer test harness hosts Roslyn 4.14 instead of 4.3, so test sources use the language version consumers compile with. The pin capped test code at C# 11 and hid the LC008 and LC030 defects above.
+
 ## [5.7.7] - 2026-08-01
 
 ### Fixed

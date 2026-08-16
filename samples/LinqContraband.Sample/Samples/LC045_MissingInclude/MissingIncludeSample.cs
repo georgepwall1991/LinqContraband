@@ -25,11 +25,51 @@ public class MissingIncludeSample
             Console.WriteLine(c.ShippingAddress.Street);
         }
 
+        // VIOLATION: filtering and ordering in memory yields the very same entity instances,
+        // so the loop still reads a navigation the query never loaded.
+        foreach (var c in customers.Where(c => c.Id > 0).OrderBy(c => c.Id).Take(10))
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
+        }
+
+        // VIOLATION: the sort key reads the navigation once per element, so the N+1 hides
+        // inside the ordering rather than the loop body.
+        foreach (var c in customers.OrderBy(c => c.ShippingAddress.Street))
+        {
+            Console.WriteLine(c.Id);
+        }
+
+        // VIOLATION: the aggregate selector runs once per element, so the N+1 hides inside a
+        // Sum rather than a loop body.
+        var streetLengths = customers.Sum(c => c.ShippingAddress.Street.Length);
+        Console.WriteLine(streetLengths);
+
+        // VIOLATION: the filtered extractor returns one of the materialized instances, so the
+        // navigation is just as unloaded as it is inside the loop above.
+        var chosen = customers.First(c => c.Id > 0);
+        Console.WriteLine(chosen.ShippingAddress.Street);
+
         // CORRECT: project exactly the data the loop needs — no entity, no Include.
         var streets = db.Customers.Select(c => c.ShippingAddress.Street).ToList();
         foreach (var street in streets)
         {
             Console.WriteLine(street);
+        }
+    }
+
+    public static async Task RunAsyncStream(AppDbContext db)
+    {
+        // VIOLATION: `await foreach` materializes the same entities one row at a time, so a
+        // navigation the query never asked for has exactly the same failure modes.
+        await foreach (var c in db.Customers.AsAsyncEnumerable())
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
+        }
+
+        // CORRECT: the Include goes before the async bridge.
+        await foreach (var c in db.Customers.Include(x => x.ShippingAddress).AsAsyncEnumerable())
+        {
+            Console.WriteLine(c.ShippingAddress.Street);
         }
     }
 
@@ -44,11 +84,19 @@ public class MissingIncludeSample
 
         foreach (var order in orders)
         {
-            foreach (var item in order.Items)
+            // VIOLATION: filtering a navigation collection yields the same items, so neither
+            // Items nor Product was eagerly loaded here either.
+            foreach (var item in order.Items.Where(i => i.Id > 0))
             {
-                // VIOLATION: neither Items nor Product was eagerly loaded.
                 Console.WriteLine(item.Product.Name);
             }
+
+            // VIOLATION: the aggregate reads Product once per item — an N+1 inside a Sum.
+            Console.WriteLine(order.Items.Sum(item => item.Product.Id));
+
+            // VIOLATION: the extracted item is one of the collection's own instances.
+            var first = order.Items.First();
+            Console.WriteLine(first.Product.Name);
         }
     }
 }

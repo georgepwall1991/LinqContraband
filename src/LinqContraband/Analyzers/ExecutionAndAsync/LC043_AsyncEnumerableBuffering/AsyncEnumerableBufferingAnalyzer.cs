@@ -1,3 +1,5 @@
+using System;
+using System.Threading;
 using System.Collections.Immutable;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -39,12 +41,32 @@ public sealed partial class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyze
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeForEach, OperationKind.Loop);
+        // Registered per operation block, not per loop: the diagnostic is reported on the
+        // buffering call that precedes the loop, which lies outside the loop's own span. A
+        // loop-scoped action makes Roslyn classify that report as a non-local
+        // (compilation-level) diagnostic, which suppresses live IDE analysis and makes the
+        // code fix unreliable. The block scope contains both nodes, so it stays local.
+        context.RegisterOperationBlockAction(AnalyzeOperationBlock);
     }
 
-    private void AnalyzeForEach(OperationAnalysisContext context)
+    private void AnalyzeOperationBlock(OperationBlockAnalysisContext context)
     {
-        if (context.Operation is not IForEachLoopOperation forEach || forEach.IsAsynchronous)
+        foreach (var block in context.OperationBlocks)
+        {
+            foreach (var operation in block.DescendantsAndSelf())
+            {
+                if (operation is IForEachLoopOperation loop)
+                    AnalyzeForEach(loop, context.ReportDiagnostic, context.CancellationToken);
+            }
+        }
+    }
+
+    private void AnalyzeForEach(
+        IForEachLoopOperation forEach,
+        Action<Diagnostic> reportDiagnostic,
+        CancellationToken cancellationToken)
+    {
+        if (forEach.IsAsynchronous)
             return;
 
         if (forEach.Syntax is not ForEachStatementSyntax loopSyntax)
@@ -61,13 +83,13 @@ public sealed partial class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyze
         if (!TryGetImmediateBufferedLocal(loopSyntax, localReference.Local, out var bufferInfo))
             return;
 
-        if (!IsAsyncEnumerableBufferInvocation(bufferInfo.BufferInvocation, context.Operation.SemanticModel, context.CancellationToken))
+        if (!IsAsyncEnumerableBufferInvocation(bufferInfo.BufferInvocation, forEach.SemanticModel, cancellationToken))
             return;
 
         if (!HasSingleLocalUseInRoot(executableRoot, localReference.Local))
             return;
 
-        context.ReportDiagnostic(
+        reportDiagnostic(
             Diagnostic.Create(
                 Rule,
                 bufferInfo.BufferInvocation.GetLocation(),

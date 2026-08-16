@@ -20,7 +20,7 @@ public sealed partial class MissingIncludeAnalyzer
         bool returnsCollection,
         INamedTypeSymbol entityType,
         HashSet<INamedTypeSymbol> entityTypes,
-        ConditionalWeakTable<IOperation, FlowGraphHolder> flowGraphCache,
+        MissingIncludeFlowCache flowCache,
         CancellationToken cancellationToken
     )
     {
@@ -88,7 +88,7 @@ public sealed partial class MissingIncludeAnalyzer
                         callback.Symbol.Parameters[0],
                         entityType,
                         entityTypes,
-                        flowGraphCache,
+                        flowCache,
                         cancellationToken,
                         out var callbackAccesses
                     )
@@ -115,7 +115,7 @@ public sealed partial class MissingIncludeAnalyzer
             returnsCollection,
             entityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             cancellationToken
         );
         if (accesses == null || !returnsCollection)
@@ -139,7 +139,7 @@ public sealed partial class MissingIncludeAnalyzer
                     entityType,
                     entityTypes,
                     invocation,
-                    flowGraphCache,
+                    flowCache,
                     cancellationToken
                 )
             )
@@ -154,16 +154,47 @@ public sealed partial class MissingIncludeAnalyzer
                     callback.Symbol.Parameters[0],
                     entityType,
                     entityTypes,
-                    flowGraphCache,
+                    flowCache,
                     cancellationToken,
                     out var callbackAccesses
                 )
             )
             {
-                accesses.AddRange(callbackAccesses);
+                // The callback ran in its own graph, so a fix-up loop that already wrote the
+                // navigation on every element has to be applied to its reads from out here.
+                var satisfied = GetCollectionSatisfiedPathsAtInvocation(
+                    executableRoot,
+                    materializer,
+                    resultLocal,
+                    entityType,
+                    entityTypes,
+                    invocation,
+                    flowCache,
+                    cancellationToken
+                );
+
+                foreach (var callbackAccess in callbackAccesses)
+                {
+                    if (!IsCoveredByCollectionWrite(callbackAccess, satisfied))
+                        accesses.Add(callbackAccess);
+                }
             }
         }
 
         return accesses;
+    }
+
+    private static bool IsCoveredByCollectionWrite(
+        NavigationAccess access,
+        HashSet<string> collectionSatisfiedPaths
+    )
+    {
+        foreach (var written in collectionSatisfiedPaths)
+        {
+            if (PathCovers(written, access.Path))
+                return true;
+        }
+
+        return false;
     }
 }

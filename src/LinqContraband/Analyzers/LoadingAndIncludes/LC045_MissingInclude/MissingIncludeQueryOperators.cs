@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -43,12 +44,51 @@ public sealed partial class MissingIncludeAnalyzer
             "ThenInclude"
         );
 
+    /// <summary>
+    /// Every name any materializer proof below can accept. Checked first because the proofs
+    /// resolve well-known symbols and compare containing types before they ever look at the name,
+    /// and this runs for every invocation in a file — <c>Console.WriteLine</c> included. Most
+    /// files contain no EF code at all, so the cheapest possible rejection is the common path.
+    ///
+    /// This set must stay the union of the names the three proofs accept; a name missing here is
+    /// a materializer that silently stops being detected.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> MaterializerNames = ImmutableHashSet.Create(
+        System.StringComparer.Ordinal,
+        "ElementAt",
+        "ElementAtAsync",
+        "ElementAtOrDefault",
+        "ElementAtOrDefaultAsync",
+        "First",
+        "FirstAsync",
+        "FirstOrDefault",
+        "FirstOrDefaultAsync",
+        "Last",
+        "LastAsync",
+        "LastOrDefault",
+        "LastOrDefaultAsync",
+        "Single",
+        "SingleAsync",
+        "SingleOrDefault",
+        "SingleOrDefaultAsync",
+        "ToArray",
+        "ToArrayAsync",
+        "ToHashSet",
+        "ToHashSetAsync",
+        "ToList",
+        "ToListAsync"
+    );
+
     private static bool IsEntityMaterializer(
         IInvocationOperation invocation,
         out bool returnsCollection
     )
     {
         returnsCollection = false;
+
+        var candidate = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        if (!MaterializerNames.Contains(candidate.Name))
+            return false;
 
         var compilation = invocation.SemanticModel?.Compilation;
         if (compilation == null)
@@ -77,8 +117,8 @@ public sealed partial class MissingIncludeAnalyzer
         if (method.Parameters.Length == 0)
             return false;
 
-        var enumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
-        var queryable = compilation.GetTypeByMetadataName("System.Linq.Queryable");
+        var enumerable = WellKnownSymbols.For(compilation).Enumerable;
+        var queryable = WellKnownSymbols.For(compilation).Queryable;
         var containingType = method.ContainingType.OriginalDefinition;
         var isEnumerable = SymbolEqualityComparer.Default.Equals(containingType, enumerable);
         var isQueryable = SymbolEqualityComparer.Default.Equals(containingType, queryable);
@@ -135,12 +175,8 @@ public sealed partial class MissingIncludeAnalyzer
             };
         }
 
-        var entityFramework = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
-        );
-        var cancellationToken = compilation.GetTypeByMetadataName(
-            "System.Threading.CancellationToken"
-        );
+        var entityFramework = WellKnownSymbols.For(compilation).EntityFrameworkQueryableExtensions;
+        var cancellationToken = WellKnownSymbols.For(compilation).CancellationToken;
         if (
             !SymbolEqualityComparer.Default.Equals(containingType, entityFramework)
             || method.Parameters.Length == 0
@@ -207,9 +243,7 @@ public sealed partial class MissingIncludeAnalyzer
 
         if (expressionWrapped)
         {
-            var expression = compilation.GetTypeByMetadataName(
-                "System.Linq.Expressions.Expression`1"
-            );
+            var expression = WellKnownSymbols.For(compilation).Expression;
             if (
                 !SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, expression)
                 || type.TypeArguments.Length != 1
@@ -223,7 +257,7 @@ public sealed partial class MissingIncludeAnalyzer
                 return false;
         }
 
-        var func = compilation.GetTypeByMetadataName("System.Func`2");
+        var func = WellKnownSymbols.For(compilation).Func;
         return SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, func)
             && type.TypeArguments.Length == 2
             && type.TypeArguments[1].SpecialType == SpecialType.System_Boolean;
@@ -241,7 +275,7 @@ public sealed partial class MissingIncludeAnalyzer
         if (compilation == null || method.Parameters.Length == 0)
             return false;
 
-        var frameworkEnumerable = compilation.GetTypeByMetadataName("System.Linq.Enumerable");
+        var frameworkEnumerable = WellKnownSymbols.For(compilation).Enumerable;
         if (
             frameworkEnumerable == null
             || !SymbolEqualityComparer.Default.Equals(
@@ -264,10 +298,44 @@ public sealed partial class MissingIncludeAnalyzer
             or "Single"
             or "SingleOrDefault"
             or "Last"
-            or "LastOrDefault" => method.Parameters.Length == 1,
+            or "LastOrDefault" => method.Parameters.Length == 1
+                || (
+                    // The filtered overload still returns one of the sequence's own instances.
+                    // The default-value overloads take TSource instead of a predicate and can
+                    // hand back an entity the query never produced, so they stay excluded.
+                    method.Parameters.Length == 2
+                    && IsPredicateParameter(
+                        method.Parameters[1],
+                        compilation,
+                        expressionWrapped: false
+                    )
+                    && HasInlineEffectFreeCallback(invocation, callbackOrdinal: 1)
+                ),
+            // MinBy/MaxBy choose an element by key; the three-parameter comparer overloads are
+            // excluded by the inline-callback requirement.
+            "MinBy" or "MaxBy" => method.Parameters.Length == 2
+                && HasInlineEffectFreeCallback(invocation, callbackOrdinal: 1),
             "ElementAt" or "ElementAtOrDefault" => method.Parameters.Length == 2
                 && method.Parameters[1].Type.SpecialType == SpecialType.System_Int32,
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// True when the argument at <paramref name="callbackOrdinal"/> is a single-parameter inline
+    /// lambda that cannot itself have loaded the navigation. A method group or a captured
+    /// delegate could, so it stays a boundary.
+    /// </summary>
+    private static bool HasInlineEffectFreeCallback(
+        IInvocationOperation invocation,
+        int callbackOrdinal
+    )
+    {
+        var callbackValue = invocation
+            .Arguments.FirstOrDefault(argument => argument.Parameter?.Ordinal == callbackOrdinal)
+            ?.Value;
+        return TryGetInlineAnonymousFunction(callbackValue) is { } callback
+            && callback.Symbol.Parameters.Length == 1
+            && IsEffectFreeCallback(callback);
     }
 }

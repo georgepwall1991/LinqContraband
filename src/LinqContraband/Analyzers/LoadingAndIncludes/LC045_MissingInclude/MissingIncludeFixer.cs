@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Threading;
@@ -50,8 +52,24 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             if (querySource == null)
                 continue;
 
+            // Query-comprehension syntax lowers its trailing `select x` to an identity projection,
+            // so the analyzer's query source is a node *inside* the query expression. Wrapping it
+            // would emit `select o.Include(...)`, which does not bind.
+            querySource = RedirectIntoQuerySyntaxSource(querySource);
+            if (querySource == null)
+                continue;
+
             if (await GetQueryableSourceAsync(context.Document, querySource, context.CancellationToken).ConfigureAwait(false) == null)
                 continue;
+
+            // Wrapping the source of an `await foreach` turns it into an IQueryable that is no
+            // longer an IAsyncEnumerable (CS8415), so the rewrite has to restore the async
+            // bridge. Without the bridge in the compilation there is no compiling fix to offer.
+            if (IsDirectAsyncForEachSource(querySource) &&
+                !await HasAsyncEnumerableBridgeAsync(context.Document, context.CancellationToken).ConfigureAwait(false))
+            {
+                continue;
+            }
 
             context.RegisterCodeFix(
                 CodeAction.Create(
@@ -60,6 +78,37 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
                     "LC045_AddInclude:" + navigationPath),
                 diagnostic);
         }
+    }
+
+    /// <summary>
+    /// Redirects a query source that sits inside a query expression onto the expression the query
+    /// draws from, because that is where <c>Include</c> belongs: <c>from o in db.Orders</c> becomes
+    /// <c>from o in db.Orders.Include(...)</c>, which binds and is the canonical EF spelling.
+    /// Wrapping the lowered identity projection instead would produce <c>select o.Include(...)</c>,
+    /// where the range variable is an entity rather than a queryable.
+    /// Only a <c>where</c>/<c>orderby</c> query reaches this today, because an extra <c>from</c>,
+    /// a <c>join</c> and a <c>let</c> all lower to operators the chain proof rejects, so they are
+    /// never reported in the first place. The clause and continuation checks are therefore a
+    /// forward guard: if the proof ever widens to accept those shapes, the from-clause rewrite
+    /// must not be applied to them blindly. An expression outside any query expression is
+    /// returned unchanged.
+    /// </summary>
+    private static ExpressionSyntax? RedirectIntoQuerySyntaxSource(ExpressionSyntax querySource)
+    {
+        var query = querySource.FirstAncestorOrSelf<QueryExpressionSyntax>();
+        if (query == null)
+            return querySource;
+
+        if (query.Body.SelectOrGroup is not SelectClauseSyntax || query.Body.Continuation != null)
+            return null;
+
+        foreach (var clause in query.Body.Clauses)
+        {
+            if (clause is not (WhereClauseSyntax or OrderByClauseSyntax))
+                return null;
+        }
+
+        return query.FromClause.Expression;
     }
 
     private static async Task<Document> ApplyFixAsync(
@@ -75,6 +124,12 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             return document;
 
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
+
+        // Restating a prefix the query already Includes leaves the user with a redundant chain
+        // (`.Include(o => o.Customer).Include(x => x.Customer).ThenInclude(...)`). When an
+        // existing lambda Include already covers a prefix, extend that chain instead.
+        if (TryExtendExistingInclude(editor, source, navigationPath))
+            return editor.GetChangedDocument();
 
         var leadingTrivia = source.GetLeadingTrivia();
         var trailingTrivia = source.GetTrailingTrivia();
@@ -94,9 +149,176 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
             first = false;
         }
 
+        if (IsDirectAsyncForEachSource(source))
+        {
+            current = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    current,
+                    SyntaxFactory.IdentifierName("AsAsyncEnumerable")),
+                SyntaxFactory.ArgumentList());
+        }
+
         editor.ReplaceNode(source, current.WithLeadingTrivia(leadingTrivia).WithTrailingTrivia(trailingTrivia));
 
         return editor.GetChangedDocument();
+    }
+
+    /// <summary>
+    /// True when the expression is enumerated directly by an <c>await foreach</c>. Only a
+    /// <c>DbSet&lt;T&gt;</c>-shaped source reaches this state: it is both an
+    /// <c>IQueryable&lt;T&gt;</c> and an <c>IAsyncEnumerable&lt;T&gt;</c>, and <c>Include</c>
+    /// preserves only the first.
+    /// </summary>
+    private static bool IsDirectAsyncForEachSource(ExpressionSyntax source)
+    {
+        return source.Parent is CommonForEachStatementSyntax forEachStatement
+            && forEachStatement.Expression == source
+            && !forEachStatement.AwaitKeyword.IsKind(SyntaxKind.None);
+    }
+
+    private static async Task<bool> HasAsyncEnumerableBridgeAsync(
+        Document document,
+        CancellationToken cancellationToken)
+    {
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var extensions = semanticModel?.Compilation.GetTypeByMetadataName(
+            "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions"
+        );
+        return extensions?.GetMembers("AsAsyncEnumerable").Length > 0;
+    }
+
+
+    /// <summary>
+    /// Appends the missing suffix as <c>ThenInclude</c> to the longest existing lambda
+    /// <c>Include</c>/<c>ThenInclude</c> chain that already covers a prefix of the flagged path.
+    /// Returns false when no chain qualifies, leaving the caller to wrap the query source.
+    /// </summary>
+    private static bool TryExtendExistingInclude(
+        DocumentEditor editor,
+        SyntaxNode source,
+        string navigationPath)
+    {
+        var segments = navigationPath.Split('.');
+
+        // The analyzer hands over the receiver of the materializer, so the existing operators
+        // are inside that expression. Walk down the receiver chain, then read it in source order.
+        var chain = new List<InvocationExpressionSyntax>();
+        for (var node = source as ExpressionSyntax; node != null; )
+        {
+            if (node is not InvocationExpressionSyntax invocation ||
+                invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            {
+                break;
+            }
+
+            chain.Add(invocation);
+            node = memberAccess.Expression;
+        }
+
+        chain.Reverse();
+
+        InvocationExpressionSyntax? bestChain = null;
+        var bestDepth = 0;
+        var accumulated = new List<string>();
+
+        foreach (var invocation in chain)
+        {
+            var name = ((MemberAccessExpressionSyntax)invocation.Expression).Name.Identifier.ValueText;
+            if (name is not ("Include" or "ThenInclude"))
+                continue;
+
+            if (!TryGetLambdaPathSegments(invocation, out var pathSegments))
+            {
+                // A string Include returns IQueryable, so nothing can be appended to it, and an
+                // unparsed shape must not be guessed at.
+                accumulated.Clear();
+                continue;
+            }
+
+            if (name == "Include")
+                accumulated.Clear();
+
+            accumulated.AddRange(pathSegments);
+
+            if (accumulated.Count < segments.Length && IsPrefix(accumulated, segments))
+            {
+                bestChain = invocation;
+                bestDepth = accumulated.Count;
+            }
+        }
+
+        if (bestChain == null)
+            return false;
+
+        ExpressionSyntax extended = bestChain;
+        for (var index = bestDepth; index < segments.Length; index++)
+        {
+            extended = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    extended,
+                    SyntaxFactory.IdentifierName("ThenInclude")),
+                SyntaxFactory.ArgumentList(
+                    SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.Argument(
+                            SyntaxFactory.ParseExpression($"x => x.{EscapeIdentifier(segments[index])}")))));
+        }
+
+        editor.ReplaceNode(bestChain, extended);
+        return true;
+    }
+
+    private static bool IsPrefix(List<string> candidate, string[] path)
+    {
+        if (candidate.Count == 0 || candidate.Count > path.Length)
+            return false;
+
+        for (var index = 0; index < candidate.Count; index++)
+        {
+            if (!string.Equals(candidate[index], path[index], StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The navigation segments named by a single-argument lambda Include/ThenInclude, or false
+    /// for any other shape (string overloads, filtered lambdas, casts, method calls).
+    /// </summary>
+    private static bool TryGetLambdaPathSegments(
+        InvocationExpressionSyntax invocation,
+        out List<string> segments)
+    {
+        segments = new List<string>();
+        if (invocation.ArgumentList.Arguments.Count != 1)
+            return false;
+
+        if (invocation.ArgumentList.Arguments[0].Expression is not SimpleLambdaExpressionSyntax lambda ||
+            lambda.Body is not ExpressionSyntax body)
+        {
+            return false;
+        }
+
+        var parameterName = lambda.Parameter.Identifier.ValueText;
+        var names = new List<string>();
+        while (body is MemberAccessExpressionSyntax memberAccess &&
+               memberAccess.IsKind(SyntaxKind.SimpleMemberAccessExpression))
+        {
+            names.Insert(0, memberAccess.Name.Identifier.ValueText);
+            body = memberAccess.Expression;
+        }
+
+        if (names.Count == 0 ||
+            body is not IdentifierNameSyntax identifier ||
+            identifier.Identifier.ValueText != parameterName)
+        {
+            return false;
+        }
+
+        segments = names;
+        return true;
     }
 
     private static string EscapeIdentifier(string name)

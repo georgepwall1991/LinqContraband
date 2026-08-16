@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -22,6 +23,8 @@ public sealed partial class MissingIncludeAnalyzer
         private readonly INamedTypeSymbol entityType;
         private readonly HashSet<INamedTypeSymbol> entityTypes;
         private readonly CancellationToken cancellationToken;
+        private readonly MissingIncludeFlowCache flowCache;
+        private readonly FlowScopeIndex scope;
         private readonly Dictionary<ILocalSymbol, EntityOrigin> originsByLocal = new(
             SymbolEqualityComparer.Default
         );
@@ -59,9 +62,12 @@ public sealed partial class MissingIncludeAnalyzer
             bool returnsCollection,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(executableRoot);
             this.executableRoot = executableRoot;
             this.materializer = materializer;
             this.resultLocal = resultLocal;
@@ -77,9 +83,12 @@ public sealed partial class MissingIncludeAnalyzer
             IForEachLoopOperation rootForEach,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(executableRoot);
             this.executableRoot = executableRoot;
             this.rootForEach = rootForEach;
             activationSyntax = rootForEach.Collection.Syntax;
@@ -94,9 +103,12 @@ public sealed partial class MissingIncludeAnalyzer
             IParameterSymbol callbackParameter,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
+            MissingIncludeFlowCache flowCache,
             CancellationToken cancellationToken
         )
         {
+            this.flowCache = flowCache;
+            scope = flowCache.GetScope(callback);
             executableRoot = callback;
             rootCallbackParameter = callbackParameter;
             activationSyntax = callback.Body.Syntax;
@@ -108,6 +120,11 @@ public sealed partial class MissingIncludeAnalyzer
 
         public List<FlowAccessCandidate> Candidates { get; } = new();
         public Dictionary<int, List<FlowEvent>> EventsByBlock { get; } = new();
+
+        /// <summary>The block each analysed access lives in, keyed by access id.</summary>
+        public Dictionary<int, int> AccessBlockByAccessId { get; } = new();
+
+        public MissingIncludeFlowCache FlowCache => flowCache;
 
         public FlowAccessCandidate AddRootProbe(SyntaxNode syntax)
         {
@@ -149,21 +166,21 @@ public sealed partial class MissingIncludeAnalyzer
                 )
             );
 
-            foreach (var operation in executableRoot.Descendants())
+            // scope.Ordered is pre-filtered to the operation kinds handled below; keep
+            // FlowScopeIndex.IsEventCandidate in step when adding a case here.
+            foreach (var scopeOperation in scope.Ordered)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (
-                    operation is IAnonymousFunctionOperation lambda
-                    && IsDeclaredInExecutableRoot(lambda)
-                )
+                var operation = scopeOperation.Operation;
+                if (scopeOperation.IsDeclaredLambda)
                 {
-                    CollectLambdaCaptureEvents(lambda);
+                    CollectLambdaCaptureEvents((IAnonymousFunctionOperation)operation);
                     continue;
                 }
 
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
+                if (operation is IInvocationOperation nestedCallback)
+                    CollectNavigationCollectionCallbackEvents(nestedCallback);
 
                 CollectBindingAndEscapeEvents(operation);
 
@@ -176,16 +193,18 @@ public sealed partial class MissingIncludeAnalyzer
 
         public bool TryMapEventsToBlocks(ControlFlowGraph graph)
         {
+            var blockIndex = flowCache.GetBlockOrdinals(graph);
+
             foreach (var flowEvent in events)
             {
-                var blockOrdinal = FindBlockOrdinal(graph, flowEvent.Syntax);
+                var blockOrdinal = blockIndex.FindContainingBlock(flowEvent.Syntax);
                 if (
                     blockOrdinal < 0
                     && flowEvent.Kind == FlowEventKind.Materialize
                     && executableRoot is IAnonymousFunctionOperation
                 )
                 {
-                    blockOrdinal = FindFirstBlockOrdinalInside(graph, activationSyntax);
+                    blockOrdinal = blockIndex.FindFirstBlockInside(activationSyntax);
                 }
                 if (blockOrdinal < 0)
                     return false;
@@ -197,11 +216,14 @@ public sealed partial class MissingIncludeAnalyzer
                 }
 
                 blockEvents.Add(flowEvent);
+
+                if (flowEvent.Kind == FlowEventKind.Access && flowEvent.AccessId >= 0)
+                    AccessBlockByAccessId[flowEvent.AccessId] = blockOrdinal;
             }
 
             foreach (var binding in iterationBindings)
             {
-                var blockOrdinal = FindFirstBlockOrdinalInside(graph, binding.Body);
+                var blockOrdinal = blockIndex.FindFirstBlockInside(binding.Body);
                 if (blockOrdinal < 0)
                     return false;
 
@@ -277,11 +299,9 @@ public sealed partial class MissingIncludeAnalyzer
                 );
             }
 
-            foreach (var operation in executableRoot.Descendants())
+            foreach (var operation in scope.ForEachLoops)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!BelongsToExecutableRoot(operation))
-                    continue;
 
                 switch (operation)
                 {
@@ -312,6 +332,127 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+        /// <summary>
+        /// Collects the navigation reads inside an inline callback over a navigation collection —
+        /// `order.Items.Sum(i => i.Product.Price)` reads `Items.Product` once per item, exactly
+        /// like the `foreach` over `order.Items` that LC045 already follows.
+        /// </summary>
+        /// <remarks>
+        /// The callback parameter binds to a navigation origin derived from the receiver's own
+        /// origin, so an escape of the parent entity makes these reads uncertain for free, and
+        /// the events map to the block holding the invocation because the lambda body has no
+        /// block of its own in this graph.
+        /// </remarks>
+        private void CollectNavigationCollectionCallbackEvents(IInvocationOperation invocation)
+        {
+            var compilation = invocation.SemanticModel?.Compilation;
+            if (
+                compilation == null
+                || !IsElementPreservingInMemoryView(invocation, compilation)
+                    && !IsNavigationCollectionReadCallback(invocation, compilation)
+            )
+            {
+                return;
+            }
+
+            if (
+                PeelNavigationCollectionSource(
+                    GetQuerySource(invocation)?.UnwrapConversions() ?? invocation
+                ) is not IPropertyReferenceOperation navigation
+                || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                || !TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out var elementEntityType,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType)
+            )
+            {
+                return;
+            }
+
+            var callback = GetInlineCallback(invocation);
+            if (callback == null)
+                return;
+
+            var prefix = CombineNavigationPath(
+                parentOrigin.NavigationPrefix,
+                navigation.Property.Name
+            );
+            var elementOrigin = GetOrCreateNavigationOrigin(parentOrigin, elementEntityType, prefix);
+            originsByParameter[callback.Symbol.Parameters[0]] = elementOrigin;
+
+            foreach (var descendant in callback.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (descendant is IPropertyReferenceOperation read)
+                    CollectNavigationEvent(read);
+            }
+        }
+
+        /// <summary>
+        /// The exact <c>Enumerable</c> operators whose inline callback reads each element once and
+        /// whose own result is not an element of the sequence. The element-preserving views are
+        /// handled by the same caller, so they are not repeated here.
+        /// </summary>
+        private static bool IsNavigationCollectionReadCallback(
+            IInvocationOperation invocation,
+            Compilation compilation
+        )
+        {
+            var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+            var enumerable = WellKnownSymbols.For(compilation).Enumerable;
+            return SymbolEqualityComparer.Default.Equals(
+                    method.ContainingType.OriginalDefinition,
+                    enumerable
+                )
+                && method.Parameters.Length == 2
+                && IsIEnumerableSourceParameter(method.Parameters[0], compilation)
+                && method.Name
+                    is "Where"
+                        or "Any"
+                        or "All"
+                        or "Count"
+                        or "LongCount"
+                        or "Sum"
+                        or "Average"
+                        or "Min"
+                        or "Max"
+                        or "First"
+                        or "FirstOrDefault"
+                        or "Single"
+                        or "SingleOrDefault"
+                        or "Last"
+                        or "LastOrDefault"
+                        or "MinBy"
+                        or "MaxBy"
+                        or "ToDictionary"
+                        or "ToLookup"
+                        or "GroupBy"
+                        or "OrderBy"
+                        or "OrderByDescending";
+        }
+
+        private static IAnonymousFunctionOperation? GetInlineCallback(
+            IInvocationOperation invocation
+        )
+        {
+            var callbackOrdinal = invocation.Instance == null ? 1 : 0;
+            var callbackValue = invocation
+                .Arguments.FirstOrDefault(argument =>
+                    argument.Parameter?.Ordinal == callbackOrdinal
+                )
+                ?.Value;
+            var callback = TryGetInlineAnonymousFunction(callbackValue);
+            return callback != null
+                && callback.Symbol.Parameters.Length == 1
+                && IsEffectFreeCallback(callback)
+                ? callback
+                : null;
+        }
+
         private void AddIterationOrigins(
             IForEachLoopOperation forEach,
             INamedTypeSymbol originEntityType,
@@ -319,6 +460,11 @@ public sealed partial class MissingIncludeAnalyzer
             EntityOrigin? aliasSourceOrigin
         )
         {
+            var iteratesWholeCollection =
+                resultLocal != null
+                && forEach.Collection.UnwrapConversions() is ILocalReferenceOperation direct
+                && SymbolEqualityComparer.Default.Equals(direct.Local, resultLocal);
+
             foreach (var local in forEach.Locals)
             {
                 var origin = CreateOrigin(
@@ -331,9 +477,58 @@ public sealed partial class MissingIncludeAnalyzer
                     navigationPrefix,
                     aliasSourceOrigin
                 );
-                iterationBindings.Add(new IterationBinding(origin, forEach.Body.Syntax));
+                iterationBindings.Add(
+                    new IterationBinding(origin, forEach.Body.Syntax, iteratesWholeCollection)
+                );
             }
         }
+
+        /// <summary>
+        /// Sees through element-preserving in-memory views of a navigation collection.
+        /// `order.Items.Where(i => i.Active)` yields the very `OrderItem` instances
+        /// `order.Items` holds, so iterating the view is the same nested read. The operator set
+        /// and its effect-free inline callback requirement are shared with the collection-level
+        /// view proof.
+        /// </summary>
+        private IOperation PeelElementPreservingViews(IOperation operation)
+        {
+            return PeelViews(operation, includeCopies: false);
+        }
+
+        /// <summary>
+        /// As <see cref="PeelElementPreservingViews"/>, but also sees through a copy of the
+        /// sequence — `order.Items.ToList()` holds the very same entity instances, and copying a
+        /// child collection before iterating it is the ordinary way to avoid mutating during
+        /// enumeration. This is only ever reached while resolving something rooted at a
+        /// navigation property of a tracked entity, so it cannot see a query materializer such as
+        /// `db.Orders.ToList()`, whose receiver is a DbSet rather than a navigation.
+        /// </summary>
+        private IOperation PeelNavigationCollectionSource(IOperation operation)
+        {
+            return PeelViews(operation, includeCopies: true);
+        }
+
+        private IOperation PeelViews(IOperation operation, bool includeCopies)
+        {
+            var compilation = executableRoot.SemanticModel?.Compilation;
+            if (compilation == null)
+                return operation;
+
+            while (
+                UnwrapTranslatedQuery(operation) is IInvocationOperation view
+                && (
+                    IsElementPreservingInMemoryView(view, compilation)
+                    || (includeCopies && IsSequenceCopy(view, compilation))
+                )
+                && GetQuerySource(view)?.UnwrapConversions() is { } source
+            )
+            {
+                operation = source;
+            }
+
+            return operation;
+        }
+
 
         private bool TryResolveCollectionNavigationIteration(
             IOperation collection,
@@ -346,7 +541,7 @@ public sealed partial class MissingIncludeAnalyzer
             elementEntityType = null!;
             navigationPrefix = null!;
 
-            var unwrapped = collection.UnwrapConversions();
+            var unwrapped = PeelNavigationCollectionSource(collection.UnwrapConversions());
             if (
                 unwrapped is not IPropertyReferenceOperation propertyReference
                 || !TryResolveEntityOrigin(propertyReference.Instance, out parentOrigin)
@@ -380,6 +575,14 @@ public sealed partial class MissingIncludeAnalyzer
         {
             if (TryResolveExactCollectionElementExtraction(operation, out origin))
                 return true;
+
+            if (
+                operation != null
+                && TryResolveNavigationCollectionIndexedElement(operation, out origin)
+            )
+            {
+                return true;
+            }
 
             if (
                 TryResolveTrackedSource(operation, out var isRoot, out var trackedOrigin)
@@ -526,6 +729,22 @@ public sealed partial class MissingIncludeAnalyzer
 
                 if (originsByLocal.TryGetValue(localReference.Local, out origin))
                     return true;
+
+                // A local that was given the collection — `var active = orders.Where(...);` —
+                // stands in for it, so handing that local out is an escape of the collection.
+                if (IsResultCollectionReference(localReference))
+                {
+                    if (returnsCollection)
+                    {
+                        isRoot = true;
+                    }
+                    else
+                    {
+                        origin = rootEntityOrigin;
+                    }
+
+                    return true;
+                }
             }
 
             if (
@@ -571,13 +790,11 @@ public sealed partial class MissingIncludeAnalyzer
         )
         {
             origin = null!;
-            if (
-                operation?.UnwrapConversions() is not IInvocationOperation invocation
-                || !IsExactMaterializedCollectionElementExtraction(invocation)
-            )
-            {
+            if (operation?.UnwrapConversions() is not IInvocationOperation invocation)
                 return false;
-            }
+
+            if (!IsExactMaterializedCollectionElementExtraction(invocation))
+                return TryResolveNavigationCollectionElementExtraction(invocation, out origin);
 
             var key = SiteKey(invocation, out _);
             if (!extractionOrigins.TryGetValue(key, out origin))
@@ -598,12 +815,135 @@ public sealed partial class MissingIncludeAnalyzer
             return true;
         }
 
-        private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
+        /// <summary>
+        /// True when the invocation only reads a navigation collection to pick an element out of
+        /// it — `order.Items.First(...)`, including through an element-preserving view. Handing
+        /// the collection to <c>Enumerable</c> for that is not the navigation escaping, so it must
+        /// not make later reads of that path uncertain.
+        /// </summary>
+        private bool IsNavigationCollectionReadOnlyConsumer(IInvocationOperation invocation)
         {
+            if (TryResolveNavigationCollectionElementExtraction(invocation, out _))
+                return true;
+
+            // `order.Items.Where(...)` in `order.Items.Where(...).First()` is the same read-only
+            // consumption one step earlier in the chain.
+            var compilation = invocation.SemanticModel?.Compilation;
+            return compilation != null
+                && (
+                    IsElementPreservingInMemoryView(invocation, compilation)
+                    || IsSequenceCopy(invocation, compilation)
+                )
+                && IsNavigationCollectionSource(invocation);
+        }
+
+        /// <summary>
+        /// True when the invocation's source, after peeling element-preserving views, is a
+        /// collection navigation on an origin this analysis already tracks.
+        /// </summary>
+        private bool IsNavigationCollectionSource(IInvocationOperation invocation)
+        {
+            return GetQuerySource(invocation) is { } source
+                && PeelNavigationCollectionSource(source.UnwrapConversions())
+                    is IPropertyReferenceOperation navigation
+                && TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                && TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out _,
+                    out var isCollection
+                )
+                && isCollection
+                && IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType);
+        }
+
+        private bool TryResolveNavigationCollectionElementExtraction(
+            IInvocationOperation invocation,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
             return IsExactCollectionElementExtraction(invocation)
                 && GetQuerySource(invocation) is { } source
-                && TryResolveTrackedSource(source, out var isRoot, out _)
-                && isRoot;
+                && TryResolveNavigationCollectionElement(source, out origin);
+        }
+
+        /// <summary>
+        /// The origin of an element taken from a navigation collection, given the expression that
+        /// produced the collection. Element-preserving views are peeled first, so
+        /// `order.Items.Where(...)` resolves to the same origin as `order.Items`.
+        /// </summary>
+        private bool TryResolveNavigationCollectionElement(
+            IOperation collectionExpression,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
+            if (
+                PeelNavigationCollectionSource(collectionExpression.UnwrapConversions())
+                    is not IPropertyReferenceOperation navigation
+                || !TryResolveEntityOrigin(navigation.Instance, out var parentOrigin)
+                || !TryGetNavigationTarget(
+                    navigation.Property,
+                    entityTypes,
+                    out var elementEntityType,
+                    out var isCollection
+                )
+                || !isCollection
+                || !IsPropertyOfEntity(navigation.Property, parentOrigin.EntityType ?? entityType)
+            )
+            {
+                return false;
+            }
+
+            origin = GetOrCreateNavigationOrigin(
+                parentOrigin,
+                elementEntityType,
+                CombineNavigationPath(parentOrigin.NavigationPrefix, navigation.Property.Name)
+            );
+            return true;
+        }
+
+        /// <summary>
+        /// `order.Items[0]` indexes into a navigation collection, which yields one of the
+        /// instances that collection holds — the same element an extractor would return.
+        /// </summary>
+        private bool TryResolveNavigationCollectionIndexedElement(
+            IOperation operation,
+            out EntityOrigin origin
+        )
+        {
+            origin = null!;
+            var unwrapped = operation.UnwrapConversions();
+            var collection = unwrapped switch
+            {
+                IPropertyReferenceOperation indexer when indexer.Arguments.Length > 0 =>
+                    indexer.Instance,
+                IArrayElementReferenceOperation arrayElement => arrayElement.ArrayReference,
+                _ => null,
+            };
+
+            return collection != null
+                && TryResolveNavigationCollectionElement(collection, out origin);
+        }
+
+        private bool IsExactMaterializedCollectionElementExtraction(IInvocationOperation invocation)
+        {
+            if (
+                !IsExactCollectionElementExtraction(invocation)
+                || GetQuerySource(invocation) is not { } source
+            )
+            {
+                return false;
+            }
+
+            if (TryResolveTrackedSource(source, out var isRoot, out _) && isRoot)
+                return true;
+
+            // `orders.Where(...).First()` extracts from a view that yields the collection's own
+            // instances, so the extracted entity has the same origin as one taken directly.
+            return source.UnwrapConversions() is IInvocationOperation view
+                && IsElementPreservingMaterializedCollectionView(view, materializer, resultLocal);
         }
 
         private void AddEscapeForSource(IOperation source, SyntaxNode syntax, int position)
@@ -751,9 +1091,31 @@ public sealed partial class MissingIncludeAnalyzer
 
         private bool IsResultCollection(IOperation operation)
         {
+            return IsResultCollectionReference(operation);
+        }
+
+        /// <summary>
+        /// True when the operation refers to the materialized collection: the result local itself,
+        /// an element-preserving view or copy of it, or a single-assignment local that was given
+        /// either. `foreach (var o in orders.Where(o => o.IsActive))` iterates the very instances
+        /// the collection holds, and naming that view — `var active = orders.Where(...);` — is the
+        /// ordinary way to write the same read, so hoisting it into a variable must not hide it.
+        /// The single-assignment requirement keeps a reassigned or conditionally bound local out,
+        /// and resolving through the alias is what makes an escape of the alias an escape of the
+        /// collection itself.
+        /// </summary>
+        private bool IsResultCollectionReference(IOperation? operation)
+        {
             return resultLocal != null
-                && operation.UnwrapConversions() is ILocalReferenceOperation localReference
-                && SymbolEqualityComparer.Default.Equals(localReference.Local, resultLocal);
+                && materializer != null
+                && operation != null
+                && executableRoot.SemanticModel?.Compilation is { } compilation
+                && IsProvenMaterializedCollectionSource(
+                    operation,
+                    materializer,
+                    resultLocal,
+                    compilation
+                );
         }
 
         private bool IsMaterializer(IInvocationOperation invocation)
@@ -791,76 +1153,46 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
-        private bool IsDeclaredInExecutableRoot(IAnonymousFunctionOperation lambda)
-        {
-            if (executableRoot is IAnonymousFunctionOperation callback)
-                return !ReferenceEquals(lambda, callback) && BelongsToExecutableRoot(lambda);
+    }
 
-            var parent = lambda.Parent;
-            return parent != null
-                && ReferenceEquals(parent.FindOwningExecutableRoot(), executableRoot);
-        }
+    private static bool IsDeclaredInRoot(
+        IAnonymousFunctionOperation lambda,
+        IOperation executableRoot
+    )
+    {
+        if (executableRoot is IAnonymousFunctionOperation callback)
+            return !ReferenceEquals(lambda, callback) && BelongsToRoot(lambda, executableRoot);
 
-        private bool BelongsToExecutableRoot(IOperation operation)
+        var parent = lambda.Parent;
+        return parent != null
+            && ReferenceEquals(parent.FindOwningExecutableRoot(), executableRoot);
+    }
+
+    private static bool BelongsToRoot(IOperation operation, IOperation executableRoot)
+    {
+        if (executableRoot is IAnonymousFunctionOperation callback)
         {
-            if (executableRoot is IAnonymousFunctionOperation callback)
+            if (
+                operation.Syntax.SyntaxTree != callback.Syntax.SyntaxTree
+                || !callback.Body.Syntax.Span.Contains(operation.Syntax.Span)
+            )
             {
-                if (
-                    operation.Syntax.SyntaxTree != callback.Syntax.SyntaxTree
-                    || !callback.Body.Syntax.Span.Contains(operation.Syntax.Span)
-                )
-                {
+                return false;
+            }
+
+            for (
+                var parent = operation.Parent;
+                parent != null && !ReferenceEquals(parent, callback);
+                parent = parent.Parent
+            )
+            {
+                if (parent is IAnonymousFunctionOperation)
                     return false;
-                }
-
-                for (
-                    var parent = operation.Parent;
-                    parent != null && !ReferenceEquals(parent, callback);
-                    parent = parent.Parent
-                )
-                {
-                    if (parent is IAnonymousFunctionOperation)
-                        return false;
-                }
-
-                return true;
             }
 
-            return ReferenceEquals(operation.FindOwningExecutableRoot(), executableRoot);
+            return true;
         }
 
-        private static int FindBlockOrdinal(ControlFlowGraph graph, SyntaxNode syntax)
-        {
-            var bestOrdinal = -1;
-            var bestLength = int.MaxValue;
-
-            foreach (var block in graph.Blocks)
-            {
-                foreach (var operation in block.Operations)
-                    Consider(operation, block.Ordinal);
-
-                if (block.BranchValue != null)
-                    Consider(block.BranchValue, block.Ordinal);
-            }
-
-            return bestOrdinal;
-
-            void Consider(IOperation operation, int ordinal)
-            {
-                if (operation.Syntax.SyntaxTree != syntax.SyntaxTree)
-                    return;
-
-                var operationSpan = operation.Syntax.Span;
-                var targetSpan = syntax.Span;
-                if (operationSpan.Start > targetSpan.Start || operationSpan.End < targetSpan.End)
-                    return;
-
-                if (operationSpan.Length < bestLength)
-                {
-                    bestLength = operationSpan.Length;
-                    bestOrdinal = ordinal;
-                }
-            }
-        }
+        return ReferenceEquals(operation.FindOwningExecutableRoot(), executableRoot);
     }
 }

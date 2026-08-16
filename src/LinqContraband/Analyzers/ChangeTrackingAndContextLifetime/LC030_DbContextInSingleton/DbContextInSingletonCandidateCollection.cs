@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using LinqContraband.Extensions;
+using System.Linq;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -27,6 +29,15 @@ public sealed partial class DbContextInSingletonAnalyzer
         ConcurrentDictionary<INamedTypeSymbol, string> longLivedTypes)
     {
         var propertyDeclaration = (PropertyDeclarationSyntax)context.Node;
+
+        // A partial property's defining declaration has no backing storage; the implementing
+        // declaration decides. It is visited by this same action, so skipping the definition
+        // avoids reporting a computed partial property as if it stored a context.
+        if (IsPartialDefiningDeclaration(propertyDeclaration))
+        {
+            return;
+        }
+
         var property = context.SemanticModel.GetDeclaredSymbol(propertyDeclaration, context.CancellationToken) as IPropertySymbol;
 
         if (property?.Type.IsDbContext() == true &&
@@ -129,5 +140,27 @@ public sealed partial class DbContextInSingletonAnalyzer
             optionsProvider,
             location.SourceTree,
             longLivedTypes);
+    }
+
+    private static bool IsPartialDefiningDeclaration(PropertyDeclarationSyntax declaration)
+    {
+        if (!declaration.Modifiers.Any(SyntaxKind.PartialKeyword))
+        {
+            return false;
+        }
+
+        if (declaration.ExpressionBody != null)
+        {
+            return false;
+        }
+
+        var accessors = declaration.AccessorList?.Accessors;
+        if (accessors == null)
+        {
+            return false;
+        }
+
+        // The implementing declaration must supply a body; the defining one never does.
+        return accessors.Value.All(accessor => accessor.Body == null && accessor.ExpressionBody == null);
     }
 }

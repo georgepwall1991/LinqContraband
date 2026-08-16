@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC045_MissingInclude;
@@ -50,6 +51,11 @@ public sealed partial class MissingIncludeAnalyzer
                     );
                     break;
 
+                // Explicit loading is one of EF's own loading mechanisms, and it populates the
+                // navigation exactly as writing it would, so it is recorded as the same fact.
+                case IInvocationOperation load when TryCollectExplicitLoadEvents(load):
+                    break;
+
                 case IInvocationOperation invocation
                     when !IsMaterializer(invocation)
                         && !IsExactMaterializedCollectionElementExtraction(invocation)
@@ -57,7 +63,13 @@ public sealed partial class MissingIncludeAnalyzer
                             invocation,
                             materializer,
                             resultLocal
-                        ):
+                        )
+                        && !IsElementPreservingMaterializedCollectionView(
+                            invocation,
+                            materializer,
+                            resultLocal
+                        )
+                        && !IsNavigationCollectionReadOnlyConsumer(invocation):
                     CollectInvocationEscapeEvents(invocation);
                     break;
 
@@ -569,7 +581,8 @@ public sealed partial class MissingIncludeAnalyzer
                 invocation.Syntax.Span.End,
                 invocation.Instance,
                 invocation.Arguments,
-                invocation.TargetMethod
+                invocation.TargetMethod,
+                invocation
             );
         }
 
@@ -589,11 +602,26 @@ public sealed partial class MissingIncludeAnalyzer
             int completionPosition,
             IOperation? instance,
             IEnumerable<IArgumentOperation> arguments,
-            IMethodSymbol? targetMethod
+            IMethodSymbol? targetMethod,
+            IOperation? callSite = null
         )
         {
             var escapedOrigins = new Dictionary<int, List<string?>>();
             var escapedRoot = false;
+
+            // A callee whose only use of the entity it is handed is reading navigations on it
+            // cannot be the loading mechanism those reads need, so the argument is not an escape
+            // and the reads belong to this call.
+            if (callSite != null && TryLiftEntityCalleeReads(targetMethod, arguments, syntax, callSite))
+                return;
+
+            if (
+                callSite != null
+                && TryLiftCollectionCalleeReads(targetMethod, arguments, syntax, callSite)
+            )
+            {
+                return;
+            }
 
             AddCallSource(instance);
             foreach (var argument in arguments)
@@ -604,6 +632,13 @@ public sealed partial class MissingIncludeAnalyzer
                 && localFunctionCaptures.TryGetValue(targetMethod, out var capture)
             )
             {
+                // A callee whose only use of the collection is reading it is not an escape: its
+                // reads are the caller's reads, proven at this call. Anything else stays an escape.
+                if (capture.ReadsOnly && TryLiftCalleeReads(capture, syntax, targetMethod))
+                {
+                    return;
+                }
+
                 escapedRoot |= capture.EscapesRoot;
                 foreach (var originId in capture.OriginIds)
                     AddEscapedOrigin(originId, navigationPath: null);
@@ -804,7 +839,497 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+
+        /// <summary>
+        /// <c>db.Entry(order).Reference(o =&gt; o.Customer).Load()</c> is EF's explicit loading:
+        /// after it runs, that navigation is populated on that entity. It is therefore recorded
+        /// as the same fact a manual write records, which is what lets the surrounding machinery
+        /// apply unchanged — an unconditional load in a loop over the whole collection is credited
+        /// to the collection, while a conditional one, or one for a different navigation, is not.
+        /// </summary>
+        private bool TryCollectExplicitLoadEvents(IInvocationOperation invocation)
+        {
+            if (invocation.TargetMethod.Name is not ("Load" or "LoadAsync"))
+                return false;
+
+            if (
+                invocation.GetInvocationReceiver()
+                is not IInvocationOperation { TargetMethod.Name: "Reference" or "Collection" } entry
+            )
+            {
+                return false;
+            }
+
+            if (
+                entry.GetInvocationReceiver()
+                is not IInvocationOperation { TargetMethod.Name: "Entry" } entryCall
+                || !entryCall.TargetMethod.ContainingType.IsDbContext()
+                || entryCall.Arguments.Length != 1
+            )
+            {
+                return false;
+            }
+
+            var tracked = entryCall.Arguments[0].Value;
+            if (!TryResolveEntityOrigin(tracked, out var origin))
+                return false;
+
+            if (!TryGetLoadedNavigationName(entry, out var navigation))
+                return false;
+
+            // Only a load that reaches every element speaks for the collection. A conditional
+            // one leaves elements unloaded, so it is left to the ordinary escape handling and
+            // the read is still reported.
+            if (!IsUnconditionalLoadOverTheWholeCollection(invocation, origin))
+                return false;
+
+            var path = string.IsNullOrEmpty(origin.NavigationPrefix)
+                ? navigation
+                : origin.NavigationPrefix + "." + navigation;
+            var completion = invocation.Syntax.Span.End;
+
+            events.Add(
+                new FlowEvent(FlowEventKind.SatisfyPath, invocation.Syntax, completion, origin, path)
+            );
+            events.Add(
+                new FlowEvent(
+                    FlowEventKind.SatisfyCollectionPath,
+                    invocation.Syntax,
+                    completion,
+                    origin,
+                    path
+                )
+            );
+
+            return true;
+        }
+
+        private static bool TryGetLoadedNavigationName(
+            IInvocationOperation entry,
+            out string navigation
+        )
+        {
+            navigation = null!;
+            if (entry.Arguments.Length != 1)
+                return false;
+
+            var argument = entry.Arguments[0].Value;
+            if (argument.ConstantValue is { HasValue: true, Value: string name })
+            {
+                navigation = name;
+                return !string.IsNullOrWhiteSpace(navigation);
+            }
+
+            if (
+                TryGetInlineAnonymousFunction(argument) is not { } callback
+                || callback.Symbol.Parameters.Length != 1
+                || TryGetCallbackReturnedValue(callback) is not { } returned
+            )
+            {
+                return false;
+            }
+
+            if (
+                returned.UnwrapConversions() is not IPropertyReferenceOperation property
+                || property.Instance?.UnwrapConversions() is not IParameterReferenceOperation
+            )
+            {
+                return false;
+            }
+
+            navigation = property.Property.Name;
+            return true;
+        }
+
+
+        /// <summary>
+        /// Attributes a read-only callee's navigation reads to this call. The callee's loop
+        /// variable gets an iteration origin bound at the call, so every existing fact — an escape
+        /// before it, an <c>Include</c>, a fix-up, an explicit load — already applies. The events
+        /// map to this call's block because the callee body has none in this graph, while each
+        /// diagnostic still lands on the read itself.
+        ///
+        /// Requires exactly one call site: with two, the collection's state can differ at each and
+        /// attributing the read to one of them would be a guess.
+        /// </summary>
+        private bool TryLiftCalleeReads(
+            LocalFunctionCapture capture,
+            SyntaxNode callSyntax,
+            IMethodSymbol targetMethod
+        )
+        {
+            if (capture.Declaration is not { } declaration || resultLocal == null)
+                return false;
+
+            if (CountCallsTo(targetMethod) != 1)
+                return false;
+
+            var lifted = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IForEachLoopOperation forEach
+                    || forEach.Collection.UnwrapConversions()
+                        is not ILocalReferenceOperation collection
+                    || !SymbolEqualityComparer.Default.Equals(collection.Local, resultLocal)
+                )
+                {
+                    continue;
+                }
+
+                foreach (var local in forEach.Locals)
+                {
+                    CreateOrigin(
+                        local,
+                        initiallyBound: true,
+                        canDetachFromRoot: true,
+                        isIteration: true,
+                        bindingPosition: callSyntax.SpanStart,
+                        entityType,
+                        navigationPrefix: string.Empty
+                    );
+                }
+
+                foreach (var inner in forEach.Body.Descendants())
+                {
+                    if (inner is IPropertyReferenceOperation read)
+                        CollectNavigationEvent(read, callSyntax);
+                }
+
+                lifted = true;
+            }
+
+            return lifted;
+        }
+
+        private int CountCallsTo(IMethodSymbol targetMethod)
+        {
+            var count = 0;
+            foreach (var operation in executableRoot.Descendants())
+            {
+                if (
+                    operation is IInvocationOperation invocation
+                    && SymbolEqualityComparer.Default.Equals(
+                        invocation.TargetMethod,
+                        targetMethod
+                    )
+                )
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+
+        /// <summary>
+        /// Lifts the reads of a local function that is handed a tracked entity and only reads
+        /// navigations on it: <c>void Show(Order o) =&gt; ...o.Customer...;</c> called from a loop
+        /// over the collection. The parameter binds to the argument's origin, so the reads are
+        /// proven exactly where the caller's own reads would be.
+        ///
+        /// Any other use of the parameter leaves the argument an escape. That matters most for
+        /// <c>db.Entry(o).Reference(...).Load()</c>, which LC045 has recognised as a loading
+        /// mechanism since 5.7.36: a callee that loads before reading is correct code, and lifting
+        /// its reads would report it.
+        /// </summary>
+        private bool TryLiftEntityCalleeReads(
+            IMethodSymbol? targetMethod,
+            IEnumerable<IArgumentOperation> arguments,
+            SyntaxNode callSyntax,
+            IOperation callSite
+        )
+        {
+            if (
+                targetMethod is not { MethodKind: MethodKind.LocalFunction or MethodKind.Ordinary }
+                || !TryGetEntityReadOnlyCallee(targetMethod, callSite, out var declaration, out var parameter)
+            )
+            {
+                return false;
+            }
+
+            IOperation? argumentValue = null;
+            foreach (var argument in arguments)
+            {
+                if (SymbolEqualityComparer.Default.Equals(argument.Parameter, parameter))
+                    argumentValue = argument.Value;
+            }
+
+            if (argumentValue == null || !TryResolveEntityOrigin(argumentValue, out var origin))
+                return false;
+
+            // Bound only while this call's reads are collected. Each call site hands the callee a
+            // different entity, and origins are resolved as the reads are collected, so the reads
+            // of one call cannot pick up another's binding. A call whose argument this analysis
+            // does not track resolves nothing above and is skipped, which is what lets a helper
+            // shared between an included query and a bare one report only for the bare one.
+            //
+            // The restore below states that the binding is scoped to this call rather than
+            // guarding a reachable bug: the next lift overwrites it first, so no test can pin it.
+            var hadPrevious = originsByParameter.TryGetValue(parameter, out var previous);
+            originsByParameter[parameter] = origin;
+
+            var lifted = false;
+            try
+            {
+                foreach (var descendant in declaration.Descendants())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (descendant is IPropertyReferenceOperation read)
+                    {
+                        CollectNavigationEvent(read, callSyntax);
+                        lifted = true;
+                    }
+                }
+            }
+            finally
+            {
+                if (hadPrevious)
+                    originsByParameter[parameter] = previous!;
+                else
+                    originsByParameter.Remove(parameter);
+            }
+
+            return lifted;
+        }
+
+        /// <summary>
+        /// A local function declared in this root with one entity parameter whose every use is a
+        /// navigation read on it, called from exactly one place. More than one call site would make
+        /// the parameter's origin ambiguous, since each caller may hand it a different entity.
+        /// </summary>
+        private bool TryGetEntityReadOnlyCallee(
+            IMethodSymbol targetMethod,
+            IOperation callSite,
+            out IOperation declaration,
+            out IParameterSymbol parameter
+        )
+        {
+            declaration = null!;
+            parameter = null!;
+
+            IOperation? found = null;
+            foreach (var candidate in scope.LocalFunctions)
+            {
+                if (SymbolEqualityComparer.Default.Equals(candidate.Symbol, targetMethod))
+                    found = candidate;
+            }
+
+            found ??= TryGetSameFilePrivateMethodBody(targetMethod, callSite);
+
+            if (found == null || targetMethod.Parameters.Length != 1)
+                return false;
+
+            var candidateParameter = targetMethod.Parameters[0];
+            if (!entityTypes.Contains(candidateParameter.Type as INamedTypeSymbol ?? entityType))
+                return false;
+
+            foreach (var descendant in found.Descendants())
+            {
+                if (
+                    descendant is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(
+                        reference.Parameter,
+                        candidateParameter
+                    )
+                )
+                {
+                    continue;
+                }
+
+                // Only `o.Something` counts as a read. Passing `o` anywhere, assigning it, or
+                // using it as a receiver for a call leaves the argument an escape.
+                if (
+                    reference.Parent is not IPropertyReferenceOperation property
+                    || !ReferenceEquals(property.Instance, reference)
+                )
+                {
+                    return false;
+                }
+            }
+
+            declaration = found;
+            parameter = candidateParameter;
+            return true;
+        }
+
+        /// <summary>
+        /// The body of an ordinary private method declared in the same syntax tree as the call.
+        /// Same tree keeps this free: the semantic model already covers it, so no other file is
+        /// bound to answer the question. A private method cannot be overridden, so the body found
+        /// here is the body that runs.
+        ///
+        /// Callers elsewhere in the compilation are not a problem, because each call site is judged
+        /// against the analysis that owns its argument; a call this analysis does not track
+        /// resolves nothing and is skipped.
+        ///
+        /// The same-tree requirement cannot be pinned by a test — the analyzer test harness compiles
+        /// a single file — but it is not decoration: <c>GetOperation</c> is only valid for syntax
+        /// belonging to the model's own tree, so without it this would ask a semantic model about a
+        /// tree it does not own.
+        /// </summary>
+        private IOperation? TryGetSameFilePrivateMethodBody(
+            IMethodSymbol targetMethod,
+            IOperation callSite
+        )
+        {
+            if (
+                targetMethod.MethodKind != MethodKind.Ordinary
+                || targetMethod.DeclaredAccessibility != Accessibility.Private
+                || targetMethod.IsAbstract
+                || targetMethod.PartialImplementationPart != null
+                || callSite.SemanticModel is not { } semanticModel
+            )
+            {
+                return null;
+            }
+
+            foreach (var reference in targetMethod.DeclaringSyntaxReferences)
+            {
+                if (reference.SyntaxTree != callSite.Syntax.SyntaxTree)
+                    continue;
+
+                var declaration = reference.GetSyntax(cancellationToken);
+                if (semanticModel.GetOperation(declaration, cancellationToken) is { } body)
+                    return body;
+            }
+
+            return null;
+        }
+
+
+        /// <summary>
+        /// Lifts the reads of a private method in the same file that is handed the collection and
+        /// only iterates it: <c>private void Print(List&lt;Order&gt; orders) { foreach ... }</c>.
+        /// The callee's loop variable gets an iteration origin bound at the call, exactly as the
+        /// closure form does, so every existing fact applies unchanged.
+        /// </summary>
+        private bool TryLiftCollectionCalleeReads(
+            IMethodSymbol? targetMethod,
+            IEnumerable<IArgumentOperation> arguments,
+            SyntaxNode callSyntax,
+            IOperation callSite
+        )
+        {
+            if (
+                targetMethod is not { MethodKind: MethodKind.Ordinary }
+                || targetMethod.Parameters.Length != 1
+                || TryGetSameFilePrivateMethodBody(targetMethod, callSite) is not { } declaration
+            )
+            {
+                return false;
+            }
+
+            var parameter = targetMethod.Parameters[0];
+
+            IOperation? argumentValue = null;
+            foreach (var argument in arguments)
+            {
+                if (SymbolEqualityComparer.Default.Equals(argument.Parameter, parameter))
+                    argumentValue = argument.Value;
+            }
+
+            if (argumentValue == null || !IsResultCollectionReference(argumentValue))
+                return false;
+
+            if (!IsParameterOnlyIterated(declaration, parameter))
+                return false;
+
+            var lifted = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IForEachLoopOperation forEach
+                    || forEach.Collection.UnwrapConversions()
+                        is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter)
+                )
+                {
+                    continue;
+                }
+
+                foreach (var local in forEach.Locals)
+                {
+                    CreateOrigin(
+                        local,
+                        initiallyBound: true,
+                        canDetachFromRoot: true,
+                        isIteration: true,
+                        bindingPosition: callSyntax.SpanStart,
+                        entityType,
+                        navigationPrefix: string.Empty
+                    );
+                }
+
+                foreach (var inner in forEach.Body.Descendants())
+                {
+                    if (inner is IPropertyReferenceOperation read)
+                        CollectNavigationEvent(read, callSyntax);
+                }
+
+                lifted = true;
+            }
+
+            return lifted;
+        }
+
+        /// <summary>
+        /// True when every reference to the parameter is the collection of a <c>foreach</c>. Any
+        /// other use — passing it on, indexing it, materializing it again — leaves the argument an
+        /// escape, because the callee could then hand the entities somewhere that loads them.
+        /// </summary>
+        private bool IsParameterOnlyIterated(IOperation declaration, IParameterSymbol parameter)
+        {
+            var sawLoop = false;
+            foreach (var descendant in declaration.Descendants())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (
+                    descendant is not IParameterReferenceOperation reference
+                    || !SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter)
+                )
+                {
+                    continue;
+                }
+
+                var node = (IOperation)reference;
+                while (node.Parent is IConversionOperation or IParenthesizedOperation)
+                    node = node.Parent;
+
+                if (
+                    node.Parent is not IForEachLoopOperation forEach
+                    || !ReferenceEquals(forEach.Collection.UnwrapConversions(), reference)
+                )
+                {
+                    return false;
+                }
+
+                sawLoop = true;
+            }
+
+            return sawLoop;
+        }
+
         private void CollectNavigationEvent(IPropertyReferenceOperation propertyReference)
+        {
+            CollectNavigationEvent(propertyReference, eventSyntax: null);
+        }
+
+        /// <summary>
+        /// <paramref name="eventSyntax"/> separates where the read is <i>proven</i> from where it is
+        /// <i>reported</i>. A read inside a local function has no block in this graph, so the event
+        /// must map to the block holding the call; the diagnostic still lands on the read itself.
+        /// </summary>
+        private void CollectNavigationEvent(
+            IPropertyReferenceOperation propertyReference,
+            SyntaxNode? eventSyntax
+        )
         {
             if (IsInsideNameOf(propertyReference))
                 return;
@@ -838,6 +1363,24 @@ public sealed partial class MissingIncludeAnalyzer
                         sequence: FindWriteSequence(propertyReference)
                     )
                 );
+
+                // Manual relationship fix-up: a loop over the whole collection that writes this
+                // navigation on every element leaves no element unwritten, so a later read
+                // through a different origin is not a missing Include.
+                if (IsUnconditionalWriteOverTheWholeCollection(propertyReference, origin))
+                {
+                    events.Add(
+                        new FlowEvent(
+                            FlowEventKind.SatisfyCollectionPath,
+                            propertyReference.Syntax,
+                            FindWriteCompletionPosition(propertyReference),
+                            origin,
+                            path,
+                            sequence: FindWriteSequence(propertyReference)
+                        )
+                    );
+                }
+
                 return;
             }
 
@@ -873,13 +1416,103 @@ public sealed partial class MissingIncludeAnalyzer
             events.Add(
                 new FlowEvent(
                     FlowEventKind.Access,
-                    propertyReference.Syntax,
-                    propertyReference.Syntax.SpanStart,
+                    eventSyntax ?? propertyReference.Syntax,
+                    (eventSyntax ?? propertyReference.Syntax).SpanStart,
                     origin,
                     path,
                     accessId
                 )
             );
+        }
+
+        /// <summary>
+        /// True when <paramref name="write"/> runs for every element of the materialized
+        /// collection: its origin is the iteration variable of a `foreach` over the collection
+        /// itself — not a filtered or reordered view — and nothing between the loop body and the
+        /// write can skip it.
+        /// </summary>
+        /// <remarks>
+        /// Unconditionality is what makes the later read safe. The only path through the loop
+        /// that does not perform the write is the one where the body never runs, and on that
+        /// path the collection is empty, so any later loop over it performs no read either.
+        /// </remarks>
+        private bool IsUnconditionalWriteOverTheWholeCollection(
+            IPropertyReferenceOperation write,
+            EntityOrigin origin
+        )
+        {
+            return IsUnconditionalOverTheWholeCollection(write.Syntax, origin);
+        }
+
+        /// <summary>
+        /// An explicit load reaches every element on the same terms a write does: the statement
+        /// must sit directly in the body of a loop over the whole collection.
+        /// </summary>
+        private bool IsUnconditionalLoadOverTheWholeCollection(
+            IInvocationOperation load,
+            EntityOrigin origin
+        )
+        {
+            return IsUnconditionalOverTheWholeCollection(load.Syntax, origin);
+        }
+
+        private bool IsUnconditionalOverTheWholeCollection(SyntaxNode syntax, EntityOrigin origin)
+        {
+            if (
+                !origin.IsIteration
+                || origin.AliasSourceOrigin != null
+                || origin.NavigationPrefix.Length != 0
+                || origin.Local == null
+            )
+            {
+                return false;
+            }
+
+            var loopBody = FindWholeCollectionLoopBody(origin);
+            if (loopBody == null)
+                return false;
+
+            // `foreach (var o in orders) if (c) o.Customer = x;` makes the `if` itself the loop
+            // body, so walking up to it would accept a write that only some elements receive.
+            // Only a block or a bare statement is straight-line.
+            if (loopBody is not (BlockSyntax or ExpressionStatementSyntax))
+                return false;
+
+            for (var node = syntax.Parent; node != null; node = node.Parent)
+            {
+                if (ReferenceEquals(node, loopBody))
+                    return true;
+
+                // Only straight-line statement nesting keeps the write unconditional. A branch,
+                // a jump target, another loop or a guarded region can all skip it.
+                if (
+                    node is not (
+                        BlockSyntax
+                        or ExpressionStatementSyntax
+                        or AssignmentExpressionSyntax
+                        or MemberAccessExpressionSyntax
+                        // An explicit load is a call chain rather than an assignment.
+                        or InvocationExpressionSyntax
+                        or AwaitExpressionSyntax
+                    )
+                )
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private SyntaxNode? FindWholeCollectionLoopBody(EntityOrigin origin)
+        {
+            foreach (var binding in iterationBindings)
+            {
+                if (ReferenceEquals(binding.Origin, origin))
+                    return binding.IteratesWholeCollection ? binding.Body : null;
+            }
+
+            return null;
         }
 
         private void CollectPropertyPatternNavigationEvent(IPropertySubpatternOperation subpattern)

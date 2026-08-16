@@ -69,35 +69,56 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                     System.Collections.Generic.HashSet<string>
                 >
             >(SymbolEqualityComparer.Default);
-            var flowGraphCache = new System.Runtime.CompilerServices.ConditionalWeakTable<
-                IOperation,
-                FlowGraphHolder
-            >();
-            compilationContext.RegisterOperationAction(
-                operationContext =>
-                    AnalyzeInvocation(
-                        operationContext,
-                        entityTypeCache,
-                        autoIncludeCache,
-                        flowGraphCache
-                    ),
-                OperationKind.Invocation
-            );
-            compilationContext.RegisterOperationAction(
-                operationContext =>
-                    AnalyzeForEach(
-                        operationContext,
-                        entityTypeCache,
-                        autoIncludeCache,
-                        flowGraphCache
-                    ),
-                OperationKind.Loop
-            );
+            var flowCache = new MissingIncludeFlowCache();
+            // Registered per operation block, not per operation: LC045 reports on the
+            // navigation access, which lies outside the span of the invocation or loop that
+            // triggers analysis. An operation-scoped action would make Roslyn classify the
+            // report as a non-local (compilation-level) diagnostic, which suppresses live
+            // IDE analysis and makes the code fix unreliable.
+            compilationContext.RegisterOperationBlockAction(blockContext =>
+            {
+                foreach (var block in blockContext.OperationBlocks)
+                {
+                    foreach (var operation in block.DescendantsAndSelf())
+                    {
+                        if (operation is not (IInvocationOperation or ILoopOperation))
+                        {
+                            continue;
+                        }
+
+                        var operationContext = new MissingIncludeAnalysisContext(
+                            operation,
+                            blockContext.Compilation,
+                            blockContext.ReportDiagnostic,
+                            blockContext.CancellationToken
+                        );
+
+                        if (operation is IInvocationOperation)
+                        {
+                            AnalyzeInvocation(
+                                operationContext,
+                                entityTypeCache,
+                                autoIncludeCache,
+                                flowCache
+                            );
+                        }
+                        else
+                        {
+                            AnalyzeForEach(
+                                operationContext,
+                                entityTypeCache,
+                                autoIncludeCache,
+                                flowCache
+                            );
+                        }
+                    }
+                }
+            });
         });
     }
 
     private static void AnalyzeInvocation(
-        OperationAnalysisContext context,
+        MissingIncludeAnalysisContext context,
         System.Collections.Concurrent.ConcurrentDictionary<
             INamedTypeSymbol,
             System.Collections.Generic.HashSet<INamedTypeSymbol>
@@ -109,10 +130,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
                 System.Collections.Generic.HashSet<string>
             >
         > autoIncludeCache,
-        System.Runtime.CompilerServices.ConditionalWeakTable<
-            IOperation,
-            FlowGraphHolder
-        > flowGraphCache
+        MissingIncludeFlowCache flowCache
     )
     {
         var invocation = (IInvocationOperation)context.Operation;
@@ -140,7 +158,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
             returnsCollection,
             query.EntityType,
             entityTypes,
-            flowGraphCache,
+            flowCache,
             context.CancellationToken
         );
         if (accesses == null || accesses.Count == 0)
