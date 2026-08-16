@@ -76,12 +76,25 @@ public sealed record AnalyzerRunResult(ImmutableArray<Diagnostic> Diagnostics, I
 
         var compilation = await loaded.GetCompilationAsync() ?? throw new InvalidOperationException($"Failed to get compilation for {projectPath}.");
 
+        var compilationErrors = compilation
+            .GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error &&
+                                 diagnostic.Id != "CS8785")
+            .ToList();
+        if (compilationErrors.Count > 0)
+        {
+            var sample = compilationErrors
+                .Take(5)
+                .Select(diagnostic => $"{diagnostic.Id} at {diagnostic.Location.SourceTree?.FilePath ?? "?"}: {diagnostic.GetMessage()}");
+            throw new InvalidOperationException($"Corpus project {projectPath} does not compile cleanly; refusing to analyze an incomplete program:{Environment.NewLine}{string.Join(Environment.NewLine, sample.Select(message => $"  {message}"))}");
+        }
+
         var warnings = workspace.Diagnostics
             .Where(diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Warning)
             .Select(diagnostic => diagnostic.Message)
             .ToList();
 
-        return new WorkspaceLoadResult(entry.Name, loaded.Name, compilation, warnings);
+        return new WorkspaceLoadResult(entry.Name, CorpusManifest.NormalizePath(project), compilation, warnings);
     }
 
     public static async Task<AnalyzerRunResult> RunAllAnalyzersAsync(
@@ -156,14 +169,14 @@ public sealed record AnalyzerRunResult(ImmutableArray<Diagnostic> Diagnostics, I
         };
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start dotnet restore.");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
         if (process.ExitCode != 0)
         {
-            Console.Error.WriteLine(stdout);
-            Console.Error.WriteLine(stderr);
+            Console.Error.WriteLine(stdoutTask.Result);
+            Console.Error.WriteLine(stderrTask.Result);
             throw new InvalidOperationException($"dotnet restore failed for {projectPath} with exit code {process.ExitCode}.");
         }
     }

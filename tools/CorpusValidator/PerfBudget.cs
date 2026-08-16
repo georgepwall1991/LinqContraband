@@ -98,6 +98,7 @@ public static class CorpusPerfBudget
         {
             if (!byKey.TryGetValue(result.EntryKey, out var baselineMilliseconds))
             {
+                failures.Add(new CorpusPerfBudgetFailure(result.EntryKey, 0, result.Milliseconds, 0, "not budgeted — regenerate the baseline with --update-baseline"));
                 continue;
             }
 

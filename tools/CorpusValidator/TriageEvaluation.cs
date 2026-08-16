@@ -4,12 +4,12 @@ namespace LinqContraband.CorpusValidator;
 
 public sealed record CorpusDiagnostic(string Repository, string Project, string Path, string RuleId, int Line)
 {
-    public string TriageKey => $"{Repository}|{CorpusManifest.NormalizePath(Project)}|{CorpusManifest.NormalizePath(Path)}|{RuleId}";
+    public string TriageKey => $"{Repository}|{CorpusManifest.NormalizePath(Project)}|{CorpusManifest.NormalizePath(Path)}|{RuleId}|{Line}";
 }
 
-public sealed record CorpusTriageEntry(string Repository, string Project, string Path, string RuleId, string Verdict, string Note)
+public sealed record CorpusTriageEntry(string Repository, string Project, string Path, string RuleId, int Line, string Verdict, string Note)
 {
-    public string TriageKey => $"{Repository}|{CorpusManifest.NormalizePath(Project)}|{CorpusManifest.NormalizePath(Path)}|{RuleId}";
+    public string TriageKey => $"{Repository}|{CorpusManifest.NormalizePath(Project)}|{CorpusManifest.NormalizePath(Path)}|{RuleId}|{Line}";
 }
 
 public sealed record CorpusTriageEvaluation(
@@ -67,6 +67,7 @@ public static class CorpusTriage
                 ReadRequiredString("project"),
                 CorpusManifest.NormalizePath(ReadRequiredString("path")),
                 ReadRequiredString("ruleId"),
+                entry.TryGetProperty("line", out var lineElement) && lineElement.ValueKind == JsonValueKind.Number ? lineElement.GetInt32() : -1,
                 ReadRequiredString("verdict"),
                 entry.TryGetProperty("note", out var note) && note.ValueKind == JsonValueKind.String ? note.GetString()! : string.Empty);
 

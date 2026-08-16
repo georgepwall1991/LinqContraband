@@ -6747,8 +6747,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 : rootSemanticModel.Compilation.ContainsSyntaxTree(expression.SyntaxTree)
                     ? rootSemanticModel.Compilation.GetSemanticModel(expression.SyntaxTree)
                     : null;
-            if (semanticModel is null ||
-                semanticModel.GetOperation(expression) is IInvocationOperation callbackInvocation &&
+            if (semanticModel is null)
+            {
+                continue;
+            }
+
+            if (semanticModel.GetOperation(expression) is IInvocationOperation callbackInvocation &&
                 callbackInvocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
                 callbackInvocation.Instance?.UnwrapConversions() is
                     IParameterReferenceOperation parameterReference &&

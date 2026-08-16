@@ -14,14 +14,20 @@ public static class GitCorpus
         }
 
         var currentCommit = Run(checkoutPath, "rev-parse", "HEAD");
-        if (string.Equals(currentCommit, entry.Commit, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(currentCommit, entry.Commit, StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine($"[{entry.Name}] already pinned at {entry.Commit[..12]}");
-            return;
+            Run(checkoutPath, "fetch", "origin", entry.Commit);
+            Run(checkoutPath, "checkout", "--detach", entry.Commit);
         }
 
-        Run(checkoutPath, "fetch", "origin", entry.Commit);
-        Run(checkoutPath, "checkout", "--detach", entry.Commit);
+        var status = Run(checkoutPath, "status", "--porcelain");
+        if (!string.IsNullOrEmpty(status))
+        {
+            Console.WriteLine($"[{entry.Name}] discarding local modifications in the corpus checkout");
+            Run(checkoutPath, "reset", "--hard", "HEAD");
+            Run(checkoutPath, "clean", "-fd");
+        }
+
         Console.WriteLine($"[{entry.Name}] pinned at {entry.Commit[..12]}");
     }
 
@@ -38,17 +44,17 @@ public static class GitCorpus
         };
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start git.");
-        var stdout = process.StandardOutput.ReadToEnd().Trim();
-        var stderr = process.StandardError.ReadToEnd().Trim();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
         if (process.ExitCode != 0)
         {
-            Console.Error.WriteLine(stdout);
-            Console.Error.WriteLine(stderr);
+            Console.Error.WriteLine(stdoutTask.Result);
+            Console.Error.WriteLine(stderrTask.Result);
             throw new InvalidOperationException($"git {string.Join(' ', arguments)} failed with exit code {process.ExitCode}.");
         }
 
-        return stdout;
+        return stdoutTask.Result.Trim();
     }
 }

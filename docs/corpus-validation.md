@@ -15,10 +15,11 @@ Every rule also runs against a **pinned corpus of real open-source EF Core appli
 
 | Gate | Meaning |
 | --- | --- |
-| Zero untriaged diagnostics | Any `LC###` diagnostic on the corpus must be classified in `tools/CorpusValidator/corpus-triage.json` as `true-positive` or `false-positive`. A false-positive verdict is a release blocker: fix the rule or document why it stands. |
+| Zero untriaged diagnostics | Any `LC###` diagnostic on the corpus must be classified in `tools/CorpusValidator/corpus-triage.json` as `true-positive` or `false-positive`, keyed per rule, file, and line. |
 | Zero stale triage entries | A triage entry whose diagnostic no longer reproduces fails validation, so the triage file always reflects reality at the pinned commits. |
+| Zero accepted false positives | A triage verdict of `false-positive` fails validation. Stage one during triage with `--allow-false-positives`, but releases are gated: fix the rule first. The publish workflow runs the validation gate before pushing to NuGet. |
 | Zero analyzer exceptions | An analyzer crash (`AD0000`-class) on real code fails the run immediately. |
-| Per-analyzer time budgets | Each analyzer must run on each corpus project within `max(baseline × 1.35, 2s)` and under a hard per-rule cap (default 2 minutes), so a quadratic blowup on a large real file can never ship silently. |
+| Per-analyzer time budgets | Each analyzer must run on each corpus project within `max(baseline × tolerance, 2s)` (default tolerance 1.35 locally, 2.0 on CI runners) and under a hard per-rule cap (default 2 minutes); every analyzer/project pair must have a budget entry. The gate fails closed when no baseline exists. |
 
 ## The corpus
 

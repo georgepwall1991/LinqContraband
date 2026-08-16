@@ -120,6 +120,14 @@ int RunValidation()
         failures.Add($"untriaged diagnostic {diagnostic.RuleId} at {diagnostic.Repository}/{diagnostic.Path}:{diagnostic.Line} ({diagnostic.Project}) — classify it in corpus-triage.json or fix the rule");
     }
 
+    if (!options.AllowFalsePositives)
+    {
+        foreach (var diagnostic in evaluation.TriagedFalsePositives)
+        {
+            failures.Add($"accepted false positive {diagnostic.RuleId} at {diagnostic.Repository}/{diagnostic.Path}:{diagnostic.Line} ({diagnostic.Project}) — fix the rule before release, or pass --allow-false-positives to stage it");
+        }
+    }
+
     foreach (var entry in evaluation.StaleEntries)
     {
         failures.Add($"stale triage entry {entry.RuleId} at {entry.Repository}/{entry.Path} ({entry.Project}) no longer reproduces — remove it from corpus-triage.json");
@@ -202,7 +210,7 @@ int RunPerf()
     }
     else
     {
-        Console.WriteLine("[perf] no committed baseline found; run with --update-baseline to record one");
+        failures.Add($"no perf baseline exists at {baselinePath} — record one with --update-baseline before relying on the perf gate");
     }
 
     return 0;
@@ -252,6 +260,8 @@ internal sealed class Options
 
     public bool UpdateBaseline { get; private set; }
 
+    public bool AllowFalsePositives { get; private set; }
+
     public static Options Parse(string[] args)
     {
         var options = new Options();
@@ -298,6 +308,10 @@ internal sealed class Options
 
                 case "--update-baseline":
                     options.UpdateBaseline = true;
+                    break;
+
+                case "--allow-false-positives":
+                    options.AllowFalsePositives = true;
                     break;
 
                 default:

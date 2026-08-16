@@ -53,6 +53,12 @@ public sealed record CorpusManifest(int Version, IReadOnlyList<CorpusManifestEnt
                 throw new InvalidOperationException($"Corpus manifest at {path} declares duplicate corpus name '{name}'.");
             }
 
+            if (name.Contains('/') || name.Contains('\\') || name.Contains("..", StringComparison.Ordinal) ||
+                Path.IsPathRooted(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                throw new InvalidOperationException($"Corpus manifest entry '{name}' must be a single safe directory segment used as the checkout folder name.");
+            }
+
             if (!repository.EndsWith(".git", StringComparison.Ordinal) ||
                 !repository.StartsWith("https://", StringComparison.Ordinal))
             {

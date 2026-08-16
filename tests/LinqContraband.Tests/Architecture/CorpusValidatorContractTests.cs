@@ -86,7 +86,7 @@ public class CorpusValidatorContractTests
     public void Triage_PassesWhenEveryObservedDiagnosticIsTriaged()
     {
         var manifest = new[] { new CorpusManifestEntry("repo", "https://github.com/x/r.git", new string('a', 40), new[] { "src/App.csproj" }) };
-        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data/Seed.cs", "LC039", "true-positive", "") };
+        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data/Seed.cs", "LC039", 37, "true-positive", "") };
         var observed = new[] { new CorpusDiagnostic("repo", "src/App.csproj", "Data/Seed.cs", "LC039", 37) };
 
         var evaluation = CorpusTriage.Evaluate(triage, observed, manifest);
@@ -111,7 +111,7 @@ public class CorpusValidatorContractTests
     public void Triage_FailsOnStaleEntry()
     {
         var manifest = new[] { new CorpusManifestEntry("repo", "https://github.com/x/r.git", new string('a', 40), new[] { "src/App.csproj" }) };
-        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data/Seed.cs", "LC039", "true-positive", "") };
+        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data/Seed.cs", "LC039", 37, "true-positive", "") };
 
         var evaluation = CorpusTriage.Evaluate(triage, Array.Empty<CorpusDiagnostic>(), manifest);
 
@@ -123,7 +123,7 @@ public class CorpusValidatorContractTests
     public void Triage_FailsOnEntryOutsideManifest()
     {
         var manifest = new[] { new CorpusManifestEntry("repo", "https://github.com/x/r.git", new string('a', 40), new[] { "src/App.csproj" }) };
-        var triage = new[] { new CorpusTriageEntry("other", "src/App.csproj", "Data/Seed.cs", "LC039", "true-positive", "") };
+        var triage = new[] { new CorpusTriageEntry("other", "src/App.csproj", "Data/Seed.cs", "LC039", 37, "true-positive", "") };
 
         var evaluation = CorpusTriage.Evaluate(triage, Array.Empty<CorpusDiagnostic>(), manifest);
 
@@ -135,7 +135,7 @@ public class CorpusValidatorContractTests
     public void Triage_NormalizesPathSeparators()
     {
         var manifest = new[] { new CorpusManifestEntry("repo", "https://github.com/x/r.git", new string('a', 40), new[] { "src/App.csproj" }) };
-        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data\\Seed.cs", "LC039", "true-positive", "") };
+        var triage = new[] { new CorpusTriageEntry("repo", "src/App.csproj", "Data\\Seed.cs", "LC039", 37, "true-positive", "") };
         var observed = new[] { new CorpusDiagnostic("repo", "src/App.csproj", "Data/Seed.cs", "LC039", 37) };
 
         var evaluation = CorpusTriage.Evaluate(triage, observed, manifest);
@@ -146,7 +146,7 @@ public class CorpusValidatorContractTests
     [Fact]
     public void Triage_RejectsUnknownVerdict()
     {
-        var path = TempFile("""{"version":1,"entries":[{"repository":"r","project":"p","path":"a.cs","ruleId":"LC001","verdict":"maybe"}]}""");
+        var path = TempFile("""{"version":1,"entries":[{"repository":"r","project":"p","path":"a.cs","ruleId":"LC001","verdict":"maybe","line":3}]}""");
 
         Assert.Throws<InvalidOperationException>(() => CorpusTriage.Load(path));
     }
@@ -193,14 +193,15 @@ public class CorpusValidatorContractTests
     }
 
     [Fact]
-    public void PerfBudget_TreatsNewAnalyzerAsUnbudgeted()
+    public void PerfBudget_FailsWhenAnalyzerIsNotBudgeted()
     {
         var baseline = new[] { new CorpusPerfResult("repo", "proj", "LC001", 1_000, 0) };
         var observed = new[] { new CorpusPerfResult("repo", "proj", "LC999", 60_000, 0) };
 
         var failures = CorpusPerfBudget.Evaluate(baseline, observed, tolerance: 1.35, manifestMatches: true);
 
-        Assert.Empty(failures);
+        var failure = Assert.Single(failures);
+        Assert.Contains("not budgeted", failure.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
