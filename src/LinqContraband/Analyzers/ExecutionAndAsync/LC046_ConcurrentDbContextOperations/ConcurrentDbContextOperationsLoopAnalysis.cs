@@ -1192,6 +1192,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (initializer == null)
                 continue;
 
+            if (!semanticModel.Compilation.ContainsSyntaxTree(initializer.SyntaxTree))
+                continue;
+
             var initializerModel =
                 semanticModel.Compilation.GetSemanticModel(initializer.SyntaxTree);
             var initializerOperation =
@@ -1227,6 +1230,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             {
                 continue;
             }
+
+            if (!semanticModel.Compilation.ContainsSyntaxTree(typeDeclaration.SyntaxTree))
+                continue;
 
             var model = semanticModel.Compilation.GetSemanticModel(
                 typeDeclaration.SyntaxTree);

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/CatalogContextSeed.cs",
+      "ruleId": "LC039",
+      "verdict": "true-positive",
+      "note": "SeedAsync performs three sequential SaveChangesAsync calls (brands, types, items) on one context; LC039 correctly identifies the repeated-save shape. Batching is a deliberate product decision for staged seeding, so the diagnostic is acknowledged rather than acted on."
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/ApplicationDbContextInitialiser.cs",
+      "ruleId": "LC008",
+      "verdict": "true-positive",
+      "note": "TrySeedAsync enumerates roleManager.Roles and userManager.Users synchronously with .All(...) and calls context.TodoLists.Any() inside an async method; LC008 correctly flags the sync database round trips that have async counterparts."
+    }
+  ]
+}

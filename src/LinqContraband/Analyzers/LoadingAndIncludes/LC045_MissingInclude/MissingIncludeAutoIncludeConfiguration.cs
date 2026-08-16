@@ -63,6 +63,11 @@ public sealed partial class MissingIncludeAnalyzer
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var syntax = syntaxReference.GetSyntax(cancellationToken);
+                    if (!compilation.ContainsSyntaxTree(syntax.SyntaxTree))
+                    {
+                        continue;
+                    }
+
                     var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
 
                     foreach (

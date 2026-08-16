@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "corpus": [
+    {
+      "name": "eShopOnWeb",
+      "repository": "https://github.com/dotnet-architecture/eShopOnWeb.git",
+      "commit": "4da8212117e87d808d4bbc7da6286fd2147ce606",
+      "projects": [
+        "src/Web/Web.csproj",
+        "src/Infrastructure/Infrastructure.csproj"
+      ]
+    },
+    {
+      "name": "CleanArchitecture",
+      "repository": "https://github.com/jasontaylordev/CleanArchitecture.git",
+      "commit": "d6c95db751cad7162020b20cd83dce12e3e167a9",
+      "projects": [
+        "src/Infrastructure/Infrastructure.csproj",
+        "src/Web/Web.csproj"
+      ]
+    }
+  ]
+}

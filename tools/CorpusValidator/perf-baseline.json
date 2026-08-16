@@ -1,0 +1,1295 @@
+{
+  "version": 1,
+  "manifestHash": "88B44CF3981F65A2CD77856473814E31D7D70259693D5B52F165B268B9B5BCAE",
+  "generatedAtUtc": "2026-08-16T11:11:35Z",
+  "entries": [
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC001",
+      "milliseconds": 84,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC002,LC002",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC003",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC004",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC005",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC006",
+      "milliseconds": 10,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC007",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC008",
+      "milliseconds": 21,
+      "diagnostics": 3
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC009",
+      "milliseconds": 12,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC010",
+      "milliseconds": 6,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC011",
+      "milliseconds": 7,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC012",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC013",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC014",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC016",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC017",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC018",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC019",
+      "milliseconds": 7,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC020",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC021",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC022",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC023",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC024",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC025",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC026",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC027",
+      "milliseconds": 7,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC028",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC029",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC030",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC031",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC032",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC033",
+      "milliseconds": 1,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC034",
+      "milliseconds": 6,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC035",
+      "milliseconds": 12,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC036",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC037",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC038",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC039",
+      "milliseconds": 7,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC040",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC041",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC042",
+      "milliseconds": 7,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC043",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC044",
+      "milliseconds": 16,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC045",
+      "milliseconds": 8,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Infrastructure",
+      "analyzer": "LC046",
+      "milliseconds": 9,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC001",
+      "milliseconds": 70,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC002,LC002",
+      "milliseconds": 23,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC003",
+      "milliseconds": 36,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC004",
+      "milliseconds": 30,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC005",
+      "milliseconds": 11,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC006",
+      "milliseconds": 17,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC007",
+      "milliseconds": 18,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC008",
+      "milliseconds": 23,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC009",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC010",
+      "milliseconds": 25,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC011",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC012",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC013",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC014",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC016",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC017",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC018",
+      "milliseconds": 17,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC019",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC020",
+      "milliseconds": 23,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC021",
+      "milliseconds": 12,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC022",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC023",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC024",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC025",
+      "milliseconds": 12,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC026",
+      "milliseconds": 18,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC027",
+      "milliseconds": 25,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC028",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC029",
+      "milliseconds": 26,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC030",
+      "milliseconds": 16,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC031",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC032",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC033",
+      "milliseconds": 2,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC034",
+      "milliseconds": 12,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC035",
+      "milliseconds": 20,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC036",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC037",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC038",
+      "milliseconds": 11,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC039",
+      "milliseconds": 18,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC040",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC041",
+      "milliseconds": 22,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC042",
+      "milliseconds": 13,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC043",
+      "milliseconds": 19,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC044",
+      "milliseconds": 21,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC045",
+      "milliseconds": 24,
+      "diagnostics": 0
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "Web",
+      "analyzer": "LC046",
+      "milliseconds": 15,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC001",
+      "milliseconds": 192,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC002,LC002",
+      "milliseconds": 148,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC003",
+      "milliseconds": 138,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC004",
+      "milliseconds": 112,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC005",
+      "milliseconds": 106,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC006",
+      "milliseconds": 120,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC007",
+      "milliseconds": 110,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC008",
+      "milliseconds": 109,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC009",
+      "milliseconds": 124,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC010",
+      "milliseconds": 116,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC011",
+      "milliseconds": 118,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC012",
+      "milliseconds": 110,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC013",
+      "milliseconds": 140,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC014",
+      "milliseconds": 128,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 113,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC016",
+      "milliseconds": 133,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC017",
+      "milliseconds": 132,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC018",
+      "milliseconds": 119,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC019",
+      "milliseconds": 122,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC020",
+      "milliseconds": 146,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC021",
+      "milliseconds": 137,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC022",
+      "milliseconds": 151,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC023",
+      "milliseconds": 156,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC024",
+      "milliseconds": 106,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC025",
+      "milliseconds": 113,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC026",
+      "milliseconds": 125,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC027",
+      "milliseconds": 99,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC028",
+      "milliseconds": 129,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC029",
+      "milliseconds": 192,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC030",
+      "milliseconds": 152,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC031",
+      "milliseconds": 166,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC032",
+      "milliseconds": 2,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC033",
+      "milliseconds": 6,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC034",
+      "milliseconds": 158,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC035",
+      "milliseconds": 168,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC036",
+      "milliseconds": 105,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC037",
+      "milliseconds": 90,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC038",
+      "milliseconds": 109,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC039",
+      "milliseconds": 137,
+      "diagnostics": 2
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC040",
+      "milliseconds": 95,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC041",
+      "milliseconds": 100,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC042",
+      "milliseconds": 112,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC043",
+      "milliseconds": 86,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC044",
+      "milliseconds": 90,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC045",
+      "milliseconds": 110,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Infrastructure",
+      "analyzer": "LC046",
+      "milliseconds": 82,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC001",
+      "milliseconds": 926,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC002,LC002",
+      "milliseconds": 229,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC003",
+      "milliseconds": 288,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC004",
+      "milliseconds": 267,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC005",
+      "milliseconds": 265,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC006",
+      "milliseconds": 287,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC007",
+      "milliseconds": 156,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC008",
+      "milliseconds": 157,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC009",
+      "milliseconds": 135,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC010",
+      "milliseconds": 141,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC011",
+      "milliseconds": 125,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC012",
+      "milliseconds": 120,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC013",
+      "milliseconds": 154,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC014",
+      "milliseconds": 108,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC015,LC015",
+      "milliseconds": 147,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC016",
+      "milliseconds": 135,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC017",
+      "milliseconds": 110,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC018",
+      "milliseconds": 140,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC019",
+      "milliseconds": 131,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC020",
+      "milliseconds": 122,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC021",
+      "milliseconds": 149,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC022",
+      "milliseconds": 187,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC023",
+      "milliseconds": 128,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC024",
+      "milliseconds": 170,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC025",
+      "milliseconds": 214,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC026",
+      "milliseconds": 143,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC027",
+      "milliseconds": 155,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC028",
+      "milliseconds": 133,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC029",
+      "milliseconds": 138,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC030",
+      "milliseconds": 158,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC031",
+      "milliseconds": 114,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC032",
+      "milliseconds": 6,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC033",
+      "milliseconds": 14,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC034",
+      "milliseconds": 119,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC035",
+      "milliseconds": 114,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC036",
+      "milliseconds": 132,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC037",
+      "milliseconds": 142,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC038",
+      "milliseconds": 132,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC039",
+      "milliseconds": 118,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC040",
+      "milliseconds": 133,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC041",
+      "milliseconds": 137,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC042",
+      "milliseconds": 127,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC043",
+      "milliseconds": 127,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC044",
+      "milliseconds": 117,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC045",
+      "milliseconds": 109,
+      "diagnostics": 0
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "Web",
+      "analyzer": "LC046",
+      "milliseconds": 125,
+      "diagnostics": 0
+    }
+  ]
+}

@@ -92,7 +92,7 @@ ProcessUsers(db.Users.ToList()); // no LC004: boundary is explicit
 ```
 
 ### Scope And Non-Goals
-The analysis is intentionally local. It inspects source bodies available in the current compilation and does not guess about framework calls, delegate targets, external assemblies, or custom collection constructors. Operations inside nested local functions and lambdas are not treated as part of the outer method body; that conservative boundary avoids reporting on helper code that may never run.
+The analysis is intentionally local. It inspects source bodies available in the current compilation and does not guess about framework calls, delegate targets, external assemblies, or custom collection constructors. Callee bodies that live in a *referenced project* are skipped the same way as external assemblies: their syntax trees belong to another compilation, so they cannot be inspected safely here. Operations inside nested local functions and lambdas are not treated as part of the outer method body; that conservative boundary avoids reporting on helper code that may never run.
 
 LC004 also does not try to prove whether client-side work is business-correct. If the callee intentionally applies in-memory rules, materialize explicitly at the call site so reviewers can see the boundary and cost.
 
