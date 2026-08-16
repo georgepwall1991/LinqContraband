@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.7</Version>
+        <Version>5.8.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC045 now sees through Reverse. It only changes ordering and leaves the materialized entity shape unchanged, but LC045 previously stopped analysing at it, so a missing Include went unreported. This was the last operator on which LC045's shape-preserving set disagreed with the equivalent set used by the bulk-delete rule.</PackageReleaseNotes>
+        <PackageReleaseNotes>Real-world corpus validation engine: all 46 analyzers now run against pinned real-world EF Core applications with triaged false-positive and per-rule execution-time gates in weekly CI. Fixed an LC004 analyzer crash (AD0000) on multi-project solutions when an inspected callee body lives in a referenced project; the same guard was applied to LC045 and LC046 declaration walks.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
