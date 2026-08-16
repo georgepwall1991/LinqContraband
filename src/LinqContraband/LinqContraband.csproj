@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.61</Version>
+        <Version>5.7.62</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC047 reports ExecuteDelete when Fluent ClientCascade or ClientSetNull is configured on an applied IEntityTypeConfiguration (ApplyConfiguration or current-assembly ApplyConfigurationsFromAssembly). Unapplied configurations, external assemblies, and database Cascade stay quiet. LC012 is gated on the same evidence.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC047 reports ExecuteDelete when a SaveChangesInterceptor is registered through AddDbContext, AddDbContextPool, or AddDbContextFactory options lambdas (AddInterceptors). Unregistered interceptors, lookalike APIs, opaque helpers, and a different generic context stay quiet. LC012 is gated on the same evidence.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

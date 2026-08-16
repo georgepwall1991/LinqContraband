@@ -144,6 +144,29 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
     }
+
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContext<TContext>(
+            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+            Action<DbContextOptionsBuilder> optionsAction)
+            where TContext : DbContext => services;
+
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContextPool<TContext>(
+            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+            Action<DbContextOptionsBuilder> optionsAction)
+            where TContext : DbContext => services;
+
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContextFactory<TContext>(
+            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+            Action<DbContextOptionsBuilder> optionsAction)
+            where TContext : DbContext => services;
+
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContext(
+            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+            Type contextType,
+            Action<DbContextOptionsBuilder> optionsAction) => services;
+    }
 }
 
 namespace Microsoft.EntityFrameworkCore.Diagnostics
@@ -158,7 +181,7 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         public DbContext Context { get; } = null;
     }
 
-    public abstract class SaveChangesInterceptor
+    public abstract class SaveChangesInterceptor : ISaveChangesInterceptor
     {
         public virtual InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) => result;
         public virtual ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) => new ValueTask<InterceptionResult<int>>(result);
@@ -168,11 +191,19 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
     {
     }
 }
+
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public interface IServiceCollection
+    {
+    }
+}
 ";
 
     private static string App(string body) =>
         @"using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
 using System.Threading.Tasks;
 " + EfMock + @"

@@ -61,6 +61,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 ApplyConversion(type, conversion);
             }
         }
+
+        ScanDiInterceptorRegistrations(interceptorConversions, cancellationToken);
     }
 
     private void ScanContextType(INamedTypeSymbol contextType, CancellationToken cancellationToken)
