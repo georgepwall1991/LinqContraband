@@ -716,12 +716,17 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
         }
     }
 
+    public sealed class LocalModelBuilder
+    {
+        public LocalModelBuilder ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration) where TEntity : class => this;
+    }
+
     public sealed class AppDbContext : DbContext
     {
         public DbSet<Order> Orders { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Lookalike interface in TestApp is not EF's IEntityTypeConfiguration<T>.
+            new LocalModelBuilder().ApplyConfiguration(new OrderConfiguration());
         }
     }
 
@@ -897,6 +902,302 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
         {
             var orders = {|LC047:db.Orders.ExecuteDelete()|};
             var users = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithAbstractConfigurationFromAssembly_ShouldNotTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public abstract class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrderConfiguration).Assembly);
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Orders.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithParameterizedConfigurationFromAssembly_ShouldNotTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public OrderConfiguration(string name) { }
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrderConfiguration).Assembly);
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Orders.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithApplyConfigurationsFromAssemblyPredicate_ShouldNotTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfigurationsFromAssembly(
+                typeof(OrderConfiguration).Assembly,
+                type => false);
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Orders.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithDerivedConfigurationOverrideDatabaseCascade_ShouldNotTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public virtual void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class SpecialOrderConfiguration : OrderConfiguration
+    {
+        public override void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new SpecialOrderConfiguration());
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Orders.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithGenericConfigurationHelper_ShouldTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public sealed class OrderConfiguration<TEntity> : IEntityTypeConfiguration<TEntity> where TEntity : class
+    {
+        public void Configure(EntityTypeBuilder<TEntity> builder)
+        {
+            ConfigureOrders(builder);
+        }
+
+        private void ConfigureOrders(EntityTypeBuilder<TEntity> builder)
+        {
+            if (typeof(TEntity) == typeof(Order))
+            {
+            }
+        }
+    }
+
+    public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            ConfigureRelationship(builder);
+        }
+
+        private void ConfigureRelationship(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Orders.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithConstructedGenericConfigurationHelper_ShouldTrigger()
+    {
+        var test = App(@"
+    public class Order
+    {
+        public int Id { get; set; }
+        public IEnumerable<OrderLine> Lines { get; set; }
+    }
+
+    public sealed class OrderLine
+    {
+        public int Id { get; set; }
+        public Order Order { get; set; }
+    }
+
+    public sealed class OrderConfiguration<TEntity> : IEntityTypeConfiguration<TEntity> where TEntity : Order
+    {
+        public void Configure(EntityTypeBuilder<TEntity> builder)
+        {
+            ConfigureRelationship(builder);
+        }
+
+        private void ConfigureRelationship(EntityTypeBuilder<TEntity> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new OrderConfiguration<Order>());
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Orders.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithNonPublicConstructorConfigurationFromAssembly_ShouldNotTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        protected OrderConfiguration() { }
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrderConfiguration).Assembly);
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Orders.ExecuteDelete();
         }
     }
 ");

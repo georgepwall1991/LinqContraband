@@ -14,11 +14,14 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
     private readonly Compilation compilation;
     private readonly object gate = new();
+    private readonly INamedTypeSymbol? entityTypeConfigurationInterface;
     private bool scanned;
 
     private TrackedDeletePipelineEvidence(Compilation compilation)
     {
         this.compilation = compilation;
+        entityTypeConfigurationInterface = compilation.GetTypeByMetadataName(
+            "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
     }
 
     public static TrackedDeletePipelineEvidence Get(Compilation compilation, CancellationToken cancellationToken)

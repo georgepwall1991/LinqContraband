@@ -72,12 +72,27 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     cancellationToken);
 
                 var target = invocation.TargetMethod.OriginalDefinition;
-                if (!SymbolEqualityComparer.Default.Equals(target.ContainingType, helperOwner))
+                if (!IsSameTypeOrBaseHelper(target.ContainingType, helperOwner))
                     continue;
 
                 ScanCascadeMethodTree(target, helperOwner, evidenceContext, visited, depth + 1, cancellationToken);
             }
         }
+    }
+
+    private static bool IsSameTypeOrBaseHelper(INamedTypeSymbol? targetType, INamedTypeSymbol helperOwner)
+    {
+        if (targetType == null)
+            return false;
+
+        var targetDefinition = targetType.OriginalDefinition;
+        for (var current = helperOwner; current != null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(targetDefinition, current.OriginalDefinition))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsClientCascadeBehavior(IInvocationOperation invocation)

@@ -50,6 +50,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
     {
         if (!IsEfModelBuilderMethod(invocation.TargetMethod, "ApplyConfigurationsFromAssembly") ||
             invocation.Arguments.Length == 0 ||
+            HasExplicitAssemblyPredicate(invocation) ||
             !IsCurrentCompilationAssembly(
                 invocation.Arguments[0].Value,
                 executableRoot,
@@ -61,8 +62,11 @@ internal sealed partial class TrackedDeletePipelineEvidence
         foreach (var type in EnumerateSourceTypes(compilation.GlobalNamespace, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!ImplementsEntityTypeConfiguration(type))
+            if (!ImplementsEntityTypeConfiguration(type) ||
+                !IsConstructibleEntityTypeConfiguration(type))
+            {
                 continue;
+            }
 
             ScanEntityTypeConfiguration(type, evidenceContext, visited, depth + 1, cancellationToken);
         }
@@ -75,19 +79,33 @@ internal sealed partial class TrackedDeletePipelineEvidence
         int depth,
         CancellationToken cancellationToken)
     {
-        for (var current = configurationType; current != null; current = current.BaseType)
+        if (entityTypeConfigurationInterface == null)
+            return;
+
+        foreach (var iface in configurationType.AllInterfaces)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (current.SpecialType == SpecialType.System_Object)
-                break;
+            if (!SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, entityTypeConfigurationInterface))
+                continue;
 
-            foreach (var member in current.GetMembers("Configure"))
+            IMethodSymbol? interfaceMethod = null;
+            foreach (var member in iface.GetMembers("Configure"))
             {
-                if (member is not IMethodSymbol method)
-                    continue;
-
-                ScanCascadeMethodTree(method, current, evidenceContext, visited, depth, cancellationToken);
+                if (member is IMethodSymbol method)
+                {
+                    interfaceMethod = method;
+                    break;
+                }
             }
+
+            if (interfaceMethod == null)
+                continue;
+
+            if (configurationType.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation)
+                continue;
+
+            var helperOwner = implementation.ContainingType as INamedTypeSymbol ?? configurationType;
+            ScanCascadeMethodTree(implementation, helperOwner, evidenceContext, visited, depth, cancellationToken);
         }
     }
 
@@ -101,10 +119,6 @@ internal sealed partial class TrackedDeletePipelineEvidence
         {
             case IObjectCreationOperation creation when creation.Type is INamedTypeSymbol created:
                 yield return created;
-                yield break;
-            case IConversionOperation conversion:
-                foreach (var type in GetArgumentConfigurationTypes(conversion.Operand, executableRoot, cancellationToken))
-                    yield return type;
                 yield break;
             case ILocalReferenceOperation local:
                 if (LocalAssignmentCache.TryGetSingleAssignedValueBefore(
@@ -160,15 +174,47 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
     private bool ImplementsEntityTypeConfiguration(INamedTypeSymbol type)
     {
-        var configInterface = compilation.GetTypeByMetadataName(
-            "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1");
-        if (configInterface == null)
+        if (entityTypeConfigurationInterface == null)
             return false;
 
         foreach (var iface in type.AllInterfaces)
         {
-            if (SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, configInterface))
+            if (SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, entityTypeConfigurationInterface))
                 return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasExplicitAssemblyPredicate(IInvocationOperation invocation)
+    {
+        for (var i = 1; i < invocation.Arguments.Length; i++)
+        {
+            if (!invocation.Arguments[i].IsImplicit)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsConstructibleEntityTypeConfiguration(INamedTypeSymbol type)
+    {
+        if (type.TypeKind != TypeKind.Class || type.IsAbstract || type.IsUnboundGenericType)
+            return false;
+
+        foreach (var argument in type.TypeArguments)
+        {
+            if (argument.TypeKind == TypeKind.TypeParameter)
+                return false;
+        }
+
+        foreach (var constructor in type.InstanceConstructors)
+        {
+            if (constructor.Parameters.Length == 0 &&
+                constructor.DeclaredAccessibility == Accessibility.Public)
+            {
+                return true;
+            }
         }
 
         return false;
