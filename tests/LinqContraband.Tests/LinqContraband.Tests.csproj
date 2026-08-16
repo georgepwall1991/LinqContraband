@@ -39,4 +39,10 @@
         <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <Compile Include="..\..\tools\CorpusValidator\CorpusManifest.cs" Link="CorpusValidator\CorpusManifest.cs"/>
+        <Compile Include="..\..\tools\CorpusValidator\TriageEvaluation.cs" Link="CorpusValidator\TriageEvaluation.cs"/>
+        <Compile Include="..\..\tools\CorpusValidator\PerfBudget.cs" Link="CorpusValidator\PerfBudget.cs"/>
+    </ItemGroup>
+
 </Project>

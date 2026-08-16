@@ -42,13 +42,13 @@ When the analyzer cannot prove an EF-backed query shape statically, it **stays q
 ## Install
 
 ```xml
-  <PackageReference Include="LinqContraband" Version="5.7.59" PrivateAssets="all" />
+  <PackageReference Include="LinqContraband" Version="5.8.0" PrivateAssets="all" />
 ```
 
 Or:
 
 ```bash
-dotnet add package LinqContraband --version 5.7.59
+dotnet add package LinqContraband --version 5.8.0
 ```
 
 **No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
@@ -59,6 +59,7 @@ Install only from NuGet or from this repository. LinqContraband is not distribut
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - **Maintainer site:** [georgewall.uk](https://www.georgewall.uk/)
 - **Documentation hub:** [georgepwall1991.github.io/LinqContraband](https://georgepwall1991.github.io/LinqContraband/)
+- **Real-world corpus validation:** [georgepwall1991.github.io/LinqContraband/corpus-validation](https://georgepwall1991.github.io/LinqContraband/corpus-validation/)
 - **EF Core analyzer rules:** [georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/)
 - **Async query guide:** [georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-async-query-analyzer/)
 - **CancellationToken analyzer guide:** [georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer](https://georgepwall1991.github.io/LinqContraband/ef-core-cancellation-token-analyzer/)
@@ -110,6 +111,10 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | Async | Sync-over-async, missing CancellationToken, async stream buffering, concurrent DbContext use. |
 | Raw SQL | Interpolated `FromSqlRaw`/`ExecuteSqlRaw` and constructed SQL string risks. |
 | Modeling | Missing primary keys and explicit foreign-key properties when statically provable. |
+
+## Proven on real code
+
+Before release, every rule runs against pinned real-world EF Core applications (eShopOnWeb, CleanArchitecture). First corpus run: **0 false positives**, 5 diagnostics — all genuine issues in the corpus codebases — and it caught a multi-project analyzer crash that 2,640 unit tests missed. See [corpus validation](https://georgepwall1991.github.io/LinqContraband/corpus-validation.html).
 
 ## Compatibility
 

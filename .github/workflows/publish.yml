@@ -38,6 +38,12 @@ jobs:
     - name: Test
       run: dotnet test -c Release --no-build --verbosity normal
 
+    - name: Prepare corpus
+      run: dotnet run --project tools/CorpusValidator/CorpusValidator.csproj -c Release --no-build -- prepare
+
+    - name: Validate on real-world corpus
+      run: dotnet run --project tools/CorpusValidator/CorpusValidator.csproj -c Release --no-build -- validate
+
     - name: Pack
       run: dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
       

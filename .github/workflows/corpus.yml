@@ -1,0 +1,56 @@
+name: Corpus Validation
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: corpus-validation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Cache corpus checkouts
+        uses: actions/cache@v4
+        with:
+          path: tools/CorpusValidator/corpus
+          key: corpus-${{ hashFiles('tools/CorpusValidator/corpus-manifest.json') }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-corpus-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-corpus-
+            ${{ runner.os }}-nuget-
+
+      - name: Build analyzer and corpus validator
+        run: dotnet build tools/CorpusValidator/CorpusValidator.csproj -c Release
+
+      - name: Prepare pinned corpus
+        run: dotnet run --project tools/CorpusValidator/CorpusValidator.csproj -c Release --no-build -- prepare
+
+      - name: Validate on real-world corpus
+        run: dotnet run --project tools/CorpusValidator/CorpusValidator.csproj -c Release --no-build -- validate
+
+      - name: Check analyzer execution-time budgets
+        run: dotnet run --project tools/CorpusValidator/CorpusValidator.csproj -c Release --no-build -- perf --tolerance 2.0

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.8.0] - 2026-08-16
+
+### Added
+- Real-world corpus validation engine. All 46 analyzers now run against pinned real-world EF Core applications (eShopOnWeb and CleanArchitecture, exact commit hashes in `tools/CorpusValidator/corpus-manifest.json`) with release gates that fail closed: every corpus diagnostic must be triaged per rule/file/line as a true positive or false positive, stale triage entries fail, accepted false positives fail (fix the rule, or stage it explicitly during triage), analyzer exceptions on real code fail the run, corpus projects must compile cleanly, dirty checkouts are reset to the pinned commit, and every analyzer/project pair must stay inside a per-rule execution-time budget (`max(baseline × tolerance, 2s)` plus a hard cap, with a budget entry required for every pair) measured on the real compilations. Runs weekly in CI (`corpus.yml`), on demand, and in the publish workflow before pushing to NuGet. First corpus run: 5 diagnostics, all genuine issues in the corpus codebases, and 0 false positives.
+
+### Fixed
+- LC004 no longer crashes on multi-project solutions. When a callee whose body LC004 inspects lives in a referenced project, the method-summary walk called `GetSemanticModel` on a syntax tree outside the current compilation and threw `ArgumentException` (surfacing as AD0000 in the IDE). Cross-project callee bodies are now skipped conservatively, matching LC004's existing non-source-callee boundary. The same guard was applied to the equivalent declaration walks in LC045 (`AutoInclude` configuration discovery) and LC046 (member and constructor declaration analysis), which had the identical latent crash.
+
+===
 ## [5.7.59] - 2026-08-13
 
 ### Fixed
@@ -277,7 +286,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The analyzer test harness hosts Roslyn 4.14 instead of 4.3, so test sources use the language version consumers compile with. The pin capped test code at C# 11 and hid the LC008 and LC030 defects above.
-
 
 ## [5.7.7] - 2026-08-01
 

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/CatalogContextSeed.cs",
+      "line": 37,
+      "ruleId": "LC039",
+      "verdict": "true-positive",
+      "note": "SeedAsync saves the catalog brands; the staged seeding continues with two more SaveChangesAsync calls on the same context, which is exactly the repeated-save shape LC039 flags. Batching is a deliberate product decision for staged seeding, so the diagnostic is acknowledged rather than acted on."
+    },
+    {
+      "repository": "eShopOnWeb",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/CatalogContextSeed.cs",
+      "line": 45,
+      "ruleId": "LC039",
+      "verdict": "true-positive",
+      "note": "Second staged SaveChangesAsync (catalog types) after the brands save in the same method."
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/ApplicationDbContextInitialiser.cs",
+      "line": 73,
+      "ruleId": "LC008",
+      "verdict": "true-positive",
+      "note": "roleManager.Roles.All(...) enumerates the roles query synchronously inside an async method instead of awaiting an AnyAsync-style counterpart."
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/ApplicationDbContextInitialiser.cs",
+      "line": 81,
+      "ruleId": "LC008",
+      "verdict": "true-positive",
+      "note": "userManager.Users.All(...) enumerates the users query synchronously inside an async method."
+    },
+    {
+      "repository": "CleanArchitecture",
+      "project": "src/Infrastructure/Infrastructure.csproj",
+      "path": "src/Infrastructure/Data/ApplicationDbContextInitialiser.cs",
+      "line": 92,
+      "ruleId": "LC008",
+      "verdict": "true-positive",
+      "note": "context.TodoLists.Any() executes a synchronous existence query inside an async method; AnyAsync is the direct counterpart."
+    }
+  ]
+}
