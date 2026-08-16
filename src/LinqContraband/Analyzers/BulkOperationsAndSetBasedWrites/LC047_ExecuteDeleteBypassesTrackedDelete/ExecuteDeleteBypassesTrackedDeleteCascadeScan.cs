@@ -18,13 +18,14 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (member is not IMethodSymbol method)
                 continue;
 
-            ScanCascadeMethodTree(method, contextType, visited, 0, cancellationToken);
+            ScanCascadeMethodTree(method, contextType, contextType, visited, 0, cancellationToken);
         }
     }
 
     private void ScanCascadeMethodTree(
         IMethodSymbol method,
-        INamedTypeSymbol owningType,
+        INamedTypeSymbol helperOwner,
+        INamedTypeSymbol evidenceContext,
         HashSet<IMethodSymbol> visited,
         int depth,
         CancellationToken cancellationToken)
@@ -52,16 +53,53 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     IsClientCascadeBehavior(invocation) &&
                     TryGetRelationshipPrincipal(invocation, operation, cancellationToken, out var principal))
                 {
-                    clientCascadePrincipals.Add(new TypePair(CanonicalContext(owningType), principal));
+                    clientCascadePrincipals.Add(new TypePair(CanonicalContext(evidenceContext), principal));
                 }
 
+                ScanAppliedConfigurationInvocation(
+                    invocation,
+                    operation,
+                    evidenceContext,
+                    visited,
+                    depth,
+                    cancellationToken);
+                ScanAppliedConfigurationsFromAssembly(
+                    invocation,
+                    operation,
+                    evidenceContext,
+                    visited,
+                    depth,
+                    cancellationToken);
+
                 var target = invocation.TargetMethod.OriginalDefinition;
-                if (!SymbolEqualityComparer.Default.Equals(target.ContainingType, owningType))
+                if (!IsSameTypeOrBaseHelper(target.ContainingType, helperOwner))
                     continue;
 
-                ScanCascadeMethodTree(target, owningType, visited, depth + 1, cancellationToken);
+                ScanCascadeMethodTree(target, helperOwner, evidenceContext, visited, depth + 1, cancellationToken);
             }
         }
+    }
+
+    private static bool IsSameTypeOrBaseHelper(INamedTypeSymbol? targetType, INamedTypeSymbol helperOwner)
+    {
+        if (targetType == null)
+            return false;
+
+        var targetDefinition = targetType.OriginalDefinition;
+        for (var current = helperOwner; current != null; current = current.BaseType)
+        {
+            if (current.SpecialType == SpecialType.System_Object ||
+                (current.Name == "DbContext" &&
+                 current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore"))
+            {
+                return false;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(targetDefinition, current.OriginalDefinition))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsClientCascadeBehavior(IInvocationOperation invocation)

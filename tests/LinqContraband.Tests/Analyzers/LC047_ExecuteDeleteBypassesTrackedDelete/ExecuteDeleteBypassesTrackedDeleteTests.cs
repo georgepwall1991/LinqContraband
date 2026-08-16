@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -86,9 +87,17 @@ namespace Microsoft.EntityFrameworkCore
         public void RemoveRange(IEnumerable<TEntity> entities) { }
     }
 
+    public interface IEntityTypeConfiguration<TEntity> where TEntity : class
+    {
+        void Configure(EntityTypeBuilder<TEntity> builder);
+    }
+
     public class ModelBuilder
     {
         public EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => new EntityTypeBuilder<TEntity>();
+        public ModelBuilder ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration) where TEntity : class => this;
+        public ModelBuilder ApplyConfigurationsFromAssembly(Assembly assembly) => this;
+        public ModelBuilder ApplyConfigurationsFromAssembly(Assembly assembly, Func<Type, bool> predicate) => this;
     }
 
     public class EntityTypeBuilder<TEntity> where TEntity : class
