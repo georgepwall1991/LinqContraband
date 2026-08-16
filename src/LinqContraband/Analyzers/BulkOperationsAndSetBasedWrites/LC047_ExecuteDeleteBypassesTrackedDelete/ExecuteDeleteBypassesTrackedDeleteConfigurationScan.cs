@@ -104,6 +104,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (configurationType.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation)
                 continue;
 
+            implementation = GetMostDerivedOverride(configurationType, implementation);
             var helperOwner = implementation.ContainingType as INamedTypeSymbol ?? configurationType;
             ScanCascadeMethodTree(implementation, helperOwner, evidenceContext, visited, depth, cancellationToken);
         }
@@ -184,6 +185,29 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
 
         return false;
+    }
+
+    private static IMethodSymbol GetMostDerivedOverride(INamedTypeSymbol type, IMethodSymbol method)
+    {
+        for (var currentType = type; currentType != null; currentType = currentType.BaseType)
+        {
+            foreach (var member in currentType.GetMembers(method.Name))
+            {
+                if (member is not IMethodSymbol candidate)
+                    continue;
+
+                for (var walk = candidate; walk != null; walk = walk.OverriddenMethod)
+                {
+                    if (SymbolEqualityComparer.Default.Equals(walk, method) ||
+                        SymbolEqualityComparer.Default.Equals(walk.OriginalDefinition, method.OriginalDefinition))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return method;
     }
 
     private static bool HasExplicitAssemblyPredicate(IInvocationOperation invocation)

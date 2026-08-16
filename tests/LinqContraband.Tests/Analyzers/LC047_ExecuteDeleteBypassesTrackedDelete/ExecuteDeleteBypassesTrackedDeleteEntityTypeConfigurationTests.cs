@@ -1063,6 +1063,51 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithDerivedConfigurationOverrideClientCascade_ShouldTrigger()
+    {
+        var test = App(OrderGraph + @"
+    public class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public virtual void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
+    public sealed class SpecialOrderConfiguration : OrderConfiguration
+    {
+        public override void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new SpecialOrderConfiguration());
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Orders.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithGenericConfigurationHelper_ShouldTrigger()
     {
         var test = App(OrderGraph + @"
@@ -1120,27 +1165,15 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     [Fact]
     public async Task ExecuteDelete_WithConstructedGenericConfigurationHelper_ShouldTrigger()
     {
-        var test = App(@"
-    public class Order
-    {
-        public int Id { get; set; }
-        public IEnumerable<OrderLine> Lines { get; set; }
-    }
-
-    public sealed class OrderLine
-    {
-        public int Id { get; set; }
-        public Order Order { get; set; }
-    }
-
-    public sealed class OrderConfiguration<TEntity> : IEntityTypeConfiguration<TEntity> where TEntity : Order
+        var test = App(OrderGraph + @"
+    public sealed class OrderConfiguration<TEntity> : IEntityTypeConfiguration<TEntity> where TEntity : class
     {
         public void Configure(EntityTypeBuilder<TEntity> builder)
         {
-            ConfigureRelationship(builder);
+            ConfigureRelationship(new EntityTypeBuilder<Order>());
         }
 
-        private void ConfigureRelationship(EntityTypeBuilder<TEntity> builder)
+        private void ConfigureRelationship(EntityTypeBuilder<Order> builder)
         {
             builder.HasMany(o => o.Lines)
                 .WithOne(l => l.Order)
