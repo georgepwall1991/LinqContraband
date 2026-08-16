@@ -221,6 +221,63 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_DoesNotRegisterForAppliedConfigurationClientCascade()
+    {
+        var test = App(@"
+    public sealed class Order
+    {
+        public int Id { get; set; }
+        public System.Collections.Generic.IEnumerable<OrderLine> Lines { get; set; }
+    }
+
+    public sealed class OrderLine
+    {
+        public int Id { get; set; }
+        public Order Order { get; set; }
+    }
+
+    public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|#0:db.Orders.ExecuteDelete()|};
+        }
+    }
+");
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test
+        };
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC047")
+                .WithLocation(0)
+                .WithArguments("ExecuteDelete", "Order"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_RewritesEverySoftDeleteExecuteDelete()
     {
         var test = App(@"

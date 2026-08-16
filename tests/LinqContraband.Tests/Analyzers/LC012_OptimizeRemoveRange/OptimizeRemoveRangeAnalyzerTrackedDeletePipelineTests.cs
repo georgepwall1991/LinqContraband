@@ -30,9 +30,16 @@ namespace Microsoft.EntityFrameworkCore
         public object Entity { get; } = null;
     }
 
+    public interface IEntityTypeConfiguration<TEntity> where TEntity : class
+    {
+        void Configure(EntityTypeBuilder<TEntity> builder);
+    }
+
     public class ModelBuilder
     {
         public EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => new EntityTypeBuilder<TEntity>();
+        public ModelBuilder ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration) where TEntity : class => this;
+        public ModelBuilder ApplyConfigurationsFromAssembly(System.Reflection.Assembly assembly) => this;
     }
 
     public class EntityTypeBuilder<TEntity> where TEntity : class
@@ -146,6 +153,80 @@ namespace TestApp
             using var db = new AppDbContext();
             var ordersToDelete = db.Orders.Where(o => o.Id > 10);
             db.Orders.RemoveRange(ordersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithAppliedConfigurationClientCascade_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public class AppDbContext : DbContext
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var ordersToDelete = db.Orders.Where(o => o.Id > 10);
+            db.Orders.RemoveRange(ordersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_OnDbSetParameterWithAppliedConfigurationClientCascade_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class OrderConfiguration : IEntityTypeConfiguration<Order>
+    {
+        public void Configure(EntityTypeBuilder<Order> builder)
+        {
+            builder.HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        }
+    }
+
+    public class AppDbContext : DbContext
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfiguration(new OrderConfiguration());
+        }
+    }
+
+    public class Program
+    {
+        public void Purge(DbSet<Order> orders)
+        {
+            orders.RemoveRange(orders.Where(o => o.Id > 10));
         }
     }
 }" + PipelineMock;
