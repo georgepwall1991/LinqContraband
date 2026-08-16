@@ -213,3 +213,6 @@ indent_size = 2
 
 # LC046: Concurrent DbContext Operations - Overlapping EF Core work on the same context
 # dotnet_diagnostic.LC046.severity = warning
+
+# LC047: ExecuteDelete Bypasses Tracked Delete - SQL DELETE skips SaveChanges conversion or client cascade
+# dotnet_diagnostic.LC047.severity = warning

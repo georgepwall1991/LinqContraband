@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Analyzers.LC047_ExecuteDeleteBypassesTrackedDelete;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -27,6 +28,13 @@ public sealed partial class OptimizeRemoveRangeFixer
 
         if (HasSubsequentSaveChangesInvocation(invocation, semanticModel, cancellationToken))
             return false;
+
+        if (semanticModel.GetOperation(invocation, cancellationToken) is IInvocationOperation operation)
+        {
+            var evidence = TrackedDeletePipelineEvidence.Get(semanticModel.Compilation, cancellationToken);
+            if (OptimizeRemoveRangeAnalyzer.BypassesTrackedDeletePipeline(operation, evidence, cancellationToken))
+                return false;
+        }
 
         // Decline rather than emit an unsafe sync-over-async ExecuteDelete() when the call
         // sits in an async context but no awaitable ExecuteDeleteAsync overload is available.

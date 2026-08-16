@@ -24,10 +24,11 @@ EF Core's set-based APIs can be dramatically faster than loading every row, chan
 calling `SaveChanges`. The trade-off is that `ExecuteUpdate` and `ExecuteDelete` run immediately in the database and
 bypass EF Core change tracking.
 
-That makes two review questions important:
+That makes three review questions important:
 
 - Can this tracked loop or `RemoveRange` call safely become a set-based SQL operation?
 - Is every destructive bulk operation filtered before it touches rows?
+- Does `ExecuteDelete` skip a `SaveChanges` soft-delete conversion or client-cascade fix-up?
 
 The slow shape looks like this:
 
@@ -56,8 +57,9 @@ If the immediate problem is repeated `SaveChanges` calls rather than a set-based
 | Rule | What it detects | Review direction |
 | --- | --- | --- |
 | [LC032: use ExecuteUpdate for bulk updates](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html) | A provable tracked update loop followed by `SaveChanges` where a uniform scalar update can become `ExecuteUpdate`. | Use `ExecuteUpdate` or `ExecuteUpdateAsync` when bypassing tracking, callbacks, interceptors, and deferred-save timing is acceptable. |
-| [LC012: use ExecuteDelete instead of RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) | `RemoveRange(query)` where the argument is still query-shaped and no relevant later `SaveChanges` would make the rewrite behaviour-changing. | Use `ExecuteDelete` or `ExecuteDeleteAsync` after confirming cascades, interceptors, and unit-of-work timing are not required. |
+| [LC012: use ExecuteDelete instead of RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) | `RemoveRange(query)` where the argument is still query-shaped, no relevant later `SaveChanges` would make the rewrite behaviour-changing, and LC047 has not proven a tracked delete pipeline for that entity. | Use `ExecuteDelete` or `ExecuteDeleteAsync` after confirming cascades, interceptors, and unit-of-work timing are not required. |
 | [LC035: missing Where before ExecuteDelete or ExecuteUpdate](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html) | EF Core bulk execute calls on a query with no proven `Where` filter. | Add the tenant, lifecycle, account, or business filter before the bulk write. |
+| [LC047: ExecuteDelete bypasses the tracked delete pipeline](/LinqContraband/LC047_ExecuteDeleteBypassesTrackedDelete.html) | `ExecuteDelete` on an entity whose context converts `EntityState.Deleted` or uses `ClientCascade` / `ClientSetNull`. | Use `ExecuteUpdate` for a single bool conversion property, or keep `RemoveRange` + `SaveChanges` when client cascade or multi-property conversion is required. |
 
 ## Safer Bulk Write Patterns
 
@@ -115,6 +117,7 @@ dotnet_diagnostic.LC032.severity = suggestion
 
 # Bulk write safety
 dotnet_diagnostic.LC035.severity = warning
+dotnet_diagnostic.LC047.severity = warning
 ```
 
 Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) when these diagnostics should run

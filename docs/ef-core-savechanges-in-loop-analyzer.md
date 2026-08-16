@@ -51,7 +51,7 @@ await db.SaveChangesAsync();
 | --- | --- | --- |
 | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) | Direct `SaveChanges` or `SaveChangesAsync` calls inside `for`, `foreach`, `await foreach`, `while`, or `do` loops. | Move the save outside the loop when one batched commit preserves the business rule. |
 | [LC032: use ExecuteUpdate for bulk updates](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html) | A provable tracked update loop followed by `SaveChanges` where a uniform scalar change can become `ExecuteUpdate`. | Consider a set-based update when bypassing tracking, callbacks, interceptors, and deferred-save timing is acceptable. |
-| [LC012: use ExecuteDelete instead of RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) | Query-shaped `RemoveRange` calls that can avoid loading rows before delete. | Use `ExecuteDelete` only after checking cascade, interceptor, and unit-of-work timing requirements. |
+| [LC012: use ExecuteDelete instead of RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) | Query-shaped `RemoveRange` calls that can avoid loading rows before delete. | Use `ExecuteDelete` only after checking cascade, interceptor, and unit-of-work timing requirements. LC012 stays quiet when LC047 proves a tracked delete pipeline. |
 | [LC008: sync-over-async blocker](/LinqContraband/LC008_SyncBlocker.html) | Synchronous `SaveChanges` inside async control flow when `SaveChangesAsync` is available. | Use async EF Core APIs in async methods so request threads are not blocked. |
 
 ## Safer Write Patterns

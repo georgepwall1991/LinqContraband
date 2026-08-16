@@ -38,6 +38,7 @@ dotnet add package LinqContraband
 | Review global filter bypasses. | `IgnoreQueryFilters` can skip tenant, soft-delete, or security boundaries. | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
 | Bound destructive set-based writes. | Bulk delete/update without a filter can affect more rows than intended. | [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html) |
 | Prefer reviewed set-based writes for large batches. | Tracked loops and `RemoveRange` can load rows that EF Core can update or delete directly in SQL. | [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC012: ExecuteDelete over RemoveRange](/LinqContraband/LC012_OptimizeRemoveRange.html) |
+| Do not let ExecuteDelete skip a tracked delete conversion. | Soft-delete `SaveChanges` overrides and `ClientCascade` do not run for SQL `DELETE`. | [LC047: ExecuteDelete bypasses tracked delete](/LinqContraband/LC047_ExecuteDeleteBypassesTrackedDelete.html) |
 | Tag complex queries before they reach production. | Query tags make expensive SQL easier to trace in database telemetry. | [LC042: missing query tags](/LinqContraband/LC042_MissingQueryTags.html) |
 
 ## Quick Severity Policy
@@ -63,6 +64,7 @@ dotnet_diagnostic.LC008.severity = warning
 dotnet_diagnostic.LC026.severity = suggestion
 dotnet_diagnostic.LC043.severity = suggestion
 dotnet_diagnostic.LC046.severity = warning
+dotnet_diagnostic.LC047.severity = warning
 
 # Raw SQL and security-sensitive paths
 dotnet_diagnostic.LC018.severity = error

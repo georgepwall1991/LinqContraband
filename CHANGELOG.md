@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.60] - 2026-08-16
+
+### Added
+- LC047 warns when `ExecuteDelete` / `ExecuteDeleteAsync` bypasses a proven tracked delete pipeline: a `SaveChanges` or registered interceptor conversion of `EntityState.Deleted`, or Fluent `OnDelete(ClientCascade|ClientSetNull)` on the deleted principal. `HasQueryFilter` alone stays quiet. When Proof A names a single bool property assigned `true`, a code fix rewrites the call to `ExecuteUpdate` / `ExecuteUpdateAsync` `SetProperty`.
+
+### Changed
+- LC012 no longer reports or offers `ExecuteDelete` when the same LC047 pipeline evidence covers the `RemoveRange` entity and context, so the package cannot auto-fix a tracked delete into a hard SQL `DELETE`.
+
 ## [5.7.59] - 2026-08-13
 
 ### Fixed
