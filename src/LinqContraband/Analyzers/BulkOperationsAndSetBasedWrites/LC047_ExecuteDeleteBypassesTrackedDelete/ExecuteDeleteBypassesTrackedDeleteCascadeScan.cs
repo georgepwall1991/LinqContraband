@@ -88,6 +88,13 @@ internal sealed partial class TrackedDeletePipelineEvidence
         var targetDefinition = targetType.OriginalDefinition;
         for (var current = helperOwner; current != null; current = current.BaseType)
         {
+            if (current.SpecialType == SpecialType.System_Object ||
+                (current.Name == "DbContext" &&
+                 current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore"))
+            {
+                return false;
+            }
+
             if (SymbolEqualityComparer.Default.Equals(targetDefinition, current.OriginalDefinition))
                 return true;
         }

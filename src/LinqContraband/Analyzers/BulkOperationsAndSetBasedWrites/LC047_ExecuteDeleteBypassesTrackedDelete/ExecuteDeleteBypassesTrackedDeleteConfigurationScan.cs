@@ -223,15 +223,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
     private static bool IsConstructibleEntityTypeConfiguration(INamedTypeSymbol type)
     {
-        if (type.TypeKind != TypeKind.Class || type.IsAbstract || type.IsUnboundGenericType)
+        if (type.TypeKind != TypeKind.Class || type.IsAbstract || type.IsGenericType)
             return false;
-
-        foreach (var argument in type.TypeArguments)
-        {
-            if (argument.TypeKind == TypeKind.TypeParameter)
-                return false;
-        }
-
         foreach (var constructor in type.InstanceConstructors)
         {
             if (constructor.Parameters.Length == 0 &&
