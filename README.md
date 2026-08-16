@@ -604,7 +604,7 @@ call; if only the synchronous overload is available in an async context, no fix 
 - The `ExecuteDelete()` availability check is bound to the real `Microsoft.EntityFrameworkCore` namespace, so project-local or lookalike helpers do not enable the rule.
 - Mixed or multiple `RemoveRange(query, entity)` arguments stay quiet because no single `ExecuteDelete()` replacement preserves that call shape.
 - LC012 stays quiet when a later `SaveChanges()` can commit the pending removals, including outside the immediate block, because that rewrite would change unit-of-work timing. Saves in mutually exclusive branches or on provably different freshly-created context locals do not suppress the analyzer or fixer.
-- LC012 also stays quiet when the same compilation proves a tracked delete pipeline for that entity and context (LC047 evidence: `SaveChanges` conversion of `EntityState.Deleted`, or Fluent `ClientCascade` / `ClientSetNull` on the principal). Rewriting those `RemoveRange` calls to `ExecuteDelete` would physically delete rows the model meant to convert or cascade in memory.
+- LC012 also stays quiet when the same compilation proves a tracked delete pipeline for that entity and context (LC047 evidence: `SaveChanges` conversion of `EntityState.Deleted`, or Fluent `ClientCascade` / `ClientSetNull` on the principal), including `DbSet<T>` parameters when any source context covers the entity. Rewriting those `RemoveRange` calls to `ExecuteDelete` would physically delete rows the model meant to convert or cascade in memory.
 - The fixer is only offered when the query source can be rewritten without crossing context ownership; if a later save belongs to the query's context, the query flows through an arbitrary helper, or multiple query sources are combined, the diagnostic remains diagnostic-only.
 
 ---
@@ -1942,10 +1942,14 @@ Client cascade and multi-property conversions stay diagnostic-only.
 
 **🛡️ Reliability Notes:**
 - LC047 reports only when the compilation proves a `SaveChanges` / interceptor Deleted conversion or Fluent
-  `ClientCascade` / `ClientSetNull` on the deleted principal.
-- `HasQueryFilter` alone, name heuristics, unregistered interceptors, lookalike `ExecuteDelete` helpers, and
-  framework `DbContext` parameters stay quiet.
-- LC012 does not rewrite `RemoveRange` to `ExecuteDelete` when the same evidence covers that entity and context.
+  `ClientCascade` / `ClientSetNull` on the deleted principal. Generic contexts, derived interceptor types,
+  `OnConfiguring` locals assigned from `new TInterceptor()`, and same-type `OnModelCreating` helpers are in
+  scope. One-to-one Fluent reports only when `HasForeignKey<TDependent>` names the dependent.
+- `HasQueryFilter` alone, name heuristics, unregistered interceptors, DI-only interceptor registration,
+  `IEntityTypeConfiguration` Fluent, lookalike `ExecuteDelete` helpers, and framework `DbContext` parameters
+  stay quiet.
+- LC012 does not rewrite `RemoveRange` to `ExecuteDelete` when the same evidence covers that entity and
+  context, including `DbSet<T>` parameters when any source context covers the entity.
 
 ---
 

@@ -65,7 +65,10 @@ public sealed class ExecuteDeleteBypassesTrackedDeleteFixer : CodeFixProvider
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         var symbol = semanticModel?.GetSymbolInfo(invocation, cancellationToken).Symbol as IMethodSymbol;
-        var rewritten = RewriteInvocation(invocation, propertyName, symbol?.IsExtensionMethod == true);
+        var rewritten = RewriteInvocation(
+            invocation,
+            propertyName,
+            isReducedExtension: symbol == null || symbol.MethodKind == MethodKind.ReducedExtension);
         editor.ReplaceNode(invocation, rewritten);
         editor.EnsureUsing("Microsoft.EntityFrameworkCore");
         return editor.GetChangedDocument();
@@ -74,14 +77,14 @@ public sealed class ExecuteDeleteBypassesTrackedDeleteFixer : CodeFixProvider
     private static InvocationExpressionSyntax RewriteInvocation(
         InvocationExpressionSyntax invocation,
         string propertyName,
-        bool isExtensionMethod)
+        bool isReducedExtension)
     {
         var setter = SyntaxFactory.ParseExpression(
             $"setters => setters.SetProperty(e => e.{propertyName}, true)");
         var setterArgument = SyntaxFactory.Argument(setter);
 
         var newExpression = RenameExecuteDelete(invocation.Expression);
-        var newArguments = isExtensionMethod
+        var newArguments = isReducedExtension
             ? invocation.ArgumentList.Arguments.Insert(0, setterArgument)
             : InsertAfterSourceArgument(invocation.ArgumentList.Arguments, setterArgument);
 

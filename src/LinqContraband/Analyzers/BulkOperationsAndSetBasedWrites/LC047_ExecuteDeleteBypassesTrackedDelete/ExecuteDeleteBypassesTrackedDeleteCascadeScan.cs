@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -10,38 +11,55 @@ internal sealed partial class TrackedDeletePipelineEvidence
 {
     private void ScanOnModelCreatingCascades(INamedTypeSymbol contextType, CancellationToken cancellationToken)
     {
+        var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         foreach (var member in contextType.GetMembers("OnModelCreating"))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (member is not IMethodSymbol method)
                 continue;
 
-            foreach (var reference in method.DeclaringSyntaxReferences)
+            ScanCascadeMethodTree(method, contextType, visited, 0, cancellationToken);
+        }
+    }
+
+    private void ScanCascadeMethodTree(
+        IMethodSymbol method,
+        INamedTypeSymbol owningType,
+        HashSet<IMethodSymbol> visited,
+        int depth,
+        CancellationToken cancellationToken)
+    {
+        if (depth > 4 || !visited.Add(method))
+            return;
+
+        foreach (var reference in method.DeclaringSyntaxReferences)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reference.GetSyntax(cancellationToken) is not MethodDeclarationSyntax declaration)
+                continue;
+
+            var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+            var operation = model.GetOperation(declaration, cancellationToken);
+            if (operation == null)
+                continue;
+
+            foreach (var child in EnumerateOperations(operation))
             {
-                if (reference.GetSyntax(cancellationToken) is not MethodDeclarationSyntax declaration)
+                if (child is not IInvocationOperation invocation)
                     continue;
 
-                var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-                var operation = model.GetOperation(declaration, cancellationToken);
-                if (operation == null)
-                    continue;
-
-                foreach (var child in EnumerateOperations(operation))
+                if (invocation.TargetMethod.Name == "OnDelete" &&
+                    IsClientCascadeBehavior(invocation) &&
+                    TryGetRelationshipPrincipal(invocation, operation, cancellationToken, out var principal))
                 {
-                    if (child is not IInvocationOperation invocation ||
-                        invocation.TargetMethod.Name != "OnDelete")
-                    {
-                        continue;
-                    }
-
-                    if (!IsClientCascadeBehavior(invocation))
-                        continue;
-
-                    if (!TryGetRelationshipPrincipal(invocation, operation, cancellationToken, out var principal))
-                        continue;
-
-                    clientCascadePrincipals.Add(new TypePair(contextType, principal));
+                    clientCascadePrincipals.Add(new TypePair(CanonicalContext(owningType), principal));
                 }
+
+                var target = invocation.TargetMethod.OriginalDefinition;
+                if (!SymbolEqualityComparer.Default.Equals(target.ContainingType, owningType))
+                    continue;
+
+                ScanCascadeMethodTree(target, owningType, visited, depth + 1, cancellationToken);
             }
         }
     }
@@ -78,6 +96,20 @@ internal sealed partial class TrackedDeletePipelineEvidence
         out INamedTypeSymbol principal)
     {
         principal = null!;
+        if (onDelete.GetInvocationReceiverType() is INamedTypeSymbol receiver)
+        {
+            if (receiver.Name == "ReferenceCollectionBuilder" &&
+                receiver.TypeArguments.Length == 2 &&
+                receiver.TypeArguments[0] is INamedTypeSymbol collectionPrincipal)
+            {
+                principal = collectionPrincipal;
+                return true;
+            }
+
+            if (receiver.Name == "ReferenceReferenceBuilder" && receiver.TypeArguments.Length == 2)
+                return TryGetOneToOnePrincipal(onDelete, receiver, out principal);
+        }
+
         var current = onDelete.GetInvocationReceiver();
         IInvocationOperation? hasMany = null;
         IInvocationOperation? hasOne = null;
@@ -131,6 +163,87 @@ internal sealed partial class TrackedDeletePipelineEvidence
             return TryGetRelatedType(hasOne, out principal);
 
         return TryGetEntityBuilderType(entityBuilder, out principal);
+    }
+
+    private static bool TryGetOneToOnePrincipal(
+        IInvocationOperation onDelete,
+        INamedTypeSymbol builderType,
+        out INamedTypeSymbol principal)
+    {
+        principal = null!;
+        if (builderType.TypeArguments.Length != 2 ||
+            builderType.TypeArguments[0] is not INamedTypeSymbol entity ||
+            builderType.TypeArguments[1] is not INamedTypeSymbol related)
+        {
+            return false;
+        }
+
+        if (!TryGetForeignKeyDependent(onDelete, out var dependent))
+            return false;
+
+        if (SymbolEqualityComparer.Default.Equals(dependent, entity))
+        {
+            principal = related;
+            return true;
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(dependent, related))
+        {
+            principal = entity;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetForeignKeyDependent(IInvocationOperation onDelete, out INamedTypeSymbol dependent)
+    {
+        dependent = null!;
+        if (TryGetHasForeignKeyDependent(onDelete, out dependent))
+            return true;
+
+        var current = onDelete.GetInvocationReceiver();
+        for (var depth = 0; depth < 12 && current != null; depth++)
+        {
+            current = current.UnwrapConversions();
+            if (current is IInvocationOperation invocation)
+            {
+                if (TryGetHasForeignKeyDependent(invocation, out dependent))
+                    return true;
+
+                current = invocation.GetInvocationReceiver();
+                continue;
+            }
+
+            break;
+        }
+
+        for (var parent = onDelete.Parent; parent != null; parent = parent.Parent)
+        {
+            if (parent is IInvocationOperation invocation &&
+                TryGetHasForeignKeyDependent(invocation, out dependent))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetHasForeignKeyDependent(IInvocationOperation invocation, out INamedTypeSymbol dependent)
+    {
+        dependent = null!;
+        if (invocation.TargetMethod.Name != "HasForeignKey")
+            return false;
+
+        if (invocation.TargetMethod.TypeArguments.Length == 1 &&
+            invocation.TargetMethod.TypeArguments[0] is INamedTypeSymbol typeArgument)
+        {
+            dependent = typeArgument;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryGetEntityBuilderType(IInvocationOperation? invocation, out INamedTypeSymbol entityType)

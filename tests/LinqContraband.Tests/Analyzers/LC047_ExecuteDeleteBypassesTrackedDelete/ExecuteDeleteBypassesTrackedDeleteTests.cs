@@ -107,11 +107,18 @@ namespace Microsoft.EntityFrameworkCore
     public class ReferenceNavigationBuilder<TEntity, TRelated> where TEntity : class where TRelated : class
     {
         public ReferenceCollectionBuilder<TRelated, TEntity> WithMany(Expression<Func<TRelated, IEnumerable<TEntity>>> navigation = null) => new ReferenceCollectionBuilder<TRelated, TEntity>();
+        public ReferenceReferenceBuilder<TEntity, TRelated> WithOne(Expression<Func<TRelated, TEntity>> navigation = null) => new ReferenceReferenceBuilder<TEntity, TRelated>();
     }
 
     public class ReferenceCollectionBuilder<TPrincipal, TDependent> where TPrincipal : class where TDependent : class
     {
         public ReferenceCollectionBuilder<TPrincipal, TDependent> OnDelete(DeleteBehavior deleteBehavior) => this;
+    }
+
+    public class ReferenceReferenceBuilder<TEntity, TRelated> where TEntity : class where TRelated : class
+    {
+        public ReferenceReferenceBuilder<TEntity, TRelated> OnDelete(DeleteBehavior deleteBehavior) => this;
+        public ReferenceReferenceBuilder<TEntity, TRelated> HasForeignKey<TDependent>(Expression<Func<TDependent, object>> foreignKeyExpression) where TDependent : class => this;
     }
 
     public abstract class SetPropertyCalls<TSource>

@@ -55,7 +55,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
             foreach (var interceptorType in GetRegisteredInterceptorTypes(type, cancellationToken))
             {
-                if (!interceptorConversions.TryGetValue(interceptorType, out var conversion))
+                if (!TryGetInterceptorConversion(interceptorType, interceptorConversions, out var conversion))
                     continue;
 
                 ApplyConversion(type, conversion);
@@ -74,20 +74,36 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
     private void ApplyConversion(INamedTypeSymbol contextType, ConversionScan conversion)
     {
+        var canonicalContext = CanonicalContext(contextType);
         if (conversion.EntityTypes.Count == 0)
         {
-            contextWideConversions.Add(contextType);
+            contextWideConversions.Add(canonicalContext);
             if (conversion.SingleBoolTrueProperty != null)
-                contextWideProperties[contextType] = conversion.SingleBoolTrueProperty;
+                contextWideProperties[canonicalContext] = conversion.SingleBoolTrueProperty;
             return;
         }
 
         foreach (var entity in conversion.EntityTypes)
         {
-            entityConversions.Add(new TypePair(contextType, entity));
+            entityConversions.Add(new TypePair(canonicalContext, entity));
             if (conversion.SingleBoolTrueProperty != null)
-                conversionProperties[new TypePair(contextType, entity)] = conversion.SingleBoolTrueProperty;
+                conversionProperties[new TypePair(canonicalContext, entity)] = conversion.SingleBoolTrueProperty;
         }
+    }
+
+    private static bool TryGetInterceptorConversion(
+        INamedTypeSymbol interceptorType,
+        Dictionary<INamedTypeSymbol, ConversionScan> interceptorConversions,
+        out ConversionScan conversion)
+    {
+        for (var current = interceptorType; current != null; current = current.BaseType)
+        {
+            if (interceptorConversions.TryGetValue(current, out conversion))
+                return true;
+        }
+
+        conversion = default;
+        return false;
     }
 
     private static bool IsFrameworkDbContext(INamedTypeSymbol type)

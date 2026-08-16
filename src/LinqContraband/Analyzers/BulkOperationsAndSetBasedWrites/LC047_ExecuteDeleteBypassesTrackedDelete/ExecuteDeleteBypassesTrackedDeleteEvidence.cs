@@ -95,6 +95,26 @@ internal sealed partial class TrackedDeletePipelineEvidence
         return true;
     }
 
+    public bool IsEntityCoveredOnAnyContext(ITypeSymbol entityType)
+    {
+        if (contextWideConversions.Count > 0)
+            return true;
+
+        foreach (var pair in entityConversions)
+        {
+            if (EntityMatchesRegistered(entityType, pair.Right))
+                return true;
+        }
+
+        foreach (var pair in clientCascadePrincipals)
+        {
+            if (EntityMatchesRegistered(entityType, pair.Right))
+                return true;
+        }
+
+        return false;
+    }
+
     private static System.Collections.Generic.IEnumerable<INamedTypeSymbol> EnumerateContextTypes(ITypeSymbol contextType)
     {
         for (var current = contextType as INamedTypeSymbol; current != null; current = current.BaseType)
@@ -105,7 +125,9 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 yield break;
             }
 
-            yield return current;
+            yield return CanonicalContext(current);
         }
     }
+
+    private static INamedTypeSymbol CanonicalContext(INamedTypeSymbol type) => type.OriginalDefinition;
 }

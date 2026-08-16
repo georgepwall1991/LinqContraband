@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC047 warns when ExecuteDelete skips a proven SaveChanges soft-delete conversion or client cascade. LC012 no longer rewrites RemoveRange to ExecuteDelete on those models. A single-property IsDeleted conversion can be rewritten to ExecuteUpdate.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC047 warns when ExecuteDelete skips a proven SaveChanges soft-delete conversion or client cascade, including generic contexts, derived interceptors, and HasOne.WithOne with HasForeignKey. LC012 no longer rewrites RemoveRange to ExecuteDelete on those models, including DbSet parameters. A single-property IsDeleted conversion can be rewritten to ExecuteUpdate, including unreduced ExecuteDelete(query) calls.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

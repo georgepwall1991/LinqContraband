@@ -39,7 +39,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
                     foreach (var argument in invocation.Arguments)
                     {
-                        foreach (var interceptorType in GetArgumentInterceptorTypes(argument.Value))
+                        foreach (var interceptorType in GetArgumentInterceptorTypes(
+                                     argument.Value,
+                                     operation,
+                                     cancellationToken))
                             yield return interceptorType;
                     }
                 }
@@ -47,7 +50,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
-    private static IEnumerable<INamedTypeSymbol> GetArgumentInterceptorTypes(IOperation argument)
+    private static IEnumerable<INamedTypeSymbol> GetArgumentInterceptorTypes(
+        IOperation argument,
+        IOperation executableRoot,
+        CancellationToken cancellationToken)
     {
         var current = argument.UnwrapConversions();
         switch (current)
@@ -56,16 +62,32 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 yield return created;
                 yield break;
             case IConversionOperation conversion:
-                foreach (var type in GetArgumentInterceptorTypes(conversion.Operand))
+                foreach (var type in GetArgumentInterceptorTypes(conversion.Operand, executableRoot, cancellationToken))
                     yield return type;
                 yield break;
             case IArrayCreationOperation arrayCreation when arrayCreation.Initializer != null:
                 foreach (var element in arrayCreation.Initializer.ElementValues)
                 {
-                    foreach (var type in GetArgumentInterceptorTypes(element))
+                    foreach (var type in GetArgumentInterceptorTypes(element, executableRoot, cancellationToken))
                         yield return type;
                 }
 
+                yield break;
+            case ILocalReferenceOperation local:
+                if (LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                        executableRoot,
+                        local.Local,
+                        local.Syntax.SpanStart,
+                        out var assigned,
+                        cancellationToken))
+                {
+                    foreach (var type in GetArgumentInterceptorTypes(assigned, executableRoot, cancellationToken))
+                        yield return type;
+                    yield break;
+                }
+
+                if (current.Type is INamedTypeSymbol localType)
+                    yield return localType;
                 yield break;
             default:
                 if (current.Type is INamedTypeSymbol named)

@@ -63,16 +63,18 @@ LC047 reports only when pipeline evidence is proven in the current compilation.
 - reads `EntityState.Deleted`, and
 - either assigns `EntityState.Modified` / `Unchanged` or writes a property / `Property("…").CurrentValue` on that entry.
 
-Untyped `Entries()` with no cast covers the whole context. `Entries<T>()` or a cast of `.Entity` to `T` / an interface covers that type and proven derived types or implementers. Same-type private helpers are followed to depth 4.
+Untyped `Entries()` with no cast covers the whole context. `Entries<T>()` or a cast of `.Entity` to `T` / an interface covers that type and proven derived types or implementers. Same-type private helpers are followed to depth 4. Constructed generic contexts such as `AppDbContext<int>` match conversion stored on `AppDbContext<TTenant>`. A registered interceptor may be a derived type, or a base-typed local assigned from `new TInterceptor()`.
 
-**Proof B — client cascade.** Fluent `OnDelete(DeleteBehavior.ClientCascade)` or `ClientSetNull` on a relationship whose principal is the `ExecuteDelete` entity. Database `Cascade` stays quiet because SQL will cascade. `ExecuteDelete` on the dependent stays quiet.
+**Proof B — client cascade.** Fluent `OnDelete(DeleteBehavior.ClientCascade)` or `ClientSetNull` on a relationship whose principal is the `ExecuteDelete` entity. `OnDelete` on `ReferenceCollectionBuilder<TPrincipal, TDependent>` uses `TPrincipal`. One-to-one `HasOne().WithOne()` reports only when `HasForeignKey<TDependent>` names the dependent; without that, both sides stay quiet rather than guessing. Same-type helpers called from `OnModelCreating` are followed to depth 4. Database `Cascade` stays quiet because SQL will cascade. `ExecuteDelete` on the dependent stays quiet.
 
 ### When it stays quiet (non-goals)
 
 - `HasQueryFilter(e => !e.IsDeleted)` alone. Filter-only models still hard-delete on `Remove` + `SaveChanges`.
 - Name heuristics (`IsDeleted`, `DeletedAt`) without a proven Deleted-state handler.
 - `ExecuteUpdate` skipping `UpdatedAt` / interceptors (different intent).
-- Unregistered interceptors, and interceptors with no source in the compilation.
+- Unregistered interceptors, interceptors registered only through DI (`AddDbContext` / `AddInterceptors` outside `OnConfiguring`), and interceptors with no source in the compilation.
+- `IEntityTypeConfiguration<T>` / `ApplyConfigurationsFromAssembly` Fluent chains. Proof B reads `OnModelCreating` and same-type helpers only.
+- `HasOne().WithOne()` without `HasForeignKey<TDependent>`.
 - Lookalike `ExecuteDelete` helpers outside `Microsoft.EntityFrameworkCore`.
 - `ExecuteDelete` on a framework `DbContext` parameter whose concrete type is unknown.
 - A different context type than the one that owns the proven pipeline.
@@ -85,9 +87,10 @@ When Proof A names a **single** property assigned constant `true` and that prope
 | --- | --- |
 | `query.ExecuteDelete()` | `query.ExecuteUpdate(setters => setters.SetProperty(e => e.Prop, true))` |
 | `query.ExecuteDeleteAsync(...)` | `query.ExecuteUpdateAsync(setters => setters.SetProperty(e => e.Prop, true), ...)` |
+| `RelationalQueryableExtensions.ExecuteDelete(query)` | `RelationalQueryableExtensions.ExecuteUpdate(query, setters => setters.SetProperty(e => e.Prop, true))` |
 
 Client cascade, helper-method interceptors, shadow-only properties, and multi-property conversions stay diagnostic-only: the safe alternative is `RemoveRange` + `SaveChanges` or an explicit child delete, which changes unit-of-work timing.
 
 ## LC012 coupling
 
-If Proof A or Proof B covers the `RemoveRange` entity and context, LC012 does not report and does not offer `ExecuteDelete`. Shipping LC047 without that gate would diagnose a hard delete and auto-fix into it.
+If Proof A or Proof B covers the `RemoveRange` entity and context, LC012 does not report and does not offer `ExecuteDelete`. When the `RemoveRange` receiver does not resolve to a context (a `DbSet<T>` parameter), LC012 also stays quiet if any source `DbContext` in the compilation covers that entity. Shipping LC047 without that gate would diagnose a hard delete and auto-fix into it.

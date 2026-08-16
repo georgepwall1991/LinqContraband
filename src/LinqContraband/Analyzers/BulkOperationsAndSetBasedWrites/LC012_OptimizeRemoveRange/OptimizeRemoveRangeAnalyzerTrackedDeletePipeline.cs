@@ -13,20 +13,18 @@ public sealed partial class OptimizeRemoveRangeAnalyzer
         TrackedDeletePipelineEvidence evidence,
         CancellationToken cancellationToken)
     {
-        if (!TryGetRemoveRangeTarget(invocation, cancellationToken, out var entityType, out var contextType))
+        if (!TryGetRemoveRangeEntity(invocation, out var entityType))
             return false;
+
+        if (!TryGetRemoveRangeContext(invocation, cancellationToken, out var contextType))
+            return evidence.IsEntityCoveredOnAnyContext(entityType);
 
         return evidence.IsCovered(contextType, entityType);
     }
 
-    private static bool TryGetRemoveRangeTarget(
-        IInvocationOperation invocation,
-        CancellationToken cancellationToken,
-        out ITypeSymbol entityType,
-        out ITypeSymbol contextType)
+    private static bool TryGetRemoveRangeEntity(IInvocationOperation invocation, out ITypeSymbol entityType)
     {
         entityType = null!;
-        contextType = null!;
 
         if (invocation.Arguments.Length == 1)
         {
@@ -43,9 +41,15 @@ public sealed partial class OptimizeRemoveRangeAnalyzer
             entityType = containing.TypeArguments[0];
         }
 
-        if (entityType == null)
-            return false;
+        return entityType != null;
+    }
 
+    private static bool TryGetRemoveRangeContext(
+        IInvocationOperation invocation,
+        CancellationToken cancellationToken,
+        out ITypeSymbol contextType)
+    {
+        contextType = null!;
         var executableRoot = invocation.FindOwningExecutableRoot();
         var origin = invocation.TargetMethod.ContainingType.IsDbContext()
             ? invocation.Instance
