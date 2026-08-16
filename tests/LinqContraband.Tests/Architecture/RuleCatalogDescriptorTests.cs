@@ -31,6 +31,28 @@ public sealed class RuleCatalogDescriptorTests
     }
 
     [Fact]
+    public void LC047_CatalogContract_DescribesExecuteDeleteTrackedDeletePipeline()
+    {
+        var rule = RuleCatalog.All.SingleOrDefault(entry => entry.Id == "LC047");
+
+        Assert.True(rule != null, "LC047 should be present in the rule catalog.");
+        Assert.Equal("LC047_ExecuteDeleteBypassesTrackedDelete", rule!.Slug);
+        Assert.Equal("ExecuteDelete bypasses the tracked delete pipeline", rule.Title);
+        Assert.Equal("Safety", rule.Category);
+        Assert.Equal("Bulk Operations & Set-Based Writes", rule.Domain);
+        Assert.Equal(DiagnosticSeverity.Warning, rule.Severity);
+        Assert.Equal("ExecuteDeleteBypassesTrackedDeleteAnalyzer", rule.AnalyzerTypeName);
+        Assert.Equal("ExecuteDeleteBypassesTrackedDeleteFixer", rule.FixerTypeName);
+        Assert.True(rule.HasCodeFix);
+
+        var analyzerAssembly = typeof(LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer).Assembly;
+        var analyzerType = analyzerAssembly.GetTypes()
+            .SingleOrDefault(type => type.Name == rule.AnalyzerTypeName);
+
+        Assert.True(analyzerType != null, "LC047 should expose ExecuteDeleteBypassesTrackedDeleteAnalyzer.");
+    }
+
+    [Fact]
     public void RuleCatalog_MatchesAnalyzerDescriptors()
     {
         var analyzerAssembly = typeof(LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer).Assembly;

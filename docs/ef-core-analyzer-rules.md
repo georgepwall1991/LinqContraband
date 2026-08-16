@@ -1,14 +1,14 @@
 ---
 layout: default
 title: EF Core Analyzer Rules
-description: A practical guide to LinqContraband's 46 EF Core analyzer rules for query performance, loading, tracking, async execution, raw SQL safety, and CI policy.
+description: A practical guide to LinqContraband's 47 EF Core analyzer rules for query performance, loading, tracking, async execution, raw SQL safety, and CI policy.
 permalink: /ef-core-analyzer-rules/
 body_class: page-analyzer-rules
 ---
 
 # EF Core Analyzer Rules
 
-LinqContraband provides 46 EF Core analyzer rules for teams that want repeatable query review in the IDE and CI. The
+LinqContraband provides 47 EF Core analyzer rules for teams that want repeatable query review in the IDE and CI. The
 rules cover LINQ query shape, materialization, loading, async execution, tracking, bulk operations, schema modeling, and
 raw SQL safety.
 
@@ -30,7 +30,7 @@ catalog.
 | Loading and includes | Missing includes, cartesian explosion, excessive eager loading, deep include chains, and untagged complex queries. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html), [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [EF Core Include analyzer](/LinqContraband/ef-core-include-analyzer/) |
 | Execution and async | Database work inside loops, synchronous or overlapping same-context EF Core calls, repeated saves, missing cancellation tokens, and async-stream buffering. | [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html), [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/), [EF Core CancellationToken analyzer](/LinqContraband/ef-core-cancellation-token-analyzer/) |
 | Tracking and context lifetime | Missing `AsNoTracking`, no-tracking writes, mixed tracking modes, repeated `SaveChanges`, and DbContext lifetime mistakes. | [LC030: DbContext lifetime](/LinqContraband/LC030_DbContextInSingleton.html), [LC036: context captured across threads](/LinqContraband/LC036_DbContextCapturedAcrossThreads.html), [EF Core DbContext lifetime analyzer](/LinqContraband/ef-core-dbcontext-lifetime-analyzer/) |
-| Bulk operations and modeling | Set-based write opportunities, unbounded bulk updates or deletes, missing keys, and missing explicit foreign keys. | [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html), [EF Core ExecuteUpdate analyzer](/LinqContraband/ef-core-executeupdate-analyzer/) |
+| Bulk operations and modeling | Set-based write opportunities, unbounded bulk updates or deletes, tracked-delete pipeline bypasses, missing keys, and missing explicit foreign keys. | [LC047: ExecuteDelete bypasses tracked delete](/LinqContraband/LC047_ExecuteDeleteBypassesTrackedDelete.html), [LC032: ExecuteUpdate](/LinqContraband/LC032_ExecuteUpdateForBulkUpdates.html), [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html), [EF Core ExecuteUpdate analyzer](/LinqContraband/ef-core-executeupdate-analyzer/) |
 | Raw SQL and security | Interpolated raw SQL, constructed SQL strings, unsafe command SQL, and query-filter bypasses. | [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html), [LC034: interpolated command SQL](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html), [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
 
 ## Rules To Enable First
@@ -65,6 +65,10 @@ dotnet_diagnostic.LC008.severity = warning
 dotnet_diagnostic.LC026.severity = suggestion
 dotnet_diagnostic.LC043.severity = suggestion
 dotnet_diagnostic.LC046.severity = warning
+
+# Silent data loss
+dotnet_diagnostic.LC044.severity = warning
+dotnet_diagnostic.LC047.severity = warning
 ```
 
 Keep broader design guidance as warnings until the team has reviewed existing findings. Promote a rule to `error` only

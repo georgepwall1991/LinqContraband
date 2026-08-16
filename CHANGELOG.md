@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.60] - 2026-08-16
+
+### Added
+- LC047 warns when `ExecuteDelete` / `ExecuteDeleteAsync` bypasses a proven tracked delete pipeline: a `SaveChanges` or registered interceptor conversion of `EntityState.Deleted`, or Fluent `OnDelete(ClientCascade|ClientSetNull)` on the deleted principal. `HasQueryFilter` alone stays quiet. When Proof A names a single bool property assigned `true`, a code fix rewrites the call to `ExecuteUpdate` / `ExecuteUpdateAsync` `SetProperty`.
+
+### Changed
+- LC012 no longer reports or offers `ExecuteDelete` when the same LC047 pipeline evidence covers the `RemoveRange` entity and context, including `DbSet<T>` parameters when any source context covers that entity, so the package cannot auto-fix a tracked delete into a hard SQL `DELETE`.
+
+### Fixed
+- Pre-ship review of LC047: the fixer now inserts `SetProperty` after the source argument on unreduced `RelationalQueryableExtensions.ExecuteDelete(query)` calls; constructed generic contexts match their unbound definition; derived interceptor types and base-typed locals assigned from `new TInterceptor()` count as registered; Proof B uses `ReferenceCollectionBuilder<TPrincipal, TDependent>` type arguments, requires `HasForeignKey<TDependent>` for `HasOne().WithOne()`, and follows same-type `OnModelCreating` helpers.
+
 ## [5.7.59] - 2026-08-13
 
 ### Fixed

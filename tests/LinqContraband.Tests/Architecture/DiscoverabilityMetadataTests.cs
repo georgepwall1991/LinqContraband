@@ -97,6 +97,7 @@ public sealed class DiscoverabilityMetadataTests
         Assert.Contains($"Version=\"{version}\"", readme, StringComparison.Ordinal);
         Assert.Contains("LC001", readme, StringComparison.Ordinal);
         Assert.Contains("LC046", readme, StringComparison.Ordinal);
+        Assert.Contains("LC047", readme, StringComparison.Ordinal);
         Assert.Contains("stays quiet", readme, StringComparison.OrdinalIgnoreCase);
 
         // NuGet.org requires absolute HTTPS image URLs in PackageReadmeFile content.

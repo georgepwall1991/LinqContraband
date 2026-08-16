@@ -35,7 +35,7 @@ dotnet add package LinqContraband
 - `SaveChanges` or `SaveChangesAsync` inside loops
 - Missing `AsNoTracking()` in read-only paths
 - Unsafe raw SQL interpolation and constructed SQL strings
-- Silent no-tracking writes and mixed tracking modes
+- Silent no-tracking writes, mixed tracking modes, and hard deletes that skip a tracked conversion
 - Bulk update/delete operations without an explicit filter
 
 For Include and eager-loading review, see the [EF Core Include analyzer guide](/LinqContraband/ef-core-include-analyzer/).
@@ -70,7 +70,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 
 ## Browse the Rules
 
-The full catalog contains 46 rules grouped by domain:
+The full catalog contains 47 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
@@ -92,6 +92,8 @@ The full catalog contains 46 rules grouped by domain:
 - [LC007: N+1 query loops](/LinqContraband/LC007_NPlusOneLooper.html)
 - [LC045: missing include](/LinqContraband/LC045_MissingInclude.html)
 - [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html)
+- [LC044: silent no-tracking writes](/LinqContraband/LC044_AsNoTrackingThenModifySilentWrite.html)
+- [LC047: ExecuteDelete bypasses tracked delete](/LinqContraband/LC047_ExecuteDeleteBypassesTrackedDelete.html)
 - [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html)
 - [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html)
 - [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Analyzers.LC047_ExecuteDeleteBypassesTrackedDelete;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -46,10 +47,20 @@ public sealed partial class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(InitializeCompilation);
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void InitializeCompilation(CompilationStartAnalysisContext context)
+    {
+        var evidence = TrackedDeletePipelineEvidence.Get(context.Compilation, context.CancellationToken);
+        context.RegisterOperationAction(
+            operationContext => AnalyzeInvocation(operationContext, evidence),
+            OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        TrackedDeletePipelineEvidence evidence)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -67,6 +78,9 @@ public sealed partial class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
             return;
 
         if (HasSubsequentSaveChangesInvocation(invocation, context.CancellationToken))
+            return;
+
+        if (BypassesTrackedDeletePipeline(invocation, evidence, context.CancellationToken))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));

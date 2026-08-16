@@ -456,6 +456,15 @@
       "ruleIds": [
         "LC046"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC047_ExecuteDeleteBypassesTrackedDelete/ExecuteDeleteBypassesTrackedDeleteSample.cs",
+      "samplePaths": [
+        "Samples/LC047_ExecuteDeleteBypassesTrackedDelete/ExecuteDeleteBypassesTrackedDeleteSample.cs"
+      ],
+      "ruleIds": [
+        "LC047"
+      ]
     }
   ]
 }

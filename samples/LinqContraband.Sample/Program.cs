@@ -36,6 +36,7 @@ using LinqContraband.Sample.Samples.LC043_AsyncEnumerableBuffering;
 using LinqContraband.Sample.Samples.LC044_AsNoTrackingThenModify;
 using LinqContraband.Sample.Samples.LC045_MissingInclude;
 using LinqContraband.Sample.Samples.LC046_ConcurrentDbContextOperations;
+using LinqContraband.Sample.Samples.LC047_ExecuteDeleteBypassesTrackedDelete;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -98,5 +99,6 @@ internal class Program
         AsNoTrackingThenModifySample.Run(db);
         MissingIncludeSample.Run(db);
         await ConcurrentDbContextOperationsSample.RunAsync(db, CancellationToken.None);
+        ExecuteDeleteBypassesTrackedDeleteSample.Run();
     }
 }

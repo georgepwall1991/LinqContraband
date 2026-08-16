@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.59</Version>
+        <Version>5.7.60</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Code fixes that add a using after rewriting a descendant no longer crash on files with no file-level using directives (common with implicit/global usings). Duplicate EnsureUsing calls for the same namespace are skipped.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC047 warns when ExecuteDelete skips a proven SaveChanges soft-delete conversion or client cascade, including generic contexts, derived interceptors, and HasOne.WithOne with HasForeignKey. LC012 no longer rewrites RemoveRange to ExecuteDelete on those models, including DbSet parameters. A single-property IsDeleted conversion can be rewritten to ExecuteUpdate, including unreduced ExecuteDelete(query) calls.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

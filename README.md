@@ -42,13 +42,13 @@ When the analyzer cannot prove an EF-backed query shape statically, it **stays q
 ## Install
 
 ```xml
-  <PackageReference Include="LinqContraband" Version="5.7.59" PrivateAssets="all" />
+  <PackageReference Include="LinqContraband" Version="5.7.60" PrivateAssets="all" />
 ```
 
 Or:
 
 ```bash
-dotnet add package LinqContraband --version 5.7.59
+dotnet add package LinqContraband --version 5.7.60
 ```
 
 **No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
@@ -119,7 +119,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 ## Rule Details
 
-> **46 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **47 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ## 🗺️ Rule Neighborhoods
 
@@ -132,7 +132,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | Loading & Includes | LC006, LC019, LC028, LC038, LC042, LC045 |
 | Execution & Async | LC007, LC008, LC026, LC036, LC043, LC046 |
 | Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044 |
-| Bulk Operations & Set-Based Writes | LC012, LC032, LC035 |
+| Bulk Operations & Set-Based Writes | LC012, LC032, LC035, LC047 |
 | Schema & Modeling | LC011, LC027 |
 | Raw SQL & Security | LC018, LC021, LC034, LC037 |
 
@@ -604,7 +604,8 @@ call; if only the synchronous overload is available in an async context, no fix 
 - The `ExecuteDelete()` availability check is bound to the real `Microsoft.EntityFrameworkCore` namespace, so project-local or lookalike helpers do not enable the rule.
 - Mixed or multiple `RemoveRange(query, entity)` arguments stay quiet because no single `ExecuteDelete()` replacement preserves that call shape.
 - LC012 stays quiet when a later `SaveChanges()` can commit the pending removals, including outside the immediate block, because that rewrite would change unit-of-work timing. Saves in mutually exclusive branches or on provably different freshly-created context locals do not suppress the analyzer or fixer.
-- The fixer is only offered when the query source can be rewritten without crossing context ownership; if a later save belongs to the query's context, the query flows through an arbitrary helper, or multiple query sources are combined, the diagnostic remains manual.
+- LC012 also stays quiet when the same compilation proves a tracked delete pipeline for that entity and context (LC047 evidence: `SaveChanges` conversion of `EntityState.Deleted`, or Fluent `ClientCascade` / `ClientSetNull` on the principal), including `DbSet<T>` parameters when any source context covers the entity. Rewriting those `RemoveRange` calls to `ExecuteDelete` would physically delete rows the model meant to convert or cascade in memory.
+- The fixer is only offered when the query source can be rewritten without crossing context ownership; if a later save belongs to the query's context, the query flows through an arbitrary helper, or multiple query sources are combined, the diagnostic remains diagnostic-only.
 
 ---
 
@@ -1899,6 +1900,56 @@ var roles = await db.Roles.ToListAsync(cancellationToken);
 - `Task.Run`, `Parallel`, thread-pool, `Thread`, and timer context capture remains LC036's responsibility.
 - There is no automatic fix because sequential execution and separate contexts have different transaction, tracking,
   lifetime, and consistency semantics.
+
+---
+
+### LC047: ExecuteDelete Bypasses the Tracked Delete Pipeline
+
+`ExecuteDelete` issues a SQL `DELETE`. It does not run `SaveChanges` overrides, save interceptors, or client-cascade
+fix-up. A `HasQueryFilter(e => !e.IsDeleted)` model still looks protected because already-deleted rows stay hidden,
+while live rows are physically destroyed.
+
+**❌ The Crime:**
+
+```csharp
+public override int SaveChanges()
+{
+    foreach (var entry in ChangeTracker.Entries())
+    {
+        if (entry.State == EntityState.Deleted)
+        {
+            entry.State = EntityState.Modified;
+            ((ISoftDelete)entry.Entity).IsDeleted = true;
+        }
+    }
+    return base.SaveChanges();
+}
+
+await db.Users.Where(u => u.LastLogin < cutoff).ExecuteDeleteAsync(); // LC047
+```
+
+**✅ The Fix:**
+When the conversion writes a single bool property, keep the set-based write:
+
+```csharp
+await db.Users
+    .Where(u => u.LastLogin < cutoff)
+    .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.IsDeleted, true));
+```
+
+**🔧 Code fix:** Offered only when Proof A names a single property assigned constant `true` that exists on the entity.
+Client cascade and multi-property conversions stay diagnostic-only.
+
+**🛡️ Reliability Notes:**
+- LC047 reports only when the compilation proves a `SaveChanges` / interceptor Deleted conversion or Fluent
+  `ClientCascade` / `ClientSetNull` on the deleted principal. Generic contexts, derived interceptor types,
+  `OnConfiguring` locals assigned from `new TInterceptor()`, and same-type `OnModelCreating` helpers are in
+  scope. One-to-one Fluent reports only when `HasForeignKey<TDependent>` names the dependent.
+- `HasQueryFilter` alone, name heuristics, unregistered interceptors, DI-only interceptor registration,
+  `IEntityTypeConfiguration` Fluent, lookalike `ExecuteDelete` helpers, and framework `DbContext` parameters
+  stay quiet.
+- LC012 does not rewrite `RemoveRange` to `ExecuteDelete` when the same evidence covers that entity and
+  context, including `DbSet<T>` parameters when any source context covers the entity.
 
 ---
 
