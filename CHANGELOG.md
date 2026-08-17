@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.64] - 2026-08-16
+
+### Fixed
+- LC046 now reports repeated calls to a direct three-parameter local helper when the existing one- and two-parameter safety proofs still hold: a stable captured context, or exactly one `DbContext` parameter evaluated first and bound to the same proven context at both calls, with companion parameters unused or used only in non-throwing direct EF arguments. An omitted optional third parameter can retain the diagnostic when the default cannot prevent the task from starting. Helpers with four or more parameters, helper chains, branches, multi-operation bodies, distinct or reassigned contexts, throwing call-site or helper-body arguments including nullable instance method-group receivers, definitely cancelled forwarded tokens, two `DbContext` parameters, and helper-local contexts remain quiet.
+
 ## [5.7.63] - 2026-08-16
 
 ### Fixed
