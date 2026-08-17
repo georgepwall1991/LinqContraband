@@ -58,6 +58,11 @@ namespace Microsoft.EntityFrameworkCore
         public ReferenceCollectionBuilder<TPrincipal, TDependent> OnDelete(DeleteBehavior deleteBehavior) => this;
     }
 
+    public class DbContextOptionsBuilder
+    {
+        public DbContextOptionsBuilder AddInterceptors(params object[] interceptors) => this;
+    }
+
     public class DbContext : IDisposable
     {
         public ChangeTracker ChangeTracker { get; } = new ChangeTracker();
@@ -84,6 +89,43 @@ namespace Microsoft.EntityFrameworkCore
         public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
     }
 }
+
+namespace Microsoft.EntityFrameworkCore.Diagnostics
+{
+    public struct InterceptionResult<TResult>
+    {
+        public static InterceptionResult<TResult> Empty => default;
+    }
+
+    public class DbContextEventData
+    {
+        public DbContext Context { get; } = null;
+    }
+
+    public abstract class SaveChangesInterceptor : ISaveChangesInterceptor
+    {
+        public virtual InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) => result;
+    }
+
+    public interface ISaveChangesInterceptor
+    {
+    }
+}
+
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public interface IServiceCollection
+    {
+    }
+
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+    }
+}
 ";
 
     private const string Usings = @"
@@ -92,6 +134,8 @@ using System.Collections.Generic;
 using System.Linq;
 using TestNamespace;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 ";
 
     [Fact]
@@ -292,6 +336,100 @@ namespace TestApp
                 }
             }
             return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Purge(DbSet<User> users)
+        {
+            users.RemoveRange(users.Where(u => u.Id > 10));
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithAddDbContextAddInterceptors_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class SoftDeleteInterceptor : SaveChangesInterceptor
+    {
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+        {
+            foreach (var entry in eventData.Context.ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return result;
+        }
+    }
+
+    public class AppDbContext : DbContext
+    {
+    }
+
+    public class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_OnDbSetParameterWithAddDbContextAddInterceptors_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class SoftDeleteInterceptor : SaveChangesInterceptor
+    {
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+        {
+            foreach (var entry in eventData.Context.ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return result;
+        }
+    }
+
+    public class AppDbContext : DbContext
+    {
+    }
+
+    public class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()));
         }
     }
 

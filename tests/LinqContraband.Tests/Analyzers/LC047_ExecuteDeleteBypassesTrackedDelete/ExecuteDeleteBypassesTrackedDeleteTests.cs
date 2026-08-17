@@ -158,7 +158,7 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         public DbContext Context { get; } = null;
     }
 
-    public abstract class SaveChangesInterceptor
+    public abstract class SaveChangesInterceptor : ISaveChangesInterceptor
     {
         public virtual InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) => result;
         public virtual ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) => new ValueTask<InterceptionResult<int>>(result);
@@ -168,11 +168,42 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
     {
     }
 }
+
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public interface IServiceCollection
+    {
+    }
+
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContextPool<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContextFactory<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContext(
+            this IServiceCollection services,
+            Type contextType,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction) => services;
+    }
+}
 ";
 
     private static string App(string body) =>
         @"using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
 using System.Threading.Tasks;
 " + EfMock + @"
