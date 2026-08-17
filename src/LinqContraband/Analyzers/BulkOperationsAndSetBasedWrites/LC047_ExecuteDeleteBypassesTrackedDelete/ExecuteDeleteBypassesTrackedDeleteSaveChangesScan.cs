@@ -199,6 +199,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         CancellationToken cancellationToken)
     {
         var dominate = deletedDominates;
+        var allowSequentialDominance = !BlockHasGoto(block);
         foreach (var statement in block.Operations)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -211,7 +212,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
                         depth,
                         aggregate,
                         dominate,
-                        cancellationToken))
+                        cancellationToken) &&
+                    allowSequentialDominance)
                 {
                     dominate = true;
                 }
@@ -317,7 +319,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
         foreach (var switchCase in switchOperation.Cases)
         {
-            var caseDominates = deletedDominates || CaseIncludesDeleted(switchCase);
+            var caseDominates = deletedDominates ||
+                                (IsStateProperty(switchOperation.Value) && CaseIncludesDeleted(switchCase));
             foreach (var clause in switchCase.Clauses)
             {
                 WalkConversionOperations(
@@ -388,6 +391,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
 
         if (operation is IConversionOperation conversion &&
+            deletedDominates &&
             conversion.Type is INamedTypeSymbol convertedType &&
             IsEntityProperty(conversion.Operand))
         {
@@ -490,10 +494,29 @@ internal sealed partial class TrackedDeletePipelineEvidence
         return false;
     }
 
+    private static bool BlockHasGoto(IBlockOperation block)
+    {
+        foreach (var operation in EnumerateOperations(block))
+        {
+            if (operation is IBranchOperation branch && branch.BranchKind == BranchKind.GoTo)
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool IsStateProperty(IOperation? operation)
     {
         var current = operation?.UnwrapConversions();
-        return current is IPropertyReferenceOperation property && property.Property.Name == "State";
+        if (current is not IPropertyReferenceOperation property || property.Property.Name != "State")
+            return false;
+
+        var containingType = property.Property.ContainingType;
+        if (containingType?.Name != "EntityEntry")
+            return false;
+
+        var ns = containingType.ContainingNamespace?.ToString();
+        return ns is "Microsoft.EntityFrameworkCore" or "Microsoft.EntityFrameworkCore.ChangeTracking";
     }
 
     private static bool IsUnconditionalExit(IOperation? operation)
@@ -503,7 +526,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         {
             case IReturnOperation:
             case IThrowOperation:
-            case IBranchOperation:
+            case IBranchOperation branch when branch.BranchKind is BranchKind.Break or BranchKind.Continue:
                 return true;
             case IBlockOperation block when block.Operations.Length > 0:
                 for (var i = 0; i < block.Operations.Length - 1; i++)
