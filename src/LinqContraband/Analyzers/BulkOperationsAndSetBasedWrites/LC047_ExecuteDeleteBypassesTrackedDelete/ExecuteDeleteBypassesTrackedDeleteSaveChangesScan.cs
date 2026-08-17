@@ -39,7 +39,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         CancellationToken cancellationToken)
     {
         var aggregate = new ConversionAccumulator();
-        var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        var visited = new MethodDominanceSet();
 
         foreach (var member in type.GetMembers())
         {
@@ -50,7 +50,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (!IsPipelineMethod(method, isInterceptor))
                 continue;
 
-            ScanMethodTree(method, type, visited, 0, aggregate, cancellationToken);
+            ScanMethodTree(method, type, visited, 0, aggregate, deletedDominates: false, cancellationToken);
         }
 
         return aggregate.ToScan();
@@ -59,39 +59,37 @@ internal sealed partial class TrackedDeletePipelineEvidence
     private void ScanMethodTree(
         IMethodSymbol method,
         INamedTypeSymbol owningType,
-        HashSet<IMethodSymbol> visited,
+        MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
+        bool deletedDominates,
         CancellationToken cancellationToken)
     {
-        if (depth > 4 || !visited.Add(method))
+        method = method.OriginalDefinition;
+        if (depth > 4 || !visited.Add(method, deletedDominates))
             return;
 
         foreach (var reference in method.DeclaringSyntaxReferences)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (reference.GetSyntax(cancellationToken) is not MethodDeclarationSyntax declaration)
+            var syntax = reference.GetSyntax(cancellationToken);
+            if (syntax is not (MethodDeclarationSyntax or LocalFunctionStatementSyntax))
                 continue;
 
-            var tree = declaration.SyntaxTree;
-            var model = compilation.GetSemanticModel(tree);
-            var operation = model.GetOperation(declaration, cancellationToken);
+            var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+            var operation = model.GetOperation(syntax, cancellationToken);
             if (operation == null)
                 continue;
 
-            WalkConversionOperations(operation, aggregate, cancellationToken);
-
-            foreach (var child in EnumerateOperations(operation))
-            {
-                if (child is not IInvocationOperation invocation)
-                    continue;
-
-                var target = invocation.TargetMethod.OriginalDefinition;
-                if (!SymbolEqualityComparer.Default.Equals(target.ContainingType, owningType))
-                    continue;
-
-                ScanMethodTree(target, owningType, visited, depth + 1, aggregate, cancellationToken);
-            }
+            WalkConversionOperations(
+                operation,
+                owningType,
+                visited,
+                depth,
+                aggregate,
+                deletedDominates,
+                isScanRoot: true,
+                cancellationToken);
         }
     }
 
@@ -105,20 +103,264 @@ internal sealed partial class TrackedDeletePipelineEvidence
         return method.Name is "SaveChanges" or "SaveChangesAsync";
     }
 
-    private static void WalkConversionOperations(
-        IOperation root,
+    private void WalkConversionOperations(
+        IOperation? operation,
+        INamedTypeSymbol owningType,
+        MethodDominanceSet visited,
+        int depth,
         ConversionAccumulator aggregate,
+        bool deletedDominates,
+        bool isScanRoot,
         CancellationToken cancellationToken)
     {
-        foreach (var operation in EnumerateOperations(root))
+        if (operation == null)
+            return;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        switch (operation)
+        {
+            case ILocalFunctionOperation localFunction:
+                if (isScanRoot)
+                {
+                    WalkConversionOperations(
+                        localFunction.Body,
+                        owningType,
+                        visited,
+                        depth,
+                        aggregate,
+                        deletedDominates,
+                        isScanRoot: false,
+                        cancellationToken);
+                }
+
+                return;
+
+            case IAnonymousFunctionOperation:
+                return;
+
+            case IBlockOperation block:
+                WalkBlock(
+                    block,
+                    owningType,
+                    visited,
+                    depth,
+                    aggregate,
+                    deletedDominates,
+                    cancellationToken);
+                return;
+
+            case IConditionalOperation conditional:
+                WalkConditional(
+                    conditional,
+                    owningType,
+                    visited,
+                    depth,
+                    aggregate,
+                    deletedDominates,
+                    cancellationToken);
+                return;
+
+            case ISwitchOperation switchOperation:
+                WalkSwitch(
+                    switchOperation,
+                    owningType,
+                    visited,
+                    depth,
+                    aggregate,
+                    deletedDominates,
+                    cancellationToken);
+                return;
+        }
+
+        ObserveOperation(operation, owningType, visited, depth, aggregate, deletedDominates, cancellationToken);
+
+        foreach (var child in operation.ChildOperations)
+        {
+            WalkConversionOperations(
+                child,
+                owningType,
+                visited,
+                depth,
+                aggregate,
+                deletedDominates,
+                isScanRoot: false,
+                cancellationToken);
+        }
+    }
+
+    private void WalkBlock(
+        IBlockOperation block,
+        INamedTypeSymbol owningType,
+        MethodDominanceSet visited,
+        int depth,
+        ConversionAccumulator aggregate,
+        bool deletedDominates,
+        CancellationToken cancellationToken)
+    {
+        var dominate = deletedDominates;
+        foreach (var statement in block.Operations)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (statement is IConditionalOperation conditional)
+            {
+                if (WalkConditional(
+                        conditional,
+                        owningType,
+                        visited,
+                        depth,
+                        aggregate,
+                        dominate,
+                        cancellationToken))
+                {
+                    dominate = true;
+                }
 
-            if (IsEntityStateMember(operation, "Deleted"))
-                aggregate.ReadsDeleted = true;
+                continue;
+            }
 
-            if (operation is IInvocationOperation invocation &&
-                invocation.TargetMethod.Name == "Entries")
+            WalkConversionOperations(
+                statement,
+                owningType,
+                visited,
+                depth,
+                aggregate,
+                dominate,
+                isScanRoot: false,
+                cancellationToken);
+        }
+    }
+
+    private bool WalkConditional(
+        IConditionalOperation conditional,
+        INamedTypeSymbol owningType,
+        MethodDominanceSet visited,
+        int depth,
+        ConversionAccumulator aggregate,
+        bool deletedDominates,
+        CancellationToken cancellationToken)
+    {
+        WalkConversionOperations(
+            conditional.Condition,
+            owningType,
+            visited,
+            depth,
+            aggregate,
+            deletedDominates,
+            isScanRoot: false,
+            cancellationToken);
+
+        if (TryClassifyDeletedCondition(conditional.Condition, out var thenDeleted, out var elseDeleted))
+        {
+            WalkConversionOperations(
+                conditional.WhenTrue,
+                owningType,
+                visited,
+                depth,
+                aggregate,
+                deletedDominates || thenDeleted,
+                isScanRoot: false,
+                cancellationToken);
+            WalkConversionOperations(
+                conditional.WhenFalse,
+                owningType,
+                visited,
+                depth,
+                aggregate,
+                deletedDominates || elseDeleted,
+                isScanRoot: false,
+                cancellationToken);
+            return elseDeleted &&
+                   conditional.WhenFalse is null &&
+                   IsUnconditionalExit(conditional.WhenTrue);
+        }
+
+        WalkConversionOperations(
+            conditional.WhenTrue,
+            owningType,
+            visited,
+            depth,
+            aggregate,
+            deletedDominates,
+            isScanRoot: false,
+            cancellationToken);
+        WalkConversionOperations(
+            conditional.WhenFalse,
+            owningType,
+            visited,
+            depth,
+            aggregate,
+            deletedDominates,
+            isScanRoot: false,
+            cancellationToken);
+        return false;
+    }
+
+    private void WalkSwitch(
+        ISwitchOperation switchOperation,
+        INamedTypeSymbol owningType,
+        MethodDominanceSet visited,
+        int depth,
+        ConversionAccumulator aggregate,
+        bool deletedDominates,
+        CancellationToken cancellationToken)
+    {
+        WalkConversionOperations(
+            switchOperation.Value,
+            owningType,
+            visited,
+            depth,
+            aggregate,
+            deletedDominates,
+            isScanRoot: false,
+            cancellationToken);
+
+        foreach (var switchCase in switchOperation.Cases)
+        {
+            var caseDominates = deletedDominates || CaseIncludesDeleted(switchCase);
+            foreach (var clause in switchCase.Clauses)
+            {
+                WalkConversionOperations(
+                    clause,
+                    owningType,
+                    visited,
+                    depth,
+                    aggregate,
+                    deletedDominates,
+                    isScanRoot: false,
+                    cancellationToken);
+            }
+
+            foreach (var statement in switchCase.Body)
+            {
+                WalkConversionOperations(
+                    statement,
+                    owningType,
+                    visited,
+                    depth,
+                    aggregate,
+                    caseDominates,
+                    isScanRoot: false,
+                    cancellationToken);
+            }
+        }
+    }
+
+    private void ObserveOperation(
+        IOperation operation,
+        INamedTypeSymbol owningType,
+        MethodDominanceSet visited,
+        int depth,
+        ConversionAccumulator aggregate,
+        bool deletedDominates,
+        CancellationToken cancellationToken)
+    {
+        if (IsEntityStateMember(operation, "Deleted"))
+            aggregate.ReadsDeleted = true;
+
+        if (operation is IInvocationOperation invocation)
+        {
+            if (invocation.TargetMethod.Name == "Entries")
             {
                 if (invocation.TargetMethod.TypeArguments.Length == 1 &&
                     invocation.TargetMethod.TypeArguments[0] is INamedTypeSymbol typed)
@@ -131,16 +373,167 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 }
             }
 
-            if (operation is IConversionOperation conversion &&
-                conversion.Type is INamedTypeSymbol convertedType &&
-                IsEntityProperty(conversion.Operand))
+            var target = invocation.TargetMethod.OriginalDefinition;
+            if (SymbolEqualityComparer.Default.Equals(target.ContainingType, owningType))
             {
-                aggregate.NarrowedEntities.Add(convertedType);
+                ScanMethodTree(
+                    target,
+                    owningType,
+                    visited,
+                    depth + 1,
+                    aggregate,
+                    deletedDominates,
+                    cancellationToken);
             }
-
-            if (operation is IAssignmentOperation assignment)
-                RecordAssignment(assignment, aggregate);
         }
+
+        if (operation is IConversionOperation conversion &&
+            conversion.Type is INamedTypeSymbol convertedType &&
+            IsEntityProperty(conversion.Operand))
+        {
+            aggregate.NarrowedEntities.Add(convertedType);
+        }
+
+        if (operation is IAssignmentOperation assignment && deletedDominates)
+            RecordAssignment(assignment, aggregate);
+    }
+
+    private static bool TryClassifyDeletedCondition(
+        IOperation? condition,
+        out bool thenDeleted,
+        out bool elseDeleted)
+    {
+        thenDeleted = false;
+        elseDeleted = false;
+        condition = condition?.UnwrapConversions();
+        if (condition is IBinaryOperation binary &&
+            TryGetDeletedComparisonPolarity(binary, out var isNegated))
+        {
+            if (isNegated)
+                elseDeleted = true;
+            else
+                thenDeleted = true;
+            return true;
+        }
+
+        if (condition is IIsPatternOperation isPattern &&
+            IsStateProperty(isPattern.Value) &&
+            TryGetDeletedPatternPolarity(isPattern.Pattern, out var patternNegated))
+        {
+            if (patternNegated)
+                elseDeleted = true;
+            else
+                thenDeleted = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetDeletedComparisonPolarity(IBinaryOperation binary, out bool isNegated)
+    {
+        isNegated = false;
+        var leftDeleted = IsEntityStateMember(binary.LeftOperand, "Deleted");
+        var rightDeleted = IsEntityStateMember(binary.RightOperand, "Deleted");
+        if (leftDeleted == rightDeleted)
+            return false;
+        if (leftDeleted && !IsStateProperty(binary.RightOperand))
+            return false;
+        if (rightDeleted && !IsStateProperty(binary.LeftOperand))
+            return false;
+
+        if (binary.OperatorKind == BinaryOperatorKind.Equals)
+            return true;
+
+        if (binary.OperatorKind == BinaryOperatorKind.NotEquals)
+        {
+            isNegated = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetDeletedPatternPolarity(IPatternOperation? pattern, out bool isNegated)
+    {
+        isNegated = false;
+        if (pattern is IConstantPatternOperation constant &&
+            IsEntityStateMember(constant.Value, "Deleted"))
+        {
+            return true;
+        }
+
+        if (pattern is INegatedPatternOperation negated &&
+            TryGetDeletedPatternPolarity(negated.Pattern, out var innerNegated))
+        {
+            isNegated = !innerNegated;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool CaseIncludesDeleted(ISwitchCaseOperation switchCase)
+    {
+        foreach (var clause in switchCase.Clauses)
+        {
+            switch (clause)
+            {
+                case ISingleValueCaseClauseOperation single when IsEntityStateMember(single.Value, "Deleted"):
+                    return true;
+                case IPatternCaseClauseOperation pattern
+                    when TryGetDeletedPatternPolarity(pattern.Pattern, out var negated) && !negated:
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsStateProperty(IOperation? operation)
+    {
+        var current = operation?.UnwrapConversions();
+        return current is IPropertyReferenceOperation property && property.Property.Name == "State";
+    }
+
+    private static bool IsUnconditionalExit(IOperation? operation)
+    {
+        operation = UnwrapExpressionStatement(operation);
+        switch (operation)
+        {
+            case IReturnOperation:
+            case IThrowOperation:
+            case IBranchOperation:
+                return true;
+            case IBlockOperation block when block.Operations.Length > 0:
+                for (var i = 0; i < block.Operations.Length - 1; i++)
+                {
+                    if (MayDivert(block.Operations[i]))
+                        return false;
+                }
+
+                return IsUnconditionalExit(block.Operations[block.Operations.Length - 1]);
+            default:
+                return false;
+        }
+    }
+
+    private static IOperation? UnwrapExpressionStatement(IOperation? operation)
+    {
+        while (operation is IExpressionStatementOperation expression)
+            operation = expression.Operation;
+        return operation;
+    }
+
+    private static bool MayDivert(IOperation operation)
+    {
+        var current = UnwrapExpressionStatement(operation);
+        return current is IConditionalOperation
+            or ISwitchOperation
+            or ILoopOperation
+            or ITryOperation
+            or ILocalFunctionOperation
+            or IAnonymousFunctionOperation;
     }
 
     private static void RecordAssignment(IAssignmentOperation assignment, ConversionAccumulator aggregate)
@@ -235,6 +628,17 @@ internal sealed partial class TrackedDeletePipelineEvidence
         {
             foreach (var descendant in EnumerateOperations(child))
                 yield return descendant;
+        }
+    }
+
+    private sealed class MethodDominanceSet
+    {
+        private readonly HashSet<IMethodSymbol> dominated = new(SymbolEqualityComparer.Default);
+        private readonly HashSet<IMethodSymbol> undominated = new(SymbolEqualityComparer.Default);
+
+        public bool Add(IMethodSymbol method, bool deletedDominates)
+        {
+            return (deletedDominates ? dominated : undominated).Add(method);
         }
     }
 

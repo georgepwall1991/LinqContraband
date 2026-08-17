@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.63] - 2026-08-16
+
+### Fixed
+- LC047 Proof A now requires a Deleted-state test to dominate the conversion assignment: the same `if` body (`entry.State == EntityState.Deleted` or `is EntityState.Deleted`), statements after `if (entry.State != EntityState.Deleted) continue` / `return`, or a `switch` arm that includes `EntityState.Deleted`. Same-type helpers and local functions inherit that dominance from the call site; uncalled local functions and anonymous functions are not scanned. Sibling Deleted-log plus Added/Modified property writes, conversion in the `else` of a Deleted check, conversion after `if (Deleted) continue`, Detached assignment, and switch arms that convert only Added/Modified stay quiet. LC012 is gated on the same evidence so `RemoveRange` is not rewritten into a hard DELETE.
+
 ## [5.7.62] - 2026-08-16
 
 ### Fixed
