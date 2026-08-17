@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.65] - 2026-08-16
+
+### Fixed
+- LC046 now reports same-context EF tasks accumulated in a provably multi-item loop through a fresh empty framework `HashSet<T>.Add` or `Queue<T>.Enqueue`, including an `ICollection<T>` local whose proven construction is `HashSet<T>`. `ConcurrentBag<T>`, custom `Add` types, escaped or reassigned accumulators, interface-targeted collection expressions, `HashSet`/`Queue` constructed from an existing collection, unknown `ICollection<T>` parameters, and multi-statement mixed non-EF enqueue bodies stay quiet. Fresh empty `List<T>` accumulation is unchanged.
+
 ## [5.7.64] - 2026-08-16
 
 ### Fixed
