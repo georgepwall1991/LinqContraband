@@ -581,4 +581,154 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task ExecuteDelete_WithDiInterceptorLocalOutsideLambda_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            ISaveChangesInterceptor interceptor = new SoftDeleteInterceptor();
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(interceptor));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithAddDbContextInConstructor_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public Startup(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithAddDbContextInTopLevelStatements_ShouldTrigger()
+    {
+        var mockBody = EfMock[EfMock.IndexOf("namespace ", StringComparison.Ordinal)..];
+        var test = @"using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using TestApp;
+
+IServiceCollection services = null;
+services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()));
+AppDbContext db = null;
+var result = {|LC047:db.Users.ExecuteDelete()|};
+" + mockBody + @"
+namespace TestApp
+{
+" + SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+}
+";
+
+        var analyzerTest = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC047_ExecuteDeleteBypassesTrackedDelete.ExecuteDeleteBypassesTrackedDeleteAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = test
+        };
+        analyzerTest.TestState.OutputKind = Microsoft.CodeAnalysis.OutputKind.ConsoleApplication;
+        await analyzerTest.RunAsync();
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithEfNamespaceLookalikeAddDbContext_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq;
+" + EfMock + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            System.Action<DbContextOptionsBuilder> optionsAction)
+            where TContext : DbContext => services;
+    }
+}
+
+namespace TestApp
+{
+" + SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            Microsoft.EntityFrameworkCore.EntityFrameworkServiceCollectionExtensions.AddDbContext<AppDbContext>(
+                services,
+                o => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+}
+";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

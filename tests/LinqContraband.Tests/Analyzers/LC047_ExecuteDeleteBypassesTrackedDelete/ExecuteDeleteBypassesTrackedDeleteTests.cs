@@ -144,29 +144,6 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
     }
-
-    public static class EntityFrameworkServiceCollectionExtensions
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContext<TContext>(
-            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
-            Action<DbContextOptionsBuilder> optionsAction)
-            where TContext : DbContext => services;
-
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContextPool<TContext>(
-            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
-            Action<DbContextOptionsBuilder> optionsAction)
-            where TContext : DbContext => services;
-
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContextFactory<TContext>(
-            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
-            Action<DbContextOptionsBuilder> optionsAction)
-            where TContext : DbContext => services;
-
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContext(
-            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
-            Type contextType,
-            Action<DbContextOptionsBuilder> optionsAction) => services;
-    }
 }
 
 namespace Microsoft.EntityFrameworkCore.Diagnostics
@@ -196,6 +173,29 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public interface IServiceCollection
     {
+    }
+
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContextPool<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContextFactory<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContext(
+            this IServiceCollection services,
+            Type contextType,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction) => services;
     }
 }
 ";

@@ -88,14 +88,6 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static int ExecuteDelete<TSource>(this IQueryable<TSource> source) => 0;
     }
-
-    public static class EntityFrameworkServiceCollectionExtensions
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbContext<TContext>(
-            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
-            Action<DbContextOptionsBuilder> optionsAction)
-            where TContext : DbContext => services;
-    }
 }
 
 namespace Microsoft.EntityFrameworkCore.Diagnostics
@@ -124,6 +116,14 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public interface IServiceCollection
     {
+    }
+
+    public static class EntityFrameworkServiceCollectionExtensions
+    {
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
     }
 }
 ";
