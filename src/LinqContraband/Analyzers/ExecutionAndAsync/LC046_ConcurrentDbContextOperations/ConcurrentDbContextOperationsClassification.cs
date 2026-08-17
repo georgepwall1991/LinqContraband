@@ -135,7 +135,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 candidate.Symbol.OriginalDefinition,
                 invocation.TargetMethod.OriginalDefinition));
         if (localFunction?.Body == null ||
-            localFunction.Symbol.Parameters.Length > 2 ||
+            localFunction.Symbol.Parameters.Length > 3 ||
             localFunction.Body.Operations.Length != 1 ||
             localFunction.Body.Operations[0] is not IReturnOperation { ReturnedValue: { } returnedValue } ||
             returnedValue.UnwrapConversions() is not IInvocationOperation returnedInvocation ||

@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.7.63</Version>
+        <Version>5.7.64</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC047 Proof A now requires a Deleted-state test to dominate the conversion assignment (same if body, continue/return after a negated Deleted test, or a Deleted switch arm). Sibling Deleted-log plus Added/Modified writes stay quiet. LC012 is gated on the same evidence.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC046 now reports repeated calls to a direct three-parameter local helper when the existing one- and two-parameter safety proofs still hold. Helpers with four or more parameters, chains, branches, and multi-operation bodies stay quiet.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
