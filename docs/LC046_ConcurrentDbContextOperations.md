@@ -85,11 +85,13 @@ different holder objects is not conflated.
 
 A separate loop pass reports the loop-body invocation itself when a `foreach` iterates an inline array initializer with
 at least two elements and the loop body's only statement either discards the EF Core async invocation or passes it
-directly to `Add` on a single-assignment local whose proven runtime construction is a framework `List<T>`, including
-when the local is declared through `ICollection<T>` or `IList<T>`. The list must be constructed with `new` or, when the
-local's target type is itself `List<T>`, a collection expression
+directly to `Add` or `Enqueue` on a single-assignment local whose proven runtime construction is a framework `List<T>`,
+`HashSet<T>`, or `Queue<T>`, including when the local is declared through `ICollection<T>` or `IList<T>` and the
+constructed type is one of those three. The accumulator must be constructed with `new` or, when the
+local's target type is itself `List<T>`, `HashSet<T>`, or `Queue<T>`, a collection expression
 before the loop, either at declaration or by one later simple assignment. The accepted accumulator construction is
-an empty parameterless `new` or empty collection expression; an interface parameter or other unproven collection
+an empty parameterless `new` or empty collection expression; an interface parameter, `ConcurrentBag<T>`, a
+`HashSet`/`Queue` constructed from an existing collection, or other unproven collection
 implementation remains outside the proof. The task-list branch additionally requires
 a synchronous, non-deconstructing loop over a direct inline array with at least two compile-time-constant elements and
 an identity iteration-variable conversion. It does not report that branch for an unknown, empty, or singleton source,

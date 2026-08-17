@@ -1343,19 +1343,29 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IOperation? receiver,
         IOperation executableRoot)
     {
-        var listType = invocation.SemanticModel?.Compilation.GetTypeByMetadataName(
-            "System.Collections.Generic.List`1");
-        var collectionType = invocation.SemanticModel?.Compilation.GetTypeByMetadataName(
-            "System.Collections.Generic.ICollection`1");
+        var compilation = invocation.SemanticModel?.Compilation;
+        if (compilation == null)
+            return false;
+
+        var listType = compilation.GetTypeByMetadataName("System.Collections.Generic.List`1");
+        var hashSetType = compilation.GetTypeByMetadataName("System.Collections.Generic.HashSet`1");
+        var queueType = compilation.GetTypeByMetadataName("System.Collections.Generic.Queue`1");
+        var collectionType = compilation.GetTypeByMetadataName("System.Collections.Generic.ICollection`1");
         var containingType = invocation.TargetMethod.ContainingType.OriginalDefinition;
+        var methodName = invocation.TargetMethod.Name;
         var isSupportedAdd =
-            (listType != null &&
-             SymbolEqualityComparer.Default.Equals(containingType, listType)) ||
-            (collectionType != null &&
-             SymbolEqualityComparer.Default.Equals(containingType, collectionType));
-        if (listType == null ||
-            invocation.TargetMethod.Name != "Add" ||
-            !isSupportedAdd ||
+            methodName == "Add" &&
+            ((listType != null &&
+              SymbolEqualityComparer.Default.Equals(containingType, listType)) ||
+             (hashSetType != null &&
+              SymbolEqualityComparer.Default.Equals(containingType, hashSetType)) ||
+             (collectionType != null &&
+              SymbolEqualityComparer.Default.Equals(containingType, collectionType)));
+        var isSupportedEnqueue =
+            methodName == "Enqueue" &&
+            queueType != null &&
+            SymbolEqualityComparer.Default.Equals(containingType, queueType);
+        if ((!isSupportedAdd && !isSupportedEnqueue) ||
             receiver?.UnwrapConversions() is not
                 ILocalReferenceOperation listLocal ||
             !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
@@ -1377,10 +1387,26 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         assignedValue = UnwrapNonUserDefinedConversions(assignedValue);
         return assignedValue.Type is INamedTypeSymbol assignedType &&
-               SymbolEqualityComparer.Default.Equals(
+               IsAllowedFrameworkAccumulatorType(
                    assignedType.OriginalDefinition,
-                   listType) &&
+                   listType,
+                   hashSetType,
+                   queueType) &&
                IsSafeAccumulatorConstruction(assignedValue);
+    }
+
+    private static bool IsAllowedFrameworkAccumulatorType(
+        INamedTypeSymbol assignedDefinition,
+        INamedTypeSymbol? listType,
+        INamedTypeSymbol? hashSetType,
+        INamedTypeSymbol? queueType)
+    {
+        return (listType != null &&
+                SymbolEqualityComparer.Default.Equals(assignedDefinition, listType)) ||
+               (hashSetType != null &&
+                SymbolEqualityComparer.Default.Equals(assignedDefinition, hashSetType)) ||
+               (queueType != null &&
+                SymbolEqualityComparer.Default.Equals(assignedDefinition, queueType));
     }
 
     private static bool IsSafeAccumulatorConstruction(
