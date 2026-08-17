@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,8 +41,114 @@ jobs:
     - name: Test
       run: dotnet test -c Release --no-build --verbosity normal
 
+    # After the 16–17 Aug 2026 burst (PRs 431–436 / tags v5.7.60–v5.7.65 in ~3.5h),
+    # each GitHub release published a package. The first release in a 12h window
+    # still pushes; later ones skip unless the release body contains force-publish.
+    - name: Check NuGet publish cooldown
+      id: nuget_cooldown
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        python3 <<'PY'
+        import json
+        import os
+        import subprocess
+        import sys
+        from datetime import datetime, timedelta, timezone
+
+        def write_skip_push(skip):
+            path = os.environ["GITHUB_OUTPUT"]
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(f"skip_push={'true' if skip else 'false'}\n")
+
+        def format_age(delta):
+            total = max(0, int(delta.total_seconds()))
+            hours, rem = divmod(total, 3600)
+            minutes, _ = divmod(rem, 60)
+            if hours > 0:
+                return f"{hours}h {minutes}m"
+            return f"{minutes}m"
+
+        def parse_published_at(value):
+            if not value:
+                return None
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+            event = json.load(handle)
+        release_event = event.get("release") or {}
+        body = release_event.get("body") or ""
+        current_id = str(release_event.get("id") or "")
+        current_tag = release_event.get("tag_name") or ""
+
+        if "force-publish" in body.lower():
+            print("force-publish found in release body; continuing with NuGet pack/push")
+            write_skip_push(False)
+            sys.exit(0)
+
+        repo = os.environ["GITHUB_REPOSITORY"]
+        endpoint = f"/repos/{repo}/releases?per_page=100"
+        result = subprocess.run(
+            ["gh", "api", "--paginate", "--slurp", endpoint],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            sys.exit(result.returncode or 1)
+
+        data = json.loads(result.stdout)
+        releases = []
+        if isinstance(data, list):
+            if data and isinstance(data[0], list):
+                for page in data:
+                    releases.extend(page)
+            elif data and isinstance(data[0], dict):
+                releases = data
+
+        now = datetime.now(timezone.utc)
+        window = timedelta(hours=12)
+        latest = None
+        for release in releases:
+            if release.get("draft"):
+                continue
+            release_id = str(release.get("id", ""))
+            tag_name = release.get("tag_name") or ""
+            if release_id == current_id or tag_name == current_tag:
+                continue
+            published_at = parse_published_at(release.get("published_at"))
+            if published_at is None:
+                continue
+            if latest is None or published_at > latest[0]:
+                latest = (published_at, tag_name)
+
+        if latest is None:
+            print("No other GitHub releases found; continuing with NuGet pack/push")
+            write_skip_push(False)
+            sys.exit(0)
+
+        published_at, tag_name = latest
+        age = now - published_at
+        age_text = format_age(age)
+        if age < window:
+            print(f"last release tag: {tag_name}, age: {age_text}")
+            print("skipped nuget push; add force-publish to the release body to override")
+            write_skip_push(True)
+            sys.exit(0)
+
+        print(
+            f"No other GitHub release in the last 12 hours "
+            f"(last other tag: {tag_name}, age: {age_text}); continuing with NuGet pack/push"
+        )
+        write_skip_push(False)
+        PY
+
     - name: Pack
+      if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
       run: dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
       
     - name: Push to NuGet
+      if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
       run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
