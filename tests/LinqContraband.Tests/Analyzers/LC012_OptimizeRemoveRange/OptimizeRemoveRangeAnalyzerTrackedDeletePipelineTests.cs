@@ -124,6 +124,11 @@ namespace Microsoft.Extensions.DependencyInjection
             this IServiceCollection services,
             Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
             where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<IServiceProvider, Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
     }
 }
 ";
@@ -438,6 +443,85 @@ namespace TestApp
         public void Purge(DbSet<User> users)
         {
             users.RemoveRange(users.Where(u => u.Id > 10));
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithClientSetNull_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Order>()
+                .HasMany(o => o.Lines)
+                .WithOne(l => l.Order)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var ordersToDelete = db.Orders.Where(o => o.Id > 10);
+            db.Orders.RemoveRange(ordersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithAddDbContextServiceProviderOptionsLambda_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public sealed class SoftDeleteInterceptor : SaveChangesInterceptor
+    {
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+        {
+            foreach (var entry in eventData.Context.ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return result;
+        }
+    }
+
+    public class AppDbContext : DbContext
+    {
+    }
+
+    public class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>((sp, o) => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
         }
     }
 }" + PipelineMock;

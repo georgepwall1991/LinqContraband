@@ -642,6 +642,150 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithAddDbContextServiceProviderOptionsLambda_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>((sp, o) => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithStaticAddDbContextAddInterceptors_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            EntityFrameworkServiceCollectionExtensions.AddDbContext<AppDbContext>(
+                services,
+                o => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithSavingChangesAsyncOnlyDiInterceptor_ShouldTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class SoftDeleteInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            foreach (var entry in eventData.Context.ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((ISoftDelete)entry.Entity).IsDeleted = true;
+                }
+            }
+            return new ValueTask<InterceptionResult<int>>(result);
+        }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithDiAddInterceptorsArrayArgument_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new ISaveChangesInterceptor[] { new SoftDeleteInterceptor() }));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithAddDbContextInTopLevelStatements_ShouldTrigger()
     {
         var mockBody = EfMock[EfMock.IndexOf("namespace ", StringComparison.Ordinal)..];
