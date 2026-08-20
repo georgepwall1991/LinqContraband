@@ -182,6 +182,11 @@ namespace Microsoft.Extensions.DependencyInjection
             Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
             where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
 
+        public static IServiceCollection AddDbContext<TContext>(
+            this IServiceCollection services,
+            Action<IServiceProvider, Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
+            where TContext : Microsoft.EntityFrameworkCore.DbContext => services;
+
         public static IServiceCollection AddDbContextPool<TContext>(
             this IServiceCollection services,
             Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder> optionsAction)
