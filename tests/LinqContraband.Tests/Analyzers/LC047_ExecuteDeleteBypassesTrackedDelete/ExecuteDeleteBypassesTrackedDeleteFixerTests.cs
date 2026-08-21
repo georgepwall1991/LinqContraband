@@ -278,6 +278,58 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_DoesNotRegisterForMultiPropertyConversion()
+    {
+        var test = App(@"
+    public sealed class User
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+        public System.DateTime DeletedAt { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    var user = (User)entry.Entity;
+                    user.IsDeleted = true;
+                    user.DeletedAt = System.DateTime.UtcNow;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|#0:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = test
+        };
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC047")
+                .WithLocation(0)
+                .WithArguments("ExecuteDelete", "User"));
+
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_RewritesEverySoftDeleteExecuteDelete()
     {
         var test = App(@"

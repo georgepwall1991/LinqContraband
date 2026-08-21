@@ -71,6 +71,7 @@ namespace Microsoft.EntityFrameworkCore
         public DbSet<TestNamespace.Order> Orders { get; set; }
         public void RemoveRange(IEnumerable<object> entities) {}
         public virtual int SaveChanges() => 0;
+        public virtual System.Threading.Tasks.Task<int> SaveChangesAsync(System.Threading.CancellationToken cancellationToken = default) => System.Threading.Tasks.Task.FromResult(0);
         protected virtual void OnModelCreating(ModelBuilder modelBuilder) {}
     }
 
@@ -498,6 +499,42 @@ namespace TestApp
                 ((User)entry.Entity).IsDeleted = true;
             }
             return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithSaveChangesAsyncSoftDelete_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override async System.Threading.Tasks.Task<int> SaveChangesAsync(System.Threading.CancellationToken cancellationToken = default)
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return await base.SaveChangesAsync(cancellationToken);
         }
     }
 
