@@ -332,6 +332,133 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithInvalidOrTransformedThreeParameterRequiredArguments_ShouldNotTrigger()
+    {
+        var test = App(@"
+        public async Task InvalidRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(AppDbContext current, string sql, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(Execute(db, """", 0), Execute(db, """", 1));
+        }
+
+        public async Task CapturedInvalidRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(string sql, bool unused, int ignored) =>
+                db.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(Execute("""", false, 0), Execute("""", false, 1));
+        }
+
+        public async Task TransformedInvalidRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(AppDbContext current, string sql, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql ?? """");
+
+            await Task.WhenAll(Execute(db, null, 0), Execute(db, null, 1));
+        }
+
+        public async Task TransformedInvalidBoundRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(AppDbContext current, string command, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(command);
+
+            string sql = null;
+            await Task.WhenAll(
+                Execute(db, sql ?? """", 0),
+                Execute(db, sql ?? """", 1));
+        }
+
+        public async Task TransformedCapturedInvalidRequiredArgument(AppDbContext db)
+        {
+            string sql = null;
+            Task<int> Execute(AppDbContext current, int ignored, bool unused) =>
+                current.Database.ExecuteSqlRawAsync(sql ?? """");
+
+            await Task.WhenAll(Execute(db, 0, false), Execute(db, 1, false));
+        }
+
+        public async Task WrappedCancelledToken(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int id, CancellationToken token) =>
+                current.Users.ElementAtAsync(
+                    id,
+                    true ? token : CancellationToken.None);
+
+            var canceled = new CancellationToken(true);
+            await Task.WhenAll(Load(db, 0, canceled), Load(db, 1, canceled));
+        }
+
+        public async Task CapturedWrappedCancelledToken(AppDbContext db)
+        {
+            Task<User> Load(int id, bool unused, CancellationToken token) =>
+                db.Users.ElementAtAsync(
+                    id,
+                    true ? token : CancellationToken.None);
+
+            var canceled = new CancellationToken(true);
+            await Task.WhenAll(
+                Load(0, false, canceled),
+                Load(1, false, canceled));
+        }
+
+        public async Task StableInvalidRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(AppDbContext current, string sql, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            var sql = """";
+            await Task.WhenAll(Execute(db, sql, 0), Execute(db, sql, 1));
+        }
+
+        public async Task StringEmptyRequiredArgument(AppDbContext db)
+        {
+            Task<int> Execute(AppDbContext current, string sql, int ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, string.Empty, 0),
+                Execute(db, string.Empty, 1));
+        }
+
+        public async Task InvalidNestedSetName(AppDbContext db)
+        {
+            Task<bool> Load(AppDbContext current, string name, int ignored) =>
+                current.Set<User>(name).AnyAsync();
+
+            await Task.WhenAll(Load(db, """", 0), Load(db, """", 1));
+        }
+
+        public async Task CapturedRequiredLocalInvalidatedByCompanionArgument(
+            AppDbContext db)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, bool ignored, int extra) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, (sql = """") != null, 0),
+                Execute(db, false, 1));
+        }
+
+        public async Task CapturedRequiredLocalInvalidatedByDeconstructionArgument(
+            AppDbContext db)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, (string, int) ignored, int extra) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, (sql, _) = ("""", 0), 0),
+                Execute(db, (sql, _) = ("""", 0), 1));
+        }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void DirectLocalFunctionProof_CapsParametersAtThree()
     {
         var classificationPath = Path.Combine(
