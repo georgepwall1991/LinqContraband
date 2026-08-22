@@ -244,6 +244,89 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachTaskHashSetQueue_DrainsPreviousTasksBeforeStartingNext_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void HashSetDirect(AppDbContext db)
+        {
+            var tasks = new HashSet<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(DrainHashSet(tasks)));
+            }
+        }
+
+        public void QueueDirect(AppDbContext db)
+        {
+            var tasks = new Queue<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.ElementAtAsync(DrainQueue(tasks)));
+            }
+        }
+
+        public void HashSetCapturedLocalFunction(AppDbContext db)
+        {
+            var tasks = new HashSet<Task<User>>();
+
+            int DrainCaptured()
+            {
+                Task.WhenAll(tasks).GetAwaiter().GetResult();
+                return 0;
+            }
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(DrainCaptured()));
+            }
+        }
+
+        public void QueueCapturedLocalFunction(AppDbContext db)
+        {
+            var tasks = new Queue<Task<User>>();
+
+            int DrainCaptured()
+            {
+                Task.WhenAll(tasks).GetAwaiter().GetResult();
+                return 0;
+            }
+
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.ElementAtAsync(DrainCaptured()));
+            }
+        }
+
+        private static int DrainHashSet(HashSet<Task<User>> tasks)
+        {
+            Task.WhenAll(tasks).GetAwaiter().GetResult();
+            return 0;
+        }
+
+        private static int DrainQueue(Queue<Task<User>> tasks)
+        {
+            Task.WhenAll(tasks).GetAwaiter().GetResult();
+            return 0;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void LoopAccumulatorProof_AllowsHashSetAddAndQueueEnqueue()
     {
         var analysisPath = Path.Combine(
