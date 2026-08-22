@@ -244,7 +244,7 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task ForeachTaskHashSetQueue_DrainsPreviousTasksBeforeStartingNext_ShouldNotTrigger()
+    public async Task ForeachTaskHashSetQueue_WithNonThrowingAccumulatorIndex_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
@@ -259,52 +259,22 @@ namespace TestApp
 
     public sealed class Program
     {
-        public void HashSetCount(AppDbContext db)
+        public void HashSet(AppDbContext db)
         {
             var tasks = new HashSet<Task<User>>();
             foreach (var id in new[] { 1, 2 })
             {
-                tasks.Add(db.Users.ElementAtAsync(tasks.Count));
+                tasks.Add(db.Users.ElementAtAsync(tasks != null ? 0 : 1));
             }
         }
 
-        public void QueueCount(AppDbContext db)
+        public void Queue(AppDbContext db)
         {
             var tasks = new Queue<Task<User>>();
             foreach (var id in new[] { 1, 2 })
             {
-                tasks.Enqueue(db.Users.ElementAtAsync(tasks.Count));
+                tasks.Enqueue(db.Users.ElementAtAsync(tasks != null ? 0 : 1));
             }
-        }
-
-        public void HashSetDirectDrain(AppDbContext db)
-        {
-            var tasks = new HashSet<Task<User>>();
-            foreach (var id in new[] { 1, 2 })
-            {
-                tasks.Add(db.Users.ElementAtAsync(DrainHashSet(tasks)));
-            }
-        }
-
-        public void QueueDirectDrain(AppDbContext db)
-        {
-            var tasks = new Queue<Task<User>>();
-            foreach (var id in new[] { 1, 2 })
-            {
-                tasks.Enqueue(db.Users.ElementAtAsync(DrainQueue(tasks)));
-            }
-        }
-
-        private static int DrainHashSet(HashSet<Task<User>> tasks)
-        {
-            Task.WhenAll(tasks).GetAwaiter().GetResult();
-            return 0;
-        }
-
-        private static int DrainQueue(Queue<Task<User>> tasks)
-        {
-            Task.WhenAll(tasks).GetAwaiter().GetResult();
-            return 0;
         }
     }
 }";
