@@ -259,7 +259,25 @@ namespace TestApp
 
     public sealed class Program
     {
-        public void HashSetDirect(AppDbContext db)
+        public void HashSetCount(AppDbContext db)
+        {
+            var tasks = new HashSet<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(tasks.Count));
+            }
+        }
+
+        public void QueueCount(AppDbContext db)
+        {
+            var tasks = new Queue<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.ElementAtAsync(tasks.Count));
+            }
+        }
+
+        public void HashSetDirectDrain(AppDbContext db)
         {
             var tasks = new HashSet<Task<User>>();
             foreach (var id in new[] { 1, 2 })
@@ -268,44 +286,12 @@ namespace TestApp
             }
         }
 
-        public void QueueDirect(AppDbContext db)
+        public void QueueDirectDrain(AppDbContext db)
         {
             var tasks = new Queue<Task<User>>();
             foreach (var id in new[] { 1, 2 })
             {
                 tasks.Enqueue(db.Users.ElementAtAsync(DrainQueue(tasks)));
-            }
-        }
-
-        public void HashSetCapturedLocalFunction(AppDbContext db)
-        {
-            var tasks = new HashSet<Task<User>>();
-
-            int DrainCaptured()
-            {
-                Task.WhenAll(tasks).GetAwaiter().GetResult();
-                return 0;
-            }
-
-            foreach (var id in new[] { 1, 2 })
-            {
-                tasks.Add(db.Users.ElementAtAsync(DrainCaptured()));
-            }
-        }
-
-        public void QueueCapturedLocalFunction(AppDbContext db)
-        {
-            var tasks = new Queue<Task<User>>();
-
-            int DrainCaptured()
-            {
-                Task.WhenAll(tasks).GetAwaiter().GetResult();
-                return 0;
-            }
-
-            foreach (var id in new[] { 1, 2 })
-            {
-                tasks.Enqueue(db.Users.ElementAtAsync(DrainCaptured()));
             }
         }
 
