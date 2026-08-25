@@ -1357,6 +1357,6 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
         var exitBody = source[exitIndex..];
         Assert.Contains("IThrowOperation", exitBody, StringComparison.Ordinal);
         Assert.Contains("BranchKind.Break", exitBody, StringComparison.Ordinal);
-        Assert.Contains("IBlockOperation", exitBody, StringComparison.Ordinal);
+        Assert.Contains("case IBlockOperation block when block.Operations.Length > 0", exitBody, StringComparison.Ordinal);
     }
 }
