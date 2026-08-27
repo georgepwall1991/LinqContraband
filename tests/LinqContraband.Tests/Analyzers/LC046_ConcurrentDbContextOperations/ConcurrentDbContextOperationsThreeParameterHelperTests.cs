@@ -332,6 +332,54 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task TaskWhenAll_WithUnprovenThreeParameterEvaluationOrderAndReceiverGates_ShouldNotTrigger()
+    {
+        var test = App(@"
+        public async Task ContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int id, AppDbContext current, CancellationToken token) =>
+                current.Users.ElementAtAsync(id, token);
+
+            await Task.WhenAll(
+                Load(0, db, CancellationToken.None),
+                Load(1, db, CancellationToken.None));
+        }
+
+        public async Task NamedContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int id, AppDbContext current, CancellationToken token) =>
+                current.Users.ElementAtAsync(id, token);
+
+            await Task.WhenAll(
+                Load(id: 0, current: db, token: CancellationToken.None),
+                Load(id: 1, current: db, token: CancellationToken.None));
+        }
+
+        public async Task ExplicitContextReceiverConversion(AppDbContext db)
+        {
+            Task<int> Save(AppDbContext current, int ignored, CancellationToken token) =>
+                ((DbContext)current).SaveChangesAsync(token);
+
+            await Task.WhenAll(
+                Save(db, 0, CancellationToken.None),
+                Save(db, 1, CancellationToken.None));
+        }
+
+        public async Task ContextParameterUsedOutsideReceiver(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int ignored, CancellationToken token) =>
+                current.Users.ElementAtAsync(current != null ? 0 : 1, token);
+
+            await Task.WhenAll(
+                Load(db, 0, CancellationToken.None),
+                Load(db, 1, CancellationToken.None));
+        }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void DirectLocalFunctionProof_CapsParametersAtThree()
     {
         var classificationPath = Path.Combine(
