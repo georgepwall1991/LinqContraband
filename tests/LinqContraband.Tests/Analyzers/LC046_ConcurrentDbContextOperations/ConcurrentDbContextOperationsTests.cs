@@ -1048,6 +1048,40 @@ namespace TestApp
             await Task.WhenAll(first, second);
         }
 
+        public async Task ContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int index, AppDbContext current) =>
+                current.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(Load(0, db), Load(1, db));
+        }
+
+        public async Task NamedContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int index, AppDbContext current) =>
+                current.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(
+                Load(index: 0, current: db),
+                Load(index: 1, current: db));
+        }
+
+        public async Task ExplicitContextReceiverConversion(AppDbContext db)
+        {
+            Task<int> Save(AppDbContext current, int ignored) =>
+                ((DbContext)current).SaveChangesAsync();
+
+            await Task.WhenAll(Save(db, 0), Save(db, 1));
+        }
+
+        public async Task ContextParameterUsedOutsideReceiver(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int ignored) =>
+                current.Users.ElementAtAsync(current != null ? 0 : 1);
+
+            await Task.WhenAll(Load(db, 0), Load(db, 1));
+        }
+
         private static int GetIndex() => 0;
         private static int ThrowingIndex => throw new System.InvalidOperationException();
         private static string ThrowingName => throw new System.InvalidOperationException();
