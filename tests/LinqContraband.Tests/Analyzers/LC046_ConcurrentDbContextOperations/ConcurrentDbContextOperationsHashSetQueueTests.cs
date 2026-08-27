@@ -244,6 +244,68 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachTaskHashSetQueue_WithDerivedExactTypeAccumulators_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class CustomHashSet : HashSet<Task>
+    {
+    }
+
+    public sealed class CustomQueue : Queue<Task>
+    {
+    }
+
+    public sealed class Program
+    {
+        public async Task DerivedHashSetVariable(AppDbContext db)
+        {
+            var tasks = new CustomHashSet();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task HashSetTypedFromDerivedConstruction(AppDbContext db)
+        {
+            HashSet<Task> tasks = new CustomHashSet();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task QueueTypedFromDerivedConstruction(AppDbContext db)
+        {
+            Queue<Task> tasks = new CustomQueue();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void LoopAccumulatorProof_AllowsHashSetAddAndQueueEnqueue()
     {
         var analysisPath = Path.Combine(
@@ -258,5 +320,12 @@ namespace TestApp
         Assert.Contains("System.Collections.Generic.HashSet`1", source, StringComparison.Ordinal);
         Assert.Contains("System.Collections.Generic.Queue`1", source, StringComparison.Ordinal);
         Assert.Contains("Enqueue", source, StringComparison.Ordinal);
+        Assert.Contains("bool IsAllowedFrameworkAccumulatorType", source, StringComparison.Ordinal);
+        var allowedStart = source.IndexOf("bool IsAllowedFrameworkAccumulatorType", StringComparison.Ordinal);
+        var allowedEnd = source.IndexOf("bool IsSafeAccumulatorConstruction", allowedStart, StringComparison.Ordinal);
+        Assert.True(allowedEnd > allowedStart, "IsAllowedFrameworkAccumulatorType must precede IsSafeAccumulatorConstruction.");
+        var allowedBody = source[allowedStart..allowedEnd];
+        Assert.Contains("assignedDefinition", allowedBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("BaseType", allowedBody, StringComparison.Ordinal);
     }
 }
