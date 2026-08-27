@@ -516,6 +516,82 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task RemoveRange_WithDoubleNegatedIsPatternSoftDelete_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State is not not EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            db.Users.RemoveRange(usersToDelete);
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithSwitchDeletedOrDetachedPatternArmConversion_StillTriggers()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                switch (entry.State)
+                {
+                    case EntityState.Deleted or EntityState.Detached:
+                        entry.State = EntityState.Modified;
+                        ((User)entry.Entity).IsDeleted = true;
+                        break;
+                    case EntityState.Added:
+                        break;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            {|LC012:db.Users.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task RemoveRange_WithoutPipeline_StillTriggers()
     {
         var test = Usings + @"
