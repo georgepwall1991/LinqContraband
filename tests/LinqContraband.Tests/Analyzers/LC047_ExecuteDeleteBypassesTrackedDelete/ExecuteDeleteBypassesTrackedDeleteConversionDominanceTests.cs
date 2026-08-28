@@ -1083,6 +1083,89 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithIsPatternDeletedOrDetachedThenConvert_ShouldNotTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State is EntityState.Deleted or EntityState.Detached)
+                {
+                    entry.State = EntityState.Modified;
+                    ((ISoftDelete)entry.Entity).IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithNegatedDeletedInnerLoopThenContinue_ShouldNotTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State != EntityState.Deleted)
+                {
+                    for (var i = 0; i < 1; i++)
+                        System.Console.WriteLine(i);
+                    continue;
+                }
+                entry.State = EntityState.Modified;
+                ((ISoftDelete)entry.Entity).IsDeleted = true;
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void ConversionScan_RequiresDeletedDominanceBeforeRecordingAssignment()
     {
         var scanPath = Path.Combine(
