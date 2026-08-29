@@ -216,3 +216,6 @@ indent_size = 2
 
 # LC047: ExecuteDelete Bypasses Tracked Delete - SQL DELETE skips SaveChanges conversion or client cascade
 # dotnet_diagnostic.LC047.severity = warning
+
+# LC048: Lost Update Risk - Tracked read-modify-write can overwrite a concurrent change
+# dotnet_diagnostic.LC048.severity = warning

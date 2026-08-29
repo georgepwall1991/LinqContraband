@@ -16,9 +16,15 @@ public sealed class RuleCatalogIntegrityTests
     {
         var rules = RuleCatalog.All;
 
-        Assert.Equal(47, rules.Length);
-        Assert.Equal(rules.Length, rules.Select(rule => rule.Id).Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(rules.OrderBy(rule => rule.Id, StringComparer.Ordinal).Select(rule => rule.Id), rules.Select(rule => rule.Id));
+        Assert.Equal(48, rules.Length);
+        Assert.Equal(
+            rules.Length,
+            rules.Select(rule => rule.Id).Distinct(StringComparer.Ordinal).Count()
+        );
+        Assert.Equal(
+            rules.OrderBy(rule => rule.Id, StringComparer.Ordinal).Select(rule => rule.Id),
+            rules.Select(rule => rule.Id)
+        );
     }
 
     [Fact]
@@ -28,11 +34,32 @@ public sealed class RuleCatalogIntegrityTests
 
         foreach (var rule in RuleCatalog.All)
         {
-            var analyzerDir = Path.Combine(_repoRoot, rule.AnalyzerSourcePath.Replace('/', Path.DirectorySeparatorChar));
-            var testDir = Path.Combine(_repoRoot, "tests", "LinqContraband.Tests", "Analyzers", rule.Slug);
-            var docPath = Path.Combine(_repoRoot, rule.DocumentationPath.Replace('/', Path.DirectorySeparatorChar));
-            var sampleDir = Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "Samples", rule.Slug);
-            var samplePath = Path.Combine(_repoRoot, rule.SamplePath.Replace('/', Path.DirectorySeparatorChar));
+            var analyzerDir = Path.Combine(
+                _repoRoot,
+                rule.AnalyzerSourcePath.Replace('/', Path.DirectorySeparatorChar)
+            );
+            var testDir = Path.Combine(
+                _repoRoot,
+                "tests",
+                "LinqContraband.Tests",
+                "Analyzers",
+                rule.Slug
+            );
+            var docPath = Path.Combine(
+                _repoRoot,
+                rule.DocumentationPath.Replace('/', Path.DirectorySeparatorChar)
+            );
+            var sampleDir = Path.Combine(
+                _repoRoot,
+                "samples",
+                "LinqContraband.Sample",
+                "Samples",
+                rule.Slug
+            );
+            var samplePath = Path.Combine(
+                _repoRoot,
+                rule.SamplePath.Replace('/', Path.DirectorySeparatorChar)
+            );
 
             if (!Directory.Exists(analyzerDir))
                 failures.Add($"{rule.Id}: missing analyzer directory {analyzerDir}");
@@ -42,8 +69,13 @@ public sealed class RuleCatalogIntegrityTests
                 : Array.Empty<string>();
             if (analyzerFiles.Length != 1)
                 failures.Add($"{rule.Id}: expected exactly one analyzer file in {analyzerDir}");
-            else if (!Path.GetFileNameWithoutExtension(analyzerFiles[0]).Equals(rule.AnalyzerTypeName, StringComparison.Ordinal))
-                failures.Add($"{rule.Id}: analyzer type mismatch. Catalog={rule.AnalyzerTypeName}, file={Path.GetFileNameWithoutExtension(analyzerFiles[0])}");
+            else if (
+                !Path.GetFileNameWithoutExtension(analyzerFiles[0])
+                    .Equals(rule.AnalyzerTypeName, StringComparison.Ordinal)
+            )
+                failures.Add(
+                    $"{rule.Id}: analyzer type mismatch. Catalog={rule.AnalyzerTypeName}, file={Path.GetFileNameWithoutExtension(analyzerFiles[0])}"
+                );
 
             if (!Directory.Exists(testDir))
             {
@@ -59,8 +91,12 @@ public sealed class RuleCatalogIntegrityTests
 
             if (!File.Exists(samplePath))
                 failures.Add($"{rule.Id}: missing sample file {samplePath}");
-            else if (!Path.GetDirectoryName(samplePath)!.Equals(sampleDir, StringComparison.Ordinal))
-                failures.Add($"{rule.Id}: sample path should live under {sampleDir} but was {samplePath}");
+            else if (
+                !Path.GetDirectoryName(samplePath)!.Equals(sampleDir, StringComparison.Ordinal)
+            )
+                failures.Add(
+                    $"{rule.Id}: sample path should live under {sampleDir} but was {samplePath}"
+                );
 
             if (!File.Exists(docPath))
                 failures.Add($"{rule.Id}: missing documentation file {docPath}");
@@ -72,17 +108,29 @@ public sealed class RuleCatalogIntegrityTests
             if (rule.HasCodeFix)
             {
                 if (fixerFiles.Length != 1)
-                    failures.Add($"{rule.Id}: catalog says a fixer exists but repository layout does not contain exactly one fixer file");
-                else if (rule.FixerTypeName == null || !Path.GetFileNameWithoutExtension(fixerFiles[0]).Equals(rule.FixerTypeName, StringComparison.Ordinal))
-                    failures.Add($"{rule.Id}: fixer type mismatch. Catalog={rule.FixerTypeName ?? "<null>"}, file={Path.GetFileNameWithoutExtension(fixerFiles[0])}");
+                    failures.Add(
+                        $"{rule.Id}: catalog says a fixer exists but repository layout does not contain exactly one fixer file"
+                    );
+                else if (
+                    rule.FixerTypeName == null
+                    || !Path.GetFileNameWithoutExtension(fixerFiles[0])
+                        .Equals(rule.FixerTypeName, StringComparison.Ordinal)
+                )
+                    failures.Add(
+                        $"{rule.Id}: fixer type mismatch. Catalog={rule.FixerTypeName ?? "<null>"}, file={Path.GetFileNameWithoutExtension(fixerFiles[0])}"
+                    );
 
                 if (!string.IsNullOrWhiteSpace(rule.NoCodeFixRationale))
-                    failures.Add($"{rule.Id}: fixer-enabled rule should not declare a no-code-fix rationale");
+                    failures.Add(
+                        $"{rule.Id}: fixer-enabled rule should not declare a no-code-fix rationale"
+                    );
             }
             else
             {
                 if (fixerFiles.Length != 0)
-                    failures.Add($"{rule.Id}: catalog says no fixer exists but repository layout contains fixer files");
+                    failures.Add(
+                        $"{rule.Id}: catalog says no fixer exists but repository layout contains fixer files"
+                    );
 
                 if (string.IsNullOrWhiteSpace(rule.NoCodeFixRationale))
                     failures.Add($"{rule.Id}: non-fixable rule must declare a rationale");
@@ -96,14 +144,26 @@ public sealed class RuleCatalogIntegrityTests
     public void RepositoryCounts_MatchTheCatalog()
     {
         var analyzerDirectories = Directory
-            .GetFiles(Path.Combine(_repoRoot, "src", "LinqContraband", "Analyzers"), "*Analyzer.cs", SearchOption.AllDirectories)
+            .GetFiles(
+                Path.Combine(_repoRoot, "src", "LinqContraband", "Analyzers"),
+                "*Analyzer.cs",
+                SearchOption.AllDirectories
+            )
             .Select(Path.GetDirectoryName)
             .Where(path => path is not null)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var testDirectories = Directory.GetDirectories(Path.Combine(_repoRoot, "tests", "LinqContraband.Tests", "Analyzers"));
-        var sampleDirectories = Directory.GetDirectories(Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "Samples"));
-        var documentationFiles = Directory.GetFiles(Path.Combine(_repoRoot, "docs"), "LC*.md", SearchOption.TopDirectoryOnly);
+        var testDirectories = Directory.GetDirectories(
+            Path.Combine(_repoRoot, "tests", "LinqContraband.Tests", "Analyzers")
+        );
+        var sampleDirectories = Directory.GetDirectories(
+            Path.Combine(_repoRoot, "samples", "LinqContraband.Sample", "Samples")
+        );
+        var documentationFiles = Directory.GetFiles(
+            Path.Combine(_repoRoot, "docs"),
+            "LC*.md",
+            SearchOption.TopDirectoryOnly
+        );
 
         Assert.Equal(RuleCatalog.All.Length, analyzerDirectories.Length);
         Assert.Equal(RuleCatalog.All.Length, testDirectories.Length);

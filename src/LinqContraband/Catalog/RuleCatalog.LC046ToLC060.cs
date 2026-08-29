@@ -21,7 +21,8 @@ public static partial class RuleCatalog
                 samplePath: "samples/LinqContraband.Sample/Samples/LC046_ConcurrentDbContextOperations/ConcurrentDbContextOperationsSample.cs",
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC046_ConcurrentDbContextOperations",
                 hasCodeFix: false,
-                noCodeFixRationale: "No safe automated rewrite: sequential awaits and separate contexts have different performance, lifetime, transaction, and consistency semantics."),
+                noCodeFixRationale: "No safe automated rewrite: sequential awaits and separate contexts have different performance, lifetime, transaction, and consistency semantics."
+            ),
             new RuleCatalogEntry(
                 id: "LC047",
                 slug: "LC047_ExecuteDeleteBypassesTrackedDelete",
@@ -35,6 +36,23 @@ public static partial class RuleCatalog
                 samplePath: "samples/LinqContraband.Sample/Samples/LC047_ExecuteDeleteBypassesTrackedDelete/ExecuteDeleteBypassesTrackedDeleteSample.cs",
                 analyzerSourcePath: "src/LinqContraband/Analyzers/BulkOperationsAndSetBasedWrites/LC047_ExecuteDeleteBypassesTrackedDelete",
                 hasCodeFix: true,
-                noCodeFixRationale: null));
+                noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC048",
+                slug: "LC048_LostUpdateRisk",
+                title: "Tracked update can overwrite a concurrent change",
+                category: "Reliability",
+                domain: "Change Tracking & Context Lifetime",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "LostUpdateRiskAnalyzer",
+                fixerTypeName: null,
+                documentationPath: "docs/LC048_LostUpdateRisk.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC048_LostUpdateRisk/LostUpdateRiskSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC048_LostUpdateRisk",
+                hasCodeFix: false,
+                noCodeFixRationale: "No safe automated rewrite: concurrency tokens, atomic updates, and explicit transactions have different schema, retry, transaction, and behavioral semantics."
+            )
+        );
     }
 }

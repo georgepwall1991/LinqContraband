@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.8.0] - 2026-08-29
+
+### Added
+- New rule `LC048` detects lost-update risks in tracked EF Core read-modify-write flows. It reports compound, increment/decrement, self-read, and guarded same-property mutations that reach `SaveChanges` on the proven originating context without optimistic concurrency protection. The warning is placed on the mutation and links the save as an additional location.
+- LC048 follows stable entity, query, and context aliases plus direct private same-file mutation/save helpers. It stays quiet for blind last-write-wins assignments, `AsNoTracking` results, missing or different-context saves, row-version protection, concurrency protection on the mutated property, explicit EF transaction APIs, atomic `ExecuteUpdate`, projections, custom query operators, computed context properties, and non-EF lookalikes.
+- LC048 is manual-only because adding a concurrency token, issuing an atomic conditional update, and selecting an isolation strategy have different schema, retry, transaction, and business semantics.
+
 ## [5.7.65] - 2026-08-16
 
 ### Fixed
