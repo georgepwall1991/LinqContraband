@@ -516,6 +516,114 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task RemoveRange_WithDeletedAndEntityPatternThenConvert_StillTriggers()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted && entry.Entity is User)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            {|LC012:db.Users.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithEntityPatternAndDeletedThenConvert_StillTriggers()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.Entity is User && entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            {|LC012:db.Users.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RemoveRange_WithUnaryNotEqualsDeletedThenConvert_StillTriggers()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : DbContext
+    {
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (!(entry.State != EntityState.Deleted))
+                {
+                    entry.State = EntityState.Modified;
+                    ((User)entry.Entity).IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public class Program
+    {
+        public void Main()
+        {
+            using var db = new AppDbContext();
+            var usersToDelete = db.Users.Where(u => u.Id > 10);
+            {|LC012:db.Users.RemoveRange(usersToDelete)|};
+        }
+    }
+}" + PipelineMock;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task RemoveRange_WithoutPipeline_StillTriggers()
     {
         var test = Usings + @"
