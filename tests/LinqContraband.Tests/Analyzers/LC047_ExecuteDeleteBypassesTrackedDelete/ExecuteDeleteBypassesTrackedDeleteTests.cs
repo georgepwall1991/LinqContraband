@@ -143,6 +143,7 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<int> ExecuteUpdateAsync<TSource>(this IQueryable<TSource> source, Expression<Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>>> setPropertyCalls, CancellationToken cancellationToken = default) => Task.FromResult(0);
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
+        public static IQueryable<TSource> IgnoreQueryFilters<TSource>(this IQueryable<TSource> source) => source;
     }
 }
 
