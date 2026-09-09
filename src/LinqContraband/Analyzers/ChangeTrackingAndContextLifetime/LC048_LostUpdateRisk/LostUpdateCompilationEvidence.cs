@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC048_LostUpdateRisk;
 
@@ -19,6 +20,10 @@ internal sealed class LostUpdateCompilationEvidence
     private readonly ConcurrentDictionary<IMethodSymbol, HelperSummary> _helperSummaries = new(
         SymbolEqualityComparer.Default
     );
+    private readonly ConcurrentDictionary<
+        (SyntaxTree? MutationTree, TextSpan MutationSpan, SyntaxTree? SaveTree, TextSpan SaveSpan),
+        byte
+    > _reportedDiagnostics = new();
     private ImmutableDictionary<
         INamedTypeSymbol,
         ImmutableDictionary<INamedTypeSymbol, ImmutableDictionary<IPropertySymbol, bool>>
@@ -593,6 +598,14 @@ internal sealed class LostUpdateCompilationEvidence
         return false;
     }
 
+    internal bool TryRegisterDiagnostic(Location mutation, Location save)
+    {
+        return _reportedDiagnostics.TryAdd(
+            (mutation.SourceTree, mutation.SourceSpan, save.SourceTree, save.SourceSpan),
+            0
+        );
+    }
+
     internal bool TryGetHelperSummary(
         IInvocationOperation invocation,
         SyntaxTree callerTree,
@@ -685,7 +698,7 @@ internal sealed class LostUpdateCompilationEvidence
             if (
                 callerRoot == null
                 || declarationRoot == null
-                || !ReferenceEquals(callerRoot, declarationRoot)
+                || !IsSameExecutableRoot(callerRoot, declarationRoot)
                 || localFunction.Body == null
                 || ContainsInvocationOf(localFunction.Body, method)
                 || ContainsEscapedReference(callerRoot, localFunction, method)
@@ -739,6 +752,17 @@ internal sealed class LostUpdateCompilationEvidence
         }
 
         return null;
+    }
+
+    private static bool IsSameExecutableRoot(IOperation left, IOperation right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+
+        // The invocation belongs to the analyzer's operation-block tree while the declaration
+        // is resolved through a fresh GetOperation lookup, so instance identity is unreliable.
+        // Syntax nodes are stable within a tree, making them a sound identity key here.
+        return left.Syntax is not null && ReferenceEquals(left.Syntax, right.Syntax);
     }
 
     private static bool ContainsInvocationOf(IOperation operation, IMethodSymbol method)
@@ -5296,18 +5320,25 @@ internal sealed class HelperSummary
     private HelperSummary(
         ImmutableArray<HelperMutation> mutations,
         ImmutableArray<HelperSave> saveEffects,
-        ImmutableArray<HelperTransaction> transactionEffects
+        ImmutableArray<HelperTransaction> transactionEffects,
+        ImmutableArray<HelperTrackingEffect> trackingEffects
     )
     {
         Mutations = mutations;
         SaveEffects = saveEffects;
         TransactionEffects = transactionEffects;
+        TrackingEffects = trackingEffects;
     }
 
     internal ImmutableArray<HelperMutation> Mutations { get; }
     internal ImmutableArray<HelperSave> SaveEffects { get; }
     internal ImmutableArray<HelperTransaction> TransactionEffects { get; }
-    internal bool IsEmpty => Mutations.IsEmpty && SaveEffects.IsEmpty && TransactionEffects.IsEmpty;
+    internal ImmutableArray<HelperTrackingEffect> TrackingEffects { get; }
+    internal bool IsEmpty =>
+        Mutations.IsEmpty
+        && SaveEffects.IsEmpty
+        && TransactionEffects.IsEmpty
+        && TrackingEffects.IsEmpty;
 
     internal static HelperSummary Create(
         IMethodSymbol method,
@@ -5362,15 +5393,18 @@ internal sealed class HelperSummary
             return new HelperSummary(
                 ImmutableArray<HelperMutation>.Empty,
                 ImmutableArray<HelperSave>.Empty,
-                ImmutableArray<HelperTransaction>.Empty
+                ImmutableArray<HelperTransaction>.Empty,
+                ImmutableArray<HelperTrackingEffect>.Empty
             );
         }
         var mutations = ImmutableArray.CreateBuilder<HelperMutation>();
         var saves = new List<HelperSave>();
         var transactions = new List<HelperTransaction>();
+        var trackingEffects = new List<HelperTrackingEffect>();
         var mutationOperations = new Dictionary<int, IOperation>();
         var saveOperations = new Dictionary<int, IOperation>();
         var transactionOperations = new Dictionary<int, IOperation>();
+        var hasUnrepresentableTrackingEffect = false;
 
         foreach (
             var invocation in collector.Invocations.Where(candidate =>
@@ -5409,6 +5443,26 @@ internal sealed class HelperSummary
                 saves.Add(helperSave);
                 saveOperations[invocation.Syntax.SpanStart] = invocation;
             }
+
+            if (IsHelperTrackingInvocation(invocation))
+            {
+                if (
+                    TryCreateHelperTrackingEffect(
+                        invocation,
+                        method,
+                        collector.SimpleAssignments,
+                        flowGraph,
+                        out var trackingEffect
+                    )
+                )
+                {
+                    trackingEffects.Add(trackingEffect);
+                }
+                else
+                {
+                    hasUnrepresentableTrackingEffect = true;
+                }
+            }
         }
 
         foreach (
@@ -5434,9 +5488,30 @@ internal sealed class HelperSummary
 
         foreach (var assignment in collector.SimpleAssignments)
         {
+            if (!IsReachable(assignment, flowGraph))
+                continue;
+
+            if (IsHelperTrackingAssignment(assignment))
+            {
+                if (
+                    TryCreateHelperTrackingEffect(
+                        assignment,
+                        method,
+                        flowGraph,
+                        out var trackingEffect
+                    )
+                )
+                {
+                    trackingEffects.Add(trackingEffect);
+                }
+                else if (!IsHelperTrackingConfigurationAssignment(assignment))
+                {
+                    hasUnrepresentableTrackingEffect = true;
+                }
+            }
+
             if (
-                !IsReachable(assignment, flowGraph)
-                || assignment.Target is not IPropertyReferenceOperation target
+                assignment.Target is not IPropertyReferenceOperation target
                 || !TryGetHelperTarget(target.Instance, method, out var helperTarget)
             )
             {
@@ -5461,11 +5536,25 @@ internal sealed class HelperSummary
                         helperTarget,
                         target.Property,
                         target.Syntax.GetLocation(),
-                        assignment.Syntax.SpanStart
+                        assignment.Syntax.SpanStart,
+                        isPlainSelfAssignment: IsPlainSelfAssignment(
+                            assignment,
+                            target,
+                            helperTarget
+                        )
                     )
                 );
                 mutationOperations[assignment.Syntax.SpanStart] = assignment;
             }
+        }
+        if (hasUnrepresentableTrackingEffect)
+        {
+            return new HelperSummary(
+                ImmutableArray<HelperMutation>.Empty,
+                ImmutableArray<HelperSave>.Empty,
+                ImmutableArray<HelperTransaction>.Empty,
+                ImmutableArray<HelperTrackingEffect>.Empty
+            );
         }
 
         var retainedMutations = ImmutableArray.CreateBuilder<HelperMutation>();
@@ -5538,7 +5627,8 @@ internal sealed class HelperSummary
         return new HelperSummary(
             retainedMutations.ToImmutable(),
             saves.ToImmutableArray(),
-            retainedTransactions
+            retainedTransactions,
+            trackingEffects.ToImmutableArray()
         );
     }
 
@@ -6553,6 +6643,748 @@ internal sealed class HelperSummary
                     or IParameterReferenceOperation;
     }
 
+    private static bool IsHelperTrackingInvocation(IInvocationOperation invocation)
+    {
+        return LostUpdateOperationFacts.IsTrackingOperation(invocation.TargetMethod)
+            || LostUpdateOperationFacts.IsRemovalOperation(invocation.TargetMethod)
+            || LostUpdateOperationFacts.IsEfChangeTrackerClearMethod(invocation.TargetMethod)
+            || LostUpdateOperationFacts.IsEfChangeTrackerAcceptAllChangesMethod(
+                invocation.TargetMethod
+            )
+            || LostUpdateOperationFacts.IsEfChangeTrackerDetectChangesMethod(
+                invocation.TargetMethod
+            )
+            || LostUpdateOperationFacts.IsEfEntityEntryReloadMethod(invocation.TargetMethod);
+    }
+
+    private static bool IsHelperTrackingAssignment(ISimpleAssignmentOperation assignment)
+    {
+        return assignment.Target is IPropertyReferenceOperation { Property: { } property }
+            && (
+                LostUpdateOperationFacts.IsEfEntityEntryStateProperty(property)
+                || LostUpdateOperationFacts.IsEfPropertyEntryIsModifiedProperty(property)
+                || LostUpdateOperationFacts.IsEfChangeTrackerProperty(
+                    property,
+                    "AutoDetectChangesEnabled"
+                )
+                || LostUpdateOperationFacts.IsEfChangeTrackerProperty(
+                    property,
+                    "QueryTrackingBehavior"
+                )
+            );
+    }
+
+    private static bool IsHelperTrackingConfigurationAssignment(
+        ISimpleAssignmentOperation assignment
+    )
+    {
+        return assignment.Target is IPropertyReferenceOperation { Property: { } property }
+            && (
+                LostUpdateOperationFacts.IsEfChangeTrackerProperty(
+                    property,
+                    "AutoDetectChangesEnabled"
+                )
+                || LostUpdateOperationFacts.IsEfChangeTrackerProperty(
+                    property,
+                    "QueryTrackingBehavior"
+                )
+            );
+    }
+
+    private static bool TryCreateHelperTrackingEffect(
+        IInvocationOperation invocation,
+        IMethodSymbol method,
+        IEnumerable<ISimpleAssignmentOperation> assignments,
+        ControlFlowGraph? flowGraph,
+        out HelperTrackingEffect effect
+    )
+    {
+        HelperTrackingEffectKind kind;
+        HelperTarget context;
+        HelperTarget? entity = null;
+
+        var isClear = LostUpdateOperationFacts.IsEfChangeTrackerClearMethod(
+            invocation.TargetMethod
+        );
+        var isAcceptAllChanges = LostUpdateOperationFacts.IsEfChangeTrackerAcceptAllChangesMethod(
+            invocation.TargetMethod
+        );
+        var isDetectChanges = LostUpdateOperationFacts.IsEfChangeTrackerDetectChangesMethod(
+            invocation.TargetMethod
+        );
+        if (isClear || isAcceptAllChanges || isDetectChanges)
+        {
+            if (
+                invocation.Instance == null
+                || LostUpdateOperationFacts.Unwrap(invocation.Instance)
+                    is not IPropertyReferenceOperation
+                    {
+                        Property: { } changeTrackerProperty,
+                        Instance: { } contextInstance,
+                    }
+                || !LostUpdateOperationFacts.IsEfDbContextChangeTrackerProperty(
+                    changeTrackerProperty
+                )
+                || !TryGetHelperTarget(contextInstance, method, out context)
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            kind =
+                isClear ? HelperTrackingEffectKind.Clear
+                : isAcceptAllChanges ? HelperTrackingEffectKind.AcceptAllChanges
+                : HelperTrackingEffectKind.DetectChanges;
+        }
+        else if (
+            LostUpdateOperationFacts.IsTrackingOperation(invocation.TargetMethod)
+            || LostUpdateOperationFacts.IsRemovalOperation(invocation.TargetMethod)
+        )
+        {
+            if (
+                !TryGetHelperTrackingContext(
+                    invocation.Instance,
+                    invocation,
+                    method,
+                    assignments,
+                    out context
+                ) || !LostUpdateOperationFacts.IsDbContextType(context.Type)
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            var entityTargets = invocation
+                .Arguments.Select(argument =>
+                    TryGetHelperTarget(argument.Value, method, out var target)
+                        ? (HelperTarget?)target
+                        : null
+                )
+                .Where(target => target.HasValue)
+                .Select(target => target!.Value)
+                .ToArray();
+            if (entityTargets.Length != 1)
+            {
+                effect = default;
+                return false;
+            }
+
+            entity = entityTargets[0];
+            kind =
+                LostUpdateOperationFacts.IsRemovalOperation(invocation.TargetMethod)
+                    ? HelperTrackingEffectKind.Remove
+                : LostUpdateOperationFacts.PersistsPriorMutation(invocation.TargetMethod)
+                    ? HelperTrackingEffectKind.Update
+                : HelperTrackingEffectKind.Attach;
+        }
+        else
+        {
+            if (
+                !IsHelperReloadCompletionObserved(invocation)
+                || invocation.Instance == null
+                || LostUpdateOperationFacts.Unwrap(invocation.Instance)
+                    is not IInvocationOperation entryInvocation
+                || !LostUpdateOperationFacts.IsEfDbContextEntryMethod(entryInvocation.TargetMethod)
+                || !TryGetHelperTarget(entryInvocation.Instance, method, out context)
+                || !TryGetSingleHelperEntityTarget(entryInvocation, method, out var reloadEntity)
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            entity = reloadEntity;
+            kind = HelperTrackingEffectKind.Reload;
+        }
+
+        effect = new HelperTrackingEffect(
+            kind,
+            context,
+            entity,
+            property: null,
+            invocation.Syntax.SpanStart
+        );
+        if (
+            TryGetExactHelperEffectCondition(
+                invocation,
+                method,
+                flowGraph,
+                out var conditionParameterOrdinal,
+                out var conditionValue
+            )
+        )
+        {
+            effect = effect.WithCondition(conditionParameterOrdinal, conditionValue);
+        }
+        else if (!IsUnconditionalHelperEffect(invocation, flowGraph))
+        {
+            effect = effect.WithUnknownCondition();
+        }
+
+        return true;
+    }
+
+    private static bool TryCreateHelperTrackingEffect(
+        ISimpleAssignmentOperation assignment,
+        IMethodSymbol method,
+        ControlFlowGraph? flowGraph,
+        out HelperTrackingEffect effect
+    )
+    {
+        if (
+            assignment.Target
+            is not IPropertyReferenceOperation { Property: { } property, Instance: { } receiver }
+        )
+        {
+            effect = default;
+            return false;
+        }
+
+        HelperTrackingEffectKind kind;
+        HelperTarget context;
+        HelperTarget? entity = null;
+        IPropertySymbol? affectedProperty = null;
+        int? valueParameterOrdinal = null;
+        bool? booleanValue = null;
+        string? behaviorValue = null;
+        if (LostUpdateOperationFacts.IsEfEntityEntryStateProperty(property))
+        {
+            if (
+                LostUpdateOperationFacts.Unwrap(receiver)
+                    is not IInvocationOperation entryInvocation
+                || !TryGetHelperEntryTargets(
+                    entryInvocation,
+                    method,
+                    out context,
+                    out var stateEntity
+                )
+                || !TryGetHelperEntityState(assignment.Value, out kind)
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            entity = stateEntity;
+        }
+        else if (LostUpdateOperationFacts.IsEfPropertyEntryIsModifiedProperty(property))
+        {
+            var propertyInvocation =
+                LostUpdateOperationFacts.Unwrap(receiver) as IInvocationOperation;
+            var entryInvocation = propertyInvocation?.Instance is { } propertyReceiver
+                ? LostUpdateOperationFacts.Unwrap(propertyReceiver) as IInvocationOperation
+                : null;
+            if (
+                propertyInvocation == null
+                || entryInvocation == null
+                || !LostUpdateOperationFacts.IsEfEntityEntryPropertyMethod(
+                    propertyInvocation.TargetMethod
+                )
+                || !TryGetHelperEntryTargets(
+                    entryInvocation,
+                    method,
+                    out context,
+                    out var propertyEntity
+                )
+                || !TryGetExactHelperProperty(
+                    propertyInvocation,
+                    propertyEntity,
+                    out affectedProperty
+                )
+                || assignment.Value.ConstantValue is not { HasValue: true, Value: bool isModified }
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            entity = propertyEntity;
+
+            kind = isModified
+                ? HelperTrackingEffectKind.IsModifiedTrue
+                : HelperTrackingEffectKind.IsModifiedFalse;
+        }
+        else if (
+            LostUpdateOperationFacts.IsEfChangeTrackerProperty(property, "AutoDetectChangesEnabled")
+        )
+        {
+            if (
+                !TryGetHelperChangeTrackerContext(receiver, method, out context)
+                || !TryGetHelperBooleanValue(
+                    assignment.Value,
+                    method,
+                    out booleanValue,
+                    out valueParameterOrdinal
+                )
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            kind = HelperTrackingEffectKind.AutoDetectChanges;
+        }
+        else if (
+            LostUpdateOperationFacts.IsEfChangeTrackerProperty(property, "QueryTrackingBehavior")
+        )
+        {
+            if (
+                !TryGetHelperChangeTrackerContext(receiver, method, out context)
+                || !TryGetHelperQueryTrackingBehaviorValue(
+                    assignment.Value,
+                    method,
+                    out behaviorValue,
+                    out valueParameterOrdinal
+                )
+            )
+            {
+                effect = default;
+                return false;
+            }
+
+            kind = HelperTrackingEffectKind.QueryTrackingBehavior;
+        }
+        else
+        {
+            effect = default;
+            return false;
+        }
+
+        effect = new HelperTrackingEffect(
+            kind,
+            context,
+            entity,
+            affectedProperty,
+            assignment.Syntax.SpanStart,
+            valueParameterOrdinal: valueParameterOrdinal,
+            booleanValue: booleanValue,
+            queryTrackingBehavior: behaviorValue
+        );
+        if (
+            TryGetExactHelperEffectCondition(
+                assignment,
+                method,
+                flowGraph,
+                out var conditionParameterOrdinal,
+                out var conditionValue
+            )
+        )
+        {
+            effect = effect.WithCondition(conditionParameterOrdinal, conditionValue);
+        }
+        else if (!IsUnconditionalHelperEffect(assignment, flowGraph))
+        {
+            effect = effect.WithUnknownCondition();
+        }
+
+        return true;
+    }
+
+    private static bool TryGetHelperChangeTrackerContext(
+        IOperation receiver,
+        IMethodSymbol method,
+        out HelperTarget context
+    )
+    {
+        if (
+            LostUpdateOperationFacts.Unwrap(receiver)
+                is IPropertyReferenceOperation
+                {
+                    Property: { } changeTrackerProperty,
+                    Instance: { } contextInstance,
+                }
+            && LostUpdateOperationFacts.IsEfDbContextChangeTrackerProperty(changeTrackerProperty)
+            && TryGetHelperTarget(contextInstance, method, out context)
+        )
+        {
+            return true;
+        }
+
+        context = default;
+        return false;
+    }
+
+    private static bool TryGetHelperBooleanValue(
+        IOperation operation,
+        IMethodSymbol method,
+        out bool? value,
+        out int? parameterOrdinal
+    )
+    {
+        operation = LostUpdateOperationFacts.Unwrap(operation);
+        if (operation.ConstantValue is { HasValue: true, Value: bool constant })
+        {
+            value = constant;
+            parameterOrdinal = null;
+            return true;
+        }
+
+        if (
+            operation is IParameterReferenceOperation parameter
+            && SymbolEqualityComparer.Default.Equals(parameter.Parameter.ContainingSymbol, method)
+            && parameter.Parameter.Type.SpecialType == SpecialType.System_Boolean
+        )
+        {
+            value = null;
+            parameterOrdinal = parameter.Parameter.Ordinal;
+            return true;
+        }
+
+        value = null;
+        parameterOrdinal = null;
+        return false;
+    }
+
+    private static bool TryGetHelperQueryTrackingBehaviorValue(
+        IOperation operation,
+        IMethodSymbol method,
+        out string? value,
+        out int? parameterOrdinal
+    )
+    {
+        operation = LostUpdateOperationFacts.Unwrap(operation);
+        if (
+            operation
+                is IFieldReferenceOperation
+                {
+                    Field: { Name: var behaviorName, ContainingType: { } behaviorType },
+                }
+            && behaviorType.ToDisplayString()
+                == "Microsoft.EntityFrameworkCore.QueryTrackingBehavior"
+        )
+        {
+            value = behaviorName;
+            parameterOrdinal = null;
+            return true;
+        }
+
+        if (
+            operation is IParameterReferenceOperation parameter
+            && SymbolEqualityComparer.Default.Equals(parameter.Parameter.ContainingSymbol, method)
+            && parameter.Parameter.Type.ToDisplayString()
+                == "Microsoft.EntityFrameworkCore.QueryTrackingBehavior"
+        )
+        {
+            value = null;
+            parameterOrdinal = parameter.Parameter.Ordinal;
+            return true;
+        }
+
+        value = null;
+        parameterOrdinal = null;
+        return false;
+    }
+
+    private static bool TryGetHelperTrackingContext(
+        IOperation? receiver,
+        IInvocationOperation invocation,
+        IMethodSymbol method,
+        IEnumerable<ISimpleAssignmentOperation> assignments,
+        out HelperTarget context
+    )
+    {
+        if (TryGetHelperTarget(receiver, method, out context))
+            return true;
+
+        if (
+            receiver == null
+            || LostUpdateOperationFacts.Unwrap(receiver)
+                is not IPropertyReferenceOperation
+                {
+                    Property: { } setProperty,
+                    Instance: { } contextInstance,
+                }
+            || !IsStableHelperDbSetProperty(setProperty)
+            || !TryGetHelperTarget(contextInstance, method, out context)
+            || HasPriorHelperDbSetAssignment(assignments, invocation, method, setProperty, context)
+        )
+        {
+            context = default;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasPriorHelperDbSetAssignment(
+        IEnumerable<ISimpleAssignmentOperation> assignments,
+        IInvocationOperation invocation,
+        IMethodSymbol method,
+        IPropertySymbol setProperty,
+        HelperTarget expectedContext
+    )
+    {
+        return assignments.Any(assignment =>
+            assignment.Syntax.SpanStart < invocation.Syntax.SpanStart
+            && LostUpdateOperationFacts.Unwrap(assignment.Target)
+                is IPropertyReferenceOperation
+                {
+                    Property: { } assignedProperty,
+                    Instance: { } assignedContextInstance,
+                }
+            && SymbolEqualityComparer.Default.Equals(
+                assignedProperty.OriginalDefinition,
+                setProperty.OriginalDefinition
+            )
+            && TryGetHelperTarget(assignedContextInstance, method, out var assignedContext)
+            && SymbolEqualityComparer.Default.Equals(assignedContext.Symbol, expectedContext.Symbol)
+        );
+    }
+
+    private static bool IsStableHelperDbSetProperty(IPropertySymbol property)
+    {
+        if (
+            property.IsStatic
+            || property.IsVirtual
+            || property.IsOverride
+            || property.IsAbstract
+            || !LostUpdateOperationFacts.IsDbContextType(property.ContainingType)
+            || !LostUpdateOperationFacts.TryGetDbSetEntityType(property.Type, out _)
+            || property.DeclaringSyntaxReferences.IsEmpty
+        )
+        {
+            return false;
+        }
+
+        for (
+            var current = property.ContainingType.BaseType;
+            current != null;
+            current = current.BaseType
+        )
+        {
+            if (
+                current
+                    .GetMembers(property.Name)
+                    .OfType<IPropertySymbol>()
+                    .Any(candidate =>
+                        LostUpdateOperationFacts.TryGetDbSetEntityType(candidate.Type, out _)
+                    )
+            )
+            {
+                return false;
+            }
+        }
+
+        return property.DeclaringSyntaxReferences.All(reference =>
+            reference.GetSyntax() is PropertyDeclarationSyntax declaration
+            && declaration.ExpressionBody == null
+            && declaration.AccessorList?.Accessors.FirstOrDefault(accessor =>
+                accessor.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.GetAccessorDeclaration)
+            )
+                is { Body: null, ExpressionBody: null }
+        );
+    }
+
+    private static bool IsHelperReloadCompletionObserved(IInvocationOperation invocation)
+    {
+        if (invocation.TargetMethod.Name == "Reload")
+            return true;
+        if (invocation.TargetMethod.Name != "ReloadAsync")
+            return false;
+
+        IOperation current = invocation;
+        while (current.Parent != null)
+        {
+            switch (current.Parent)
+            {
+                case IConversionOperation or IParenthesizedOperation:
+                    current = current.Parent;
+                    continue;
+                case IInvocationOperation configureAwait
+                    when configureAwait.TargetMethod.Name == "ConfigureAwait":
+                    current = configureAwait;
+                    continue;
+                case IAwaitOperation:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsUnconditionalHelperEffect(IOperation effect, ControlFlowGraph? flowGraph)
+    {
+        IOperation root = effect;
+        for (IOperation? current = effect.Parent; current != null; current = current.Parent)
+        {
+            if (current is IConditionalOperation)
+                return false;
+            root = current;
+        }
+
+        if (!ContainsConditionalControlFlow(root))
+            return true;
+        if (flowGraph == null)
+            return false;
+
+        var effectBlock = FindContainingBlock(flowGraph, effect);
+        return effectBlock != null
+            && !CanReachAvoiding(
+                flowGraph.Blocks[0],
+                flowGraph.Blocks[flowGraph.Blocks.Length - 1],
+                effectBlock
+            );
+    }
+
+    private static bool ContainsConditionalControlFlow(IOperation operation)
+    {
+        if (operation is IConditionalOperation)
+            return true;
+
+        foreach (var child in operation.ChildOperations)
+        {
+            if (
+                child is not IAnonymousFunctionOperation and not ILocalFunctionOperation
+                && ContainsConditionalControlFlow(child)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetHelperEntryTargets(
+        IInvocationOperation entryInvocation,
+        IMethodSymbol method,
+        out HelperTarget context,
+        out HelperTarget entity
+    )
+    {
+        context = default;
+        entity = default;
+        return LostUpdateOperationFacts.IsEfDbContextEntryMethod(entryInvocation.TargetMethod)
+            && TryGetHelperTarget(entryInvocation.Instance, method, out context)
+            && TryGetSingleHelperEntityTarget(entryInvocation, method, out entity);
+    }
+
+    private static bool TryGetSingleHelperEntityTarget(
+        IInvocationOperation invocation,
+        IMethodSymbol method,
+        out HelperTarget entity
+    )
+    {
+        var targets = invocation
+            .Arguments.Select(argument =>
+                TryGetHelperTarget(argument.Value, method, out var target)
+                    ? (HelperTarget?)target
+                    : null
+            )
+            .Where(target => target.HasValue)
+            .Select(target => target!.Value)
+            .ToArray();
+        if (targets.Length == 1)
+        {
+            entity = targets[0];
+            return true;
+        }
+
+        entity = default;
+        return false;
+    }
+
+    private static bool TryGetExactHelperProperty(
+        IInvocationOperation invocation,
+        HelperTarget entity,
+        out IPropertySymbol property
+    )
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            if (
+                argument.Value.ConstantValue is { HasValue: true, Value: string name }
+                && entity.Type is INamedTypeSymbol entityType
+                && entityType.GetMembers(name).OfType<IPropertySymbol>().SingleOrDefault()
+                    is { } namedProperty
+            )
+            {
+                property = namedProperty;
+                return true;
+            }
+
+            var value = LostUpdateOperationFacts.Unwrap(argument.Value);
+            if (value is IDelegateCreationOperation { Target: { } target })
+                value = LostUpdateOperationFacts.Unwrap(target);
+            if (value is not IAnonymousFunctionOperation anonymousFunction)
+                continue;
+            var parameters = anonymousFunction.Symbol.Parameters;
+            var operations = anonymousFunction.Body.Operations;
+            if (
+                parameters.Length == 1
+                && operations.Length == 1
+                && operations[0] is IReturnOperation { ReturnedValue: { } returnedValue }
+                && LostUpdateOperationFacts.Unwrap(returnedValue)
+                    is IPropertyReferenceOperation propertyReference
+                && LostUpdateOperationFacts.TryGetRootParameter(
+                    propertyReference.Instance,
+                    out var rootParameter
+                )
+                && SymbolEqualityComparer.Default.Equals(rootParameter, parameters[0])
+            )
+            {
+                property = propertyReference.Property;
+                return true;
+            }
+        }
+
+        property = null!;
+        return false;
+    }
+
+    private static bool TryGetHelperEntityState(
+        IOperation operation,
+        out HelperTrackingEffectKind kind
+    )
+    {
+        operation = LostUpdateOperationFacts.Unwrap(operation);
+        if (
+            operation
+                is IFieldReferenceOperation
+                {
+                    Field:
+                    {
+                        Name: var name,
+                        ContainingType:
+                        { Name: "EntityState", ContainingNamespace: { } entityStateNamespace },
+                    },
+                }
+            && entityStateNamespace.ToDisplayString() == "Microsoft.EntityFrameworkCore"
+        )
+        {
+            kind = name switch
+            {
+                "Added" => HelperTrackingEffectKind.StateAdded,
+                "Deleted" => HelperTrackingEffectKind.StateDeleted,
+                "Detached" => HelperTrackingEffectKind.StateDetached,
+                "Modified" => HelperTrackingEffectKind.StateModified,
+                "Unchanged" => HelperTrackingEffectKind.StateUnchanged,
+                _ => default,
+            };
+            return name is "Added" or "Deleted" or "Detached" or "Modified" or "Unchanged";
+        }
+
+        kind = default;
+        return false;
+    }
+
+    private static bool IsPlainSelfAssignment(
+        ISimpleAssignmentOperation assignment,
+        IPropertyReferenceOperation target,
+        HelperTarget helperTarget
+    )
+    {
+        return LostUpdateOperationFacts.Unwrap(assignment.Value)
+                is IPropertyReferenceOperation valueProperty
+            && SymbolEqualityComparer.Default.Equals(valueProperty.Property, target.Property)
+            && LostUpdateOperationFacts.TryGetRootSymbol(valueProperty.Instance, out var valueRoot)
+            && SymbolEqualityComparer.Default.Equals(valueRoot, helperTarget.Symbol);
+    }
+
     private static void AddMutation(
         IOperation targetOperation,
         IOperation mutation,
@@ -6576,6 +7408,100 @@ internal sealed class HelperSummary
             );
             mutationOperations[mutation.Syntax.SpanStart] = mutation;
         }
+    }
+}
+
+internal enum HelperTrackingEffectKind
+{
+    Attach,
+    Update,
+    Remove,
+    Clear,
+    AcceptAllChanges,
+    DetectChanges,
+    AutoDetectChanges,
+    QueryTrackingBehavior,
+    StateAdded,
+    StateDeleted,
+    StateDetached,
+    StateModified,
+    StateUnchanged,
+    IsModifiedFalse,
+    IsModifiedTrue,
+    Reload,
+}
+
+internal readonly struct HelperTrackingEffect
+{
+    internal HelperTrackingEffect(
+        HelperTrackingEffectKind kind,
+        HelperTarget context,
+        HelperTarget? entity,
+        IPropertySymbol? property,
+        int position,
+        int? conditionParameterOrdinal = null,
+        bool conditionValue = false,
+        bool hasUnknownCondition = false,
+        int? valueParameterOrdinal = null,
+        bool? booleanValue = null,
+        string? queryTrackingBehavior = null
+    )
+    {
+        Kind = kind;
+        Context = context;
+        Entity = entity;
+        Property = property;
+        Position = position;
+        ConditionParameterOrdinal = conditionParameterOrdinal;
+        ConditionValue = conditionValue;
+        HasUnknownCondition = hasUnknownCondition;
+        ValueParameterOrdinal = valueParameterOrdinal;
+        BooleanValue = booleanValue;
+        QueryTrackingBehavior = queryTrackingBehavior;
+    }
+
+    internal HelperTrackingEffectKind Kind { get; }
+    internal HelperTarget Context { get; }
+    internal HelperTarget? Entity { get; }
+    internal IPropertySymbol? Property { get; }
+    internal int Position { get; }
+    internal int? ConditionParameterOrdinal { get; }
+    internal bool ConditionValue { get; }
+    internal bool HasUnknownCondition { get; }
+    internal int? ValueParameterOrdinal { get; }
+    internal bool? BooleanValue { get; }
+    internal string? QueryTrackingBehavior { get; }
+
+    internal HelperTrackingEffect WithCondition(int conditionParameterOrdinal, bool conditionValue)
+    {
+        return new HelperTrackingEffect(
+            Kind,
+            Context,
+            Entity,
+            Property,
+            Position,
+            conditionParameterOrdinal,
+            conditionValue,
+            hasUnknownCondition: false,
+            ValueParameterOrdinal,
+            BooleanValue,
+            QueryTrackingBehavior
+        );
+    }
+
+    internal HelperTrackingEffect WithUnknownCondition()
+    {
+        return new HelperTrackingEffect(
+            Kind,
+            Context,
+            Entity,
+            Property,
+            Position,
+            hasUnknownCondition: true,
+            valueParameterOrdinal: ValueParameterOrdinal,
+            booleanValue: BooleanValue,
+            queryTrackingBehavior: QueryTrackingBehavior
+        );
     }
 }
 
@@ -6677,7 +7603,8 @@ internal readonly struct HelperMutation
         int position,
         ImmutableArray<HelperSave> subsequentSaves = default,
         int? conditionParameterOrdinal = null,
-        bool conditionValue = false
+        bool conditionValue = false,
+        bool isPlainSelfAssignment = false
     )
     {
         Target = target;
@@ -6689,6 +7616,7 @@ internal readonly struct HelperMutation
             : subsequentSaves;
         ConditionParameterOrdinal = conditionParameterOrdinal;
         ConditionValue = conditionValue;
+        IsPlainSelfAssignment = isPlainSelfAssignment;
     }
 
     internal HelperTarget Target { get; }
@@ -6698,6 +7626,7 @@ internal readonly struct HelperMutation
     internal ImmutableArray<HelperSave> SubsequentSaves { get; }
     internal int? ConditionParameterOrdinal { get; }
     internal bool ConditionValue { get; }
+    internal bool IsPlainSelfAssignment { get; }
 
     internal HelperMutation WithSubsequentSaves(ImmutableArray<HelperSave> saves)
     {
@@ -6708,7 +7637,8 @@ internal readonly struct HelperMutation
             Position,
             saves,
             ConditionParameterOrdinal,
-            ConditionValue
+            ConditionValue,
+            IsPlainSelfAssignment
         );
     }
 
@@ -6721,7 +7651,8 @@ internal readonly struct HelperMutation
             Position,
             SubsequentSaves,
             conditionParameterOrdinal,
-            conditionValue
+            conditionValue,
+            IsPlainSelfAssignment
         );
     }
 }

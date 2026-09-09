@@ -143,6 +143,7 @@ internal static class LostUpdateFlowAnalysis
         var callerTree = context.OperationBlocks[0].Syntax.SyntaxTree;
         var transactions = new List<TransactionEvidence>();
         var transactionResets = new List<TransactionResetEvidence>();
+        var helperTrackingEffects = new List<ResolvedHelperTrackingEffect>();
         foreach (var invocation in collector.Invocations)
         {
             if (
@@ -249,6 +250,64 @@ internal static class LostUpdateFlowAnalysis
                 }
             }
 
+            foreach (var helperEffect in helper.TrackingEffects)
+            {
+                if (
+                    !IsHelperTrackingEffectPossible(invocation, helperEffect)
+                    || !TryResolveHelperContext(
+                        helperEffect.Context,
+                        invocation,
+                        contexts,
+                        out var helperEffectContext
+                    )
+                )
+                {
+                    continue;
+                }
+
+                EntitySource? helperEffectEntity = null;
+                if (
+                    helperEffect.Entity.HasValue
+                    && !TryResolveHelperEntity(
+                        helperEffect.Entity.Value,
+                        invocation,
+                        entities,
+                        out helperEffectEntity
+                    )
+                )
+                {
+                    continue;
+                }
+
+                if (
+                    !TryResolveHelperTrackingEffectValue(
+                        invocation,
+                        helperEffect,
+                        out var helperBooleanValue,
+                        out var helperQueryTrackingBehavior
+                    )
+                )
+                {
+                    continue;
+                }
+
+                helperTrackingEffects.Add(
+                    new ResolvedHelperTrackingEffect(
+                        helperEffect.Kind,
+                        helperEffectContext,
+                        helperEffectEntity,
+                        helperEffect.Property,
+                        invocation,
+                        helperEffect.Position,
+                        IsHelperTrackingEffectExecuted(invocation, helperEffect),
+                        helperEffect.ConditionParameterOrdinal,
+                        helperEffect.ConditionValue,
+                        helperBooleanValue,
+                        helperQueryTrackingBehavior
+                    )
+                );
+            }
+
             foreach (var helperMutation in helper.Mutations)
             {
                 if (
@@ -288,7 +347,11 @@ internal static class LostUpdateFlowAnalysis
                             helperMutation.Location,
                             invocation.Syntax.SpanStart,
                             invocation,
-                            containedSaveContexts.ToImmutable()
+                            containedSaveContexts.ToImmutable(),
+                            helperMutation.IsPlainSelfAssignment,
+                            helperMutation.Position,
+                            helperMutation.ConditionParameterOrdinal,
+                            helperMutation.ConditionValue
                         )
                     );
                 }
@@ -306,10 +369,10 @@ internal static class LostUpdateFlowAnalysis
             collector.SimpleAssignments,
             contexts,
             materializedEntities,
-            flowGraph
+            flowGraph,
+            helperTrackingEffects
         );
 
-        var reported = new HashSet<string>(StringComparer.Ordinal);
         foreach (var mutation in mutations.OrderBy(item => item.Position))
         {
             if (
@@ -400,6 +463,7 @@ internal static class LostUpdateFlowAnalysis
                             collector.SimpleAssignments,
                             contexts,
                             collector,
+                            helperTrackingEffects,
                             flowGraph
                         )
                         || HasReattachmentBeforeSave(
@@ -417,6 +481,12 @@ internal static class LostUpdateFlowAnalysis
                             collector.SimpleAssignments,
                             contexts,
                             entities,
+                            flowGraph
+                        )
+                        || HasHelperPersistenceBeforeSave(
+                            mutation,
+                            candidate,
+                            helperTrackingEffects,
                             flowGraph
                         )
                     )
@@ -437,6 +507,12 @@ internal static class LostUpdateFlowAnalysis
                             entities,
                             flowGraph
                         )
+                        || HasHelperExplicitPersistenceBeforeSave(
+                            mutation,
+                            candidate,
+                            helperTrackingEffects,
+                            flowGraph
+                        )
                     )
                     && !IsDefinitelyDetachedBeforeSave(
                         mutation,
@@ -446,6 +522,12 @@ internal static class LostUpdateFlowAnalysis
                         contexts,
                         queries,
                         entities,
+                        evidence.HasIndependentChangeDetection(
+                            mutation.Entity.Context,
+                            mutation.Entity.EntityType,
+                            context.CancellationToken
+                        ),
+                        helperTrackingEffects,
                         flowGraph
                     )
                     && !IsDefinitelyOverwrittenBeforeSave(
@@ -462,6 +544,12 @@ internal static class LostUpdateFlowAnalysis
                             mutation.Entity.EntityType,
                             context.CancellationToken
                         )
+                        || HasHelperDetectChangesBeforeSave(
+                            mutation,
+                            candidate,
+                            helperTrackingEffects,
+                            flowGraph
+                        )
                         || !IsAutoDetectionDisabledBeforeSave(
                             mutation,
                             candidate,
@@ -470,6 +558,7 @@ internal static class LostUpdateFlowAnalysis
                             contexts,
                             queries,
                             entities,
+                            helperTrackingEffects,
                             flowGraph
                         )
                     )
@@ -491,13 +580,7 @@ internal static class LostUpdateFlowAnalysis
             if (save.Location == null)
                 continue;
 
-            var key =
-                mutation.Location.SourceTree?.FilePath
-                + ":"
-                + mutation.Location.SourceSpan.Start
-                + ":"
-                + save.Location.SourceSpan.Start;
-            if (!reported.Add(key))
+            if (!evidence.TryRegisterDiagnostic(mutation.Location, save.Location))
                 continue;
 
             context.ReportDiagnostic(
@@ -715,7 +798,8 @@ internal static class LostUpdateFlowAnalysis
         IEnumerable<ISimpleAssignmentOperation> assignments,
         Dictionary<ILocalSymbol, ISymbol> contexts,
         IEnumerable<EntitySource> entities,
-        ControlFlowGraph? flowGraph
+        ControlFlowGraph? flowGraph,
+        IEnumerable<ResolvedHelperTrackingEffect> helperEffects
     )
     {
         if (flowGraph == null)
@@ -743,6 +827,31 @@ internal static class LostUpdateFlowAnalysis
                 )
                 .OrderByDescending(assignment => assignment.Syntax.SpanStart)
                 .FirstOrDefault();
+            var latestHelper = helperEffects
+                .Where(effect =>
+                    effect.Kind == HelperTrackingEffectKind.QueryTrackingBehavior
+                    && effect.QueryTrackingBehavior != null
+                    && SymbolEqualityComparer.Default.Equals(effect.Context, entity.Context)
+                    && effect.Invocation.Syntax.SpanStart < entity.MaterializationPosition
+                    && effect.IsDefinitelyExecuted
+                    && OperationDominates(effect.Invocation, entity.Materialization, flowGraph)
+                )
+                .OrderByDescending(effect => effect.Invocation.Syntax.SpanStart)
+                .ThenByDescending(effect => effect.ContainedPosition)
+                .FirstOrDefault();
+            if (
+                latestHelper.Invocation != null
+                && (
+                    latest == null
+                    || latestHelper.Invocation.Syntax.SpanStart > latest.Syntax.SpanStart
+                )
+            )
+            {
+                entity.IsTracked =
+                    latestHelper.QueryTrackingBehavior
+                        is not ("NoTracking" or "NoTrackingWithIdentityResolution");
+                continue;
+            }
 
             if (latest == null)
             {
@@ -804,6 +913,7 @@ internal static class LostUpdateFlowAnalysis
         IEnumerable<ISimpleAssignmentOperation> assignments,
         Dictionary<ILocalSymbol, ISymbol> contexts,
         OperationCollector collector,
+        IEnumerable<ResolvedHelperTrackingEffect> helperEffects,
         ControlFlowGraph? flowGraph
     )
     {
@@ -904,6 +1014,111 @@ internal static class LostUpdateFlowAnalysis
                 if (!isResetBeforeMaterialization)
                     return false;
             }
+        }
+
+        foreach (
+            var effect in helperEffects.Where(candidate =>
+                candidate.Kind == HelperTrackingEffectKind.QueryTrackingBehavior
+                && candidate.QueryTrackingBehavior
+                    is "NoTracking"
+                        or "NoTrackingWithIdentityResolution"
+                && candidate.Invocation.Syntax.SpanStart < entity.MaterializationPosition
+                && SymbolEqualityComparer.Default.Equals(candidate.Context, entity.Context)
+            )
+        )
+        {
+            if (
+                !TryGetHelperEffectPredicate(effect, out var predicate)
+                || !IsBooleanSymbolStableBetween(
+                    predicate.Symbol,
+                    effect.Invocation.Syntax.SpanStart,
+                    save.Position,
+                    collector
+                )
+                || !OperationRequiresBooleanPredicateAfter(
+                    effect.Invocation,
+                    mutation.Operation,
+                    predicate,
+                    flowGraph
+                )
+                || !OperationRequiresBooleanPredicateAfter(
+                    effect.Invocation,
+                    save.Invocation,
+                    predicate,
+                    flowGraph
+                )
+                || !OperationCanReach(
+                    effect.Invocation,
+                    entity.Materialization,
+                    predicate.Symbol,
+                    predicate.Value,
+                    flowGraph
+                )
+            )
+            {
+                continue;
+            }
+
+            var directReset = relevantAssignments.Any(assignment =>
+            {
+                if (
+                    assignment.Syntax.SpanStart <= effect.Invocation.Syntax.SpanStart
+                    || assignment.Syntax.SpanStart >= entity.MaterializationPosition
+                )
+                {
+                    return false;
+                }
+
+                TryGetQueryTrackingBehaviorAssignment(
+                    assignment,
+                    contexts,
+                    out _,
+                    out var laterBehavior
+                );
+                return laterBehavior is not ("NoTracking" or "NoTrackingWithIdentityResolution")
+                    && OperationCanReach(
+                        effect.Invocation,
+                        assignment,
+                        predicate.Symbol,
+                        predicate.Value,
+                        flowGraph
+                    )
+                    && OperationCanReach(
+                        assignment,
+                        entity.Materialization,
+                        predicate.Symbol,
+                        predicate.Value,
+                        flowGraph
+                    );
+            });
+            var helperReset = helperEffects.Any(other =>
+                other.Kind == HelperTrackingEffectKind.QueryTrackingBehavior
+                && other.QueryTrackingBehavior
+                    is not (null or "NoTracking" or "NoTrackingWithIdentityResolution")
+                && SymbolEqualityComparer.Default.Equals(other.Context, entity.Context)
+                && (
+                    other.Invocation.Syntax.SpanStart > effect.Invocation.Syntax.SpanStart
+                    || ReferenceEquals(other.Invocation, effect.Invocation)
+                        && other.ContainedPosition > effect.ContainedPosition
+                )
+                && other.Invocation.Syntax.SpanStart < entity.MaterializationPosition
+                && OperationCanReach(
+                    effect.Invocation,
+                    other.Invocation,
+                    predicate.Symbol,
+                    predicate.Value,
+                    flowGraph
+                )
+                && OperationCanReach(
+                    other.Invocation,
+                    entity.Materialization,
+                    predicate.Symbol,
+                    predicate.Value,
+                    flowGraph
+                )
+            );
+            if (!directReset && !helperReset)
+                return false;
         }
 
         return true;
@@ -3022,6 +3237,233 @@ internal static class LostUpdateFlowAnalysis
             || conditionValue == helperMutation.ConditionValue;
     }
 
+    private static bool IsHelperTrackingEffectPossible(
+        IInvocationOperation invocation,
+        HelperTrackingEffect effect
+    )
+    {
+        if (!effect.ConditionParameterOrdinal.HasValue)
+            return true;
+
+        return !TryGetArgument(
+                invocation,
+                effect.ConditionParameterOrdinal.Value,
+                out var conditionArgument
+            )
+            || conditionArgument.Value.ConstantValue
+                is not { HasValue: true, Value: bool conditionValue }
+            || conditionValue == effect.ConditionValue;
+    }
+
+    private static bool IsHelperTrackingEffectExecuted(
+        IInvocationOperation invocation,
+        HelperTrackingEffect effect
+    )
+    {
+        if (effect.HasUnknownCondition)
+            return false;
+        if (!effect.ConditionParameterOrdinal.HasValue)
+            return true;
+
+        return TryGetArgument(
+                invocation,
+                effect.ConditionParameterOrdinal.Value,
+                out var conditionArgument
+            )
+            && conditionArgument.Value.ConstantValue
+                is { HasValue: true, Value: bool conditionValue }
+            && conditionValue == effect.ConditionValue;
+    }
+
+    private static bool TryResolveHelperTrackingEffectValue(
+        IInvocationOperation invocation,
+        HelperTrackingEffect effect,
+        out bool? booleanValue,
+        out string? queryTrackingBehavior
+    )
+    {
+        booleanValue = effect.BooleanValue;
+        queryTrackingBehavior = effect.QueryTrackingBehavior;
+        if (!effect.ValueParameterOrdinal.HasValue)
+            return true;
+        if (!TryGetArgument(invocation, effect.ValueParameterOrdinal.Value, out var valueArgument))
+        {
+            return false;
+        }
+
+        var value = LostUpdateOperationFacts.Unwrap(valueArgument.Value);
+        if (
+            effect.Kind == HelperTrackingEffectKind.AutoDetectChanges
+            && value.ConstantValue is { HasValue: true, Value: bool enabled }
+        )
+        {
+            booleanValue = enabled;
+            return true;
+        }
+
+        if (
+            effect.Kind == HelperTrackingEffectKind.QueryTrackingBehavior
+            && value
+                is IFieldReferenceOperation
+                {
+                    Field: { Name: var behaviorName, ContainingType: { } behaviorType },
+                }
+            && behaviorType.ToDisplayString()
+                == "Microsoft.EntityFrameworkCore.QueryTrackingBehavior"
+        )
+        {
+            queryTrackingBehavior = behaviorName;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasHelperPersistenceBeforeSave(
+        MutationEvidence mutation,
+        SaveEvidence save,
+        IEnumerable<ResolvedHelperTrackingEffect> effects,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        foreach (var effect in effects)
+        {
+            var permitsAfterMutation =
+                effect.Kind
+                is HelperTrackingEffectKind.Update
+                    or HelperTrackingEffectKind.StateModified
+                    or HelperTrackingEffectKind.IsModifiedTrue;
+            if (
+                effect.Kind
+                    is not (
+                        HelperTrackingEffectKind.Attach
+                        or HelperTrackingEffectKind.Update
+                        or HelperTrackingEffectKind.StateModified
+                        or HelperTrackingEffectKind.StateUnchanged
+                        or HelperTrackingEffectKind.IsModifiedTrue
+                    )
+                || !HelperEffectMatchesMutation(effect, mutation)
+                || effect.Kind == HelperTrackingEffectKind.IsModifiedTrue
+                    && !HelperEffectMatchesProperty(effect, mutation)
+                || !HelperEffectPrecedesSave(effect, save)
+                || !permitsAfterMutation && !HelperEffectPrecedesMutation(effect, mutation)
+                || !HelperEffectSharesPath(effect, mutation, save, permitsAfterMutation, flowGraph)
+            )
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasHelperExplicitPersistenceBeforeSave(
+        MutationEvidence mutation,
+        SaveEvidence save,
+        IEnumerable<ResolvedHelperTrackingEffect> effects,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        return effects.Any(effect =>
+            effect.Kind
+                is HelperTrackingEffectKind.Update
+                    or HelperTrackingEffectKind.StateModified
+                    or HelperTrackingEffectKind.IsModifiedTrue
+            && HelperEffectMatchesMutation(effect, mutation)
+            && (
+                effect.Kind != HelperTrackingEffectKind.IsModifiedTrue
+                || HelperEffectMatchesProperty(effect, mutation)
+            )
+            && HelperEffectFollowsMutation(effect, mutation)
+            && HelperEffectPrecedesSave(effect, save)
+            && HelperEffectSharesPath(effect, mutation, save, permitsAfterMutation: true, flowGraph)
+        );
+    }
+
+    private static bool HelperEffectMatchesMutation(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        return SymbolEqualityComparer.Default.Equals(effect.Context, mutation.Entity.Context)
+            && (effect.Entity == null || ReferenceEquals(effect.Entity, mutation.Entity));
+    }
+
+    private static bool HelperEffectMatchesProperty(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        return effect.Property != null
+            && SymbolEqualityComparer.Default.Equals(effect.Property, mutation.Property);
+    }
+
+    private static bool HelperEffectPrecedesMutation(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        if (effect.Invocation.Syntax.SpanStart != mutation.Position)
+            return effect.Invocation.Syntax.SpanStart < mutation.Position;
+
+        return mutation.ContainedPosition.HasValue
+            && effect.ContainedPosition < mutation.ContainedPosition.Value;
+    }
+
+    private static bool HelperEffectFollowsMutation(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        if (effect.Invocation.Syntax.SpanStart != mutation.Position)
+            return effect.Invocation.Syntax.SpanStart > mutation.Position;
+
+        return mutation.ContainedPosition.HasValue
+            && effect.ContainedPosition > mutation.ContainedPosition.Value;
+    }
+
+    private static bool HelperEffectPrecedesSave(
+        ResolvedHelperTrackingEffect effect,
+        SaveEvidence save
+    )
+    {
+        if (!ReferenceEquals(effect.Invocation, save.Invocation))
+            return effect.Invocation.Syntax.SpanStart < save.Position;
+
+        return save.ContainedPosition.HasValue
+            && effect.ContainedPosition < save.ContainedPosition.Value;
+    }
+
+    private static bool HelperEffectSharesPath(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation,
+        SaveEvidence save,
+        bool permitsAfterMutation,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        if (ReferenceEquals(effect.Invocation, mutation.Operation))
+        {
+            return !effect.ConditionParameterOrdinal.HasValue
+                || !mutation.ConditionParameterOrdinal.HasValue
+                || effect.ConditionParameterOrdinal != mutation.ConditionParameterOrdinal
+                || effect.ConditionValue == mutation.ConditionValue;
+        }
+
+        if (ReferenceEquals(effect.Invocation, save.Invocation))
+            return true;
+
+        return TrackingSharesPath(
+            mutation,
+            save,
+            effect.Invocation,
+            permitsAfterMutation,
+            flowGraph
+        );
+    }
+
     private static bool HasReattachmentBeforeSave(
         MutationEvidence mutation,
         SaveEvidence save,
@@ -3320,6 +3762,230 @@ internal static class LostUpdateFlowAnalysis
         return SymbolEqualityComparer.Default.Equals(rootParameter, parameters[0]);
     }
 
+    private static bool HasHelperPersistenceAfterPosition(
+        MutationEvidence mutation,
+        SaveEvidence save,
+        int transitionPosition,
+        IEnumerable<ResolvedHelperTrackingEffect> effects,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        return effects.Any(effect =>
+            effect.Invocation.Syntax.SpanStart > transitionPosition
+            && IsHelperPersistenceEffect(effect, mutation)
+            && HelperEffectPrecedesSave(effect, save)
+            && HelperEffectSharesPath(
+                effect,
+                mutation,
+                save,
+                PermitsPersistenceAfterMutation(effect.Kind),
+                flowGraph
+            )
+        );
+    }
+
+    private static bool HasHelperPersistenceAfterEffect(
+        MutationEvidence mutation,
+        SaveEvidence save,
+        ResolvedHelperTrackingEffect reset,
+        IEnumerable<ResolvedHelperTrackingEffect> effects,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        return effects.Any(effect =>
+            (
+                effect.Invocation.Syntax.SpanStart > reset.Invocation.Syntax.SpanStart
+                || ReferenceEquals(effect.Invocation, reset.Invocation)
+                    && effect.ContainedPosition > reset.ContainedPosition
+            )
+            && IsHelperPersistenceEffect(effect, mutation)
+            && HelperEffectPrecedesSave(effect, save)
+            && HelperEffectSharesPath(
+                effect,
+                mutation,
+                save,
+                PermitsPersistenceAfterMutation(effect.Kind),
+                flowGraph
+            )
+        );
+    }
+
+    private static bool IsHelperPersistenceEffect(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        return effect.Kind
+                is HelperTrackingEffectKind.Attach
+                    or HelperTrackingEffectKind.Update
+                    or HelperTrackingEffectKind.StateModified
+                    or HelperTrackingEffectKind.StateUnchanged
+                    or HelperTrackingEffectKind.IsModifiedTrue
+            && HelperEffectMatchesMutation(effect, mutation)
+            && (
+                effect.Kind != HelperTrackingEffectKind.IsModifiedTrue
+                || HelperEffectMatchesProperty(effect, mutation)
+            )
+            && (
+                PermitsPersistenceAfterMutation(effect.Kind)
+                || HelperEffectPrecedesMutation(effect, mutation)
+            );
+    }
+
+    private static bool PermitsPersistenceAfterMutation(HelperTrackingEffectKind kind)
+    {
+        return kind
+            is HelperTrackingEffectKind.Update
+                or HelperTrackingEffectKind.StateModified
+                or HelperTrackingEffectKind.IsModifiedTrue;
+    }
+
+    private static bool HasHelperDetectChangesBeforeSave(
+        MutationEvidence mutation,
+        SaveEvidence save,
+        IEnumerable<ResolvedHelperTrackingEffect> effects,
+        ControlFlowGraph? flowGraph
+    )
+    {
+        var allEffects = effects.ToImmutableArray();
+        return allEffects.Any(effect =>
+            effect.Kind == HelperTrackingEffectKind.DetectChanges
+            && HelperEffectMatchesMutation(effect, mutation)
+            && HelperEffectFollowsMutation(effect, mutation)
+            && HelperEffectPrecedesSave(effect, save)
+            && HelperEffectSharesPath(effect, mutation, save, permitsAfterMutation: true, flowGraph)
+            && !allEffects.Any(reset =>
+                reset.Kind == HelperTrackingEffectKind.AcceptAllChanges
+                && ReferenceEquals(reset.Invocation, effect.Invocation)
+                && SymbolEqualityComparer.Default.Equals(reset.Context, effect.Context)
+                && reset.ContainedPosition > effect.ContainedPosition
+                && reset.ConditionParameterOrdinal == effect.ConditionParameterOrdinal
+                && (
+                    !reset.ConditionParameterOrdinal.HasValue
+                    || reset.ConditionValue == effect.ConditionValue
+                )
+                && HelperEffectPrecedesSave(reset, save)
+            )
+        );
+    }
+
+    private static bool HasEffectiveChangeMarkingBeforeTransition(
+        MutationEvidence mutation,
+        IInvocationOperation transition,
+        int? containedPosition,
+        IEnumerable<ISimpleAssignmentOperation> assignments,
+        IEnumerable<IInvocationOperation> invocations,
+        Dictionary<ILocalSymbol, ISymbol> contexts,
+        Dictionary<ILocalSymbol, QuerySource> queries,
+        Dictionary<ILocalSymbol, EntitySource> entities,
+        IEnumerable<ResolvedHelperTrackingEffect> helperEffects,
+        ControlFlowGraph flowGraph
+    )
+    {
+        var transitionEvidence = new SaveEvidence(
+            mutation.Entity.Context,
+            transition.Syntax.GetLocation(),
+            transition.Syntax.SpanStart,
+            transition,
+            containedPosition
+        );
+        if (
+            assignments.Any(assignment =>
+                assignment.Syntax.SpanStart > mutation.Position
+                && assignment.Syntax.SpanStart < transition.Syntax.SpanStart
+                && (
+                    TryGetEntryStateAssignment(
+                        assignment,
+                        mutation,
+                        contexts,
+                        entities,
+                        out var stateName
+                    )
+                        && stateName == "Modified"
+                    || TryGetIsModifiedAssignment(assignment, mutation, contexts, entities)
+                )
+                && TransitionDominates(mutation, transitionEvidence, assignment, flowGraph)
+            )
+        )
+        {
+            return true;
+        }
+
+        if (
+            invocations.Any(invocation =>
+                invocation.Syntax.SpanStart > mutation.Position
+                && invocation.Syntax.SpanStart < transition.Syntax.SpanStart
+                && (
+                    IsMatchingDetectChanges(invocation, mutation.Entity.Context, contexts)
+                    || LostUpdateOperationFacts.PersistsPriorMutation(invocation.TargetMethod)
+                        && TryResolveInvocationContext(
+                            invocation,
+                            contexts,
+                            queries,
+                            out var updateContext
+                        )
+                        && SymbolEqualityComparer.Default.Equals(
+                            updateContext,
+                            mutation.Entity.Context
+                        )
+                        && invocation.Arguments.Any(argument =>
+                            ContainsEntity(argument.Value, mutation.Entity, entities)
+                        )
+                )
+                && TransitionDominates(mutation, transitionEvidence, invocation, flowGraph)
+            )
+        )
+        {
+            return true;
+        }
+
+        foreach (var effect in helperEffects)
+        {
+            var isMarking =
+                effect.Kind
+                    is HelperTrackingEffectKind.DetectChanges
+                        or HelperTrackingEffectKind.Update
+                        or HelperTrackingEffectKind.StateModified
+                        or HelperTrackingEffectKind.IsModifiedTrue
+                && HelperEffectMatchesMutation(effect, mutation)
+                && (
+                    effect.Kind != HelperTrackingEffectKind.IsModifiedTrue
+                    || HelperEffectMatchesProperty(effect, mutation)
+                );
+            if (
+                !isMarking
+                || !HelperEffectFollowsMutation(effect, mutation)
+                || !HelperEffectPrecedesTransition(effect, transition, containedPosition)
+                || !HelperEffectIsGuaranteedForMutation(effect, mutation)
+            )
+            {
+                continue;
+            }
+
+            if (
+                ReferenceEquals(effect.Invocation, transition)
+                || TransitionDominates(mutation, transitionEvidence, effect.Invocation, flowGraph)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HelperEffectPrecedesTransition(
+        ResolvedHelperTrackingEffect effect,
+        IInvocationOperation transition,
+        int? containedPosition
+    )
+    {
+        if (!ReferenceEquals(effect.Invocation, transition))
+            return effect.Invocation.Syntax.SpanStart < transition.Syntax.SpanStart;
+
+        return containedPosition.HasValue && effect.ContainedPosition < containedPosition.Value;
+    }
+
     private static bool IsDefinitelyDetachedBeforeSave(
         MutationEvidence mutation,
         SaveEvidence save,
@@ -3328,6 +3994,8 @@ internal static class LostUpdateFlowAnalysis
         Dictionary<ILocalSymbol, ISymbol> contexts,
         Dictionary<ILocalSymbol, QuerySource> queries,
         Dictionary<ILocalSymbol, EntitySource> entities,
+        bool hasIndependentChangeDetection,
+        IEnumerable<ResolvedHelperTrackingEffect> helperEffects,
         ControlFlowGraph? flowGraph
     )
     {
@@ -3376,6 +4044,13 @@ internal static class LostUpdateFlowAnalysis
                     entities,
                     flowGraph
                 )
+                || HasHelperPersistenceAfterPosition(
+                    mutation,
+                    save,
+                    assignment.Syntax.SpanStart,
+                    helperEffects,
+                    flowGraph
+                )
             )
             {
                 continue;
@@ -3417,7 +4092,8 @@ internal static class LostUpdateFlowAnalysis
                 && TryResolveContext(contextInstance, contexts, out var clearContext)
                 && SymbolEqualityComparer.Default.Equals(clearContext, mutation.Entity.Context);
             var isAcceptAllChanges =
-                LostUpdateOperationFacts.IsEfChangeTrackerAcceptAllChangesMethod(
+                invocation.Syntax.SpanStart > mutation.Position
+                && LostUpdateOperationFacts.IsEfChangeTrackerAcceptAllChangesMethod(
                     invocation.TargetMethod
                 )
                 && invocation.Instance != null
@@ -3434,6 +4110,21 @@ internal static class LostUpdateFlowAnalysis
                 && SymbolEqualityComparer.Default.Equals(
                     acceptChangesContext,
                     mutation.Entity.Context
+                )
+                && (
+                    hasIndependentChangeDetection
+                    || HasEffectiveChangeMarkingBeforeTransition(
+                        mutation,
+                        invocation,
+                        containedPosition: null,
+                        assignments,
+                        invocations,
+                        contexts,
+                        queries,
+                        entities,
+                        helperEffects,
+                        flowGraph
+                    )
                 );
             var isReload =
                 invocation.Syntax.SpanStart > mutation.Position
@@ -3451,6 +4142,13 @@ internal static class LostUpdateFlowAnalysis
                     entities,
                     flowGraph
                 )
+                || HasHelperPersistenceAfterPosition(
+                    mutation,
+                    save,
+                    invocation.Syntax.SpanStart,
+                    helperEffects,
+                    flowGraph
+                )
             )
             {
                 continue;
@@ -3460,7 +4158,83 @@ internal static class LostUpdateFlowAnalysis
                 return true;
         }
 
+        foreach (var effect in helperEffects)
+        {
+            var isReset =
+                effect.Kind
+                    is HelperTrackingEffectKind.Clear
+                        or HelperTrackingEffectKind.Remove
+                        or HelperTrackingEffectKind.StateAdded
+                        or HelperTrackingEffectKind.StateDeleted
+                        or HelperTrackingEffectKind.StateDetached
+                || effect.Kind == HelperTrackingEffectKind.AcceptAllChanges
+                    && HelperEffectFollowsMutation(effect, mutation)
+                    && (
+                        hasIndependentChangeDetection
+                        || HasEffectiveChangeMarkingBeforeTransition(
+                            mutation,
+                            effect.Invocation,
+                            effect.ContainedPosition,
+                            assignments,
+                            invocations,
+                            contexts,
+                            queries,
+                            entities,
+                            helperEffects,
+                            flowGraph
+                        )
+                    )
+                || effect.Kind
+                    is HelperTrackingEffectKind.StateUnchanged
+                        or HelperTrackingEffectKind.Reload
+                    && HelperEffectFollowsMutation(effect, mutation)
+                || effect.Kind == HelperTrackingEffectKind.IsModifiedFalse
+                    && HelperEffectFollowsMutation(effect, mutation)
+                    && HelperEffectMatchesProperty(effect, mutation);
+            if (
+                !HelperEffectIsGuaranteedForMutation(effect, mutation)
+                || !isReset
+                || !HelperEffectMatchesMutation(effect, mutation)
+                || !HelperEffectPrecedesSave(effect, save)
+                || HasLaterPersistence(
+                    mutation,
+                    save,
+                    effect.Invocation.Syntax.SpanStart,
+                    assignments,
+                    invocations,
+                    contexts,
+                    queries,
+                    entities,
+                    flowGraph
+                )
+                || HasHelperPersistenceAfterEffect(mutation, save, effect, helperEffects, flowGraph)
+            )
+            {
+                continue;
+            }
+
+            if (
+                ReferenceEquals(effect.Invocation, mutation.Operation)
+                || TransitionDominates(mutation, save, effect.Invocation, flowGraph)
+            )
+            {
+                return true;
+            }
+        }
+
         return false;
+    }
+
+    private static bool HelperEffectIsGuaranteedForMutation(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        return effect.IsDefinitelyExecuted
+            || ReferenceEquals(effect.Invocation, mutation.Operation)
+                && effect.ConditionParameterOrdinal.HasValue
+                && effect.ConditionParameterOrdinal == mutation.ConditionParameterOrdinal
+                && effect.ConditionValue == mutation.ConditionValue;
     }
 
     private static bool IsMatchingCompletedReload(
@@ -4790,6 +5564,7 @@ internal static class LostUpdateFlowAnalysis
         Dictionary<ILocalSymbol, ISymbol> contexts,
         Dictionary<ILocalSymbol, QuerySource> queries,
         Dictionary<ILocalSymbol, EntitySource> entities,
+        IEnumerable<ResolvedHelperTrackingEffect> helperEffects,
         ControlFlowGraph? flowGraph
     )
     {
@@ -4809,24 +5584,52 @@ internal static class LostUpdateFlowAnalysis
             )
             .OrderByDescending(assignment => assignment.Syntax.SpanStart)
             .FirstOrDefault();
-        if (
-            effectiveAssignment == null
-            || !TryGetAutoDetectChangesAssignment(
+        var effectiveHelper = helperEffects
+            .Where(effect =>
+                effect.Kind == HelperTrackingEffectKind.AutoDetectChanges
+                && effect.BooleanValue.HasValue
+                && SymbolEqualityComparer.Default.Equals(effect.Context, mutation.Entity.Context)
+                && effect.Invocation.Syntax.SpanStart < save.Position
+                && HelperConfigurationEffectApplies(effect, mutation, save, flowGraph)
+            )
+            .OrderByDescending(effect => effect.Invocation.Syntax.SpanStart)
+            .ThenByDescending(effect => effect.ContainedPosition)
+            .FirstOrDefault();
+        var assignmentPosition = effectiveAssignment?.Syntax.SpanStart ?? -1;
+        var helperPosition = effectiveHelper.Invocation?.Syntax.SpanStart ?? -1;
+        bool? autoDetectionEnabled;
+        if (helperPosition > assignmentPosition)
+        {
+            autoDetectionEnabled = effectiveHelper.BooleanValue;
+        }
+        else if (
+            effectiveAssignment != null
+            && TryGetAutoDetectChangesAssignment(
                 effectiveAssignment,
                 mutation.Entity.Context,
                 contexts,
-                out var enabled
+                out var assignedEnabled
             )
-            || enabled
         )
         {
-            return false;
+            autoDetectionEnabled = assignedEnabled;
         }
+        else
+        {
+            autoDetectionEnabled = null;
+        }
+
+        if (autoDetectionEnabled != false)
+            return false;
+
+        IOperation effectiveOperation = effectiveAssignment is not null
+            ? effectiveAssignment
+            : effectiveHelper.Invocation!;
 
         foreach (var assignment in assignments)
         {
             if (
-                assignment.Syntax.SpanStart > effectiveAssignment.Syntax.SpanStart
+                assignment.Syntax.SpanStart > Math.Max(assignmentPosition, helperPosition)
                 && IsAutoDetectChangesAssignment(assignment, mutation.Entity.Context, contexts)
                 && (
                     !TryGetAutoDetectChangesAssignment(
@@ -4850,7 +5653,7 @@ internal static class LostUpdateFlowAnalysis
                         && OperationCanReachWithoutPassingThrough(
                             assignment,
                             save.Invocation,
-                            effectiveAssignment,
+                            effectiveOperation,
                             flowGraph
                         )
                 )
@@ -4912,7 +5715,113 @@ internal static class LostUpdateFlowAnalysis
             }
         }
 
+        foreach (var effect in helperEffects)
+        {
+            if (
+                effect.Kind == HelperTrackingEffectKind.AutoDetectChanges
+                && effect.BooleanValue != false
+                && SymbolEqualityComparer.Default.Equals(effect.Context, mutation.Entity.Context)
+                && (
+                    effect.Invocation.Syntax.SpanStart
+                        > Math.Max(assignmentPosition, helperPosition)
+                    || effect.Invocation.Syntax.SpanStart == helperPosition
+                        && effect.ContainedPosition > effectiveHelper.ContainedPosition
+                )
+                && effect.Invocation.Syntax.SpanStart < save.Position
+                && HelperConfigurationEffectApplies(effect, mutation, save, flowGraph)
+            )
+            {
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    private static bool HelperConfigurationEffectApplies(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation,
+        SaveEvidence save,
+        ControlFlowGraph flowGraph
+    )
+    {
+        if (
+            effect.IsDefinitelyExecuted
+            && OperationDominates(effect.Invocation, save.Invocation, flowGraph)
+        )
+        {
+            return true;
+        }
+
+        if (
+            ReferenceEquals(effect.Invocation, mutation.Operation)
+            && effect.ConditionParameterOrdinal.HasValue
+            && effect.ConditionParameterOrdinal == mutation.ConditionParameterOrdinal
+            && effect.ConditionValue == mutation.ConditionValue
+        )
+        {
+            return true;
+        }
+
+        return TryGetHelperEffectPredicate(effect, out var predicate)
+            && OperationRequiresBooleanPredicateAfter(
+                effect.Invocation,
+                mutation.Operation,
+                predicate,
+                flowGraph
+            )
+            && OperationRequiresBooleanPredicateAfter(
+                effect.Invocation,
+                save.Invocation,
+                predicate,
+                flowGraph
+            );
+    }
+
+    private static bool OperationRequiresBooleanPredicateAfter(
+        IOperation origin,
+        IOperation operation,
+        BooleanPredicate predicate,
+        ControlFlowGraph flowGraph
+    )
+    {
+        return OperationRequiresBooleanPredicate(operation, predicate)
+            || OperationCanReach(origin, operation, predicate.Symbol, predicate.Value, flowGraph)
+                && !OperationCanReach(
+                    origin,
+                    operation,
+                    predicate.Symbol,
+                    !predicate.Value,
+                    flowGraph
+                );
+    }
+
+    private static bool TryGetHelperEffectPredicate(
+        ResolvedHelperTrackingEffect effect,
+        out BooleanPredicate predicate
+    )
+    {
+        if (
+            effect.ConditionParameterOrdinal.HasValue
+            && TryGetArgument(
+                effect.Invocation,
+                effect.ConditionParameterOrdinal.Value,
+                out var conditionArgument
+            )
+            && TryGetBooleanSymbolPredicate(
+                conditionArgument.Value,
+                effect.ConditionValue,
+                out var symbol,
+                out var requiredValue
+            )
+        )
+        {
+            predicate = new BooleanPredicate(symbol, requiredValue);
+            return true;
+        }
+
+        predicate = default;
+        return false;
     }
 
     private static bool IsAutoDetectChangesAssignment(
@@ -6359,6 +7268,48 @@ internal static class LostUpdateFlowAnalysis
         internal IInvocationOperation Materialization { get; }
     }
 
+    private readonly struct ResolvedHelperTrackingEffect
+    {
+        internal ResolvedHelperTrackingEffect(
+            HelperTrackingEffectKind kind,
+            ISymbol context,
+            EntitySource? entity,
+            IPropertySymbol? property,
+            IInvocationOperation invocation,
+            int containedPosition,
+            bool isDefinitelyExecuted,
+            int? conditionParameterOrdinal,
+            bool conditionValue,
+            bool? booleanValue,
+            string? queryTrackingBehavior
+        )
+        {
+            Kind = kind;
+            Context = context;
+            Entity = entity;
+            Property = property;
+            Invocation = invocation;
+            ContainedPosition = containedPosition;
+            IsDefinitelyExecuted = isDefinitelyExecuted;
+            ConditionParameterOrdinal = conditionParameterOrdinal;
+            ConditionValue = conditionValue;
+            BooleanValue = booleanValue;
+            QueryTrackingBehavior = queryTrackingBehavior;
+        }
+
+        internal HelperTrackingEffectKind Kind { get; }
+        internal ISymbol Context { get; }
+        internal EntitySource? Entity { get; }
+        internal IPropertySymbol? Property { get; }
+        internal IInvocationOperation Invocation { get; }
+        internal int ContainedPosition { get; }
+        internal bool IsDefinitelyExecuted { get; }
+        internal int? ConditionParameterOrdinal { get; }
+        internal bool ConditionValue { get; }
+        internal bool? BooleanValue { get; }
+        internal string? QueryTrackingBehavior { get; }
+    }
+
     private readonly struct BooleanPredicate
     {
         internal BooleanPredicate(ISymbol symbol, bool value)
@@ -6387,7 +7338,10 @@ internal static class LostUpdateFlowAnalysis
             int position,
             IOperation operation,
             ImmutableHashSet<ISymbol>? containedSaveContexts = null,
-            bool isPlainSelfAssignment = false
+            bool isPlainSelfAssignment = false,
+            int? containedPosition = null,
+            int? conditionParameterOrdinal = null,
+            bool conditionValue = false
         )
         {
             Entity = entity;
@@ -6396,6 +7350,9 @@ internal static class LostUpdateFlowAnalysis
             Position = position;
             Operation = operation;
             IsPlainSelfAssignment = isPlainSelfAssignment;
+            ContainedPosition = containedPosition;
+            ConditionParameterOrdinal = conditionParameterOrdinal;
+            ConditionValue = conditionValue;
             ContainedSaveContexts =
                 containedSaveContexts
                 ?? ImmutableHashSet<ISymbol>.Empty.WithComparer(SymbolEqualityComparer.Default);
@@ -6407,6 +7364,9 @@ internal static class LostUpdateFlowAnalysis
         internal int Position { get; }
         internal IOperation Operation { get; }
         internal bool IsPlainSelfAssignment { get; }
+        internal int? ContainedPosition { get; }
+        internal int? ConditionParameterOrdinal { get; }
+        internal bool ConditionValue { get; }
         internal ImmutableHashSet<ISymbol> ContainedSaveContexts { get; }
     }
 

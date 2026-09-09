@@ -876,6 +876,65 @@ namespace Test
             AdjustAndPersistVoid(order, db);
         }
 
+        public void SharedHelperFirstCaller(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            MutateAndPersist(order, db);
+        }
+
+        public void SharedHelperSecondCaller(AppDbContext db)
+        {
+            var order = db.Orders.Last();
+            MutateAndPersist(order, db);
+        }
+
+        public void DistinctCallerFlowOne(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Status|}++;
+            SharedPersist(db);
+        }
+
+        public void DistinctCallerFlowTwo(AppDbContext db)
+        {
+            var order = db.Orders.Last();
+            {|LC048:order.Status|}--;
+            SharedPersist(db);
+        }
+
+        public void HelperSelfAssignmentNoOp(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            SelfAssignNoOp(order);
+            db.SaveChanges();
+        }
+
+        public void HelperSelfAssignmentExplicitlyPersisted(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            SelfAssignPersisted(order);
+            db.Entry(order).Property(x => x.Quantity).IsModified = true;
+            db.SaveChanges();
+        }
+
+        private static void MutateAndPersist(Order order, AppDbContext db)
+        {
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        private static void SharedPersist(AppDbContext db) => db.SaveChanges();
+
+        private static void SelfAssignNoOp(Order order)
+        {
+            order.Quantity = order.Quantity;
+        }
+
+        private static void SelfAssignPersisted(Order order)
+        {
+            {|LC048:order.Quantity|} = order.Quantity;
+        }
+
         private static void Adjust(Order order)
         {
             {|LC048:order.Quantity|}++;
@@ -2111,6 +2170,31 @@ namespace Test
             }
             Outer();
         }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task HelperDisableThenExplicitUpdateReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void ExplicitUpdateAfterDisable(AppDbContext db)
+        {
+            Disable(db);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            db.Update(order);
+            db.SaveChanges();
+        }
+
+        private static void Disable(AppDbContext db) =>
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
     }
 }
 """
@@ -4608,7 +4692,7 @@ namespace Test
         public void Accepted(AppDbContext db)
         {
             var order = db.Orders.First();
-            order.Quantity++;
+            {|LC048:order.Quantity|}++;
             db.ChangeTracker.AcceptAllChanges();
             db.SaveChanges();
         }
@@ -4718,6 +4802,301 @@ namespace Test
             db.Entry(order).State = EntityState.Detached;
             db.SaveChanges();
         }
+        public void AcceptBeforeMutationReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            db.ChangeTracker.AcceptAllChanges();
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void HelperClearBeforeMutationStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            Clear(db);
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        public void HelperClearAfterMutationStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            Clear(db);
+            db.SaveChanges();
+        }
+
+        public void HelperAcceptBeforeMutationReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            Accept(db);
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void HelperAcceptAfterMutationBeforeDetectionReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            Accept(db);
+            db.SaveChanges();
+        }
+
+        public void NoTrackingAttachHelperReports(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            Attach(db, order);
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void NoTrackingUpdateHelperReports(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            {|LC048:order.Quantity|}++;
+            Update(db, order);
+            db.SaveChanges();
+        }
+
+        public void NoTrackingStateHelperReports(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            TrackUnchanged(db, order);
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void HelperStateResetAfterMutationStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            TrackUnchanged(db, order);
+            db.SaveChanges();
+        }
+
+        public void HelperIsModifiedResetAfterMutationStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            ResetModified(db, order);
+            db.SaveChanges();
+        }
+
+        public void ConditionalHelperAcceptReports(AppDbContext db, bool accept)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            AcceptWhen(db, accept);
+            db.SaveChanges();
+        }
+
+        public void ConstantTrueHelperAcceptBeforeDetectionReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            AcceptWhen(db, true);
+            db.SaveChanges();
+        }
+
+        public void MutuallyExclusiveHelperAttachStaysQuiet(AppDbContext db, bool attach)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            AttachOrMutate(db, order, attach);
+            db.SaveChanges();
+        }
+
+        public void HelperAcceptThenMutationReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            AcceptThenMutateAndSave(db, order);
+        }
+
+        public void HelperClearThenMutationStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            ClearThenMutateAndSave(db, order);
+        }
+
+        public void DetectThenAcceptStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.ChangeTracker.DetectChanges();
+            db.ChangeTracker.AcceptAllChanges();
+            db.SaveChanges();
+        }
+
+        public void ExplicitMarkThenAcceptStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.Entry(order).Property(x => x.Quantity).IsModified = true;
+            db.ChangeTracker.AcceptAllChanges();
+            db.SaveChanges();
+        }
+
+        public void HelperDetectThenAcceptStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            DetectAndAccept(db);
+            db.SaveChanges();
+        }
+
+        public void ConditionalHelperDetectThenAcceptStaysQuiet(
+            AppDbContext db,
+            bool detect)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
+            var order = db.Orders.First();
+            order.Quantity++;
+            DetectAndAcceptWhen(db, detect);
+            db.SaveChanges();
+        }
+
+        public void ConditionalHelperDetectWithoutAcceptReports(
+            AppDbContext db,
+            bool detect)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            DetectWhen(db, detect);
+            db.SaveChanges();
+        }
+
+        public void DbSetAttachHelperTracksEntity(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            AttachThroughSet(db, order);
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void ComputedDbSetAttachHelperStaysConservative(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            AttachThroughComputedSet(db, order);
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        public void UnstableDbSetAttachHelperStaysConservative(
+            AppDbContext db,
+            AppDbContext other)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            AttachThroughUnstableSet(db, other, order);
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        public void LookalikeDbSetAttachHelperStaysConservative(AppDbContext db)
+        {
+            var order = db.Orders.AsNoTracking().First();
+            AttachThroughLookalikeSet(new LookalikeSet<Order>(), order);
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        private static void DetectAndAcceptWhen(AppDbContext db, bool detect)
+        {
+            if (detect)
+            {
+                db.ChangeTracker.DetectChanges();
+                db.ChangeTracker.AcceptAllChanges();
+            }
+        }
+
+        private static void DetectWhen(AppDbContext db, bool detect)
+        {
+            if (detect)
+                db.ChangeTracker.DetectChanges();
+        }
+
+        private static void AttachThroughSet(AppDbContext db, Order order) =>
+            db.Orders.Attach(order);
+
+        private static void AttachThroughComputedSet(AppDbContext db, Order order) =>
+            GetOrders(db).Attach(order);
+
+        private static DbSet<Order> GetOrders(AppDbContext db) => db.Orders;
+
+        private static void AttachThroughUnstableSet(
+            AppDbContext db,
+            AppDbContext other,
+            Order order)
+        {
+            db.Orders = other.Orders;
+            db.Orders.Attach(order);
+        }
+
+        private static void AttachThroughLookalikeSet(
+            LookalikeSet<Order> set,
+            Order order) => set.Attach(order);
+
+        private sealed class LookalikeSet<T>
+        {
+            public void Attach(T entity) { }
+        }
+
+        public void UnknownGuardedClearReports(AppDbContext db, Func<bool> shouldClear)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            ClearWhen(db, shouldClear);
+            db.SaveChanges();
+        }
+
+        private static void DetectAndAccept(AppDbContext db)
+        {
+            db.ChangeTracker.DetectChanges();
+            db.ChangeTracker.AcceptAllChanges();
+        }
+
+        private static void ClearWhen(AppDbContext db, Func<bool> shouldClear)
+        {
+            if (shouldClear())
+                db.ChangeTracker.Clear();
+        }
+
+        private static void AcceptWhen(AppDbContext db, bool accept)
+        {
+            if (accept)
+                db.ChangeTracker.AcceptAllChanges();
+        }
+
+        private static void AttachOrMutate(AppDbContext db, Order order, bool attach)
+        {
+            if (attach)
+                db.Attach(order);
+            else
+                order.Quantity++;
+        }
+
+        private static void AcceptThenMutateAndSave(AppDbContext db, Order order)
+        {
+            db.ChangeTracker.AcceptAllChanges();
+            {|LC048:order.Status|}++;
+            db.SaveChanges();
+        }
+
+        private static void ClearThenMutateAndSave(AppDbContext db, Order order)
+        {
+            db.ChangeTracker.Clear();
+            order.Status++;
+            db.SaveChanges();
+        }
+
+        private static void Clear(AppDbContext db) => db.ChangeTracker.Clear();
+        private static void Accept(AppDbContext db) => db.ChangeTracker.AcceptAllChanges();
+        private static void Attach(AppDbContext db, Order order) => db.Attach(order);
+        private static void Update(AppDbContext db, Order order) => db.Update(order);
+        private static void TrackUnchanged(AppDbContext db, Order order) =>
+            db.Entry(order).State = EntityState.Unchanged;
+        private static void ResetModified(AppDbContext db, Order order) =>
+            db.Entry(order).Property(x => x.Quantity).IsModified = false;
+
     }
 
     public sealed class HiddenDetachmentContext : DbContext
@@ -6805,6 +7184,92 @@ namespace Test
             other.ChangeTracker.DetectChanges();
             db.SaveChanges();
         }
+        public void HelperDetected(AppDbContext db)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            Detect(db);
+            db.SaveChanges();
+        }
+
+        public void CombinedHelperDetected(AppDbContext db)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
+            var order = db.Orders.First();
+            MutateDetectAndSave(order, db);
+        }
+
+        public void HelperDisabled(AppDbContext db)
+        {
+            SetAutoDetection(db, false);
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        public void HelperDisabledThenEnabled(AppDbContext db)
+        {
+            SetAutoDetection(db, false);
+            SetAutoDetection(db, true);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void HelperDisabledThenDetected(AppDbContext db)
+        {
+            SetAutoDetection(db, false);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            Detect(db);
+            db.SaveChanges();
+        }
+
+        public void ConditionalHelperDisabledOnWritePath(
+            AppDbContext db,
+            bool disable)
+        {
+            SetAutoDetectionWhen(db, disable);
+            var order = db.Orders.First();
+            if (disable)
+            {
+                order.Quantity++;
+                db.SaveChanges();
+            }
+        }
+
+        public void HelperConfigurationPreservesMutationAndSave(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            ConfigureMutateAndSave(db, order);
+        }
+
+        private static void SetAutoDetection(AppDbContext db, bool enabled) =>
+            db.ChangeTracker.AutoDetectChangesEnabled = enabled;
+
+        private static void SetAutoDetectionWhen(AppDbContext db, bool disable)
+        {
+            if (disable)
+                db.ChangeTracker.AutoDetectChangesEnabled = false;
+        }
+
+        private static void ConfigureMutateAndSave(AppDbContext db, Order order)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = true;
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        private static void Detect(AppDbContext db) => db.ChangeTracker.DetectChanges();
+
+        private static void MutateDetectAndSave(Order order, AppDbContext db)
+        {
+            {|LC048:order.Status|}++;
+            db.ChangeTracker.DetectChanges();
+            db.SaveChanges();
+        }
+
     }
 }
 """
@@ -7956,6 +8421,71 @@ namespace Test
             db.SaveChanges();
         }
 
+        public async Task AwaitedReloadHelperResetsMutation(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            await Reload(db, order);
+            db.SaveChanges();
+        }
+
+        public void UnawaitedReloadAsyncHelperReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            ReloadLater(db, order);
+            db.SaveChanges();
+        }
+
+        public async Task ReloadHelperBeforeMutationReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            await Reload(db, order);
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public async Task ReloadHelperForUnrelatedEntityReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            var other = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            await Reload(db, other);
+            db.SaveChanges();
+        }
+
+        public async Task ReloadHelperForUnrelatedContextReports(
+            AppDbContext db,
+            AppDbContext otherDb)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            await Reload(otherDb, order);
+            db.SaveChanges();
+        }
+
+        public async Task CustomReloadAsyncHelperReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            await Reload(new CustomReloader());
+            db.SaveChanges();
+        }
+
+        private static async Task Reload(AppDbContext db, Order order) =>
+            await db.Entry(order).ReloadAsync().ConfigureAwait(false);
+
+        private static void ReloadLater(AppDbContext db, Order order) =>
+            _ = db.Entry(order).ReloadAsync();
+
+        private static async Task Reload(CustomReloader reloader) =>
+            await reloader.ReloadAsync();
+
+        private sealed class CustomReloader
+        {
+            public Task ReloadAsync() => Task.CompletedTask;
+        }
+
         public void ReloadOnDisjointPath(AppDbContext db, bool refresh)
         {
             var order = db.Orders.First();
@@ -8427,6 +8957,55 @@ namespace Test
                 order.Quantity++;
                 db.SaveChanges();
             }
+        }
+
+        public void HelperNoTracking(AppDbContext db)
+        {
+            SetTracking(db, QueryTrackingBehavior.NoTracking);
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.SaveChanges();
+        }
+
+        public void HelperTrackAll(AppDbContext db)
+        {
+            SetTracking(db, QueryTrackingBehavior.TrackAll);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void OrderedHelperTrackingAssignments(AppDbContext db)
+        {
+            SetTracking(db, QueryTrackingBehavior.NoTracking);
+            SetTracking(db, QueryTrackingBehavior.TrackAll);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        public void ConditionalHelperNoTrackingOnWritePath(
+            AppDbContext db,
+            bool noTracking)
+        {
+            SetNoTrackingWhen(db, noTracking);
+            var order = db.Orders.First();
+            if (noTracking)
+            {
+                order.Quantity++;
+                db.SaveChanges();
+            }
+        }
+
+        private static void SetTracking(
+            AppDbContext db,
+            QueryTrackingBehavior behavior) =>
+            db.ChangeTracker.QueryTrackingBehavior = behavior;
+
+        private static void SetNoTrackingWhen(AppDbContext db, bool noTracking)
+        {
+            if (noTracking)
+                db.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         }
 
     }
@@ -10280,6 +10859,22 @@ namespace Test
         {
             var order = db.Orders.First();
             {|LC048:order.Quantity|} = order.Quantity;
+            db.SaveChanges();
+        }
+
+        public void NotificationAcceptsDetectedMutation(NotificationContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.ChangeTracker.AcceptAllChanges();
+            db.SaveChanges();
+        }
+
+        public void ProxyAcceptsDetectedMutation(ProxyContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            db.ChangeTracker.AcceptAllChanges();
             db.SaveChanges();
         }
 
