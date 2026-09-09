@@ -5585,14 +5585,14 @@ internal sealed class HelperSummary
                 continue;
             }
 
-            var retainedMutation = TryGetExactHelperEffectCondition(
+            var retainedMutation = TryGetHelperEffectConditions(
                 mutationOperations[mutation.Position],
                 method,
                 flowGraph,
-                out var conditionParameterOrdinal,
-                out var conditionValue
+                out ImmutableArray<HelperEffectCondition> mutationGuards,
+                out _
             )
-                ? mutation.WithCondition(conditionParameterOrdinal, conditionValue)
+                ? mutation.WithConditions(mutationGuards)
                 : mutation;
             retainedMutations.Add(
                 retainedMutation.WithSubsequentSaves(subsequentSaves.ToImmutableArray())
@@ -6016,8 +6016,8 @@ internal sealed class HelperSummary
                     invocation,
                     method,
                     null,
-                    out var directConditionParameterOrdinal,
-                    out var directConditionValue
+                    out int directConditionParameterOrdinal,
+                    out bool directConditionValue
                 )
             )
             {
@@ -6064,8 +6064,8 @@ internal sealed class HelperSummary
                 invocation,
                 method,
                 flowGraph,
-                out var conditionParameterOrdinal,
-                out var conditionValue
+                out int conditionParameterOrdinal,
+                out bool conditionValue
             )
         )
         {
@@ -6089,6 +6089,35 @@ internal sealed class HelperSummary
         ControlFlowGraph? flowGraph,
         out int conditionParameterOrdinal,
         out bool conditionValue
+    )
+    {
+        if (
+            TryGetHelperEffectConditions(
+                effect,
+                method,
+                flowGraph,
+                out ImmutableArray<HelperEffectCondition> conditions,
+                out _
+            )
+            && conditions.Length > 0
+        )
+        {
+            conditionParameterOrdinal = conditions[0].ParameterOrdinal;
+            conditionValue = conditions[0].Value;
+            return true;
+        }
+
+        conditionParameterOrdinal = 0;
+        conditionValue = false;
+        return false;
+    }
+
+    private static bool TryGetHelperEffectConditions(
+        IOperation effect,
+        IMethodSymbol method,
+        ControlFlowGraph? flowGraph,
+        out ImmutableArray<HelperEffectCondition> conditions,
+        out bool complete
     )
     {
         if (flowGraph != null)
@@ -6131,8 +6160,13 @@ internal sealed class HelperSummary
                             )
                         )
                         {
-                            conditionParameterOrdinal = conditionParameter.Ordinal;
-                            conditionValue = assumedValue;
+                            conditions = ImmutableArray.Create(
+                                new HelperEffectCondition(
+                                    conditionParameter.Ordinal,
+                                    assumedValue
+                                )
+                            );
+                            complete = true;
                             return true;
                         }
                     }
@@ -6140,37 +6174,61 @@ internal sealed class HelperSummary
             }
         }
 
+        var guards = ImmutableArray.CreateBuilder<HelperEffectCondition>();
+        complete = true;
         for (IOperation? current = effect; current?.Parent != null; current = current.Parent)
         {
             if (current.Parent is not IConditionalOperation conditional)
                 continue;
 
+            bool requiredValue;
+            if (IsDescendantOf(effect, conditional.WhenTrue))
+                requiredValue = true;
+            else if (
+                conditional.WhenFalse != null
+                && IsDescendantOf(effect, conditional.WhenFalse)
+            )
+                requiredValue = false;
+            else
+            {
+                // Inside a condition expression: evaluation itself may be conditional
+                // (short-circuiting), so the recorded guards are incomplete.
+                complete = false;
+                continue;
+            }
+
+            // The effect executes only when every enclosing guard holds. Guards that
+            // cannot be attributed to a helper parameter are skipped but mark the
+            // recorded conjunction incomplete; every recorded guard stays necessary.
             if (
                 LostUpdateOperationFacts.Unwrap(conditional.Condition)
-                    is IParameterReferenceOperation parameter
-                && parameter.Parameter.Type.SpecialType == SpecialType.System_Boolean
-                && parameter.Parameter.ContainingSymbol is IMethodSymbol containingMethod
-                && SymbolEqualityComparer.Default.Equals(
+                is not IParameterReferenceOperation parameter
+                || parameter.Parameter.Type.SpecialType != SpecialType.System_Boolean
+                || parameter.Parameter.ContainingSymbol is not IMethodSymbol containingMethod
+                || !SymbolEqualityComparer.Default.Equals(
                     containingMethod.OriginalDefinition,
                     method.OriginalDefinition
                 )
             )
             {
-                if (IsDescendantOf(effect, conditional.WhenTrue))
-                {
-                    conditionParameterOrdinal = parameter.Parameter.Ordinal;
-                    conditionValue = true;
-                    return true;
-                }
-
-                if (conditional.WhenFalse != null && IsDescendantOf(effect, conditional.WhenFalse))
-                {
-                    conditionParameterOrdinal = parameter.Parameter.Ordinal;
-                    conditionValue = false;
-                    return true;
-                }
+                complete = false;
+                continue;
             }
+
+            var guard = new HelperEffectCondition(parameter.Parameter.Ordinal, requiredValue);
+            if (!guards.Contains(guard))
+                guards.Add(guard);
         }
+
+        if (guards.Count == 0)
+        {
+            conditions = ImmutableArray<HelperEffectCondition>.Empty;
+            complete = false;
+            return false;
+        }
+
+        conditions = guards.ToImmutable();
+        return true;
 
         static bool IsDescendantOf(IOperation candidate, IOperation ancestor)
         {
@@ -6182,10 +6240,6 @@ internal sealed class HelperSummary
 
             return false;
         }
-
-        conditionParameterOrdinal = 0;
-        conditionValue = false;
-        return false;
     }
 
     private static bool CanFlowToSave(
@@ -6807,16 +6861,16 @@ internal sealed class HelperSummary
             invocation.Syntax.SpanStart
         );
         if (
-            TryGetExactHelperEffectCondition(
+            TryGetHelperEffectConditions(
                 invocation,
                 method,
                 flowGraph,
-                out var conditionParameterOrdinal,
-                out var conditionValue
+                out ImmutableArray<HelperEffectCondition> invocationGuards,
+                out bool invocationComplete
             )
         )
         {
-            effect = effect.WithCondition(conditionParameterOrdinal, conditionValue);
+            effect = effect.WithConditions(invocationGuards, !invocationComplete);
         }
         else if (!IsUnconditionalHelperEffect(invocation, flowGraph))
         {
@@ -6963,16 +7017,16 @@ internal sealed class HelperSummary
             queryTrackingBehavior: behaviorValue
         );
         if (
-            TryGetExactHelperEffectCondition(
+            TryGetHelperEffectConditions(
                 assignment,
                 method,
                 flowGraph,
-                out var conditionParameterOrdinal,
-                out var conditionValue
+                out ImmutableArray<HelperEffectCondition> assignmentGuards,
+                out bool assignmentComplete
             )
         )
         {
-            effect = effect.WithCondition(conditionParameterOrdinal, conditionValue);
+            effect = effect.WithConditions(assignmentGuards, !assignmentComplete);
         }
         else if (!IsUnconditionalHelperEffect(assignment, flowGraph))
         {
@@ -7431,6 +7485,33 @@ internal enum HelperTrackingEffectKind
     Reload,
 }
 
+internal readonly struct HelperEffectCondition : IEquatable<HelperEffectCondition>
+{
+    internal HelperEffectCondition(int parameterOrdinal, bool value)
+    {
+        ParameterOrdinal = parameterOrdinal;
+        Value = value;
+    }
+
+    internal int ParameterOrdinal { get; }
+    internal bool Value { get; }
+
+    public bool Equals(HelperEffectCondition other)
+    {
+        return ParameterOrdinal == other.ParameterOrdinal && Value == other.Value;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is HelperEffectCondition other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return (ParameterOrdinal, Value).GetHashCode();
+    }
+}
+
 internal readonly struct HelperTrackingEffect
 {
     internal HelperTrackingEffect(
@@ -7444,7 +7525,8 @@ internal readonly struct HelperTrackingEffect
         bool hasUnknownCondition = false,
         int? valueParameterOrdinal = null,
         bool? booleanValue = null,
-        string? queryTrackingBehavior = null
+        string? queryTrackingBehavior = null,
+        ImmutableArray<HelperEffectCondition> additionalConditions = default
     )
     {
         Kind = kind;
@@ -7458,6 +7540,9 @@ internal readonly struct HelperTrackingEffect
         ValueParameterOrdinal = valueParameterOrdinal;
         BooleanValue = booleanValue;
         QueryTrackingBehavior = queryTrackingBehavior;
+        AdditionalConditions = additionalConditions.IsDefault
+            ? ImmutableArray<HelperEffectCondition>.Empty
+            : additionalConditions;
     }
 
     internal HelperTrackingEffectKind Kind { get; }
@@ -7467,6 +7552,7 @@ internal readonly struct HelperTrackingEffect
     internal int Position { get; }
     internal int? ConditionParameterOrdinal { get; }
     internal bool ConditionValue { get; }
+    internal ImmutableArray<HelperEffectCondition> AdditionalConditions { get; }
     internal bool HasUnknownCondition { get; }
     internal int? ValueParameterOrdinal { get; }
     internal bool? BooleanValue { get; }
@@ -7486,6 +7572,27 @@ internal readonly struct HelperTrackingEffect
             ValueParameterOrdinal,
             BooleanValue,
             QueryTrackingBehavior
+        );
+    }
+
+    internal HelperTrackingEffect WithConditions(
+        ImmutableArray<HelperEffectCondition> conditions,
+        bool hasUnknownCondition = false
+    )
+    {
+        return new HelperTrackingEffect(
+            Kind,
+            Context,
+            Entity,
+            Property,
+            Position,
+            conditions[0].ParameterOrdinal,
+            conditions[0].Value,
+            hasUnknownCondition: hasUnknownCondition,
+            ValueParameterOrdinal,
+            BooleanValue,
+            QueryTrackingBehavior,
+            conditions.RemoveAt(0)
         );
     }
 
@@ -7604,7 +7711,8 @@ internal readonly struct HelperMutation
         ImmutableArray<HelperSave> subsequentSaves = default,
         int? conditionParameterOrdinal = null,
         bool conditionValue = false,
-        bool isPlainSelfAssignment = false
+        bool isPlainSelfAssignment = false,
+        ImmutableArray<HelperEffectCondition> additionalConditions = default
     )
     {
         Target = target;
@@ -7617,6 +7725,9 @@ internal readonly struct HelperMutation
         ConditionParameterOrdinal = conditionParameterOrdinal;
         ConditionValue = conditionValue;
         IsPlainSelfAssignment = isPlainSelfAssignment;
+        AdditionalConditions = additionalConditions.IsDefault
+            ? ImmutableArray<HelperEffectCondition>.Empty
+            : additionalConditions;
     }
 
     internal HelperTarget Target { get; }
@@ -7627,6 +7738,7 @@ internal readonly struct HelperMutation
     internal int? ConditionParameterOrdinal { get; }
     internal bool ConditionValue { get; }
     internal bool IsPlainSelfAssignment { get; }
+    internal ImmutableArray<HelperEffectCondition> AdditionalConditions { get; }
 
     internal HelperMutation WithSubsequentSaves(ImmutableArray<HelperSave> saves)
     {
@@ -7638,7 +7750,8 @@ internal readonly struct HelperMutation
             saves,
             ConditionParameterOrdinal,
             ConditionValue,
-            IsPlainSelfAssignment
+            IsPlainSelfAssignment,
+            AdditionalConditions
         );
     }
 
@@ -7652,7 +7765,23 @@ internal readonly struct HelperMutation
             SubsequentSaves,
             conditionParameterOrdinal,
             conditionValue,
-            IsPlainSelfAssignment
+            IsPlainSelfAssignment,
+            AdditionalConditions
+        );
+    }
+
+    internal HelperMutation WithConditions(ImmutableArray<HelperEffectCondition> conditions)
+    {
+        return new HelperMutation(
+            Target,
+            Property,
+            Location,
+            Position,
+            SubsequentSaves,
+            conditions[0].ParameterOrdinal,
+            conditions[0].Value,
+            IsPlainSelfAssignment,
+            conditions.RemoveAt(0)
         );
     }
 }

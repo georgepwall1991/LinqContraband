@@ -303,7 +303,9 @@ internal static class LostUpdateFlowAnalysis
                         helperEffect.ConditionParameterOrdinal,
                         helperEffect.ConditionValue,
                         helperBooleanValue,
-                        helperQueryTrackingBehavior
+                        helperQueryTrackingBehavior,
+                        helperEffect.AdditionalConditions,
+                        helperEffect.HasUnknownCondition
                     )
                 );
             }
@@ -351,7 +353,8 @@ internal static class LostUpdateFlowAnalysis
                             helperMutation.IsPlainSelfAssignment,
                             helperMutation.Position,
                             helperMutation.ConditionParameterOrdinal,
-                            helperMutation.ConditionValue
+                            helperMutation.ConditionValue,
+                            helperMutation.AdditionalConditions
                         )
                     );
                 }
@@ -3227,14 +3230,36 @@ internal static class LostUpdateFlowAnalysis
         if (!helperMutation.ConditionParameterOrdinal.HasValue)
             return true;
 
-        return !TryGetArgument(
+        if (
+            IsMutationConditionContradicted(
                 invocation,
                 helperMutation.ConditionParameterOrdinal.Value,
-                out var conditionArgument
+                helperMutation.ConditionValue
             )
-            || conditionArgument.Value.ConstantValue
-                is not { HasValue: true, Value: bool conditionValue }
-            || conditionValue == helperMutation.ConditionValue;
+        )
+        {
+            return false;
+        }
+
+        return helperMutation.AdditionalConditions.All(condition =>
+            !IsMutationConditionContradicted(
+                invocation,
+                condition.ParameterOrdinal,
+                condition.Value
+            )
+        );
+    }
+
+    private static bool IsMutationConditionContradicted(
+        IInvocationOperation invocation,
+        int conditionParameterOrdinal,
+        bool conditionValue
+    )
+    {
+        return TryGetArgument(invocation, conditionParameterOrdinal, out var conditionArgument)
+            && conditionArgument.Value.ConstantValue
+                is { HasValue: true, Value: bool argumentValue }
+            && argumentValue != conditionValue;
     }
 
     private static bool IsHelperTrackingEffectPossible(
@@ -3245,14 +3270,12 @@ internal static class LostUpdateFlowAnalysis
         if (!effect.ConditionParameterOrdinal.HasValue)
             return true;
 
-        return !TryGetArgument(
-                invocation,
-                effect.ConditionParameterOrdinal.Value,
-                out var conditionArgument
-            )
-            || conditionArgument.Value.ConstantValue
-                is not { HasValue: true, Value: bool conditionValue }
-            || conditionValue == effect.ConditionValue;
+        if (IsTrackingConditionContradicted(invocation, effect.ConditionParameterOrdinal.Value, effect.ConditionValue))
+            return false;
+
+        return !effect.AdditionalConditions.Any(condition =>
+            IsTrackingConditionContradicted(invocation, condition.ParameterOrdinal, condition.Value)
+        );
     }
 
     private static bool IsHelperTrackingEffectExecuted(
@@ -3265,14 +3288,36 @@ internal static class LostUpdateFlowAnalysis
         if (!effect.ConditionParameterOrdinal.HasValue)
             return true;
 
-        return TryGetArgument(
-                invocation,
-                effect.ConditionParameterOrdinal.Value,
-                out var conditionArgument
-            )
+        if (!IsTrackingConditionSatisfied(invocation, effect.ConditionParameterOrdinal.Value, effect.ConditionValue))
+            return false;
+
+        return effect.AdditionalConditions.All(condition =>
+            IsTrackingConditionSatisfied(invocation, condition.ParameterOrdinal, condition.Value)
+        );
+    }
+
+    private static bool IsTrackingConditionContradicted(
+        IInvocationOperation invocation,
+        int conditionParameterOrdinal,
+        bool conditionValue
+    )
+    {
+        return TryGetArgument(invocation, conditionParameterOrdinal, out var conditionArgument)
             && conditionArgument.Value.ConstantValue
-                is { HasValue: true, Value: bool conditionValue }
-            && conditionValue == effect.ConditionValue;
+                is { HasValue: true, Value: bool argumentValue }
+            && argumentValue != conditionValue;
+    }
+
+    private static bool IsTrackingConditionSatisfied(
+        IInvocationOperation invocation,
+        int conditionParameterOrdinal,
+        bool conditionValue
+    )
+    {
+        return TryGetArgument(invocation, conditionParameterOrdinal, out var conditionArgument)
+            && conditionArgument.Value.ConstantValue
+                is { HasValue: true, Value: bool argumentValue }
+            && argumentValue == conditionValue;
     }
 
     private static bool TryResolveHelperTrackingEffectValue(
@@ -3446,6 +3491,23 @@ internal static class LostUpdateFlowAnalysis
     {
         if (ReferenceEquals(effect.Invocation, mutation.Operation))
         {
+            if (!effect.AdditionalConditions.IsEmpty || !mutation.AdditionalConditions.IsEmpty)
+            {
+                // An unrepresentable (unknown) effect proves nothing about execution. A
+                // proven executed effect shares the invocation's path. Otherwise the
+                // effect executes whenever the mutation does only when every proven
+                // effect guard also guards the mutation.
+                if (effect.HasUnknownCondition)
+                    return false;
+
+                if (effect.IsDefinitelyExecuted)
+                    return true;
+
+                return FullEffectGuards(effect).All(guard =>
+                    FullMutationGuards(mutation).Contains(guard)
+                );
+            }
+
             return !effect.ConditionParameterOrdinal.HasValue
                 || !mutation.ConditionParameterOrdinal.HasValue
                 || effect.ConditionParameterOrdinal != mutation.ConditionParameterOrdinal
@@ -3461,6 +3523,35 @@ internal static class LostUpdateFlowAnalysis
             effect.Invocation,
             permitsAfterMutation,
             flowGraph
+        );
+    }
+
+    private static ImmutableArray<HelperEffectCondition> FullEffectGuards(
+        ResolvedHelperTrackingEffect effect
+    )
+    {
+        if (!effect.ConditionParameterOrdinal.HasValue)
+            return effect.AdditionalConditions;
+
+        return effect.AdditionalConditions.Insert(
+            0,
+            new HelperEffectCondition(effect.ConditionParameterOrdinal.Value, effect.ConditionValue)
+        );
+    }
+
+    private static ImmutableArray<HelperEffectCondition> FullMutationGuards(
+        MutationEvidence mutation
+    )
+    {
+        if (!mutation.ConditionParameterOrdinal.HasValue)
+            return mutation.AdditionalConditions;
+
+        return mutation.AdditionalConditions.Insert(
+            0,
+            new HelperEffectCondition(
+                mutation.ConditionParameterOrdinal.Value,
+                mutation.ConditionValue
+            )
         );
     }
 
@@ -3864,6 +3955,7 @@ internal static class LostUpdateFlowAnalysis
                     !reset.ConditionParameterOrdinal.HasValue
                     || reset.ConditionValue == effect.ConditionValue
                 )
+                && reset.AdditionalConditions.SequenceEqual(effect.AdditionalConditions)
                 && HelperEffectPrecedesSave(reset, save)
             )
         );
@@ -4232,9 +4324,27 @@ internal static class LostUpdateFlowAnalysis
     {
         return effect.IsDefinitelyExecuted
             || ReferenceEquals(effect.Invocation, mutation.Operation)
-                && effect.ConditionParameterOrdinal.HasValue
+                && EffectGuardsCoverMutation(effect, mutation);
+    }
+
+    private static bool EffectGuardsCoverMutation(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation
+    )
+    {
+        if (effect.AdditionalConditions.IsEmpty && mutation.AdditionalConditions.IsEmpty)
+        {
+            return effect.ConditionParameterOrdinal.HasValue
                 && effect.ConditionParameterOrdinal == mutation.ConditionParameterOrdinal
                 && effect.ConditionValue == mutation.ConditionValue;
+        }
+
+        if (effect.HasUnknownCondition)
+            return false;
+
+        return FullEffectGuards(effect).All(guard =>
+            FullMutationGuards(mutation).Contains(guard)
+        );
     }
 
     private static bool IsMatchingCompletedReload(
@@ -5756,14 +5866,58 @@ internal static class LostUpdateFlowAnalysis
         if (
             ReferenceEquals(effect.Invocation, mutation.Operation)
             && effect.ConditionParameterOrdinal.HasValue
-            && effect.ConditionParameterOrdinal == mutation.ConditionParameterOrdinal
-            && effect.ConditionValue == mutation.ConditionValue
+            && FullEffectGuards(effect).All(guard =>
+                FullMutationGuards(mutation).Contains(guard)
+            )
         )
         {
             return true;
         }
 
-        return TryGetHelperEffectPredicate(effect, out var predicate)
+        if (effect.AdditionalConditions.IsEmpty)
+        {
+            return TryGetHelperEffectPredicate(effect, out var predicate)
+                && OperationRequiresBooleanPredicateAfter(
+                    effect.Invocation,
+                    mutation.Operation,
+                    predicate,
+                    flowGraph
+                )
+                && OperationRequiresBooleanPredicateAfter(
+                    effect.Invocation,
+                    save.Invocation,
+                    predicate,
+                    flowGraph
+                );
+        }
+
+        return FullEffectGuards(effect).All(guard =>
+            HelperEffectGuardHoldsOnPath(effect, mutation, save, guard, flowGraph)
+        );
+    }
+
+    private static bool HelperEffectGuardHoldsOnPath(
+        ResolvedHelperTrackingEffect effect,
+        MutationEvidence mutation,
+        SaveEvidence save,
+        HelperEffectCondition guard,
+        ControlFlowGraph flowGraph
+    )
+    {
+        if (
+            TryGetArgument(effect.Invocation, guard.ParameterOrdinal, out var conditionArgument)
+            && conditionArgument.Value.ConstantValue
+                is { HasValue: true, Value: bool argumentValue }
+        )
+        {
+            // A satisfied constant guard proves the effect runs if the helper runs, so
+            // the helper invocation itself must be unavoidable on the mutation/save path.
+            return argumentValue == guard.Value
+                && OperationDominates(effect.Invocation, mutation.Operation, flowGraph)
+                && OperationDominates(effect.Invocation, save.Invocation, flowGraph);
+        }
+
+        return TryGetGuardPredicate(effect, guard, out var predicate)
             && OperationRequiresBooleanPredicateAfter(
                 effect.Invocation,
                 mutation.Operation,
@@ -5801,16 +5955,33 @@ internal static class LostUpdateFlowAnalysis
         out BooleanPredicate predicate
     )
     {
-        if (
-            effect.ConditionParameterOrdinal.HasValue
-            && TryGetArgument(
-                effect.Invocation,
+        if (!effect.ConditionParameterOrdinal.HasValue)
+        {
+            predicate = default;
+            return false;
+        }
+
+        return TryGetGuardPredicate(
+            effect,
+            new HelperEffectCondition(
                 effect.ConditionParameterOrdinal.Value,
-                out var conditionArgument
-            )
+                effect.ConditionValue
+            ),
+            out predicate
+        );
+    }
+
+    private static bool TryGetGuardPredicate(
+        ResolvedHelperTrackingEffect effect,
+        HelperEffectCondition guard,
+        out BooleanPredicate predicate
+    )
+    {
+        if (
+            TryGetArgument(effect.Invocation, guard.ParameterOrdinal, out var conditionArgument)
             && TryGetBooleanSymbolPredicate(
                 conditionArgument.Value,
-                effect.ConditionValue,
+                guard.Value,
                 out var symbol,
                 out var requiredValue
             )
@@ -7281,7 +7452,9 @@ internal static class LostUpdateFlowAnalysis
             int? conditionParameterOrdinal,
             bool conditionValue,
             bool? booleanValue,
-            string? queryTrackingBehavior
+            string? queryTrackingBehavior,
+            ImmutableArray<HelperEffectCondition> additionalConditions = default,
+            bool hasUnknownCondition = false
         )
         {
             Kind = kind;
@@ -7293,8 +7466,12 @@ internal static class LostUpdateFlowAnalysis
             IsDefinitelyExecuted = isDefinitelyExecuted;
             ConditionParameterOrdinal = conditionParameterOrdinal;
             ConditionValue = conditionValue;
+            HasUnknownCondition = hasUnknownCondition;
             BooleanValue = booleanValue;
             QueryTrackingBehavior = queryTrackingBehavior;
+            AdditionalConditions = additionalConditions.IsDefault
+                ? ImmutableArray<HelperEffectCondition>.Empty
+                : additionalConditions;
         }
 
         internal HelperTrackingEffectKind Kind { get; }
@@ -7306,6 +7483,8 @@ internal static class LostUpdateFlowAnalysis
         internal bool IsDefinitelyExecuted { get; }
         internal int? ConditionParameterOrdinal { get; }
         internal bool ConditionValue { get; }
+        internal bool HasUnknownCondition { get; }
+        internal ImmutableArray<HelperEffectCondition> AdditionalConditions { get; }
         internal bool? BooleanValue { get; }
         internal string? QueryTrackingBehavior { get; }
     }
@@ -7341,7 +7520,8 @@ internal static class LostUpdateFlowAnalysis
             bool isPlainSelfAssignment = false,
             int? containedPosition = null,
             int? conditionParameterOrdinal = null,
-            bool conditionValue = false
+            bool conditionValue = false,
+            ImmutableArray<HelperEffectCondition> additionalConditions = default
         )
         {
             Entity = entity;
@@ -7353,6 +7533,9 @@ internal static class LostUpdateFlowAnalysis
             ContainedPosition = containedPosition;
             ConditionParameterOrdinal = conditionParameterOrdinal;
             ConditionValue = conditionValue;
+            AdditionalConditions = additionalConditions.IsDefault
+                ? ImmutableArray<HelperEffectCondition>.Empty
+                : additionalConditions;
             ContainedSaveContexts =
                 containedSaveContexts
                 ?? ImmutableHashSet<ISymbol>.Empty.WithComparer(SymbolEqualityComparer.Default);
@@ -7367,6 +7550,7 @@ internal static class LostUpdateFlowAnalysis
         internal int? ContainedPosition { get; }
         internal int? ConditionParameterOrdinal { get; }
         internal bool ConditionValue { get; }
+        internal ImmutableArray<HelperEffectCondition> AdditionalConditions { get; }
         internal ImmutableHashSet<ISymbol> ContainedSaveContexts { get; }
     }
 

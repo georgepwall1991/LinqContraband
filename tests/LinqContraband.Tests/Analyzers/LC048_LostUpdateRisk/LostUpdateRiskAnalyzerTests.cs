@@ -5137,6 +5137,281 @@ namespace Test
     }
 
     [Fact]
+    public async Task NestedHelperGuardRequiresEveryEnclosingCondition()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void NestedOuterFalseReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            ClearWhen(db, false, true);
+            db.SaveChanges();
+        }
+
+        public void NestedBothTrueStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            order.Quantity++;
+            ClearWhen(db, true, true);
+            db.SaveChanges();
+        }
+
+        public void NestedInnerFalseReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            ClearWhen(db, true, false);
+            db.SaveChanges();
+        }
+
+
+        private static void ClearWhen(AppDbContext db, bool outer, bool inner)
+        {
+            if (outer)
+            {
+                if (inner)
+                    db.ChangeTracker.Clear();
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task NestedMutationAndResetShareGuardsStayQuiet()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void NestedMutationAndReset(AppDbContext db, bool outer, bool inner)
+        {
+            var order = db.Orders.First();
+            MutateAndClearWhen(order, db, outer, inner);
+            db.SaveChanges();
+        }
+
+        private static void MutateAndClearWhen(Order order, AppDbContext db, bool outer, bool inner)
+        {
+            if (outer)
+            {
+                if (inner)
+                {
+                    order.Quantity++;
+                    db.ChangeTracker.Clear();
+                }
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task NestedDisableProvenByBranchStaysQuiet()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void NestedDisableProvenByBranch(AppDbContext db, bool disable)
+        {
+            SetDisableWhen(db, true, disable);
+            var order = db.Orders.First();
+            if (disable)
+            {
+                order.Quantity++;
+                db.SaveChanges();
+            }
+        }
+
+        private static void SetDisableWhen(AppDbContext db, bool outer, bool disable)
+        {
+            if (outer)
+            {
+                if (disable)
+                    db.ChangeTracker.AutoDetectChangesEnabled = false;
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task UnknownGuardResetAfterNestedMutationReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void UnknownGuardResetAfterNestedMutation(AppDbContext db, bool outer, bool inner)
+        {
+            var order = db.Orders.First();
+            MutateThenMaybeClear(order, db, outer, inner);
+            db.SaveChanges();
+        }
+
+        private static void MutateThenMaybeClear(Order order, AppDbContext db, bool outer, bool inner)
+        {
+            if (outer)
+            {
+                if (inner)
+                    {|LC048:order.Quantity|} = order.Quantity + 1;
+            }
+            if (order.Quantity > 100)
+                db.ChangeTracker.Clear();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task NestedDetectWithDisabledAutoDetectionReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void NestedDetectWithDisabledAutoDetection(AppDbContext db)
+        {
+            db.ChangeTracker.AutoDetectChangesEnabled = false;
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            MutateAndDetectWhen(order, db, true, true);
+            db.SaveChanges();
+        }
+
+        private static void MutateAndDetectWhen(Order order, AppDbContext db, bool outer, bool inner)
+        {
+            {|LC048:order.Quantity|}++;
+            if (outer)
+            {
+                if (inner)
+                    db.ChangeTracker.DetectChanges();
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task NestedDisableAndMutateStaysQuiet()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void NestedDisableAndMutate(AppDbContext db, bool outer, bool disable)
+        {
+            var order = db.Orders.First();
+            DisableAndMutate(db, order, outer, disable);
+            db.SaveChanges();
+        }
+
+        private static void DisableAndMutate(AppDbContext db, Order order, bool outer, bool disable)
+        {
+            if (outer)
+            {
+                if (disable)
+                {
+                    db.ChangeTracker.AutoDetectChangesEnabled = false;
+                    order.Quantity++;
+                }
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task ConditionalDisableCallReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void ConditionalDisableCall(AppDbContext db, bool flag)
+        {
+            if (flag)
+                SetDisableWhen(db, true, true);
+            var order = db.Orders.First();
+            {|LC048:order.Quantity|}++;
+            db.SaveChanges();
+        }
+
+        private static void SetDisableWhen(AppDbContext db, bool outer, bool disable)
+        {
+            if (outer)
+            {
+                if (disable)
+                    db.ChangeTracker.AutoDetectChangesEnabled = false;
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task NonParamOuterGuardPreservesKnownMutationGuard()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void DisabledCallerStaysQuiet(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            GuardedMutate(order, db, false);
+            db.SaveChanges();
+        }
+
+        public void EnabledCallerReports(AppDbContext db)
+        {
+            var order = db.Orders.First();
+            GuardedMutate(order, db, true);
+            db.SaveChanges();
+        }
+
+        private static void GuardedMutate(Order order, AppDbContext db, bool enabled)
+        {
+            if (order.Id > 0)
+            {
+                if (enabled)
+                    {|LC048:order.Quantity|} = order.Quantity + 1;
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+
+    [Fact]
     public async Task NameofComputedPropertyAndUnrelatedContextReassignmentStayQuietOrReport()
     {
         await VerifyAsync(
