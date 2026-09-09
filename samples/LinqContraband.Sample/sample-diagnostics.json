@@ -465,6 +465,15 @@
       "ruleIds": [
         "LC047"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC048_LostUpdateRisk/LostUpdateRiskSample.cs",
+      "samplePaths": [
+        "Samples/LC048_LostUpdateRisk/LostUpdateRiskSample.cs"
+      ],
+      "ruleIds": [
+        "LC048"
+      ]
     }
   ]
 }

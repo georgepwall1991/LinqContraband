@@ -42,13 +42,13 @@ When the analyzer cannot prove an EF-backed query shape statically, it **stays q
 ## Install
 
 ```xml
-  <PackageReference Include="LinqContraband" Version="5.7.65" PrivateAssets="all" />
+  <PackageReference Include="LinqContraband" Version="5.8.0" PrivateAssets="all" />
 ```
 
 Or:
 
 ```bash
-dotnet add package LinqContraband --version 5.7.65
+dotnet add package LinqContraband --version 5.8.0
 ```
 
 **No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
@@ -119,7 +119,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 ## Rule Details
 
-> **47 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
+> **48 rules** covering performance, correctness, and design pitfalls in Entity Framework Core queries.
 
 ## 🗺️ Rule Neighborhoods
 
@@ -131,7 +131,7 @@ The repository keeps the familiar `LC001`-style rule numbering, but the rules no
 | Materialization & Projection | LC002, LC003, LC017, LC022, LC023, LC029, LC031, LC033, LC041 |
 | Loading & Includes | LC006, LC019, LC028, LC038, LC042, LC045 |
 | Execution & Async | LC007, LC008, LC026, LC036, LC043, LC046 |
-| Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044 |
+| Change Tracking & Context Lifetime | LC009, LC010, LC013, LC025, LC030, LC039, LC040, LC044, LC048 |
 | Bulk Operations & Set-Based Writes | LC012, LC032, LC035, LC047 |
 | Schema & Modeling | LC011, LC027 |
 | Raw SQL & Security | LC018, LC021, LC034, LC037 |
@@ -1950,6 +1950,60 @@ Client cascade and multi-property conversions stay diagnostic-only.
   stay quiet.
 - LC012 does not rewrite `RemoveRange` to `ExecuteDelete` when the same evidence covers that entity and
   context, including `DbSet<T>` parameters when any source context covers the entity.
+
+---
+
+### LC048: Lost Update Risk
+
+A tracked read-modify-write can silently overwrite another writer when the replacement value is derived from stale
+loaded state and the entity has no proven optimistic-concurrency protection.
+
+**❌ The Crime:**
+
+```csharp
+var order = await db.Orders.SingleAsync(order => order.Id == id);
+order.Quantity += amount; // LC048
+await db.SaveChangesAsync();
+```
+
+**✅ The Fix:**
+Choose the protection that matches the operation. Add a concurrency token and handle conflicts deliberately:
+
+```csharp
+public sealed class Order
+{
+    public int Id { get; set; }
+    public int Quantity { get; set; }
+
+    [Timestamp]
+    public byte[] Version { get; set; } = null!;
+}
+```
+
+For translatable arithmetic that does not need tracked aggregate behavior, make the database update atomic:
+
+```csharp
+await db.Orders
+    .Where(order => order.Id == id)
+    .ExecuteUpdateAsync(setters => setters
+        .SetProperty(order => order.Quantity, order => order.Quantity + amount));
+```
+
+**🛡️ Reliability Notes:**
+- LC048 reports on the scalar property mutation and attaches the same-context `SaveChanges` call as an additional
+  location. Compound assignments, increments, self-read assignments, and same-property guarded state transitions
+  are covered.
+- Stable entity/context aliases, common shape-preserving query operators, and direct private same-file mutation or
+  save helpers retain the proof.
+- Blind writes, untracked queries, missing or different-context saves, row-version protection, concurrency protection
+  on the mutated property, explicit EF Core transactions, and atomic updates stay quiet.
+- Projections, custom query operators, computed context properties, lookalike APIs, and ambiguous repository or
+  cross-file helper flows are intentional conservative boundaries.
+- There is no automatic fix because concurrency tokens, atomic updates, and transactions differ in schema, conflict
+  handling, tracking, isolation, retry, and behavioral semantics.
+
+See the
+[full LC048 specification](https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC048_LostUpdateRisk.md).
 
 ---
 

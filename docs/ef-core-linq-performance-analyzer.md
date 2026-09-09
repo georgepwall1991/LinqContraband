@@ -70,7 +70,7 @@ environments including Visual Studio, Rider, VS Code, and CI builds.
 
 ## Browse the Rules
 
-The full catalog contains 47 rules grouped by domain:
+The full catalog contains 48 rules grouped by domain:
 
 - [Rule catalog](/LinqContraband/rule-catalog.html)
 - [EF Core analyzer rules guide](/LinqContraband/ef-core-analyzer-rules/)
