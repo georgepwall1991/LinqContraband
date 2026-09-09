@@ -139,7 +139,7 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task TaskWhenAll_WithFourParameterHelpers_ShouldNotTrigger()
+    public async Task TaskWhenAll_WithFourParameterHelpers_ShouldTrigger()
     {
         var test = App(@"
         public async Task CapturedContext(AppDbContext db)
@@ -148,8 +148,8 @@ namespace TestApp
                 db.Users.ElementAtAsync(id, token);
 
             await Task.WhenAll(
-                Load(0, false, CancellationToken.None, true),
-                Load(1, false, CancellationToken.None, true));
+                {|#0:Load(0, false, CancellationToken.None, true)|},
+                {|#1:Load(1, false, CancellationToken.None, true)|});
         }
 
         public async Task ContextParameter(AppDbContext db)
@@ -158,12 +158,21 @@ namespace TestApp
                 current.Users.ElementAtAsync(id, token);
 
             await Task.WhenAll(
-                Load(db, 0, false, CancellationToken.None),
-                Load(db, 1, false, CancellationToken.None));
+                {|#2:Load(db, 0, false, CancellationToken.None)|},
+                {|#3:Load(db, 1, false, CancellationToken.None)|});
         }
 ");
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var captured = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        var contextParameter = VerifyCS.Diagnostic()
+            .WithLocation(3)
+            .WithLocation(2)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, captured, contextParameter);
     }
 
     [Fact]
@@ -332,7 +341,47 @@ namespace TestApp
     }
 
     [Fact]
-    public void DirectLocalFunctionProof_CapsParametersAtThree()
+    public async Task TaskWhenAll_WithFourParameterUnusedExtra_ShouldTrigger()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int id, CancellationToken token, bool unused) =>
+                current.Users.ElementAtAsync(id, token);
+
+            await Task.WhenAll(
+                {|#0:Load(db, 0, CancellationToken.None, false)|},
+                {|#1:Load(db, 1, CancellationToken.None, false)|});
+        }
+");
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_WithFourParameterThrowingExtra_ShouldNotTrigger()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int id, CancellationToken token, int extra) =>
+                current.Users.ElementAtAsync(id, token);
+            await Task.WhenAll(
+                Load(db, 0, CancellationToken.None, db.ThrowingIndex),
+                Load(db, 1, CancellationToken.None, db.ThrowingIndex));
+        }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public void DirectLocalFunctionProof_HasNoArityCap()
     {
         var classificationPath = Path.Combine(
             LinqContraband.Tests.Architecture.RepositoryLayout.GetRepositoryRoot(),
@@ -343,6 +392,6 @@ namespace TestApp
             "LC046_ConcurrentDbContextOperations",
             "ConcurrentDbContextOperationsClassification.cs");
         var source = File.ReadAllText(classificationPath);
-        Assert.Contains("localFunction.Symbol.Parameters.Length > 3", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Parameters.Length > 3", source, StringComparison.Ordinal);
     }
 }

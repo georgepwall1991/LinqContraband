@@ -1144,16 +1144,6 @@ namespace TestApp
                 Load(1, CancellationToken.None));
         }
 
-        public async Task FourParameters(AppDbContext db)
-        {
-            Task<User> Load(int index, CancellationToken token, bool ignored, bool extra) =>
-                db.Users.ElementAtAsync(index, token);
-
-            await Task.WhenAll(
-                Load(0, CancellationToken.None, true, false),
-                Load(1, CancellationToken.None, true, false));
-        }
-
         private static int GetIndex() => 0;
     }
 }";
