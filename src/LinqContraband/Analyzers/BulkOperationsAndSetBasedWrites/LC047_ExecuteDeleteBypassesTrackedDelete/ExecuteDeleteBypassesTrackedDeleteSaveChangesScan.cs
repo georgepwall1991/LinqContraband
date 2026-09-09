@@ -252,7 +252,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
             isScanRoot: false,
             cancellationToken);
 
-        if (TryClassifyDeletedCondition(conditional.Condition, out var thenDeleted, out var elseDeleted))
+        if (TryClassifyDeletedCondition(conditional.Condition, owningType, out var thenDeleted, out var elseDeleted))
         {
             WalkConversionOperations(
                 conditional.WhenTrue,
@@ -402,18 +402,27 @@ internal sealed partial class TrackedDeletePipelineEvidence
             RecordAssignment(assignment, aggregate);
     }
 
-    private static bool TryClassifyDeletedCondition(
+    private bool TryClassifyDeletedCondition(
         IOperation? condition,
+        INamedTypeSymbol owningType,
         out bool thenDeleted,
         out bool elseDeleted)
     {
         thenDeleted = false;
         elseDeleted = false;
         condition = condition?.UnwrapConversions();
+
+        var negated = false;
+        while (condition is IUnaryOperation { OperatorKind: UnaryOperatorKind.Not } notOperation)
+        {
+            negated = !negated;
+            condition = notOperation.Operand?.UnwrapConversions();
+        }
+
         if (condition is IBinaryOperation binary &&
             TryGetDeletedComparisonPolarity(binary, out var isNegated))
         {
-            if (isNegated)
+            if (isNegated != negated)
                 elseDeleted = true;
             else
                 thenDeleted = true;
@@ -424,7 +433,17 @@ internal sealed partial class TrackedDeletePipelineEvidence
             IsStateProperty(isPattern.Value) &&
             TryGetDeletedPatternPolarity(isPattern.Pattern, out var patternNegated))
         {
-            if (patternNegated)
+            if (patternNegated != negated)
+                elseDeleted = true;
+            else
+                thenDeleted = true;
+            return true;
+        }
+
+        if (condition is IInvocationOperation invocation &&
+            TryClassifyHelperDeletedPredicate(invocation, owningType, out var helperNegated))
+        {
+            if (helperNegated != negated)
                 elseDeleted = true;
             else
                 thenDeleted = true;
@@ -433,6 +452,162 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
         return false;
     }
+
+    // Residual: the tested argument is validated as a plain local/parameter reference,
+    // but it is not proven identical to the entry converted under dominance. A helper
+    // testing an unrelated entry passed as a local still dominates, matching the
+    // pre-existing direct-test looseness (`if (other.State == Deleted)`). Full
+    // entry-linked dominance (threading tested-entry identity to RecordAssignment for
+    // both direct and helper paths) is a dedicated follow-up.
+
+    private bool TryClassifyHelperDeletedPredicate(
+        IInvocationOperation invocation,
+        INamedTypeSymbol owningType,
+        out bool isNegated)
+    {
+        isNegated = false;
+        var target = invocation.TargetMethod.OriginalDefinition;
+        foreach (var parameter in target.Parameters)
+        {
+            if (parameter.RefKind != RefKind.None)
+                return false;
+        }
+
+        if (target.MethodKind != MethodKind.Ordinary ||
+            target.IsVirtual ||
+            target.IsOverride ||
+            target.IsAbstract ||
+            target.ReturnType.SpecialType != SpecialType.System_Boolean ||
+            !SymbolEqualityComparer.Default.Equals(
+                target.ContainingType.OriginalDefinition,
+                owningType.OriginalDefinition))
+        {
+            return false;
+        }
+
+        // A single-return helper returning the Deleted test proves the caller's branch:
+        // the branch is taken only when the helper returns true, which implies the test.
+        foreach (var reference in target.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
+                continue;
+
+            var model = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
+            var operation = methodSyntax.Body != null
+                ? model.GetOperation(methodSyntax.Body) ?? model.GetOperation(methodSyntax)
+                : methodSyntax.ExpressionBody != null
+                    ? model.GetOperation(methodSyntax.ExpressionBody.Expression)
+                        ?? model.GetOperation(methodSyntax)
+                    : model.GetOperation(methodSyntax);
+            IOperation? returned = null;
+            if (operation is IBlockOperation block &&
+                block.Operations.Length == 1 &&
+                block.Operations[0] is IReturnOperation { ReturnedValue: { } value })
+            {
+                returned = value;
+            }
+            else if (operation is not IBlockOperation)
+            {
+                returned = operation;
+            }
+
+            returned = returned?.UnwrapConversions();
+            if (returned is IBinaryOperation binary &&
+                TryGetDeletedComparisonPolarity(binary, out isNegated) &&
+                TryGetTestedParameter(binary, target, out var binaryTested) &&
+                TestedArgumentIsLocal(invocation, target, binaryTested))
+            {
+                return true;
+            }
+
+            if (returned is IIsPatternOperation isPattern &&
+                IsStateProperty(isPattern.Value) &&
+                TryGetDeletedPatternPolarity(isPattern.Pattern, out isNegated) &&
+                TryGetTestedParameter(isPattern.Value, target, out var patternTested) &&
+                TestedArgumentIsLocal(invocation, target, patternTested))
+            {
+                return true;
+            }
+
+            isNegated = false;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetTestedParameter(
+        IBinaryOperation binary,
+        IMethodSymbol target,
+        out int testedOrdinal)
+    {
+        var leftDeleted = IsEntityStateMember(binary.LeftOperand, "Deleted");
+        var stateOperand = leftDeleted ? binary.RightOperand : binary.LeftOperand;
+        if (!IsStateProperty(stateOperand))
+        {
+            testedOrdinal = -1;
+            return false;
+        }
+
+        return TryGetTestedParameter(stateOperand, target, out testedOrdinal);
+    }
+
+    private static bool TryGetTestedParameter(
+        IOperation? operation,
+        IMethodSymbol target,
+        out int testedOrdinal)
+    {
+        // The tested entry must flow through the helper's parameters. Captured state
+        // (fields, locals, other entries) cannot be linked to the converted entry.
+        var current = operation?.UnwrapConversions();
+        while (current is IPropertyReferenceOperation { Instance: { } instance })
+            current = instance.UnwrapConversions();
+
+        testedOrdinal = -1;
+        if (current is not IParameterReferenceOperation parameter)
+            return false;
+
+        for (var ordinal = 0; ordinal < target.Parameters.Length; ordinal++)
+        {
+            if (SymbolEqualityComparer.Default.Equals(
+                    parameter.Parameter.OriginalDefinition,
+                    target.Parameters[ordinal].OriginalDefinition))
+            {
+                testedOrdinal = ordinal;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TestedArgumentIsLocal(
+        IInvocationOperation invocation,
+        IMethodSymbol target,
+        int testedOrdinal)
+    {
+        // The tested argument must be a plain local or parameter reference. Ambient
+        // state (fields, properties, other entries) cannot be linked to the entry
+        // converted under dominance, so such predicates stay quiet.
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter == null ||
+                !SymbolEqualityComparer.Default.Equals(
+                    argument.Parameter.OriginalDefinition,
+                    target.Parameters[testedOrdinal].OriginalDefinition))
+            {
+                continue;
+            }
+
+            var current = argument.Value?.UnwrapConversions();
+            while (current is IPropertyReferenceOperation { Instance: { } instance })
+                current = instance.UnwrapConversions();
+
+            return current is ILocalReferenceOperation or IParameterReferenceOperation;
+        }
+
+        return false;
+    }
+
 
     private static bool TryGetDeletedComparisonPolarity(IBinaryOperation binary, out bool isNegated)
     {
