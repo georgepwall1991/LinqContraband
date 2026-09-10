@@ -33,6 +33,98 @@ namespace TestApp
 }";
 
     [Fact]
+    public async Task TaskWhenAll_ReboundQueryAfterDeclaration_StaysQuiet()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            var query = db.Users;
+            Task<bool> Check() => query.AnyAsync();
+
+            var first = Check();
+            query = other.Users;
+            var second = Check();
+            await Task.WhenAll(first, second);
+        }
+");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_DeconstructedAliasAfterDeclaration_StaysQuiet()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            var alias = db;
+            Task<bool> Check() => alias.Users.AnyAsync();
+
+            var first = Check();
+            (alias, var dummy) = (other, 0);
+            var second = Check();
+            await Task.WhenAll(first, second);
+        }
+");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_ReboundAliasAfterDeclaration_StaysQuiet()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            var alias = db;
+            Task<bool> Check() => alias.Users.AnyAsync();
+
+            var first = Check();
+            alias = other;
+            var second = Check();
+            await Task.WhenAll(first, second);
+        }
+");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_RefAliasedContextAfterRebind_StaysQuiet()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db, AppDbContext other)
+        {
+            Task<bool> Check(ref AppDbContext current, object ignored) =>
+                current.Users.AnyAsync();
+
+            var first = db.Users.AnyAsync();
+            var second = Check(ref db, db = other);
+            await Task.WhenAll(first, second);
+        }
+");
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TaskWhenAll_AliasInitializerCapture_ShouldTrigger()
+    {
+        var test = App(@"
+        public async Task Run(AppDbContext db)
+        {
+            var alias = db;
+            Task<bool> Check() => alias.Users.AnyAsync();
+
+            await Task.WhenAll(
+                {|#0:Check()|},
+                {|#1:Check()|});
+        }
+");
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskWhenAll_WithThreeParameterCapturedContext_ShouldTrigger()
     {
         var test = App(@"
