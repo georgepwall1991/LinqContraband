@@ -8,6 +8,143 @@ public sealed class ConcurrentDbContextOperationsLoopTests
     private const string EfMock = ConcurrentDbContextOperationsTests.EfMock;
 
     [Fact]
+    public async Task ContinueReachesDoConditionAwait_StaysQuiet()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, int threshold)
+        {
+            var pending = db.Users.ToListAsync();
+            do
+            {
+                continue;
+            } while ((await pending).Count > threshold);
+            await db.SaveChangesAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BreakThroughFinallyAwait_StaysQuiet()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var pending = db.Users.ToListAsync();
+            do
+            {
+                try
+                {
+                    break;
+                }
+                finally
+                {
+                    await pending;
+                }
+            } while (false);
+            await db.SaveChangesAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoWhileBreakSkipsAwait_Triggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db, bool skipDrain)
+        {
+            var pending = {|#0:db.SaveChangesAsync()|};
+            do
+            {
+                if (skipDrain) break;
+                await pending;
+            } while (false);
+            await {|#1:db.SaveChangesAsync()|};
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task UninvokedClosureIsNotEscape_Triggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(AppDbContext db)
+        {
+            var pending = {|#0:db.SaveChangesAsync()|};
+            Func<Task<int>> getPending = () => { return pending; };
+            await {|#1:db.SaveChangesAsync()|};
+            await pending;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithLocation(0)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ForeachOverTwoElementArray_WithDiscardedTask_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;
