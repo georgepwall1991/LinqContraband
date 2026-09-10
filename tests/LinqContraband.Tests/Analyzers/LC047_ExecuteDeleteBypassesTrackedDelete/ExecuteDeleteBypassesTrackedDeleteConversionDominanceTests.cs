@@ -1083,6 +1083,48 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithTwoFlagConversion_ShouldTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } System.DateTime DeletedAt { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+        public System.DateTime DeletedAt { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((ISoftDelete)entry.Entity).IsDeleted = true;
+                    ((ISoftDelete)entry.Entity).DeletedAt = System.DateTime.UtcNow;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithLocalFunctionDeletedPredicate_StaysQuiet()
     {
         var test = App(@"

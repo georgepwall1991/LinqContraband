@@ -124,7 +124,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
         foreach (var child in EnumerateOperations(lambda))
         {
             if (child is not IInvocationOperation invocation ||
-                !IsDbContextOptionsBuilderAddInterceptors(invocation.TargetMethod))
+                !IsDbContextOptionsBuilderAddInterceptors(invocation.TargetMethod) ||
+                !AddInterceptorsReceiverIsLambdaOptions(invocation, lambda, cancellationToken))
             {
                 continue;
             }
@@ -140,6 +141,101 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 }
             }
         }
+    }
+
+    private static bool IsInsideNestedExecutable(SyntaxNode node, SyntaxNode root)
+    {
+        for (var current = node.Parent; current != null && current != root; current = current.Parent)
+        {
+            if (current is LambdaExpressionSyntax or AnonymousMethodExpressionSyntax or LocalFunctionStatementSyntax)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool LocalHasUncachedWrite(IOperation root, ILocalSymbol local, int beforePosition)
+    {
+        foreach (var operation in root.Descendants())
+        {
+            // Writes at or after the registration cannot undo it — unless they
+            // sit in a nested function, whose calls need not follow source order.
+            if (operation.Syntax.SpanStart >= beforePosition &&
+                !IsInsideNestedExecutable(operation.Syntax, root.Syntax))
+                continue;
+
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind != RefKind.None &&
+                ReferencesLocal(argument.Value, local))
+            {
+                return true;
+            }
+
+            if (operation is IDeconstructionAssignmentOperation deconstruction &&
+                ReferencesLocal(deconstruction.Target, local))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesLocal(IOperation operation, ILocalSymbol local) =>
+        operation is ILocalReferenceOperation reference &&
+            SymbolEqualityComparer.Default.Equals(reference.Local, local) ||
+        operation.Descendants().OfType<ILocalReferenceOperation>()
+            .Any(candidate => SymbolEqualityComparer.Default.Equals(candidate.Local, local));
+
+    private static bool AddInterceptorsReceiverIsLambdaOptions(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation lambda,
+        CancellationToken cancellationToken)
+    {
+        // The interceptor only configures this registration when the call runs
+        // on the options builder handed to the lambda: a detached builder's
+        // interceptors are discarded with it. Single-assignment locals
+        // initialized from the parameter still denote it.
+        var seen = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var current = invocation.Instance?.UnwrapConversions();
+        while (current != null)
+        {
+            switch (current)
+            {
+                case IInvocationOperation nested:
+                    current = nested.Instance?.UnwrapConversions();
+                    continue;
+                case IPropertyReferenceOperation property when property.Instance != null:
+                    current = property.Instance.UnwrapConversions();
+                    continue;
+                case IParameterReferenceOperation parameterReference:
+                    return lambda.Symbol.Parameters.Any(parameter =>
+                        SymbolEqualityComparer.Default.Equals(
+                            parameter.OriginalDefinition,
+                            parameterReference.Parameter.OriginalDefinition));
+                case ILocalReferenceOperation localReference:
+                    // Ref/out arguments and deconstruction targets bypass the
+                    // assignment cache: either one can rebind the alias.
+                    if (LocalHasUncachedWrite(lambda, localReference.Local, invocation.Syntax.SpanStart) ||
+                        !seen.Add(localReference.Local) ||
+                        !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                            lambda,
+                            localReference.Local,
+                            invocation.Syntax.SpanStart,
+                            out var assignedValue,
+                            cancellationToken))
+                    {
+                        return false;
+                    }
+
+                    current = assignedValue?.UnwrapConversions();
+                    continue;
+                default:
+                    return false;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDbContextOptionsBuilderAddInterceptors(IMethodSymbol method)

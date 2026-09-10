@@ -23,6 +23,50 @@ namespace TestApp
 }";
 
     [Fact]
+    public async Task Fixer_TwoFlagConversion_OffersNoFix()
+    {
+        var source = @"
+    public interface ISoftDelete { bool IsDeleted { get; set; } System.DateTime DeletedAt { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+        public System.DateTime DeletedAt { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    ((ISoftDelete)entry.Entity).IsDeleted = true;
+                    ((ISoftDelete)entry.Entity).DeletedAt = System.DateTime.UtcNow;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+";
+        var test = App(source);
+        var fixedCode = App(source);
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
+
+    [Fact]
     public async Task Fixer_RewritesExecuteDeleteToExecuteUpdate()
     {
         var test = App(@"
