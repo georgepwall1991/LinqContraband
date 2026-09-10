@@ -233,7 +233,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task MutationInUnawaitedAsyncLocalFunction_DoesNotTrigger()
+    public async Task MutationInUnawaitedAsyncLocalFunction_Triggers()
     {
         var test = Preamble + EfCoreMock + @"
 namespace Test
@@ -245,7 +245,207 @@ namespace Test
         public async Task M(TestCtx ctx)
         {
             var u = ctx.Users.AsNoTracking().First();
-            async Task Rename() { u.Name = ""changed""; await Task.Yield(); }
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperUnawaitedAfterAwait_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { await Task.Yield(); u.Name = ""changed""; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperWhenAllAwaited_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); }
+            await Task.WhenAll(Rename());
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperWhenAllArrayAwaited_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); }
+            await Task.WhenAll(new[] { Rename() });
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperWhenAllUnawaited_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { await Task.Yield(); u.Name = ""changed""; }
+            Task.WhenAll(Rename());
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperWaitedSynchronously_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); }
+            Rename().Wait();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperStoredThenAwaited_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); }
+            var t = Rename();
+            await t;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperStoredAwaitedAfterSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { await Task.Yield(); u.Name = ""changed""; }
+            var t = Rename();
+            ctx.SaveChanges();
+            await t;
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperAwaitedThrowAfterMutate_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { u.Name = ""changed""; await Task.Yield(); throw new System.Exception(); }
+            await Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncHelperUnawaitedThrowAfterMutate_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public async Task M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            async Task Rename() { {|LC044:u.Name|} = ""changed""; await Task.Yield(); throw new System.Exception(); }
             Rename();
             ctx.SaveChanges();
         }
