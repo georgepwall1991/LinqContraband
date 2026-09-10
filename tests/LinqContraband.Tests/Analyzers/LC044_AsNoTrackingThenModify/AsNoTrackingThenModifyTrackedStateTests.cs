@@ -9295,4 +9295,92 @@ namespace Test
 }";
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+    [Fact]
+    public async Task AsNoTracking_MutateThenEntryStateUnchanged_ThenSave_StillTriggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            {|LC044:user.Name|} = ""lost when the entry is attached as Unchanged"";
+            ctx.Entry(user).State = EntityState.Unchanged;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_EntryStateUnchangedThenMutate_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Entry(user).State = EntityState.Unchanged;
+            user.Name = ""tracked after the Unchanged attach"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_MutateThenEntryStateDeleted_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            user.Name = ""moot once the row is deleted"";
+            ctx.Entry(user).State = EntityState.Deleted;
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsNoTracking_EntryStateDeletedThenMutate_ThenSave_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var user = ctx.Users.AsNoTracking().First();
+            ctx.Entry(user).State = EntityState.Deleted;
+            user.Name = ""tracked on the deleted entry"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
 }
