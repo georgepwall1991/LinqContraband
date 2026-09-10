@@ -143,10 +143,14 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
-    private static bool LocalHasUncachedWrite(IOperation root, ILocalSymbol local)
+    private static bool LocalHasUncachedWrite(IOperation root, ILocalSymbol local, int beforePosition)
     {
         foreach (var operation in root.Descendants())
         {
+            // Writes at or after the registration cannot undo it.
+            if (operation.Syntax.SpanStart >= beforePosition)
+                continue;
+
             if (operation is IArgumentOperation argument &&
                 argument.Parameter?.RefKind != RefKind.None &&
                 ReferencesLocal(argument.Value, local))
@@ -199,7 +203,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 case ILocalReferenceOperation localReference:
                     // Ref/out arguments and deconstruction targets bypass the
                     // assignment cache: either one can rebind the alias.
-                    if (LocalHasUncachedWrite(lambda, localReference.Local) ||
+                    if (LocalHasUncachedWrite(lambda, localReference.Local, invocation.Syntax.SpanStart) ||
                         !seen.Add(localReference.Local) ||
                         !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                             lambda,

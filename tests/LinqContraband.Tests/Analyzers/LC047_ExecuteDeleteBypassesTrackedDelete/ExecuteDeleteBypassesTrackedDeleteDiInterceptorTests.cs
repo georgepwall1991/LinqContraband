@@ -357,6 +357,45 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithWriteAfterRegistration_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        private static void Reset(out DbContextOptionsBuilder builder)
+        {
+            builder = new DbContextOptionsBuilder();
+        }
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o =>
+            {
+                var builder = o;
+                builder.AddInterceptors(new SoftDeleteInterceptor());
+                Reset(out builder);
+            });
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithRefReboundBuilderAddInterceptors_ShouldNotTrigger()
     {
         var test = App(SoftDeleteInterceptorGraph + @"
