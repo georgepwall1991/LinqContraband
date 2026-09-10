@@ -2574,6 +2574,11 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
+            // A transfer through a finally that unconditionally runs `previous`
+            // executes it rather than skipping it.
+            if (TransferRunsPreviousThroughFinally(candidate, previous, loopBody))
+                continue;
+
             switch (candidate)
             {
                 case BreakStatementSyntax:
@@ -2595,7 +2600,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                             ForStatementSyntax or
                             ForEachStatementSyntax or
                             ForEachVariableStatementSyntax);
-                    if (continueTarget?.Span.Contains(previous.Span) == true)
+                    // A continue reaches its loop's condition and incrementors,
+                    // so an await there still executes.
+                    if (continueTarget?.Span.Contains(previous.Span) == true &&
+                        !PreviousInLoopContinuationRegion(previous, continueTarget))
                         return true;
                     break;
             }
@@ -2603,6 +2611,41 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
 
         return false;
     }
+    private static bool TransferRunsPreviousThroughFinally(
+        SyntaxNode candidate,
+        SyntaxNode previous,
+        SyntaxNode loopBody)
+    {
+        foreach (var tryStatement in candidate.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!loopBody.Span.Contains(tryStatement.Span))
+                break;
+            if (tryStatement.Finally?.Block is { } finallyBlock &&
+                finallyBlock.Span.Contains(previous.Span) &&
+                IsUnconditionallyExecutedWithin(previous, finallyBlock))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool PreviousInLoopContinuationRegion(SyntaxNode previous, SyntaxNode loop)
+    {
+        return loop switch
+        {
+            DoStatementSyntax doStatement =>
+                doStatement.Condition?.Span.Contains(previous.Span) == true,
+            WhileStatementSyntax whileStatement =>
+                whileStatement.Condition?.Span.Contains(previous.Span) == true,
+            ForStatementSyntax forStatement =>
+                forStatement.Condition?.Span.Contains(previous.Span) == true ||
+                forStatement.Incrementors.Any(incrementor => incrementor.Span.Contains(previous.Span)),
+            _ => false,
+        };
+    }
+
 
     private static bool IsInsideNestedExecutableSyntax(
         SyntaxNode node,
