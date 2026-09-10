@@ -143,6 +143,33 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
+    private static bool LocalHasUncachedWrite(IOperation root, ILocalSymbol local)
+    {
+        foreach (var operation in root.Descendants())
+        {
+            if (operation is IArgumentOperation argument &&
+                argument.Parameter?.RefKind != RefKind.None &&
+                ReferencesLocal(argument.Value, local))
+            {
+                return true;
+            }
+
+            if (operation is IDeconstructionAssignmentOperation deconstruction &&
+                ReferencesLocal(deconstruction.Target, local))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesLocal(IOperation operation, ILocalSymbol local) =>
+        operation is ILocalReferenceOperation reference &&
+            SymbolEqualityComparer.Default.Equals(reference.Local, local) ||
+        operation.Descendants().OfType<ILocalReferenceOperation>()
+            .Any(candidate => SymbolEqualityComparer.Default.Equals(candidate.Local, local));
+
     private static bool AddInterceptorsReceiverIsLambdaOptions(
         IInvocationOperation invocation,
         IAnonymousFunctionOperation lambda,
@@ -170,7 +197,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
                             parameter.OriginalDefinition,
                             parameterReference.Parameter.OriginalDefinition));
                 case ILocalReferenceOperation localReference:
-                    if (!seen.Add(localReference.Local) ||
+                    // Ref/out arguments and deconstruction targets bypass the
+                    // assignment cache: either one can rebind the alias.
+                    if (LocalHasUncachedWrite(lambda, localReference.Local) ||
+                        !seen.Add(localReference.Local) ||
                         !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
                             lambda,
                             localReference.Local,
