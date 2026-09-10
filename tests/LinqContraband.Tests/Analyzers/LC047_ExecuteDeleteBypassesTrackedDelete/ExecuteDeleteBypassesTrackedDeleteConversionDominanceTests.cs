@@ -1168,7 +1168,7 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
     [Fact]
-    public async Task ExecuteDelete_WithHelperConvertingUnrelatedEntry_ShouldTrigger()
+    public async Task ExecuteDelete_WithHelperConvertingUnrelatedEntry_ShouldNotTrigger()
     {
         var test = App(@"
     public interface ISoftDelete { bool IsDeleted { get; set; } }
@@ -1201,7 +1201,7 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     {
         public void Run(AppDbContext db)
         {
-            var result = {|LC047:db.Users.ExecuteDelete()|};
+            var result = db.Users.ExecuteDelete();
         }
     }
 ");
@@ -1433,6 +1433,170 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithDeletedEntryThenConvertOtherEntry_ShouldNotTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                var other = ChangeTracker.Entries().First();
+                if (entry.State == EntityState.Deleted)
+                {
+                    other.State = EntityState.Modified;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithHelperPredicateSequentialOtherEntry_ShouldNotTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+
+        private static bool IsDeletedEntry(EntityEntry<User> entry)
+            => entry.State == EntityState.Deleted;
+
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries<User>())
+            {
+                var other = ChangeTracker.Entries<User>().First();
+                if (!IsDeletedEntry(entry))
+                    continue;
+                other.State = EntityState.Modified;
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithFieldEntryDeletedThenConvert_ShouldTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+        private EntityEntry<User> _entry;
+
+        public override int SaveChanges()
+        {
+            if (_entry.State == EntityState.Deleted)
+            {
+                _entry.State = EntityState.Modified;
+                _entry.Entity.IsDeleted = true;
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithHelperConvertingSameEntryTwice_ShouldTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+
+        private static void Convert(EntityEntry<User> tested, EntityEntry<User> write)
+        {
+            write.State = EntityState.Modified;
+            write.Entity.IsDeleted = true;
+        }
+
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries<User>())
+                if (entry.State == EntityState.Deleted)
+                    Convert(entry, entry);
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void ConversionScan_RequiresDeletedDominanceBeforeRecordingAssignment()
     {
         var scanPath = Path.Combine(
@@ -1444,10 +1608,10 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
             "LC047_ExecuteDeleteBypassesTrackedDelete",
             "ExecuteDeleteBypassesTrackedDeleteSaveChangesScan.cs");
         var source = File.ReadAllText(scanPath);
-        Assert.Contains("deletedDominates", source, StringComparison.Ordinal);
+        Assert.Contains("dominatedEntries", source, StringComparison.Ordinal);
         Assert.Contains("RecordAssignment(assignment, aggregate)", source, StringComparison.Ordinal);
         var recordIndex = source.IndexOf("RecordAssignment(assignment, aggregate)", StringComparison.Ordinal);
-        var guardIndex = source.LastIndexOf("deletedDominates", recordIndex, StringComparison.Ordinal);
-        Assert.True(guardIndex >= 0, "RecordAssignment must be dominated by a Deleted-state test.");
+        var guardIndex = source.LastIndexOf("dominatedEntries", recordIndex, StringComparison.Ordinal);
+        Assert.True(guardIndex >= 0, "RecordAssignment must be dominated by a Deleted-state test on the same entry.");
     }
 }
