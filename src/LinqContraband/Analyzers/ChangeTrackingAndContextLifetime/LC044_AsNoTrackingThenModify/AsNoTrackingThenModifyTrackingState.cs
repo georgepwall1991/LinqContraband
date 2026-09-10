@@ -27,7 +27,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
-            if (entry.SpanStart <= mutation.Syntax.SpanStart || entry.SpanStart >= saveSpan) continue;
+            if ((entry.SpanStart <= mutation.Syntax.SpanStart &&
+                    !PriorReattachInEvaluation(entry.Operation.Syntax, mutation.Syntax)) ||
+                entry.SpanStart >= saveSpan) continue;
             if (!entry.PersistsExistingMutation) continue;
             if (!ReattachCoversPath(entry, receiverPath)) continue;
 
@@ -36,6 +38,17 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 !HasInterveningDetach(
                     scan, local, saveContext, receiverPath, entry.Operation, save))
             {
+                // Inside the mutation's own expression, path-based checks
+                // trivially succeed on self-containment: evaluation order plus
+                // unconditionality is the only valid proof.
+                if (mutation.Syntax.Span.Contains(entry.Operation.Syntax.SpanStart) &&
+                    entry.Operation.Syntax != mutation.Syntax)
+                {
+                    if (PriorReattachInEvaluation(entry.Operation.Syntax, mutation.Syntax) &&
+                        !CatchContainsCaughtThrowSkippingRequired(entry, save))
+                        return true;
+                    continue;
+                }
                 if (IsRequiredOnPathFrom(mutation, entry.Operation, save) &&
                     !CatchContainsCaughtThrowSkippingRequired(entry, save))
                     return true;
@@ -299,6 +312,80 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return false;
     }
 
+    // The test mock's Attach/Update return void, so `f(ctx.Attach(u))` does not
+    // compile in tests even though real EF Core returns an entry: the
+    // equivalent persisting shape (`f(ctx.Entry(u).State = Modified)`) is
+    // pinned by UpdateStateInArgumentInLocalFunction, and this shares its
+    // helper with that proven path.
+    private static bool PriorReattachInEvaluation(SyntaxNode reattachSyntax, SyntaxNode mutationSyntax)
+    {
+        if (!mutationSyntax.Span.Contains(reattachSyntax.SpanStart))
+            return false;
+        var reattachBoundary = reattachSyntax.Ancestors().FirstOrDefault(ancestor =>
+            ancestor is LocalFunctionStatementSyntax
+                or LambdaExpressionSyntax
+                or AnonymousMethodExpressionSyntax);
+        var mutationBoundary = mutationSyntax.Ancestors().FirstOrDefault(ancestor =>
+            ancestor is LocalFunctionStatementSyntax
+                or LambdaExpressionSyntax
+                or AnonymousMethodExpressionSyntax);
+        if (!ReferenceEquals(reattachBoundary, mutationBoundary))
+            return false;
+        return EvaluatesUnconditionally(reattachSyntax, mutationSyntax);
+    }
+
+    private static bool EvaluatesUnconditionally(SyntaxNode reattachSyntax, SyntaxNode mutationSyntax)
+    {
+        // Containment proves neither execution nor precedence: an attachment
+        // inside a conditional arm, a short-circuited right operand, or a
+        // null-skipped access may never run while the mutation completes.
+        var child = reattachSyntax;
+        for (var node = reattachSyntax.Parent; node != null && node != mutationSyntax; node = node.Parent)
+        {
+            switch (node)
+            {
+                case ConditionalExpressionSyntax conditional:
+                    // The condition always evaluates; the arms do not.
+                    if (conditional.Condition != child)
+                        return false;
+                    break;
+                case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression) ||
+                    binary.IsKind(SyntaxKind.LogicalOrExpression) ||
+                    binary.IsKind(SyntaxKind.CoalesceExpression):
+                    // The left operand evaluates; the right may be skipped.
+                    if (binary.Right != child)
+                        break;
+                    return false;
+                case AssignmentExpressionSyntax assignment when assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression):
+                    // `??=`: the right operand evaluates only when the left is null.
+                    if (assignment.Right != child)
+                        break;
+                    return false;
+                case ConditionalAccessExpressionSyntax access:
+                    // Only the receiver evaluates unconditionally.
+                    if (access.Expression != child)
+                        return false;
+                    break;
+                case SwitchExpressionArmSyntax:
+                case ThrowExpressionSyntax:
+                    return false;
+                case LambdaExpressionSyntax:
+                case AnonymousMethodExpressionSyntax:
+                    // Deferred bodies never run at the call site (the boundary
+                    // check above normally excludes these first).
+                    return false;
+                default:
+                    // Arguments, receivers, and operands of eager operators all
+                    // evaluate when the enclosing expression does.
+                    break;
+            }
+
+            child = node;
+        }
+
+        return true;
+    }
+
     private static bool HasDominatingPriorReattach(
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
@@ -315,7 +402,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < reattaches.Count; i++)
         {
             var entry = reattaches[i];
-            if (entry.SpanStart <= afterSpan || entry.SpanStart >= mutationSpan) continue;
+            // An attachment inside the mutation's own evaluated expression runs
+            // before the mutation despite its later span; see below.
+            var inEvaluation = entry.SpanStart >= mutationSpan &&
+                PriorReattachInEvaluation(entry.Operation.Syntax, mutation.Syntax);
+            if (entry.SpanStart <= afterSpan || (entry.SpanStart >= mutationSpan && !inEvaluation)) continue;
             if (!ReattachCoversPath(entry, receiverPath)) continue;
 
             if (entry.ContextSymbol != null &&
@@ -330,8 +421,20 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         for (var i = 0; i < matchingReattaches.Count; i++)
         {
             var entry = matchingReattaches[i];
+            // Inside the mutation's own expression, dominance and collective
+            // checks trivially succeed on self-containment: evaluation order
+            // plus unconditionality is the only valid proof.
+            if (mutation.Syntax.Span.Contains(entry.Operation.Syntax.SpanStart) &&
+                entry.Operation.Syntax != mutation.Syntax)
+            {
+                // Evaluation order proves precedence where span order cannot:
+                // the arguments evaluate if and only if the call runs its body.
+                if (PriorReattachInEvaluation(entry.Operation.Syntax, mutation.Syntax))
+                    return true;
+                continue;
+            }
             if (PriorReattachDominatesMutation(
-                    entry.Operation, matchingReattaches, mutation) &&
+                    entry.Operation, entry.PersistsExistingMutation, matchingReattaches, mutation) &&
                 !RequiredPriorOperationCanBypassCollectiveReattach(
                     entry, matchingReattaches, mutation))
             {
@@ -377,7 +480,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
             var coversMutationPath = entryPrecedesMutation
                 ? PriorReattachDominatesMutation(
-                      entry.Operation, matchingReattaches, mutation) &&
+                      entry.Operation, entry.PersistsExistingMutation, matchingReattaches, mutation) &&
                   !RequiredPriorOperationCanBypassCollectiveReattach(
                       entry, matchingReattaches, mutation)
                 : IsRequiredOnPathFrom(mutation, entry.Operation, save);
@@ -466,9 +569,16 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
     private static bool PriorReattachDominatesMutation(
         IOperation reattach,
+        bool persistsExistingMutation,
         List<ReattachEntry> matchingReattaches,
         IOperation mutation)
     {
+        // A reattachment in another executable root (e.g. inside a lifted local
+        // function) cannot be ordered against this endpoint by span: only
+        // tracking that persists an existing change can suppress. Straight-line
+        // callee attach is proven inside the lift itself before reaching here.
+        if (!reattach.SharesOwningExecutableRoot(mutation) && !persistsExistingMutation)
+            return false;
         var catchClause = reattach.Syntax.Ancestors()
             .OfType<CatchClauseSyntax>()
             .FirstOrDefault();

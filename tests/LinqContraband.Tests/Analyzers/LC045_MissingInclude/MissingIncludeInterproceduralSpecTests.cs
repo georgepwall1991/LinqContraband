@@ -181,6 +181,59 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
+    public async Task TestDeliberate_ExplicitLoadWithExtraParam_MustStayQuiet()
+    {
+        // Identity angle (cf. LC046 arity cap): an explicit-load helper with an
+        // extra unused parameter still loads the navigation before reading it.
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+
+        void Show(Order order, int tag)
+        {
+            db.Entry(order).Reference(o => o.Customer).Load();
+            Console.WriteLine(order.Customer.Name);
+        }
+
+        foreach (var order in orders)
+        {
+            Show(order, 0);
+        }
+    }
+"
+        );
+    }
+
+    [Fact]
+    public async Task TestDeliberate_ExplicitLoadWithFourParams_MustStayQuiet()
+    {
+        await VerifyOriginFlowAsync(
+            @"
+    void Main()
+    {
+        var db = new MyDbContext();
+        var orders = db.Orders.ToList();
+
+        void Show(Order order, int a, string b, bool c)
+        {
+            db.Entry(order).Reference(o => o.Customer).Load();
+            Console.WriteLine(order.Customer.Name);
+        }
+
+        foreach (var order in orders)
+        {
+            Show(order, 0, """", true);
+        }
+    }
+"
+        );
+    }
+
+
+    [Fact]
     public async Task TestDeliberate_LocalFunctionInvokedTwice_MustStayQuiet()
     {
         // Two call sites make the read position ambiguous: the collection's state can differ at
