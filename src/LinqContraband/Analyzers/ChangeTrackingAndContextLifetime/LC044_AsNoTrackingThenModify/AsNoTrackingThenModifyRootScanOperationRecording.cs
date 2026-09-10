@@ -21,8 +21,12 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
                 out var entryTargetPath,
                 out var stateName))
         {
-            if (TrackingStates.Contains(stateName))
+            if (TrackingStates.Contains(stateName) || stateName == "Unchanged" || stateName == "Deleted")
             {
+                // Unchanged attaches the entity without persisting pending
+                // mutations (Attach semantics). Deleted tracks it for deletion:
+                // prior mutations are moot once the row is deleted, and later
+                // mutations are tracked, so it persists like Update.
                 AddReattach(
                     scan,
                     entryLocal,
@@ -30,7 +34,7 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
                         assignment,
                         entryContext,
                         entryTargetPath,
-                        persistsExistingMutation: true,
+                        persistsExistingMutation: stateName != "Unchanged",
                         coversDescendantPaths: false,
                         assignment.Syntax.SpanStart,
                         assignment.Syntax.Span));

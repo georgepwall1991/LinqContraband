@@ -66,7 +66,11 @@ internal sealed partial class AsNoTrackingThenModifyRootScan
         var value = assignment.Value.UnwrapConversions();
         if (value is not IFieldReferenceOperation fieldRef) return false;
         if (fieldRef.Field.ContainingType?.Name != "EntityState") return false;
-        if (!TrackingStates.Contains(fieldRef.Field.Name) && fieldRef.Field.Name != "Detached") return false;
+        if (!TrackingStates.Contains(fieldRef.Field.Name) &&
+            fieldRef.Field.Name is not ("Detached" or "Unchanged" or "Deleted"))
+        {
+            return false;
+        }
 
         stateName = fieldRef.Field.Name;
         return true;
