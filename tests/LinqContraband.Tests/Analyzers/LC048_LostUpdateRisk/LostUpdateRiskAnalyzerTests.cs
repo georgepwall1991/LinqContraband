@@ -5241,7 +5241,7 @@ namespace Test
         {
             if (enabled)
             {
-                order.Quantity++;
+                {|LC048:order.Quantity|}++;
                 db.ChangeTracker.Clear();
                 if (restore) db.Update(order);
             }
@@ -5252,6 +5252,7 @@ namespace Test
         );
     }
 
+    [Fact]
     public async Task NestedHelperGuardRequiresEveryEnclosingCondition()
     {
         await VerifyAsync(
