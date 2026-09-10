@@ -124,7 +124,8 @@ internal sealed partial class TrackedDeletePipelineEvidence
         foreach (var child in EnumerateOperations(lambda))
         {
             if (child is not IInvocationOperation invocation ||
-                !IsDbContextOptionsBuilderAddInterceptors(invocation.TargetMethod))
+                !IsDbContextOptionsBuilderAddInterceptors(invocation.TargetMethod) ||
+                !AddInterceptorsReceiverIsLambdaOptions(invocation, lambda))
             {
                 continue;
             }
@@ -140,6 +141,37 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 }
             }
         }
+    }
+
+    private static bool AddInterceptorsReceiverIsLambdaOptions(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation lambda)
+    {
+        // The interceptor only configures this registration when the call runs
+        // on the options builder handed to the lambda: a detached builder's
+        // interceptors are discarded with it.
+        var current = invocation.Instance?.UnwrapConversions();
+        while (current != null)
+        {
+            switch (current)
+            {
+                case IInvocationOperation nested:
+                    current = nested.Instance?.UnwrapConversions();
+                    continue;
+                case IPropertyReferenceOperation property when property.Instance != null:
+                    current = property.Instance.UnwrapConversions();
+                    continue;
+                case IParameterReferenceOperation parameterReference:
+                    return lambda.Symbol.Parameters.Any(parameter =>
+                        SymbolEqualityComparer.Default.Equals(
+                            parameter.OriginalDefinition,
+                            parameterReference.Parameter.OriginalDefinition));
+                default:
+                    return false;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDbContextOptionsBuilderAddInterceptors(IMethodSymbol method)
