@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using LinqContraband.Extensions;
@@ -50,7 +51,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (!IsPipelineMethod(method, isInterceptor))
                 continue;
 
-            ScanMethodTree(method, type, visited, 0, aggregate, deletedDominates: false, cancellationToken);
+            ScanMethodTree(method, type, visited, 0, aggregate, dominatedEntries: null, cancellationToken);
         }
 
         return aggregate.ToScan();
@@ -62,11 +63,11 @@ internal sealed partial class TrackedDeletePipelineEvidence
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         CancellationToken cancellationToken)
     {
         method = method.OriginalDefinition;
-        if (depth > 4 || !visited.Add(method, deletedDominates))
+        if (depth > 4 || !visited.Add(method, DominatedParameterMask(method, dominatedEntries)))
             return;
 
         foreach (var reference in method.DeclaringSyntaxReferences)
@@ -87,7 +88,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 visited,
                 depth,
                 aggregate,
-                deletedDominates,
+                dominatedEntries,
                 isScanRoot: true,
                 cancellationToken);
         }
@@ -109,7 +110,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         bool isScanRoot,
         CancellationToken cancellationToken)
     {
@@ -129,7 +130,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                         visited,
                         depth,
                         aggregate,
-                        deletedDominates,
+                        dominatedEntries,
                         isScanRoot: false,
                         cancellationToken);
                 }
@@ -146,7 +147,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     visited,
                     depth,
                     aggregate,
-                    deletedDominates,
+                    dominatedEntries,
                     cancellationToken);
                 return;
 
@@ -157,7 +158,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     visited,
                     depth,
                     aggregate,
-                    deletedDominates,
+                    dominatedEntries,
                     cancellationToken);
                 return;
 
@@ -168,12 +169,12 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     visited,
                     depth,
                     aggregate,
-                    deletedDominates,
+                    dominatedEntries,
                     cancellationToken);
                 return;
         }
 
-        ObserveOperation(operation, owningType, visited, depth, aggregate, deletedDominates, cancellationToken);
+        ObserveOperation(operation, owningType, visited, depth, aggregate, dominatedEntries, cancellationToken);
 
         foreach (var child in operation.ChildOperations)
         {
@@ -183,7 +184,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 visited,
                 depth,
                 aggregate,
-                deletedDominates,
+                dominatedEntries,
                 isScanRoot: false,
                 cancellationToken);
         }
@@ -195,10 +196,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         CancellationToken cancellationToken)
     {
-        var dominate = deletedDominates;
+        var dominate = dominatedEntries;
         var allowSequentialDominance = !BlockHasGoto(block);
         foreach (var statement in block.Operations)
         {
@@ -212,10 +213,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
                         depth,
                         aggregate,
                         dominate,
-                        cancellationToken) &&
+                        cancellationToken) is { } sequentiallyDominated &&
                     allowSequentialDominance)
                 {
-                    dominate = true;
+                    dominate = AddDominated(dominate, sequentiallyDominated);
                 }
 
                 continue;
@@ -233,13 +234,13 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
-    private bool WalkConditional(
+    private ISymbol? WalkConditional(
         IConditionalOperation conditional,
         INamedTypeSymbol owningType,
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         CancellationToken cancellationToken)
     {
         WalkConversionOperations(
@@ -248,11 +249,11 @@ internal sealed partial class TrackedDeletePipelineEvidence
             visited,
             depth,
             aggregate,
-            deletedDominates,
+            dominatedEntries,
             isScanRoot: false,
             cancellationToken);
 
-        if (TryClassifyDeletedCondition(conditional.Condition, owningType, out var thenDeleted, out var elseDeleted))
+        if (TryClassifyDeletedCondition(conditional.Condition, owningType, out var thenEntry, out var elseEntry))
         {
             WalkConversionOperations(
                 conditional.WhenTrue,
@@ -260,7 +261,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 visited,
                 depth,
                 aggregate,
-                deletedDominates || thenDeleted,
+                AddDominated(dominatedEntries, thenEntry),
                 isScanRoot: false,
                 cancellationToken);
             WalkConversionOperations(
@@ -269,12 +270,14 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 visited,
                 depth,
                 aggregate,
-                deletedDominates || elseDeleted,
+                AddDominated(dominatedEntries, elseEntry),
                 isScanRoot: false,
                 cancellationToken);
-            return elseDeleted &&
+            return elseEntry != null &&
                    conditional.WhenFalse is null &&
-                   IsUnconditionalExit(conditional.WhenTrue);
+                   IsUnconditionalExit(conditional.WhenTrue)
+                ? elseEntry
+                : null;
         }
 
         WalkConversionOperations(
@@ -283,7 +286,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
             visited,
             depth,
             aggregate,
-            deletedDominates,
+            dominatedEntries,
             isScanRoot: false,
             cancellationToken);
         WalkConversionOperations(
@@ -292,10 +295,10 @@ internal sealed partial class TrackedDeletePipelineEvidence
             visited,
             depth,
             aggregate,
-            deletedDominates,
+            dominatedEntries,
             isScanRoot: false,
             cancellationToken);
-        return false;
+        return null;
     }
 
     private void WalkSwitch(
@@ -304,7 +307,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         CancellationToken cancellationToken)
     {
         WalkConversionOperations(
@@ -313,14 +316,17 @@ internal sealed partial class TrackedDeletePipelineEvidence
             visited,
             depth,
             aggregate,
-            deletedDominates,
+            dominatedEntries,
             isScanRoot: false,
             cancellationToken);
 
         foreach (var switchCase in switchOperation.Cases)
         {
-            var caseDominates = deletedDominates ||
-                                (IsStateProperty(switchOperation.Value) && CaseIncludesDeleted(switchCase));
+            var caseDominates = AddDominated(
+                dominatedEntries,
+                IsStateProperty(switchOperation.Value) && CaseIncludesDeleted(switchCase)
+                    ? TryGetEntrySymbol(switchOperation.Value)
+                    : null);
             foreach (var clause in switchCase.Clauses)
             {
                 WalkConversionOperations(
@@ -329,7 +335,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     visited,
                     depth,
                     aggregate,
-                    deletedDominates,
+                    dominatedEntries,
                     isScanRoot: false,
                     cancellationToken);
             }
@@ -355,7 +361,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         MethodDominanceSet visited,
         int depth,
         ConversionAccumulator aggregate,
-        bool deletedDominates,
+        HashSet<ISymbol>? dominatedEntries,
         CancellationToken cancellationToken)
     {
         if (IsEntityStateMember(operation, "Deleted"))
@@ -385,31 +391,38 @@ internal sealed partial class TrackedDeletePipelineEvidence
                     visited,
                     depth + 1,
                     aggregate,
-                    deletedDominates,
+                    MapDominatedArguments(invocation, target, dominatedEntries),
                     cancellationToken);
             }
         }
 
         if (operation is IConversionOperation conversion &&
-            deletedDominates &&
+            dominatedEntries != null &&
             conversion.Type is INamedTypeSymbol convertedType &&
-            IsEntityProperty(conversion.Operand))
+            IsEntityProperty(conversion.Operand) &&
+            TryGetEntrySymbol(conversion.Operand) is { } convertedEntry &&
+            dominatedEntries.Contains(convertedEntry))
         {
             aggregate.NarrowedEntities.Add(convertedType);
         }
 
-        if (operation is IAssignmentOperation assignment && deletedDominates)
+        if (operation is IAssignmentOperation assignment &&
+            dominatedEntries != null &&
+            TryGetEntrySymbol(assignment.Target) is { } assignedEntry &&
+            dominatedEntries.Contains(assignedEntry))
+        {
             RecordAssignment(assignment, aggregate);
+        }
     }
 
     private bool TryClassifyDeletedCondition(
         IOperation? condition,
         INamedTypeSymbol owningType,
-        out bool thenDeleted,
-        out bool elseDeleted)
+        out ISymbol? thenEntry,
+        out ISymbol? elseEntry)
     {
-        thenDeleted = false;
-        elseDeleted = false;
+        thenEntry = null;
+        elseEntry = null;
         condition = condition?.UnwrapConversions();
 
         var negated = false;
@@ -420,12 +433,12 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
 
         if (condition is IBinaryOperation binary &&
-            TryGetDeletedComparisonPolarity(binary, out var isNegated))
+            TryGetDeletedComparisonPolarity(binary, out var isNegated, out var testedEntry))
         {
             if (isNegated != negated)
-                elseDeleted = true;
+                elseEntry = testedEntry;
             else
-                thenDeleted = true;
+                thenEntry = testedEntry;
             return true;
         }
 
@@ -434,38 +447,38 @@ internal sealed partial class TrackedDeletePipelineEvidence
             TryGetDeletedPatternPolarity(isPattern.Pattern, out var patternNegated))
         {
             if (patternNegated != negated)
-                elseDeleted = true;
+                elseEntry = TryGetEntrySymbol(isPattern.Value);
             else
-                thenDeleted = true;
+                thenEntry = TryGetEntrySymbol(isPattern.Value);
             return true;
         }
 
         if (condition is IInvocationOperation invocation &&
-            TryClassifyHelperDeletedPredicate(invocation, owningType, out var helperNegated))
+            TryClassifyHelperDeletedPredicate(invocation, owningType, out var helperNegated, out var helperEntry))
         {
             if (helperNegated != negated)
-                elseDeleted = true;
+                elseEntry = helperEntry;
             else
-                thenDeleted = true;
+                thenEntry = helperEntry;
             return true;
         }
 
         return false;
     }
 
-    // Residual: the tested argument is validated as a plain local/parameter reference,
-    // but it is not proven identical to the entry converted under dominance. A helper
-    // testing an unrelated entry passed as a local still dominates, matching the
-    // pre-existing direct-test looseness (`if (other.State == Deleted)`). Full
-    // entry-linked dominance (threading tested-entry identity to RecordAssignment for
-    // both direct and helper paths) is a dedicated follow-up.
+    // The tested argument must be a plain local/parameter reference so the dominated
+    // entry can be linked to the entry converted under dominance. Field-rooted
+    // arguments stay quiet for helper predicates even though the direct path links
+    // fields, because a field argument does not prove which entry the helper tested.
 
     private bool TryClassifyHelperDeletedPredicate(
         IInvocationOperation invocation,
         INamedTypeSymbol owningType,
-        out bool isNegated)
+        out bool isNegated,
+        out ISymbol? testedEntry)
     {
         isNegated = false;
+        testedEntry = null;
         var target = invocation.TargetMethod.OriginalDefinition;
         foreach (var parameter in target.Parameters)
         {
@@ -513,9 +526,9 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
             returned = returned?.UnwrapConversions();
             if (returned is IBinaryOperation binary &&
-                TryGetDeletedComparisonPolarity(binary, out isNegated) &&
+                TryGetDeletedComparisonPolarity(binary, out isNegated, out _) &&
                 TryGetTestedParameter(binary, target, out var binaryTested) &&
-                TestedArgumentIsLocal(invocation, target, binaryTested))
+                TryGetTestedArgumentSymbol(invocation, target, binaryTested, out testedEntry))
             {
                 return true;
             }
@@ -524,12 +537,13 @@ internal sealed partial class TrackedDeletePipelineEvidence
                 IsStateProperty(isPattern.Value) &&
                 TryGetDeletedPatternPolarity(isPattern.Pattern, out isNegated) &&
                 TryGetTestedParameter(isPattern.Value, target, out var patternTested) &&
-                TestedArgumentIsLocal(invocation, target, patternTested))
+                TryGetTestedArgumentSymbol(invocation, target, patternTested, out testedEntry))
             {
                 return true;
             }
 
             isNegated = false;
+            testedEntry = null;
         }
 
         return false;
@@ -580,14 +594,16 @@ internal sealed partial class TrackedDeletePipelineEvidence
         return false;
     }
 
-    private static bool TestedArgumentIsLocal(
+    private static bool TryGetTestedArgumentSymbol(
         IInvocationOperation invocation,
         IMethodSymbol target,
-        int testedOrdinal)
+        int testedOrdinal,
+        out ISymbol? testedEntry)
     {
         // The tested argument must be a plain local or parameter reference. Ambient
         // state (fields, properties, other entries) cannot be linked to the entry
         // converted under dominance, so such predicates stay quiet.
+        testedEntry = null;
         foreach (var argument in invocation.Arguments)
         {
             if (argument.Parameter == null ||
@@ -602,16 +618,25 @@ internal sealed partial class TrackedDeletePipelineEvidence
             while (current is IPropertyReferenceOperation { Instance: { } instance })
                 current = instance.UnwrapConversions();
 
-            return current is ILocalReferenceOperation or IParameterReferenceOperation;
+            if (current is ILocalReferenceOperation local)
+                testedEntry = local.Local;
+            else if (current is IParameterReferenceOperation parameter)
+                testedEntry = parameter.Parameter;
+
+            return testedEntry != null;
         }
 
         return false;
     }
 
 
-    private static bool TryGetDeletedComparisonPolarity(IBinaryOperation binary, out bool isNegated)
+    private static bool TryGetDeletedComparisonPolarity(
+        IBinaryOperation binary,
+        out bool isNegated,
+        out ISymbol? testedEntry)
     {
         isNegated = false;
+        testedEntry = null;
         var leftDeleted = IsEntityStateMember(binary.LeftOperand, "Deleted");
         var rightDeleted = IsEntityStateMember(binary.RightOperand, "Deleted");
         if (leftDeleted == rightDeleted)
@@ -621,12 +646,17 @@ internal sealed partial class TrackedDeletePipelineEvidence
         if (rightDeleted && !IsStateProperty(binary.LeftOperand))
             return false;
 
+        var stateOperand = leftDeleted ? binary.RightOperand : binary.LeftOperand;
         if (binary.OperatorKind == BinaryOperatorKind.Equals)
+        {
+            testedEntry = TryGetEntrySymbol(stateOperand);
             return true;
+        }
 
         if (binary.OperatorKind == BinaryOperatorKind.NotEquals)
         {
             isNegated = true;
+            testedEntry = TryGetEntrySymbol(stateOperand);
             return true;
         }
 
@@ -829,14 +859,123 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
+    private static HashSet<ISymbol>? AddDominated(HashSet<ISymbol>? dominated, ISymbol? entry)
+    {
+        if (entry == null)
+            return dominated;
+
+        var next = dominated == null
+            ? new HashSet<ISymbol>(SymbolEqualityComparer.Default)
+            : new HashSet<ISymbol>(dominated, SymbolEqualityComparer.Default);
+        next.Add(entry);
+        return next;
+    }
+
+    private static HashSet<ISymbol>? MapDominatedArguments(
+        IInvocationOperation invocation,
+        IMethodSymbol target,
+        HashSet<ISymbol>? dominated)
+    {
+        if (dominated == null)
+            return null;
+
+        HashSet<ISymbol>? mapped = null;
+        foreach (var entry in dominated)
+        {
+            // Fields remain visible inside the callee; locals do not.
+            if (entry is IFieldSymbol)
+                (mapped ??= new HashSet<ISymbol>(SymbolEqualityComparer.Default)).Add(entry);
+        }
+
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter == null)
+                continue;
+
+            if (TryGetEntrySymbol(argument.Value) is { } argumentEntry && dominated.Contains(argumentEntry))
+                (mapped ??= new HashSet<ISymbol>(SymbolEqualityComparer.Default))
+                    .Add(argument.Parameter.OriginalDefinition);
+        }
+
+        return mapped;
+    }
+
+    private static long DominatedParameterMask(IMethodSymbol method, HashSet<ISymbol>? dominated)
+    {
+        if (dominated == null)
+            return 0;
+
+        long mask = 0;
+        for (var ordinal = 0; ordinal < method.Parameters.Length && ordinal < 64; ordinal++)
+        {
+            if (dominated.Contains(method.Parameters[ordinal].OriginalDefinition))
+                mask |= 1L << ordinal;
+        }
+
+        return mask;
+    }
+
+    private static ISymbol? TryGetEntrySymbol(IOperation? operation)
+    {
+        var current = operation?.UnwrapConversions();
+        while (true)
+        {
+            switch (current)
+            {
+                case ILocalReferenceOperation local:
+                    return local.Local;
+                case IParameterReferenceOperation parameter:
+                    return parameter.Parameter;
+                case IFieldReferenceOperation field:
+                    return field.Field;
+                case IPropertyReferenceOperation { Instance: { } instance }:
+                    current = instance.UnwrapConversions();
+                    continue;
+                case IInvocationOperation { Instance: { } receiver }:
+                    current = receiver.UnwrapConversions();
+                    continue;
+                default:
+                    return null;
+            }
+        }
+    }
+
+    private readonly struct MethodDominanceKey : IEquatable<MethodDominanceKey>
+    {
+        private readonly IMethodSymbol method;
+        private readonly long dominatedParameterMask;
+
+        public MethodDominanceKey(IMethodSymbol method, long dominatedParameterMask)
+        {
+            this.method = method;
+            this.dominatedParameterMask = dominatedParameterMask;
+        }
+
+        public bool Equals(MethodDominanceKey other)
+        {
+            return dominatedParameterMask == other.dominatedParameterMask &&
+                   SymbolEqualityComparer.Default.Equals(method, other.method);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is MethodDominanceKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return (SymbolEqualityComparer.Default.GetHashCode(method) * 397) ^
+                   dominatedParameterMask.GetHashCode();
+        }
+    }
+
     private sealed class MethodDominanceSet
     {
-        private readonly HashSet<IMethodSymbol> dominated = new(SymbolEqualityComparer.Default);
-        private readonly HashSet<IMethodSymbol> undominated = new(SymbolEqualityComparer.Default);
+        private readonly HashSet<MethodDominanceKey> visited = new();
 
-        public bool Add(IMethodSymbol method, bool deletedDominates)
+        public bool Add(IMethodSymbol method, long dominatedParameterMask)
         {
-            return (deletedDominates ? dominated : undominated).Add(method);
+            return visited.Add(new MethodDominanceKey(method, dominatedParameterMask));
         }
     }
 
