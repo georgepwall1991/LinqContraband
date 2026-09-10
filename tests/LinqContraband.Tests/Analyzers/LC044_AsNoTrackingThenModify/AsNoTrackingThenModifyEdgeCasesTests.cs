@@ -1191,6 +1191,79 @@ namespace Test
     }
 
     [Fact]
+    public async Task UserConversionNullInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public sealed class Wrapper
+    {
+        public string Value { get; set; }
+        public static implicit operator Wrapper(string value) => new Wrapper { Value = value ?? ""d"" };
+    }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; _ = (Wrapper?)(string)null ?? throw new System.Exception(); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(75, 29, 75, 35).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ThrowExpressionAfterMutateInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; _ = (string)null ?? throw new System.Exception(); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CoalesceValueAfterMutateInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, string value)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; _ = value ?? ""d""; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 29, 70, 35).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task FinallyExitGotoInLocalFunction_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
