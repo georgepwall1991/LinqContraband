@@ -5,6 +5,31 @@ namespace LinqContraband.Tests.Analyzers.LC037_RawSqlStringConstruction;
 
 public partial class RawSqlStringConstructionTests
 {
+
+    [Fact]
+    public async Task ExecuteSqlRaw_WithConstantHelperResult_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var result = db.Database.ExecuteSqlRaw(Build());
+        }
+
+        private static string Build()
+        {
+            var sql = ""SELECT * FROM Users"";
+            return sql;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     [Fact]
     public async Task ExecuteSqlRaw_WithConstructedInitialValueOverwrittenByConstantBeforeCall_ShouldNotTrigger()
     {
