@@ -1415,6 +1415,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (statement is ThrowStatementSyntax)
             return true;
 
+        // A return whose expression always throws never completes normally
+        // either: it throws instead of returning to the caller.
+        if (statement is ReturnStatementSyntax returnStatement &&
+            returnStatement.Expression != null &&
+            ExpressionAlwaysThrows(returnStatement.Expression, model))
+            return true;
+
         // An expression statement that always throws (e.g. `_ = (string)null
         // ?? throw ...`) never completes normally either, as does a local
         // declaration whose only initializer does.
