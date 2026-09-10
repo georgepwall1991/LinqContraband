@@ -58,7 +58,7 @@ await db.SaveChangesAsync();
 
 LC047 reports only when pipeline evidence is proven in the current compilation.
 
-**Proof A — SaveChanges delete conversion.** A `DbContext` subclass reachable from the query's context type, or a `SaveChangesInterceptor` / `ISaveChangesInterceptor` registered from that type's `OnConfiguring` (`AddInterceptors`) or from a compilation-visible `AddDbContext<TContext>` / `AddDbContextPool<TContext>` / `AddDbContextFactory<TContext>` call on `Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions` whose generic argument is that source context and whose inline options lambda calls `DbContextOptionsBuilder.AddInterceptors`, has a `SaveChanges` / `SaveChangesAsync` / `SavingChanges` / `SavingChangesAsync` body that:
+**Proof A — SaveChanges delete conversion.** A `DbContext` subclass reachable from the query's context type, or a `SaveChangesInterceptor` / `ISaveChangesInterceptor` registered from that type's `OnConfiguring` (`AddInterceptors`) or from a compilation-visible `AddDbContext<TContext>` / `AddDbContextPool<TContext>` / `AddDbContextFactory<TContext>` call on `Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions` whose generic argument is that source context and whose inline options lambda calls `DbContextOptionsBuilder.AddInterceptors` on the supplied options builder (directly, through a fluent chain rooted there, or through a stable single-assignment local alias with no ref/out/deconstruction writes through the call), has a `SaveChanges` / `SaveChangesAsync` / `SavingChanges` / `SavingChangesAsync` body that:
 
 - reads `EntityState.Deleted` in a dominating state test, and
 - under that dominance, either assigns `EntityState.Modified` / `Unchanged` or writes a property / `Property("…").CurrentValue` on that entry.
@@ -72,7 +72,7 @@ Dominance is proven when the conversion sits in the same `if` body as `entry.Sta
 - `HasQueryFilter(e => !e.IsDeleted)` alone. Filter-only models still hard-delete on `Remove` + `SaveChanges`.
 - Name heuristics (`IsDeleted`, `DeletedAt`) without a proven Deleted-state handler.
 - `ExecuteUpdate` skipping `UpdatedAt` / interceptors (different intent).
-- Unregistered interceptors, interceptors registered only through an opaque DI helper (method group or lambda that only forwards to another method), interceptors registered against a different generic context, and interceptors with no source in the compilation.
+- Unregistered interceptors, interceptors registered only through an opaque DI helper (method group or lambda that only forwards to another method), interceptors on a detached options builder or a rebound alias, interceptors registered against a different generic context, and interceptors with no source in the compilation.
 - `ApplyConfigurationsFromAssembly` of an external or otherwise unproven assembly, a call that passes a `Func<Type, bool>` predicate, or a current-assembly scan of abstract, generic (including nested types of open generics), or non-public-constructor configuration types. Proof B does not scan every `IEntityTypeConfiguration<T>` in the compilation unless that current-assembly application is proven and EF would construct the type.
 - `HasOne().WithOne()` without `HasForeignKey<TDependent>`.
 - Lookalike `ExecuteDelete` helpers outside `Microsoft.EntityFrameworkCore`.

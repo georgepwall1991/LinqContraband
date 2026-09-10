@@ -58,13 +58,17 @@ operation as an additional location. It recognises async query terminals, includ
 
 For direct overlap, the analyzer also follows a source-visible local function when its body consists of one direct
 return of a recognised EF Core async invocation. A parameterless helper may use a stable context captured from
-outside the helper. A helper with one, two, or three parameters may use exactly one `DbContext` parameter as the returned
+outside the helper. A helper with any number of parameters may use exactly one `DbContext` parameter as the returned
 operation's context when that context argument is evaluated first and resolves to a proven context origin; repeated
-calls with the same origin report, while distinct or reassigned arguments stay quiet. Implicit optional defaults do not
+calls with the same origin report, while distinct or reassigned arguments stay quiet. A by-reference (`ref`/`out`/`in`)
+context parameter with a later argument at the same call stays outside the proof, because argument evaluation can
+rebind the variable before the body runs. Implicit optional defaults do not
 participate in source evaluation order, and an explicit conversion in the context receiver stays outside the direct
 proof because a downcast may throw. Any remaining parameter may be unused, but any use
-must appear only in non-throwing direct arguments to the EF terminal. A helper with one, two, or three parameters may instead
-return an EF task over a stable captured context under that same argument-use proof. Every parameterized helper form
+must appear only in non-throwing direct arguments to the EF terminal. A helper with any number of parameters may instead
+return an EF task over a stable captured context under that same argument-use proof. Captured aliases must be
+single-assignment with no untracked (ref/out/deconstruction) writes through the call, or the helper is skipped.
+Every parameterized helper form
 also requires each explicit call-site and nested helper-body argument to be proven non-throwing, and a
 nullable instance method-group receiver remains outside that proof. A
 `CancellationToken` forwarded directly to the EF terminal must not be definitely cancelled; wrapped forwarding remains
@@ -74,7 +78,7 @@ cannot prevent the later EF task from starting. The diagnostic is reported on th
 call as an additional location. A returned operation that uses one of two `DbContext` parameters remains ambiguous and
 quiet; a stable captured context still uses the captured-context proof even when helper parameters are context-typed.
 Helper-local or reassigned captured contexts and potentially throwing argument evaluation,
-helpers with four or more parameters, helper chains, and branch or multi-operation bodies
+helper chains, and branch or multi-operation bodies
 remain outside this deliberately narrow interprocedural proof.
 
 The analyzer follows stable locals, parameters, readonly fields, source-visible auto-properties, `DbSet` members,
