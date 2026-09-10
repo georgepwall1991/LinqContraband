@@ -1191,6 +1191,228 @@ namespace Test
     }
 
     [Fact]
+    public async Task PersistBeforeReturnInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; if (flag) { ctx.Update(u); return; } ctx.Update(u); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task FinallySuppressedReturnInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; if (flag) { try { return; } finally { throw new System.Exception(); } } ctx.Update(u); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExclusiveArmReturnInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { if (flag) u.Name = ""x""; else return; ctx.Update(u); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BackwardGotoSkipsUpdateInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag, bool done)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { Retry: if (done) return; u.Name = ""x""; done = true; if (flag) goto Retry; ctx.Update(u); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 54, 70, 60).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DeadReturnBeforeUpdateInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; { if (false) return; ctx.Update(u); } }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GotoBeforeUpdateInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; { if (flag) goto Done; System.Console.WriteLine(""work""); Done: ; ctx.Update(u); } }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InnerBreakBeforeUpdateInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; { while (flag) { break; } ctx.Update(u); } }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReturnBeforeUpdateInUsingInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; using (var scope = new System.IO.MemoryStream()) { if (flag) return; ctx.Update(u); } }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 29, 70, 35).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ConditionalAttachInUsingInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { using (var scope = new System.IO.MemoryStream()) { if (flag) ctx.Attach(u); } u.Name = ""x""; }
+            Rename();
+            ctx.SaveChanges();
+        }
+}}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 107, 70, 113).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task UsingBlockAttachInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { using (var scope = new System.IO.MemoryStream()) { ctx.Attach(u); } u.Name = ""x""; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CoalesceLeftOperandReattachInLocalFunction_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
