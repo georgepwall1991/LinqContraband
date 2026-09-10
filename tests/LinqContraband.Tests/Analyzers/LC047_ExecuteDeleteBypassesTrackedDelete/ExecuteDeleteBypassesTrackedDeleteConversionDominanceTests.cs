@@ -1083,6 +1083,91 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithLocalFunctionDeletedPredicate_StaysQuiet()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+
+        public override int SaveChanges()
+        {
+            bool IsDeletedEntry(EntityEntry<User> entry)
+                => entry.State == EntityState.Deleted;
+
+            foreach (var entry in ChangeTracker.Entries<User>())
+            {
+                if (IsDeletedEntry(entry))
+                {
+                    entry.State = EntityState.Modified;
+                    entry.Entity.IsDeleted = true;
+                }
+            }
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+    [Fact]
+    public async Task ExecuteDelete_WithHelperConvertingUnrelatedEntry_ShouldTrigger()
+    {
+        var test = App(@"
+    public interface ISoftDelete { bool IsDeleted { get; set; } }
+    public sealed class User : ISoftDelete
+    {
+        public int Id { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+
+        private static void Convert(EntityEntry<User> tested, EntityEntry<User> write)
+        {
+            write.State = EntityState.Modified;
+            write.Entity.IsDeleted = true;
+        }
+
+        public override int SaveChanges()
+        {
+            foreach (var entry in ChangeTracker.Entries<User>())
+                if (entry.State == EntityState.Deleted)
+                    Convert(entry, ChangeTracker.Entries<User>().First());
+            return base.SaveChanges();
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithHelperDeletedPredicate_ShouldTrigger()
     {
         var test = App(@"
