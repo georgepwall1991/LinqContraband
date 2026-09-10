@@ -143,12 +143,25 @@ internal sealed partial class TrackedDeletePipelineEvidence
         }
     }
 
+    private static bool IsInsideNestedExecutable(SyntaxNode node, SyntaxNode root)
+    {
+        for (var current = node.Parent; current != null && current != root; current = current.Parent)
+        {
+            if (current is LambdaExpressionSyntax or AnonymousMethodExpressionSyntax or LocalFunctionStatementSyntax)
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool LocalHasUncachedWrite(IOperation root, ILocalSymbol local, int beforePosition)
     {
         foreach (var operation in root.Descendants())
         {
-            // Writes at or after the registration cannot undo it.
-            if (operation.Syntax.SpanStart >= beforePosition)
+            // Writes at or after the registration cannot undo it — unless they
+            // sit in a nested function, whose calls need not follow source order.
+            if (operation.Syntax.SpanStart >= beforePosition &&
+                !IsInsideNestedExecutable(operation.Syntax, root.Syntax))
                 continue;
 
             if (operation is IArgumentOperation argument &&
