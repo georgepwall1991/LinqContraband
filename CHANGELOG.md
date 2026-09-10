@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.8.0] - 2026-09-10
 
 ### Fixed
 - LC044 now qualifies callee-side persistence against caller-side invalidation: a detach or `ChangeTracker.Clear()` between the lifted local-function call and `SaveChanges` reports a lost mutation, while a save completed inside the callee protects it from later clears. Sibling tracking helpers invoked in the caller persist like caller-side attaches (dominance plus no intervening invalidation), and reattachments evaluated as call arguments count only when unconditional (`?:` arms, short-circuit right operands, `?.`, and `??=` right operands excluded). Same-block dominance requires non-optional control flow, nested-helper straight-line bodies, and iterator helpers are excluded.
@@ -14,8 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LC048 same-invocation guard-subset checks discharge guards proven by the call's constant arguments, so a reattach/update after a reset guarded by a literal is recognized and the untrack-repersist cycle reports.
 - LC044 links async local-function mutations to the caller's save through task completion, not just a direct `await`: `Task.WhenAll`/`WaitAll` combinators, synchronous `Wait()`/`Result`/`GetAwaiter().GetResult()` completion, and store-then-await locals all count. An unawaited async helper still reports mutations in its synchronous pre-await prefix, and a post-mutation throw inside an async callee only diverts the save when the call is awaited. `entry.State = EntityState.Unchanged` now attaches without persisting pending mutations (Attach semantics) and `EntityState.Deleted` tracks the entity for deletion, so both orderings around those assignments are modeled.
 - LC047 links Deleted-state dominance to the tested entry symbol instead of a coarse flag: state conversions and property writes only count as soft-delete evidence when they root at the entry proven `Deleted` by the branch, including through helper calls via argument-to-parameter mapping. A helper converting an unrelated entry no longer reports.
-
-## [5.8.0] - 2026-08-29
 
 ### Added
 - New rule `LC048` detects lost-update risks in tracked EF Core read-modify-write flows. It reports compound, increment/decrement, self-read, and guarded same-property mutations that reach `SaveChanges` on the proven originating context without optimistic concurrency protection. The warning is placed on the mutation and links the save as an additional location.
