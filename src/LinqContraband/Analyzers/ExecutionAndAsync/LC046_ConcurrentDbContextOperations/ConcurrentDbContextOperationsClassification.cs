@@ -52,7 +52,8 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         IInvocationOperation invocation,
         IOperation executableRoot,
         CancellationToken cancellationToken,
-        out EfOperation operation)
+        out EfOperation operation,
+        IOperation? validityScope = null)
     {
         operation = default;
 
@@ -62,7 +63,7 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         // An EF call whose required arguments are invalid faults before it starts any
         // work, so it cannot overlap another operation. This proof is shared with the
         // loop gate so the two paths cannot disagree about what "starts" means.
-        if (RequiredArgumentIsDefinitelyInvalid(invocation, executableRoot))
+        if (RequiredArgumentIsDefinitelyInvalid(invocation, validityScope ?? executableRoot))
             return false;
 
         IOperation? source;
@@ -119,6 +120,45 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return true;
     }
 
+    private static bool HelperCapturedContextsAreSingleAssigned(
+        ILocalFunctionOperation localFunction,
+        IOperation executableRoot,
+        int beforePosition,
+        CancellationToken cancellationToken)
+    {
+        foreach (var reference in localFunction.Body.Descendants().OfType<ILocalReferenceOperation>())
+        {
+            if (!CapturedLocalCanCarryContextOrigin(reference.Local.Type))
+                continue;
+            if (!LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                    executableRoot,
+                    reference.Local,
+                    int.MaxValue,
+                    out _,
+                    cancellationToken))
+                return false;
+            // The assignment cache records only initializers and simple
+            // assignments: deconstruction or by-reference writes slip through,
+            // so untracked writes must also be absent through the call.
+            if (LocalHasNoUntrackedWritesBefore(executableRoot, reference.Local, beforePosition))
+                continue;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool CapturedLocalCanCarryContextOrigin(ITypeSymbol? type)
+    {
+        if (type is null)
+            return false;
+        return type.IsDbContext() ||
+            type.IsDbSet() ||
+            type.IsIQueryable() ||
+            (type.Name == "IOrderedQueryable" && type.ContainingNamespace?.ToString() == "System.Linq") ||
+            (type.Name == "DatabaseFacade" && type.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore");
+    }
+
     private static bool TryClassifyDirectLocalFunctionEfTask(
         IInvocationOperation invocation,
         IOperation executableRoot,
@@ -141,9 +181,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             returnedInvocation.TargetMethod.MethodKind == MethodKind.LocalFunction ||
             !TryClassifyEfAsyncOperation(
                 returnedInvocation,
-                localFunction.Body,
+                executableRoot,
                 cancellationToken,
-                out var returnedOperation))
+                out var returnedOperation,
+                localFunction.Body))
         {
             return false;
         }
@@ -208,6 +249,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     SymbolEqualityComparer.Default.Equals(
                         candidate.Parameter?.OriginalDefinition,
                         contextParameter.OriginalDefinition));
+                // A by-reference context argument aliases the variable: a later
+                // argument evaluated before the body runs can rebind it, so the
+                // span-ordered origin proof no longer holds. Value parameters
+                // copy at their own position and are unaffected.
+                if (contextParameter.RefKind != RefKind.None &&
+                    argument != null &&
+                    invocation.Arguments.Any(candidate =>
+                        !candidate.IsImplicit &&
+                        candidate.Value.Syntax.SpanStart > argument.Value.Syntax.SpanStart))
+                {
+                    return false;
+                }
                 if (argument == null ||
                     argument.IsImplicit ||
                     invocation.Arguments.Any(candidate =>
@@ -257,9 +310,20 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 return false;
             }
 
+            // The origin above was resolved at declaration scope: a captured
+            // alias rebound between the declaration and this call would silently
+            // change contexts, and the origin check only watches the resolved
+            // parameter. Single-assignment across the root rules that out.
+            if (!HelperCapturedContextsAreSingleAssigned(
+                    localFunction, executableRoot, invocation.Syntax.SpanStart, cancellationToken))
+                return false;
             operation = new EfOperation(invocation, returnedOperation.Origin);
             return true;
         }
+
+        if (!HelperCapturedContextsAreSingleAssigned(
+                localFunction, executableRoot, invocation.Syntax.SpanStart, cancellationToken))
+            return false;
 
         if (IsOriginDeclaredInside(returnedOperation.Origin, localFunction.Syntax) ||
             !CapturedParameterOriginsHaveNoWritesBefore(
