@@ -1191,6 +1191,28 @@ namespace Test
     }
 
     [Fact]
+    public async Task FinallyExitGotoInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag, bool done)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { Retry: if (done) { try { goto End; } finally { ctx.Update(u); } } u.Name = ""x""; done = true; if (flag) goto Retry; ctx.Update(u); End: ; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExitArmPersistInLocalFunction_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"

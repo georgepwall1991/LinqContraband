@@ -2510,6 +2510,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                     scan, local, saveContext, receiverPath, exit,
                     model, localFunctionSyntax))
                 continue;
+            // An exit unwinding through a finally that reattaches persists
+            // while unwinding.
+            if (JumpRunsFinallyReattach(
+                    exit, scan, local, saveContext, receiverPath,
+                    model, localFunctionSyntax))
+                continue;
             return true;
         }
 
