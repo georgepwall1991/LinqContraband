@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC044 now qualifies callee-side persistence against caller-side invalidation: a detach or `ChangeTracker.Clear()` between the lifted local-function call and `SaveChanges` reports a lost mutation, while a save completed inside the callee protects it from later clears. Sibling tracking helpers invoked in the caller persist like caller-side attaches (dominance plus no intervening invalidation), and reattachments evaluated as call arguments count only when unconditional (`?:` arms, short-circuit right operands, `?.`, and `??=` right operands excluded). Same-block dominance requires non-optional control flow, nested-helper straight-line bodies, and iterator helpers are excluded.
+- LC046 accepts direct local-function helpers with any number of parameters (arity cap removed). Captured context aliases resolve at declaration scope; by-reference context parameters with a later same-call argument stay out; captured context-carrying locals (contexts, sets, queries, facades) must be single-assignment with no untracked writes through each call. Awaits past `do`-loop exits require no skipping `break`/`continue` (condition, incrementor, and unconditional-`finally` exemptions), and returns inside uninvoked non-escaping closures no longer count as task completion.
+- LC047 DI interceptor evidence requires the `AddInterceptors` receiver rooted in the registration options parameter: fluent chains and stable single-assignment aliases count, while detached builders and rebound aliases (including `ref`/`out`, deconstruction, and nested-function rebinds) do not. Writes after the registration call are ignored.
+- LC048 same-invocation guard-subset checks discharge guards proven by the call's constant arguments, so a reattach/update after a reset guarded by a literal is recognized and the untrack-repersist cycle reports.
+
 ## [5.8.0] - 2026-08-29
 
 ### Added
