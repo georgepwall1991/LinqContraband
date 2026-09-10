@@ -357,6 +357,102 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
+    public async Task ExecuteDelete_WithReboundBuilderAddInterceptors_ShouldNotTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o =>
+            {
+                var builder = o;
+                builder = new DbContextOptionsBuilder();
+                builder.AddInterceptors(new SoftDeleteInterceptor());
+            });
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = db.Users.ExecuteDelete();
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithChainedAddInterceptors_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o => o.AddInterceptors(new SoftDeleteInterceptor()).AddInterceptors(new SoftDeleteInterceptor()));
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithAliasedBuilderAddInterceptors_ShouldTrigger()
+    {
+        var test = App(SoftDeleteInterceptorGraph + @"
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public sealed class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddDbContext<AppDbContext>(o =>
+            {
+                var builder = o;
+                builder.AddInterceptors(new SoftDeleteInterceptor());
+            });
+        }
+    }
+
+    public sealed class Program
+    {
+        public void Run(AppDbContext db)
+        {
+            var result = {|LC047:db.Users.ExecuteDelete()|};
+        }
+    }
+");
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ExecuteDelete_WithDetachedGenuineBuilder_ShouldNotTrigger()
     {
         var test = App(SoftDeleteInterceptorGraph + @"

@@ -125,7 +125,7 @@ internal sealed partial class TrackedDeletePipelineEvidence
         {
             if (child is not IInvocationOperation invocation ||
                 !IsDbContextOptionsBuilderAddInterceptors(invocation.TargetMethod) ||
-                !AddInterceptorsReceiverIsLambdaOptions(invocation, lambda))
+                !AddInterceptorsReceiverIsLambdaOptions(invocation, lambda, cancellationToken))
             {
                 continue;
             }
@@ -145,11 +145,14 @@ internal sealed partial class TrackedDeletePipelineEvidence
 
     private static bool AddInterceptorsReceiverIsLambdaOptions(
         IInvocationOperation invocation,
-        IAnonymousFunctionOperation lambda)
+        IAnonymousFunctionOperation lambda,
+        CancellationToken cancellationToken)
     {
         // The interceptor only configures this registration when the call runs
         // on the options builder handed to the lambda: a detached builder's
-        // interceptors are discarded with it.
+        // interceptors are discarded with it. Single-assignment locals
+        // initialized from the parameter still denote it.
+        var seen = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         var current = invocation.Instance?.UnwrapConversions();
         while (current != null)
         {
@@ -166,6 +169,20 @@ internal sealed partial class TrackedDeletePipelineEvidence
                         SymbolEqualityComparer.Default.Equals(
                             parameter.OriginalDefinition,
                             parameterReference.Parameter.OriginalDefinition));
+                case ILocalReferenceOperation localReference:
+                    if (!seen.Add(localReference.Local) ||
+                        !LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                            lambda,
+                            localReference.Local,
+                            invocation.Syntax.SpanStart,
+                            out var assignedValue,
+                            cancellationToken))
+                    {
+                        return false;
+                    }
+
+                    current = assignedValue?.UnwrapConversions();
+                    continue;
                 default:
                     return false;
             }
