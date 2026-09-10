@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-09-10 (helper-identity hardening across LC044–LC048 plus LC007 fix-all composition, repeated Codex review closure, 3,415 local net10.0 tests; full re-audit not performed, scores unchanged).
+Reviewed: 2026-09-10 (helper-identity hardening across LC044–LC048 plus LC007 fix-all composition, LC044 async-completion and entry-state modeling, LC047 entry-linked dominance, repeated Codex review closure, 3,460 local net10.0 tests; full re-audit not performed, scores unchanged).
 
 This is a deliberately harsh health audit for the **48 analyzers** in `RuleCatalog`. The catalog currently declares 31 rules with code fixes and 17 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
