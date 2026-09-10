@@ -195,6 +195,60 @@ class Program
     }
 
     [Fact]
+    public async Task FixAll_SharedInitializer_ComposesIncludes()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = db.Users.ToList();
+        foreach (var user in users)
+        {
+            {|#0:db.Entry(user).Collection(u => u.Orders).Load()|};
+        }
+        foreach (var user in users)
+        {
+            {|#1:db.Entry(user).Reference(u => u.Profile).Load()|};
+        }
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new MyDbContext();
+        var users = db.Users.Include(u => u.Orders).Include(u => u.Profile).ToList();
+        foreach (var user in users)
+        {
+        }
+        foreach (var user in users)
+        {
+        }
+    }
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfFixAllIterations = 2,
+            ExpectedDiagnostics =
+            {
+                VerifyFix.Diagnostic("LC007").WithLocation(0).WithArguments("Load"),
+                VerifyFix.Diagnostic("LC007").WithLocation(1).WithArguments("Load"),
+            },
+        };
+        await testObj.RunAsync();
+    }
+
+    [Fact]
     public async Task StringBasedExplicitLoad_DoesNotRegisterFixer()
     {
         var test = Usings + @"
