@@ -5137,6 +5137,54 @@ namespace Test
     }
 
     [Fact]
+    public async Task FinalOperatorUntracked_StaysQuiet()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void M(AppDbContext db)
+        {
+            var order = db.Orders.AsTracking().AsNoTracking().First();
+            order.Quantity++;
+            db.SaveChanges();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task FullRowReplacement_StaysQuiet()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class OrderInput
+    {
+        public int Quantity { get; set; }
+        public string Name { get; set; }
+    }
+
+    public sealed class Service
+    {
+        public void M(AppDbContext db, OrderInput input)
+        {
+            var order = db.Orders.First();
+            order.Quantity = input.Quantity;
+            order.Name = input.Name;
+            db.Entry(order).State = EntityState.Modified;
+            db.SaveChanges();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
     public async Task LoopContainedResetReports()
     {
         await VerifyAsync(
