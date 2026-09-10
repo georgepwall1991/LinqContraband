@@ -780,9 +780,18 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (localFunctionSyntax.DescendantNodes().OfType<YieldStatementSyntax>().Any())
             return false;
 
+        var model = compilation.GetSemanticModel(entry.Operation.Syntax.SyntaxTree);
+        if (model.GetDeclaredSymbol(localFunctionSyntax) is not IMethodSymbol functionSymbol)
+            return false;
+
+        // In an async callee an exception after the mutation faults the returned
+        // task instead of throwing synchronously, so it only diverts the caller
+        // when the call is awaited (checked per invocation below).
+        var calleeThrowsAfterMutation = ThrowFollowsMutationInBlock(entry, localFunctionSyntax);
+
         // The invocation reaches the save only if the callee can return normally
         // after the mutation, and the mutation itself must be reachable and not
-        if (ThrowFollowsMutationInBlock(entry, localFunctionSyntax))
+        if (calleeThrowsAfterMutation && !functionSymbol.IsAsync)
             return false;
         if (TerminatorPrecedesMutation(entry, localFunctionSyntax))
             return false;
@@ -805,10 +814,6 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         // tracking intact writes the change: later untracking cannot undo a
         // completed write, so the outer save has nothing left to lose.
         if (CalleeInnerSavePersists(scan, local, saveContext, entry, localFunctionSyntax))
-            return false;
-
-        var model = compilation.GetSemanticModel(entry.Operation.Syntax.SyntaxTree);
-        if (model.GetDeclaredSymbol(localFunctionSyntax) is not IMethodSymbol functionSymbol)
             return false;
 
         var eligible = new List<IInvocationOperation>();
@@ -839,10 +844,21 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 continue;
             }
 
-            if (functionSymbol.IsAsync && !IsAwaited(candidate))
-                continue;
-            if (!BlockReaches(candidate, save))
-                continue;
+            if (functionSymbol.IsAsync)
+            {
+                var completed = CompletesBeforeSave(candidate, save, root);
+                if (calleeThrowsAfterMutation)
+                {
+                    // Awaited: the faulted task throws at the await, so the save
+                    // is unreachable. Unawaited: only the synchronous prefix ran.
+                    if (completed || !MutationPrecedesFirstAwait(entry, localFunctionSyntax))
+                        continue;
+                }
+                else if (!completed && !MutationPrecedesFirstAwait(entry, localFunctionSyntax))
+                {
+                    continue;
+                }
+            }
             // The callee leaves the entity tracked and nothing in the caller
             // untracks it between this call and the save: the mutation persists.
             if (CalleePersistsThroughSave(
@@ -3045,9 +3061,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return false;
     }
 
-    private static bool IsAwaited(IOperation invocation)
+    private static bool CompletesBeforeSave(IInvocationOperation candidate, IOperation save, IOperation root)
     {
-        var current = invocation;
+        var current = (IOperation)candidate;
         while (true)
         {
             while ((current.Parent is IConversionOperation conversion &&
@@ -3060,20 +3076,173 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
             // `await task.ConfigureAwait(false)` awaits the invocation through
             // the configured-await wrapper: keep unwrapping to the await.
-            if (current.Parent is IInvocationOperation wrapper
-                && wrapper.TargetMethod.Name == "ConfigureAwait"
-                && wrapper.Arguments.Length > 0
-                && ReferenceEquals(wrapper.Instance?.UnwrapConversions(), current))
+            if (current.Parent is IInvocationOperation wrapper &&
+                wrapper.TargetMethod.Name == "ConfigureAwait" &&
+                ReferenceEquals(wrapper.Instance?.UnwrapConversions(), current))
             {
                 current = wrapper;
                 continue;
             }
 
+            if (current.Parent is IAwaitOperation awaitOperation)
+                return awaitOperation.Syntax.SpanStart < save.Syntax.SpanStart;
+
+            // `task.Wait()`, `task.Result`, and `task.GetAwaiter().GetResult()`
+            // complete the invocation synchronously at this statement.
+            if (current.Parent is IPropertyReferenceOperation property &&
+                ReferenceEquals(property.Instance?.UnwrapConversions(), current) &&
+                property.Property.Name == "Result")
+            {
+                return property.Syntax.SpanStart < save.Syntax.SpanStart;
+            }
+
+            if (current.Parent is IInvocationOperation completion &&
+                ReferenceEquals(completion.Instance?.UnwrapConversions(), current) &&
+                completion.TargetMethod.Name is "Wait" or "GetAwaiter")
+            {
+                if (completion.TargetMethod.Name == "Wait")
+                    return completion.Syntax.SpanStart < save.Syntax.SpanStart;
+
+                current = completion;
+                continue;
+            }
+
+            if (current.Parent is IInvocationOperation getResult &&
+                getResult.TargetMethod.Name == "GetResult" &&
+                ReferenceEquals(getResult.Instance?.UnwrapConversions(), current))
+            {
+                return getResult.Syntax.SpanStart < save.Syntax.SpanStart;
+            }
+
+            // `await Task.WhenAll(F())` completes the task through the combinator.
+            if (current.Parent is IArgumentOperation argument &&
+                ReferenceEquals(argument.Value, current) &&
+                argument.Parent is IInvocationOperation combinator &&
+                combinator.TargetMethod.Name is "WhenAll" or "WaitAll")
+            {
+                if (combinator.TargetMethod.Name == "WaitAll")
+                    return combinator.Syntax.SpanStart < save.Syntax.SpanStart;
+
+                current = combinator;
+                continue;
+            }
+
+            // `Task.WhenAll(new[] { F() })` wraps the call in an array creation.
+            if (current.Parent is IArrayCreationOperation arrayCreation &&
+                arrayCreation.Parent is IArgumentOperation arrayArgument &&
+                ReferenceEquals(arrayArgument.Value, arrayCreation) &&
+                arrayArgument.Parent is IInvocationOperation arrayCombinator &&
+                arrayCombinator.TargetMethod.Name is "WhenAll" or "WaitAll")
+            {
+                if (arrayCombinator.TargetMethod.Name == "WaitAll")
+                    return arrayCombinator.Syntax.SpanStart < save.Syntax.SpanStart;
+
+                current = arrayCombinator;
+                continue;
+            }
+
             break;
+
         }
 
-        return current.Parent is IAwaitOperation;
+        // `var t = F(); await t;` stores the task and completes it later.
+        if (candidate.Parent is IVariableDeclaratorOperation declarator &&
+            ReferenceEquals(declarator.Initializer?.Value?.UnwrapConversions(), candidate))
+        {
+            return CompletesStoredTask(root, declarator.Symbol, save);
+        }
+
+        return false;
     }
+
+    private static bool CompletesStoredTask(IOperation root, ILocalSymbol taskLocal, IOperation save)
+    {
+        foreach (var operation in root.Descendants())
+        {
+            if (operation.Syntax.SpanStart >= save.Syntax.SpanStart)
+                continue;
+            if (IsWithinNestedExecutable(operation, root.Syntax))
+                continue;
+
+            if (operation is IAwaitOperation awaitOperation &&
+                ReferencesLocal(awaitOperation.Operation, taskLocal))
+            {
+                return true;
+            }
+
+            if (operation is IPropertyReferenceOperation property &&
+                property.Property.Name == "Result" &&
+                ReferencesLocal(property.Instance, taskLocal))
+            {
+                return true;
+            }
+
+            if (operation is IInvocationOperation invocation)
+            {
+                if (invocation.TargetMethod.Name is "Wait" or "GetResult" &&
+                    ReferencesLocal(invocation.Instance, taskLocal))
+                {
+                    return true;
+                }
+
+                if (invocation.TargetMethod.Name is "WhenAll" or "WaitAll" &&
+                    (invocation.TargetMethod.Name == "WaitAll" ||
+                     invocation.Parent is IAwaitOperation) &&
+                    invocation.Arguments.Any(argument => ReferencesLocal(argument.Value, taskLocal)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesLocal(IOperation? operation, ILocalSymbol local)
+    {
+        var current = operation?.UnwrapConversions();
+        while (current is IParenthesizedOperation parenthesized)
+            current = parenthesized.Operand?.UnwrapConversions();
+
+        if (current is ILocalReferenceOperation reference)
+            return SymbolEqualityComparer.Default.Equals(reference.Local, local);
+
+        if (current is IArrayCreationOperation arrayCreation && arrayCreation.Initializer != null)
+            return arrayCreation.Initializer.ElementValues.Any(element => ReferencesLocal(element, local));
+
+        return false;
+    }
+
+    private static bool IsWithinNestedExecutable(IOperation operation, SyntaxNode rootSyntax)
+    {
+        var boundary = operation.Syntax.Ancestors()
+            .FirstOrDefault(node => node is LocalFunctionStatementSyntax
+                or LambdaExpressionSyntax
+                or AnonymousMethodExpressionSyntax);
+        return boundary != null && !ReferenceEquals(boundary, rootSyntax);
+    }
+
+    private static bool MutationPrecedesFirstAwait(MutationEntry entry, LocalFunctionStatementSyntax localFunctionSyntax)
+    {
+        var mutationSpan = entry.Operation.Syntax.SpanStart;
+        foreach (var awaitExpression in localFunctionSyntax.DescendantNodes().OfType<AwaitExpressionSyntax>())
+        {
+            // Awaits inside nested executables do not suspend this function.
+            var boundary = awaitExpression.Ancestors()
+                .FirstOrDefault(node => node is LocalFunctionStatementSyntax
+                    or LambdaExpressionSyntax
+                    or AnonymousMethodExpressionSyntax);
+            if (!ReferenceEquals(boundary, localFunctionSyntax))
+                continue;
+
+            if (awaitExpression.SpanStart <= mutationSpan)
+                return false;
+        }
+
+        return true;
+    }
+
+
 
     private static bool HasMultipleAssignments(IOperation root, ILocalSymbol local)
     {
