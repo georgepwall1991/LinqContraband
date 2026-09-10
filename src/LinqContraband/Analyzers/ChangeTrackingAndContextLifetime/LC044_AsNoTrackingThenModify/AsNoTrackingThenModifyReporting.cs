@@ -2278,12 +2278,20 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 !TransferSkipsPosition(jump, endSpan))
                 continue;
             if (jump is GotoStatementSyntax gotoStatement &&
-                !GotoSkipsPosition(gotoStatement, endSpan, startSpan, localFunctionSyntax))
+                !GotoSkipsPosition(
+                    gotoStatement, endSpan, startSpan, model, localFunctionSyntax,
+                    scan, local, saveContext, receiverPath))
                 continue;
             // A diverted path that already reattached the mutation persists it:
             // the transfer skips only the later reattachment, not the write.
             if (DivertedPathAlreadyPersists(
-                    scan, local, saveContext, receiverPath, startSpan, jump,
+                    scan, local, saveContext, receiverPath, jump,
+                    model, localFunctionSyntax))
+                continue;
+            // A transfer out of a try whose finally reattaches still persists
+            // the mutation while unwinding.
+            if (JumpRunsFinallyReattach(
+                    jump, scan, local, saveContext, receiverPath,
                     model, localFunctionSyntax))
                 continue;
             return true;
@@ -2296,11 +2304,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         ILocalSymbol local,
         ISymbol saveContext,
         ImmutableArray<MemberPathSegment> receiverPath,
-        int mutationSpan,
         SyntaxNode jump,
         SemanticModel? model,
         LocalFunctionStatementSyntax localFunctionSyntax)
     {
+        // A persisting reattachment that dominates the transfer persists on
+        // that path whatever ran before: attaching marks the entity, so later
+        // mutations stay tracked through the save.
         if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches))
             return false;
         var jumpOperation = model?.GetOperation(jump);
@@ -2308,7 +2318,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         {
             if (!candidate.PersistsExistingMutation)
                 continue;
-            if (candidate.SpanStart <= mutationSpan || candidate.SpanStart >= jump.SpanStart)
+            if (candidate.SpanStart >= jump.SpanStart)
                 continue;
             if (!localFunctionSyntax.Span.Contains(candidate.Operation.Syntax.Span))
                 continue;
@@ -2413,7 +2423,12 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         GotoStatementSyntax gotoStatement,
         int position,
         int mutationSpan,
-        LocalFunctionStatementSyntax localFunctionSyntax)
+        SemanticModel? model,
+        LocalFunctionStatementSyntax localFunctionSyntax,
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        ImmutableArray<MemberPathSegment> receiverPath)
     {
         // Only a forward jump over the reattachment skips it: backward jumps
         // re-run it, and jumps landing on or before it still reach it.
@@ -2444,17 +2459,139 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         // it while still reaching the save.
         return target.SpanStart < mutationSpan &&
             mutationSpan < gotoStatement.SpanStart &&
-            localFunctionSyntax.DescendantNodes().OfType<ReturnStatementSyntax>().Any(exit =>
-                exit.SpanStart > target.SpanStart &&
-                exit.SpanStart < gotoStatement.SpanStart &&
-                localFunctionSyntax.Span.Contains(exit.Span) &&
-                ReferenceEquals(
-                    exit.Ancestors().FirstOrDefault(ancestor =>
-                        ancestor is LocalFunctionStatementSyntax
-                            or LambdaExpressionSyntax
-                            or AnonymousMethodExpressionSyntax),
-                    localFunctionSyntax));
+            LoopRegionHasExit(
+                target, gotoStatement, position, mutationSpan, model, localFunctionSyntax,
+                scan, local, saveContext, receiverPath);
     }
+    private static bool LoopRegionHasExit(
+        SyntaxNode label,
+        GotoStatementSyntax gotoStatement,
+        int position,
+        int mutationSpan,
+        SemanticModel? model,
+        LocalFunctionStatementSyntax localFunctionSyntax,
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        ImmutableArray<MemberPathSegment> receiverPath)
+    {
+        // Any transfer that can leave the goto loop without running the
+        // reattachment voids it: returns and escaping gotos always can, while
+        // break/continue must demonstrably skip past it. Nested backward
+        // gotos are conservatively exits (goto mazes do not get precision).
+        foreach (var exit in localFunctionSyntax.DescendantNodes().OfType<StatementSyntax>())
+        {
+            if (exit.SpanStart <= label.SpanStart || exit.SpanStart >= gotoStatement.SpanStart)
+                continue;
+            if (exit is not BreakStatementSyntax
+                and not ContinueStatementSyntax
+                and not GotoStatementSyntax
+                and not ReturnStatementSyntax)
+                continue;
+            if (DeadGuardEncloses(exit, exit.SpanStart, model, localFunctionSyntax))
+                continue;
+            var boundary = exit.Ancestors().FirstOrDefault(ancestor =>
+                ancestor is LocalFunctionStatementSyntax
+                    or LambdaExpressionSyntax
+                    or AnonymousMethodExpressionSyntax);
+            if (!ReferenceEquals(boundary, localFunctionSyntax))
+                continue;
+            if (BranchesAreMutuallyExclusive(exit, mutationSpan, localFunctionSyntax))
+                continue;
+            if ((exit is BreakStatementSyntax || exit is ContinueStatementSyntax) &&
+                !TransferSkipsPosition(exit, position))
+                continue;
+            if (exit is GotoStatementSyntax nestedGoto &&
+                !NestedGotoSkipsPosition(nestedGoto, position, localFunctionSyntax))
+                continue;
+            // An exit whose own path already reattached persists: it leaves
+            // the loop with the write intact.
+            if (DivertedPathAlreadyPersists(
+                    scan, local, saveContext, receiverPath, exit,
+                    model, localFunctionSyntax))
+                continue;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool NestedGotoSkipsPosition(
+        GotoStatementSyntax gotoStatement,
+        int position,
+        LocalFunctionStatementSyntax localFunctionSyntax)
+    {
+        // Closed-form forward rule only: a nested backward jump is treated as
+        // an exit rather than recursing.
+        if (gotoStatement.Expression is not IdentifierNameSyntax identifier)
+            return true;
+        SyntaxNode? target = null;
+        foreach (var label in localFunctionSyntax.DescendantNodes().OfType<LabeledStatementSyntax>())
+        {
+            if (label.Identifier.ValueText != identifier.Identifier.ValueText)
+                continue;
+            var boundary = label.Ancestors().FirstOrDefault(ancestor =>
+                ancestor is LocalFunctionStatementSyntax
+                    or LambdaExpressionSyntax
+                    or AnonymousMethodExpressionSyntax);
+            if (!ReferenceEquals(boundary, localFunctionSyntax))
+                continue;
+            if (target != null)
+                return true;
+            target = label;
+        }
+
+        return target != null &&
+            gotoStatement.SpanStart < position &&
+            position < target.SpanStart;
+    }
+
+    private static bool JumpRunsFinallyReattach(
+        SyntaxNode jump,
+        AsNoTrackingThenModifyRootScan scan,
+        ILocalSymbol local,
+        ISymbol saveContext,
+        ImmutableArray<MemberPathSegment> receiverPath,
+        SemanticModel? model,
+        LocalFunctionStatementSyntax localFunctionSyntax)
+    {
+        // A transfer out of a try whose finally reattaches still persists the
+        // mutation while unwinding: the reattachment runs before the jump
+        // completes.
+        if (!scan.ReattachesByLocal.TryGetValue(local, out var reattaches))
+            return false;
+        foreach (var tryStatement in jump.Ancestors().OfType<TryStatementSyntax>())
+        {
+            if (!localFunctionSyntax.Span.Contains(tryStatement.Span))
+                break;
+            if (tryStatement.Finally?.Block is not { } finallyBlock)
+                continue;
+            foreach (var candidate in reattaches)
+            {
+                if (!candidate.PersistsExistingMutation)
+                    continue;
+                if (!finallyBlock.Span.Contains(candidate.Operation.Syntax.Span))
+                    continue;
+                if (!IsDirectCalleeOperation(candidate.Operation.Syntax, localFunctionSyntax))
+                    continue;
+                if (candidate.ContextSymbol == null ||
+                    !SymbolEqualityComparer.Default.Equals(candidate.ContextSymbol, saveContext))
+                    continue;
+                if (!ReattachCoversPath(candidate, receiverPath))
+                    continue;
+                if (!IsUnconditionalWithin(candidate.Operation.Syntax, finallyBlock))
+                    continue;
+                if (CalleeInvalidatedBetween(
+                        scan, local, saveContext, receiverPath,
+                        candidate.SpanStart, finallyBlock.Span.End, model, localFunctionSyntax))
+                    continue;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 
 
 

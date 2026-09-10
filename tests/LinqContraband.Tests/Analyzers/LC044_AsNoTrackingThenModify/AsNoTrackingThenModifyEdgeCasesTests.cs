@@ -1191,6 +1191,73 @@ namespace Test
     }
 
     [Fact]
+    public async Task ExitArmPersistInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag, bool done)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { Retry: if (done) { ctx.Update(u); goto End; } u.Name = ""x""; done = true; if (flag) goto Retry; ctx.Update(u); End: ; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GotoOutSkipsUpdateInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag, bool done)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { Retry: if (done) goto End; u.Name = ""x""; done = true; if (flag) goto Retry; ctx.Update(u); End: ; }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 56, 70, 62).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task FinallyUpdateBeforeReturnInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; if (flag) { try { return; } finally { ctx.Update(u); } } ctx.Update(u); }
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PersistBeforeReturnInLocalFunction_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
