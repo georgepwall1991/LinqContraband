@@ -711,6 +711,42 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         return ReferenceEquals(boundary, callerExecutable);
     }
 
+    private static bool CallerInvocationUnreachable(
+        SyntaxNode invocationSyntax,
+        SyntaxNode rootSyntax,
+        SemanticModel? model)
+    {
+        var body = rootSyntax as BlockSyntax
+            ?? (rootSyntax as MethodDeclarationSyntax)?.Body
+            ?? (rootSyntax as LocalFunctionStatementSyntax)?.Body;
+        if (body == null)
+            return false;
+        // Labels or gotos in the body's own executable defeat span-order
+        // reachability: control may land past the diverter.
+        foreach (var node in body.DescendantNodes())
+        {
+            if (node is not LabeledStatementSyntax and not GotoStatementSyntax)
+                continue;
+            var boundary = node.Ancestors().FirstOrDefault(ancestor =>
+                ancestor is LocalFunctionStatementSyntax
+                    or LambdaExpressionSyntax
+                    or AnonymousMethodExpressionSyntax);
+            if (boundary == null || !body.Span.Contains(boundary.Span))
+                return false;
+        }
+
+        foreach (var statement in body.Statements)
+        {
+            if (statement.SpanStart >= invocationSyntax.SpanStart)
+                break;
+            if (statement is ReturnStatementSyntax or ThrowStatementSyntax ||
+                StatementNeverCompletesNormally(statement, model))
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool TryLiftLocalFunctionMutation(
         AsNoTrackingThenModifyRootScan scan,
         ILocalSymbol local,
@@ -788,6 +824,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (DeadGuardEncloses(
                     invocationSyntax, invocationSyntax.SpanStart,
                     compilation.GetSemanticModel(invocationSyntax.SyntaxTree), root.Syntax))
+                continue;
+            // An invocation after an unconditional diverter at the caller body
+            // level never executes either (with no labels or gotos to reroute
+            // control around it).
+            if (CallerInvocationUnreachable(
+                    invocationSyntax, root.Syntax,
+                    compilation.GetSemanticModel(invocationSyntax.SyntaxTree)))
                 continue;
             if (!SymbolEqualityComparer.Default.Equals(
                     candidate.TargetMethod.OriginalDefinition,

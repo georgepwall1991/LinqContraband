@@ -1191,6 +1191,53 @@ namespace Test
     }
 
     [Fact]
+    public async Task UnreachableCallInLocalFunction_DoesNotTrigger()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; }
+            return;
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConditionalReturnBeforeCallInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx, bool flag)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { u.Name = ""x""; }
+            if (flag) return;
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 29, 70, 35).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task DirectImpossibleCatchMutation_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
