@@ -134,6 +134,8 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 .OfType<LocalFunctionStatementSyntax>()
                 .Any();
             if (!inLocalFunction && (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan)) continue;
+            // A mutation in a handler with a constant-false filter never executes.
+            if (ImpossibleCatchEncloses(entry, root.Syntax)) continue;
             var effectiveOperation = entry.Operation;
             if (!BlockReaches(effectiveOperation, save))
             {
@@ -236,6 +238,7 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 .OfType<LocalFunctionStatementSyntax>()
                 .Any();
             if (!inLocalFunction && (entry.SpanStart <= afterSpan || entry.SpanStart >= beforeSpan)) continue;
+            if (ImpossibleCatchEncloses(entry, root.Syntax)) continue;
             var effectiveOperation = entry.Operation;
             if (!BlockReaches(effectiveOperation, save))
             {
@@ -751,6 +754,9 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             return false;
         if (EmptyTryCatchEncloses(entry, localFunctionSyntax))
             return false;
+        // A mutation in a handler with a constant-false filter never executes.
+        if (ImpossibleCatchEncloses(entry, localFunctionSyntax))
+            return false;
         if (UnreachableGuardEncloses(entry, localFunctionSyntax))
             return false;
 
@@ -1124,6 +1130,22 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         return false;
     }
+    private static bool ImpossibleCatchEncloses(
+        MutationEntry entry,
+        SyntaxNode boundary)
+    {
+        var model = entry.Operation.SemanticModel;
+        foreach (var catchClause in entry.Operation.Syntax.Ancestors().OfType<CatchClauseSyntax>())
+        {
+            if (!boundary.Span.Contains(catchClause.Span))
+                break;
+            if (CatchIsImpossible(catchClause, model))
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool EmptyTryCatchEncloses(
         MutationEntry entry,
         LocalFunctionStatementSyntax localFunctionSyntax)
