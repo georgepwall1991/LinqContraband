@@ -36,7 +36,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
-> The 2026-09-09/10 helper-identity passes harden LC044 local-function lift persistence/invalidation, LC045 explicit-load arity, LC046 helper context identity (aliases, ref args, captured stability, awaits past loop exits, closure non-escape), LC047 DI receiver linkage, LC048 same-call guard discharge, and LC007 shared-initializer fix-all composition, raising the full local net10.0 suite to **3,415 tests**.
+> The 2026-09-10 LC044 async-completion/entry-state and LC047 entry-linked-dominance passes raise the full local net10.0 suite to **3,460 tests**.
 
 > The 2026-07-29 LC046 final independent-review closure raises the local net10.0 suite to **2,599 tests**.
 
@@ -1118,7 +1118,7 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-08-29, LC048 lost-update risk for 5.8.0, with 85 focused LC048 tests and 3,269 full net10.0 tests):
+Current verification (2026-09-10, LC044/LC046/LC047/LC048 helper-identity, async-completion, entry-state, and entry-linkage hardening for 5.8.0, with 3,460 full net10.0 tests):
 
 - LC048 red/green coverage proves tracked compound, increment/decrement, self-read, and guarded state-transition reports, with stable query/entity/context aliases, direct private helpers, shape-preserving operators, and reachable same-context saves. Negative coverage locks blind writes, absent or different-context saves, both no-tracking forms, attribute and real Fluent concurrency tokens, explicit EF transactions, projections, custom operators, computed context properties, uninvoked nested executables, unreachable saves, conditional helpers, and different receiver instances for readonly context fields. Codex CLI review found and drove fixes for real `ModelBuilder.Entity<T>()` namespace recognition, `AsNoTrackingWithIdentityResolution`, helper branch correlation, and readonly-field receiver identity.
 
@@ -1167,6 +1167,6 @@ Current verification (2026-08-29, LC048 lost-update risk for 5.8.0, with 85 focu
 
 Final 5.8.0 verification: 85 focused LC048 tests pass, and the full local net10.0 suite passes 3,269 tests.
 
-Final verification (2026-09-10, helper-identity hardening LC044–LC048 + LC007 fix-all): the full local net10.0 suite passes 3,415 tests.
+Final verification (2026-09-10, helper-identity hardening LC044–LC048 + LC007 fix-all + LC044 async/state modeling + LC047 entry linkage): the full local net10.0 suite passes 3,460 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
