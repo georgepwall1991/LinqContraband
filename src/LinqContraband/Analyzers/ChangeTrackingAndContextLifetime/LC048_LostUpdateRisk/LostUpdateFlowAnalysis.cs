@@ -3503,8 +3503,12 @@ internal static class LostUpdateFlowAnalysis
                 if (effect.IsDefinitelyExecuted)
                     return true;
 
+                // Same helper call, so the invocation's constant arguments hold
+                // on every path through it: a guard they satisfy needs no
+                // mutation-side match.
                 return FullEffectGuards(effect).All(guard =>
-                    FullMutationGuards(mutation).Contains(guard)
+                    FullMutationGuards(mutation).Contains(guard) ||
+                    IsTrackingConditionSatisfied(effect.Invocation, guard.ParameterOrdinal, guard.Value)
                 );
             }
 

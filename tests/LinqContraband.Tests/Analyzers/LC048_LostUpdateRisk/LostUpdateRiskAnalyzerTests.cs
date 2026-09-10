@@ -5137,6 +5137,122 @@ namespace Test
     }
 
     [Fact]
+    public async Task LoopContainedResetReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void M(AppDbContext db, bool enabled, int n)
+        {
+            var order = db.Orders.First();
+            if (enabled)
+                {|LC048:order.Quantity|}++;
+            for (var i = 0; i < n; i++)
+                Reset(db, enabled);
+            db.SaveChanges();
+        }
+
+        private static void Reset(AppDbContext db, bool enabled)
+        {
+            if (enabled)
+                db.ChangeTracker.Clear();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task CallerSideUnknownResetReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void M(AppDbContext db, bool enabled, int count)
+        {
+            var order = db.Orders.First();
+            if (enabled)
+                {|LC048:order.Quantity|}++;
+            if (count == 0)
+                Reset(db, enabled);
+            db.SaveChanges();
+        }
+
+        private static void Reset(AppDbContext db, bool enabled)
+        {
+            if (enabled)
+                db.ChangeTracker.Clear();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task UnknownConditionedResetReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void M(AppDbContext db, bool enabled, int count)
+        {
+            var order = db.Orders.First();
+            if (enabled)
+                {|LC048:order.Quantity|}++;
+            Reset(db, enabled, count);
+            db.SaveChanges();
+        }
+
+        private static void Reset(AppDbContext db, bool enabled, int count)
+        {
+            if (enabled && count == 0)
+                db.ChangeTracker.Clear();
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
+    public async Task ConstantSatisfiedRestoreReports()
+    {
+        await VerifyAsync(
+            Domain
+                + """
+    public sealed class Service
+    {
+        public void M(AppDbContext db, bool run)
+        {
+            var order = db.Orders.First();
+            Change(db, order, run, true);
+            db.SaveChanges();
+        }
+
+        private static void Change(AppDbContext db, Order order, bool enabled, bool restore)
+        {
+            if (enabled)
+            {
+                {|LC048:order.Quantity|}++;
+                db.ChangeTracker.Clear();
+                if (restore) db.Update(order);
+            }
+        }
+    }
+}
+"""
+        );
+    }
+
+    [Fact]
     public async Task NestedHelperGuardRequiresEveryEnclosingCondition()
     {
         await VerifyAsync(
