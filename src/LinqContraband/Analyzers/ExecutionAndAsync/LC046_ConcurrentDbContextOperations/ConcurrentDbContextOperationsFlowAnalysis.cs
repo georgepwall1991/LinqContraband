@@ -2559,6 +2559,51 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
         return false;
     }
 
+    private static bool LoopBodyMaySkipBefore(SyntaxNode previous, SyntaxNode loopBody)
+    {
+        // An abrupt exit before `previous` that still reaches past the loop
+        // (break/continue out) skips the await while the save still runs.
+        // Exits that never reach past the loop (return/throw/goto-out) keep
+        // the save unreachable on their paths, so they prove nothing here.
+        foreach (var candidate in loopBody.DescendantNodes())
+        {
+            if (candidate.SpanStart >= previous.SpanStart ||
+                candidate.Span.Contains(previous.Span) ||
+                IsInsideNestedExecutableSyntax(candidate, loopBody))
+            {
+                continue;
+            }
+
+            switch (candidate)
+            {
+                case BreakStatementSyntax:
+                    var breakTarget = candidate.Ancestors().FirstOrDefault(ancestor =>
+                        ancestor is WhileStatementSyntax or
+                            DoStatementSyntax or
+                            ForStatementSyntax or
+                            ForEachStatementSyntax or
+                            ForEachVariableStatementSyntax or
+                            SwitchStatementSyntax);
+                    if (breakTarget?.Span.Contains(previous.Span) == true)
+                        return true;
+                    break;
+
+                case ContinueStatementSyntax:
+                    var continueTarget = candidate.Ancestors().FirstOrDefault(ancestor =>
+                        ancestor is WhileStatementSyntax or
+                            DoStatementSyntax or
+                            ForStatementSyntax or
+                            ForEachStatementSyntax or
+                            ForEachVariableStatementSyntax);
+                    if (continueTarget?.Span.Contains(previous.Span) == true)
+                        return true;
+                    break;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsInsideNestedExecutableSyntax(
         SyntaxNode node,
         SyntaxNode branch)
@@ -2943,16 +2988,90 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                     visitedWrapperLocals);
             }
 
-            return current.Parent is IReturnOperation returnOperation
-                ? ImmutableArray.Create((
-                    Completion: (SyntaxNode)returnOperation.Syntax,
-                    ThrowingPrefixEnd: returnOperation.Syntax.Span.End,
-                    ProvenNonThrowingWhenAny: (IInvocationOperation?)null))
-                : ImmutableArray<(
+            if (current.Parent is not IReturnOperation returnOperation)
+            {
+                return ImmutableArray<(
                     SyntaxNode,
                     int,
                     IInvocationOperation?)>.Empty;
+            }
+
+            // A return inside a nested closure completes the task only when
+            // that closure executes: an uninvoked, non-escaping closure value
+            // proves nothing about completion.
+            if (NestedReturnIsDead(returnOperation, executableRoot))
+            {
+                return ImmutableArray<(
+                    SyntaxNode,
+                    int,
+                    IInvocationOperation?)>.Empty;
+            }
+
+            return ImmutableArray.Create((
+                Completion: (SyntaxNode)returnOperation.Syntax,
+                ThrowingPrefixEnd: returnOperation.Syntax.Span.End,
+                ProvenNonThrowingWhenAny: (IInvocationOperation?)null));
         }
+    }
+
+    private static bool NestedReturnIsDead(
+        IReturnOperation returnOperation,
+        IOperation executableRoot)
+    {
+        var boundary = returnOperation.Syntax.Ancestors().FirstOrDefault(ancestor =>
+            ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
+        if (boundary == null)
+            return false;
+
+        if (boundary is LocalFunctionStatementSyntax localFunctionSyntax)
+        {
+            var symbol = executableRoot.SemanticModel?.GetDeclaredSymbol(localFunctionSyntax) as IMethodSymbol;
+            if (symbol == null)
+                return false;
+            return !executableRoot.Descendants().Any(operation =>
+                (operation is IInvocationOperation invocation &&
+                    SymbolEqualityComparer.Default.Equals(
+                        invocation.TargetMethod.OriginalDefinition,
+                        symbol.OriginalDefinition)) ||
+                (operation is IMethodReferenceOperation methodReference &&
+                    SymbolEqualityComparer.Default.Equals(
+                        methodReference.Method.OriginalDefinition,
+                        symbol.OriginalDefinition)));
+        }
+
+        // A lambda completes the task only when its value executes or escapes.
+        // Anything but a plain locally-held value may run later: only a local
+        // that is never referenced outside the lambda itself is provably dead.
+        var holder = boundary.Parent;
+        while (holder is EqualsValueClauseSyntax or VariableDeclarationSyntax or ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            holder = holder.Parent;
+        if (holder is not VariableDeclaratorSyntax declaratorSyntax &&
+            !(holder is AssignmentExpressionSyntax holderAssignment &&
+                holderAssignment.Left is IdentifierNameSyntax holderTarget))
+        {
+            return false;
+        }
+
+        ILocalSymbol? holderLocal = null;
+        if (holder is VariableDeclaratorSyntax declarator)
+        {
+            holderLocal = executableRoot.Descendants().OfType<IVariableDeclaratorOperation>()
+                .FirstOrDefault(candidate => ReferenceEquals(candidate.Syntax, declarator))?.Symbol;
+        }
+        else if (holder is AssignmentExpressionSyntax assignment &&
+            assignment.Left is IdentifierNameSyntax target &&
+            executableRoot.SemanticModel?.GetSymbolInfo(target).Symbol is ILocalSymbol assigned)
+        {
+            holderLocal = assigned;
+        }
+
+        if (holderLocal == null)
+            return false;
+
+        return !executableRoot.Descendants().OfType<ILocalReferenceOperation>()
+            .Any(reference =>
+                SymbolEqualityComparer.Default.Equals(reference.Local, holderLocal) &&
+                !boundary.Span.Contains(reference.Syntax.Span));
     }
 
     private static ImmutableArray<(
@@ -3839,6 +3958,18 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             {
                 if (!ancestor.Span.Contains(current.Span))
                     return false;
+            }
+            else if (ancestor is DoStatementSyntax doStatement)
+            {
+                // Unlike the loops above, a do body runs at least once, so an
+                // await in the body executes unless an abrupt exit skips it
+                // first while still reaching past the loop.
+                if (doStatement.Statement != null &&
+                    !doStatement.Span.Contains(current.Span) &&
+                    LoopBodyMaySkipBefore(previous, doStatement.Statement))
+                {
+                    return false;
+                }
             }
             else if (ancestor is CatchClauseSyntax)
             {
