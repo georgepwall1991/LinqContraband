@@ -905,8 +905,11 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
             if (ReturnUnreachable(ret, mutationSpan, model, localFunctionSyntax))
                 continue;
             // A terminating finally overrides the return: the invocation
-            // throws instead of returning to the caller.
+            // throws instead of returning to the caller. A returned expression
+            // that always throws never returns either.
             if (ReturnSuppressedByFinally(ret, model, localFunctionSyntax))
+                continue;
+            if (ret.Expression != null && ExpressionAlwaysThrows(ret.Expression, model))
                 continue;
             return true;
         }
@@ -1248,6 +1251,94 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
     }
 
 
+    private static bool IsDefinitelyNull(ExpressionSyntax expression, SemanticModel? model)
+    {
+        if (expression is LiteralExpressionSyntax literal &&
+            literal.IsKind(SyntaxKind.NullLiteralExpression))
+            return true;
+        // Peel only null-preserving conversions: a user-defined operator may
+        // map null to a non-null instance. Parentheses never change the value.
+        var current = expression;
+        while (true)
+        {
+            while (current is ParenthesizedExpressionSyntax parenthesized)
+                current = parenthesized.Expression;
+            if (current is CastExpressionSyntax cast)
+            {
+                if (model?.GetOperation(cast) is IConversionOperation { OperatorMethod: not null })
+                    return false;
+                current = cast.Expression;
+                continue;
+            }
+
+            break;
+        }
+
+        if (current is LiteralExpressionSyntax literalNull &&
+            literalNull.IsKind(SyntaxKind.NullLiteralExpression))
+            return true;
+        if (model == null)
+            return false;
+        return model.GetOperation(current)?.ConstantValue is { HasValue: true, Value: null };
+    }
+
+    private static bool ExpressionAlwaysThrows(ExpressionSyntax expression, SemanticModel? model)
+    {
+        // An expression provably throws on every evaluation. Conditional
+        // positions (ternary arms, short-circuit right operands, null-skipped
+        // access) propagate only when taken; deferred bodies (lambdas, local
+        // functions) never fire at the call site.
+        var current = expression;
+        while (true)
+        {
+            if (current is ParenthesizedExpressionSyntax parenthesized)
+            {
+                current = parenthesized.Expression;
+                continue;
+            }
+
+            if (current is CastExpressionSyntax cast)
+            {
+                current = cast.Expression;
+                continue;
+            }
+
+            break;
+        }
+
+        return current switch
+        {
+            ThrowExpressionSyntax => true,
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.CoalesceExpression) =>
+                IsDefinitelyNull(binary.Left, model) && ExpressionAlwaysThrows(binary.Right, model),
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression) =>
+                ConstantBool(binary.Left, model) == true && ExpressionAlwaysThrows(binary.Right, model),
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalOrExpression) =>
+                ConstantBool(binary.Left, model) == false && ExpressionAlwaysThrows(binary.Right, model),
+            ConditionalExpressionSyntax conditional =>
+                ExpressionAlwaysThrows(conditional.WhenTrue, model) &&
+                ExpressionAlwaysThrows(conditional.WhenFalse, model),
+            SwitchExpressionSyntax switchExpression =>
+                switchExpression.Arms.Count > 0 &&
+                switchExpression.Arms.All(arm => ExpressionAlwaysThrows(arm.Expression, model)),
+            AssignmentExpressionSyntax assignment when assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression) =>
+                IsDefinitelyNull(assignment.Left, model) && ExpressionAlwaysThrows(assignment.Right, model),
+            AssignmentExpressionSyntax assignment =>
+                ExpressionAlwaysThrows(assignment.Right, model),
+            AwaitExpressionSyntax awaited =>
+                ExpressionAlwaysThrows(awaited.Expression, model),
+            InvocationExpressionSyntax invocation =>
+                (invocation.Expression != null && ExpressionAlwaysThrows(invocation.Expression, model)) ||
+                invocation.ArgumentList.Arguments.Any(argument => ExpressionAlwaysThrows(argument.Expression, model)),
+            ElementAccessExpressionSyntax elementAccess =>
+                ExpressionAlwaysThrows(elementAccess.Expression, model) ||
+                elementAccess.ArgumentList.Arguments.Any(argument => ExpressionAlwaysThrows(argument.Expression, model)),
+            MemberAccessExpressionSyntax memberAccess =>
+                ExpressionAlwaysThrows(memberAccess.Expression, model),
+            _ => false,
+        };
+    }
+
     private static bool StatementNeverCompletesNormally(StatementSyntax statement, SemanticModel? model)
     {
         // A bare nested block completes normally exactly when its last statement
@@ -1257,6 +1348,18 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         // Anything else either completes or returns to the caller (return), so
         // only these shapes block the save.
         if (statement is ThrowStatementSyntax)
+            return true;
+
+        // An expression statement that always throws (e.g. `_ = (string)null
+        // ?? throw ...`) never completes normally either, as does a local
+        // declaration whose only initializer does.
+        if (statement is ExpressionStatementSyntax expressionStatement &&
+            ExpressionAlwaysThrows(expressionStatement.Expression, model))
+            return true;
+        if (statement is LocalDeclarationStatementSyntax declaration &&
+            declaration.Declaration.Variables.Count == 1 &&
+            declaration.Declaration.Variables[0].Initializer?.Value is { } initializer &&
+            ExpressionAlwaysThrows(initializer, model))
             return true;
 
         if (LoopNeverExits(statement))
