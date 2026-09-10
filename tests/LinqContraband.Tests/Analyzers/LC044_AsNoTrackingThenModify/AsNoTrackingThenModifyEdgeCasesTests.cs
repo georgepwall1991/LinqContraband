@@ -1191,6 +1191,84 @@ namespace Test
     }
 
     [Fact]
+    public async Task DirectReattachAfterClear_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            ctx.Attach(u);
+            u.Name = ""x"";
+            ctx.ChangeTracker.Clear();
+            ctx.Attach(u);
+            u.Name = ""x"";
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(71, 13, 71, 19).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task SecondCallPersistsInLocalFunction_Triggers()
+    {
+        // Per-mutation accounting: the first execution's write is lost when
+        // cleared, even if a later call redoes it (non-idempotent mutations
+        // like `++` genuinely lose). Matches the direct path above.
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { ctx.Update(u); u.Name = ""x""; }
+            Rename();
+            ctx.ChangeTracker.Clear();
+            Rename();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 44, 70, 50).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task OnlyFirstCallClearedInLocalFunction_Triggers()
+    {
+        var test = Preamble + EfCoreMock + @"
+namespace Test
+{
+    public class User { public int Id { get; set; } public string Name { get; set; } }
+    public class TestCtx : DbContext { public DbSet<User> Users { get; set; } }
+    public class C
+    {
+        public void M(TestCtx ctx)
+        {
+            var u = ctx.Users.AsNoTracking().First();
+            void Rename() { ctx.Attach(u); u.Name = ""x""; }
+            Rename();
+            ctx.ChangeTracker.Clear();
+            ctx.SaveChanges();
+        }
+    }
+}";
+        var expected = VerifyCS.Diagnostic().WithSpan(70, 44, 70, 50).WithArguments("u", "Name");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task UnreachableCallInLocalFunction_DoesNotTrigger()
     {
         var test = Preamble + EfCoreMock + @"
