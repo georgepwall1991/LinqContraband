@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC048 detects tracked EF read-modify-write updates that can silently overwrite concurrent changes, while recognizing optimistic concurrency tokens, no-tracking queries, explicit transactions, atomic updates, and conservative same-context boundaries.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC048 detects tracked EF read-modify-write updates that can silently overwrite concurrent changes, while recognizing optimistic concurrency tokens, no-tracking queries, explicit transactions, atomic updates, and conservative same-context boundaries. LC044 hardens local-function lift persistence, async-helper completion, and entry-state modeling; LC046 lifts the helper arity cap and strengthens context-identity proofs; LC047 links Deleted-state dominance to the tested entry.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
