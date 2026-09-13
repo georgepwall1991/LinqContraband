@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Releases are automated: after a `chore: release X.Y.Z` PR merges and `master` is green, the `vX.Y.Z` tag and GitHub Release (notes from this changelog) are created automatically and the NuGet publish is dispatched. Publishing fails when the tag and csproj `Version` differ, uses NuGet Trusted Publishing instead of a long-lived API key, and CI checks that the csproj version has a changelog section. The README install snippet no longer hardcodes a version.
 
+### Fixed
+- LC044 now walks implicit `params` array initializers and variable initializers when proving async-helper completion, so post-await mutations completed by `Task.WhenAll`/`WaitAll` or store-then-await reach the caller's `SaveChanges`. Prefix-only pins from 5.8.0 hid those IOperation parents.
+
 ## [5.8.0] - 2026-09-10
 
 ### Fixed

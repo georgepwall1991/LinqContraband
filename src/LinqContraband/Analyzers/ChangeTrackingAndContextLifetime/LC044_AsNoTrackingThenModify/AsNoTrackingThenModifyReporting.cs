@@ -3074,6 +3074,17 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 current = current.Parent;
             }
 
+            // `Task.WhenAll(F())` / `new[] { F() }` places the call in an
+            // array initializer, not directly under the array creation.
+            if (current.Parent is IArrayInitializerOperation
+                {
+                    Parent: IArrayCreationOperation createdArray
+                })
+            {
+                current = createdArray;
+                continue;
+            }
+
             // `await task.ConfigureAwait(false)` awaits the invocation through
             // the configured-await wrapper: keep unwrapping to the await.
             if (current.Parent is IInvocationOperation wrapper &&
@@ -3146,7 +3157,13 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         }
 
         // `var t = F(); await t;` stores the task and completes it later.
-        if (candidate.Parent is IVariableDeclaratorOperation declarator &&
+        // The invocation's parent is the initializer, not the declarator.
+        var stored = candidate.Parent;
+        while (stored is IConversionOperation or IParenthesizedOperation)
+            stored = stored.Parent;
+        if (stored is IVariableInitializerOperation)
+            stored = stored.Parent;
+        if (stored is IVariableDeclaratorOperation declarator &&
             ReferenceEquals(declarator.Initializer?.Value?.UnwrapConversions(), candidate))
         {
             return CompletesStoredTask(root, declarator.Symbol, save);
