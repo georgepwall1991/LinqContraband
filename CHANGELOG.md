@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- LC044 now treats assignment-store completion (`t = Helper(); await t` / `Wait` / `Result` / `WhenAll` / `WaitAll` / `GetResult`) and collection-expression combinators (`Task.WhenAll([Helper()])`) as completing an async helper before `SaveChanges`. Stored `await t.ConfigureAwait(false)` unwraps the configured-await wrapper. Prefix-only and declarator-only pins hid those IOperation parents.
+
 ## [5.8.0] - 2026-09-10
 
 ### Fixed
