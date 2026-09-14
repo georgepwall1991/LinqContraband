@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - LC044 now walks implicit `params` array initializers and variable initializers when proving async-helper completion, so post-await mutations completed by `Task.WhenAll`/`WaitAll` or store-then-await reach the caller's `SaveChanges`. Prefix-only pins from 5.8.0 hid those IOperation parents.
+- LC044 now treats assignment-store completion (`t = Helper(); await t` / `Wait` / `Result` / `WhenAll` / `WaitAll` / `GetResult`) and collection-expression combinators (`Task.WhenAll([Helper()])`) as completing an async helper before `SaveChanges`. Stored `await t.ConfigureAwait(false)` unwraps the configured-await wrapper. Prefix-only and declarator-only pins hid those IOperation parents.
 
 ## [5.8.0] - 2026-09-10
 
