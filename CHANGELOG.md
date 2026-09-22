@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Every rule page on the documentation site now has its own search description, a consistent `LCxxx: Name` title, a Home / Rule catalog breadcrumb (also in its structured data), and previous/next rule links. A test keeps descriptions present, unique and sized for search results.
+
 ## [5.8.1] - 2026-09-22
 
 ### Changed

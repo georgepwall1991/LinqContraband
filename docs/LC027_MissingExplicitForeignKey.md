@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC027: Missing Explicit Foreign Key Property"
+description: "LC027 flags EF Core reference navigations whose dependent entity has no matching foreign key property, leaving EF Core to create a shadow key."
 ---
 
 # LC027: Missing Explicit Foreign Key Property

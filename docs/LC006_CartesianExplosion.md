@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC006 - Cartesian Explosion Risk"
+title: "LC006: Cartesian Explosion Risk"
+description: "LC006 detects sibling collection Include paths without AsSplitQuery(), where EF Core joins them into a Cartesian product that multiplies the rows returned."
 ---
 
-# Spec: LC006 - Cartesian Explosion Risk
+# LC006: Cartesian Explosion Risk
 
 ## In Plain Terms
 

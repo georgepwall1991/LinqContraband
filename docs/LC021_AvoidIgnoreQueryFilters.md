@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC021 - Avoid IgnoreQueryFilters"
+title: "LC021: Avoid IgnoreQueryFilters"
+description: "LC021 flags IgnoreQueryFilters() in EF Core queries, which bypasses global filters for soft delete, multi-tenancy or security and can leak data."
 ---
 
-# Spec: LC021 - Avoid IgnoreQueryFilters
+# LC021: Avoid IgnoreQueryFilters
 
 ## In Plain Terms
 

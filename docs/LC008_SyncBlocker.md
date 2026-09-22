@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC008 - Sync-over-Async Blocker"
+title: "LC008: Sync-over-Async Blocker"
+description: "LC008 flags synchronous EF Core calls such as ToList or SaveChanges inside async methods, where they block threads. Use the Async counterpart."
 ---
 
-# Spec: LC008 - Sync-over-Async Blocker
+# LC008: Sync-over-Async Blocker
 
 ## In Plain Terms
 

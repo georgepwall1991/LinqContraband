@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC009 - Missing AsNoTracking in Read Path"
+title: "LC009: Missing AsNoTracking in Read Path"
+description: "LC009 suggests AsNoTracking() for read-only EF Core queries, so the change tracker does not snapshot entities the code never modifies."
 ---
 
-# Spec: LC009 - Missing AsNoTracking in Read Path
+# LC009: Missing AsNoTracking in Read Path
 
 ## In Plain Terms
 

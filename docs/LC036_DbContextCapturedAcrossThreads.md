@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC036 - DbContext Captured Across Threads"
+title: "LC036: DbContext Captured Across Threads"
+description: "LC036 detects one DbContext captured by Task.Run, Parallel.ForEach, threads or timers. DbContext is not thread-safe, so use one context per task."
 ---
 
-# Spec: LC036 - DbContext Captured Across Threads
+# LC036: DbContext Captured Across Threads
 
 ## In Plain Terms
 

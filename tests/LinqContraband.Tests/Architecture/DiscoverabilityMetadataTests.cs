@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using LinqContraband.Catalog;
 
 namespace LinqContraband.Tests.Architecture;
 
@@ -140,6 +141,53 @@ public sealed class DiscoverabilityMetadataTests
                 imageRef.StartsWith("https://", StringComparison.OrdinalIgnoreCase),
                 $"README image must use absolute HTTPS for NuGet rendering: {imageRef}");
         }
+    }
+
+    [Fact]
+    public void Rule_pages_have_search_ready_titles_and_unique_meta_descriptions()
+    {
+        // The docs layout renders `description` as the meta description and page intro; without it
+        // every rule page falls back to the same site-wide description in search results.
+        var failures = new List<string>();
+        var seenDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rule in RuleCatalog.All)
+        {
+            var sourcePath = Path.Combine(RepositoryRoot, rule.DocumentationPath);
+            var frontMatter = File.ReadLines(sourcePath)
+                .Skip(1)
+                .TakeWhile(line => line.Trim() != "---")
+                .ToArray();
+
+            var title = ReadFrontMatterValue(frontMatter, "title");
+            var description = ReadFrontMatterValue(frontMatter, "description");
+
+            if (title is null || !title.StartsWith(rule.Id + ": ", StringComparison.Ordinal))
+                failures.Add($"{rule.Id}: title should read \"{rule.Id}: <name>\" but was \"{title}\".");
+
+            if (description is null)
+            {
+                failures.Add($"{rule.Id}: {rule.DocumentationPath} needs a description in its front matter.");
+                continue;
+            }
+
+            if (description.Length is < 70 or > 160)
+                failures.Add($"{rule.Id}: description is {description.Length} characters; keep it between 70 and 160 so search results show it whole.");
+            if (!description.Contains(rule.Id, StringComparison.Ordinal))
+                failures.Add($"{rule.Id}: description should name the rule id.");
+            if (seenDescriptions.TryGetValue(description, out var other))
+                failures.Add($"{rule.Id}: description duplicates {other}.");
+            else
+                seenDescriptions[description] = rule.Id;
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    private static string? ReadFrontMatterValue(IEnumerable<string> frontMatter, string key)
+    {
+        var line = frontMatter.FirstOrDefault(candidate => candidate.StartsWith(key + ":", StringComparison.Ordinal));
+        return line?.Substring(key.Length + 1).Trim().Trim('"');
     }
 
     [Fact]

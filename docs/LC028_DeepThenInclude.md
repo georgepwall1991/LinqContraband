@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC028: Deep ThenInclude Chain"
+description: "LC028 flags EF Core ThenInclude chains deeper than the configured limit, which load large object graphs. Project or split the query instead."
 ---
 
 # LC028: Deep ThenInclude Chain

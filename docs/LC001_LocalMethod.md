@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC001: Local Method Usage in IQueryable"
+description: "LC001 flags your own helper methods inside EF Core IQueryable lambdas that SQL cannot translate, which forces client-side evaluation or a runtime error."
 ---
 
 # LC001: Local Method Usage in IQueryable

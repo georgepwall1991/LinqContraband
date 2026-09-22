@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC005 - Multiple OrderBy Calls"
+title: "LC005: Multiple OrderBy Calls"
+description: "LC005 flags a second OrderBy or OrderByDescending in one LINQ chain, which silently discards the first sort. Use ThenBy or ThenByDescending."
 ---
 
-# Spec: LC005 - Multiple OrderBy Calls
+# LC005: Multiple OrderBy Calls
 
 ## In Plain Terms
 

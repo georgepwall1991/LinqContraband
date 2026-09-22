@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC047 - ExecuteDelete bypasses the tracked delete pipeline"
+title: "LC047: ExecuteDelete Bypasses the Tracked Delete Pipeline"
+description: "LC047 flags ExecuteDelete when SaveChanges logic such as soft delete or client cascades must run, since SQL DELETE skips that tracked pipeline."
 ---
 
-# Spec: LC047 - ExecuteDelete bypasses the tracked delete pipeline
+# LC047: ExecuteDelete Bypasses the Tracked Delete Pipeline
 
 ## Goal
 

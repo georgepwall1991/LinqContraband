@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC037 - Raw SQL String Construction"
+title: "LC037: Raw SQL String Construction"
+description: "LC037 flags SQL built with concatenation, string.Format or StringBuilder before it reaches FromSqlRaw, ExecuteSqlRaw or SqlQueryRaw: an injection risk."
 ---
 
-# Spec: LC037 - Raw SQL String Construction
+# LC037: Raw SQL String Construction
 
 ## In Plain Terms
 

@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC031: Unbounded Query Materialization"
+description: "LC031 flags EF Core queries materialized with no filter or Take limit, which can load an entire table into memory as the data grows."
 ---
 
 # LC031: Unbounded Query Materialization

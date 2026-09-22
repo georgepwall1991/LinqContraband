@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Caches"
+title: "LC033: Use FrozenSet for Read-Only Static Membership Caches"
+description: "LC033 flags private static readonly HashSet lookup caches that are never mutated and suggests FrozenSet on .NET 8+ for faster membership checks."
 ---
 
-# Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Caches
+# LC033: Use FrozenSet for Read-Only Static Membership Caches
 
 ## In Plain Terms
 

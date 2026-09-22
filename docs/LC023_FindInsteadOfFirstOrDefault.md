@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "LC023 - Use Find/FindAsync for Primary Key Lookups"
+title: "LC023: Use Find/FindAsync for Primary Key Lookups"
+description: "LC023 suggests Find or FindAsync when FirstOrDefault or SingleOrDefault looks up an EF Core entity by primary key, so tracked entities skip the database."
 ---
 
-# LC023 - Use Find/FindAsync for Primary Key Lookups
+# LC023: Use Find/FindAsync for Primary Key Lookups
 
 ## In Plain Terms
 

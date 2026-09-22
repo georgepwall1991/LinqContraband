@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC020 - Avoid StringComparison overloads in query expressions"
+title: "LC020: Avoid StringComparison Overloads in Query Expressions"
+description: "LC020 flags Contains, StartsWith and EndsWith with a StringComparison argument in EF Core queries, which providers often cannot translate to SQL."
 ---
 
-# Spec: LC020 - Avoid StringComparison overloads in query expressions
+# LC020: Avoid StringComparison Overloads in Query Expressions
 
 ## In Plain Terms
 
