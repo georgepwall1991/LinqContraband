@@ -39,7 +39,9 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (reference.GetSyntax(cancellationToken) is not MethodDeclarationSyntax declaration)
                 continue;
 
-            var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+            if (!compilation.TryGetOwnedSemanticModel(declaration.SyntaxTree, out var model))
+                continue;
+
             var operation = model.GetOperation(declaration, cancellationToken);
             if (operation == null)
                 continue;

@@ -42,4 +42,42 @@
         <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj"/>
     </ItemGroup>
 
+    <!-- Real EF Core metadata for CrossProjectAnalysisTests, which compile a data library and an app
+         that references it (as an IDE workspace does). The assemblies are downloaded, not referenced,
+         and copied to efcore/ so they stay out of the test host's trusted platform assemblies: the
+         verifier tests reference every trusted assembly next to their own EF mocks. -->
+    <ItemGroup>
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore" Version="8.0.31" />
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.31" />
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.31" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Primitives" Version="8.0.0" />
+        <PackageDownload Include="Microsoft.EntityFrameworkCore" Version="[8.0.31]" />
+        <PackageDownload Include="Microsoft.EntityFrameworkCore.Abstractions" Version="[8.0.31]" />
+        <PackageDownload Include="Microsoft.EntityFrameworkCore.Relational" Version="[8.0.31]" />
+        <PackageDownload Include="Microsoft.Extensions.Caching.Abstractions" Version="[8.0.0]" />
+        <PackageDownload Include="Microsoft.Extensions.Caching.Memory" Version="[8.0.1]" />
+        <PackageDownload Include="Microsoft.Extensions.Configuration.Abstractions" Version="[8.0.0]" />
+        <PackageDownload Include="Microsoft.Extensions.DependencyInjection" Version="[8.0.1]" />
+        <PackageDownload Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[8.0.2]" />
+        <PackageDownload Include="Microsoft.Extensions.Logging" Version="[8.0.1]" />
+        <PackageDownload Include="Microsoft.Extensions.Logging.Abstractions" Version="[8.0.2]" />
+        <PackageDownload Include="Microsoft.Extensions.Options" Version="[8.0.2]" />
+        <PackageDownload Include="Microsoft.Extensions.Primitives" Version="[8.0.0]" />
+    </ItemGroup>
+
+    <Target Name="CopyEfCoreTestReferences" AfterTargets="Build">
+        <ItemGroup>
+            <_EfCoreTestReferenceFile Include="$(NuGetPackageRoot)$([System.String]::Copy('%(EfCoreTestReference.Identity)').ToLowerInvariant())/%(EfCoreTestReference.Version)/lib/net8.0/*.dll" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_EfCoreTestReferenceFile)" DestinationFolder="$(OutDir)efcore" SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>
