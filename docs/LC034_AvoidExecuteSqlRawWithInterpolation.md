@@ -44,7 +44,7 @@ EF Core ships analyzers with the `Microsoft.EntityFrameworkCore` package. Since 
 
 LC034 does not add a second warning to those lines. It stays quiet when the call comes from `Microsoft.EntityFrameworkCore.Relational` 8.0 or later (10.0 or later for concatenation) and the SQL is the call's second positional argument, which is exactly what EF checks. LC034 still reports on EF Core 7 and older, concatenation on EF Core 8 and 9, and a reordered named argument such as `ExecuteSqlRaw(parameters: args, sql: $"... {id}")`, which EF's analyzer does not see.
 
-If your build excludes EF Core's analyzers or disables EF1002/EF1003, turn the deferral off so LC034 reports every call:
+The `security`, `critical` and `strict` [presets](https://github.com/georgepwall1991/LinqContraband#configuration) raise EF1002 and EF1003 to errors along with LC034. If you set severities by hand, raise EF1002 and EF1003 too (`dotnet_diagnostic.EF1002.severity = error`). If your build excludes EF Core's analyzers or disables EF1002/EF1003, turn the deferral off so LC034 reports every call:
 
 ```ini
 [*.cs]

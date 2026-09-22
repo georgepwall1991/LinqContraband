@@ -43,7 +43,7 @@ LC018 does not add a second warning to those lines. It stays quiet when the call
 - A reordered named argument such as `FromSqlRaw(parameters: args, sql: $"... {id}")`, which EF's analyzer does not see.
 - Raw SQL APIs outside `Microsoft.EntityFrameworkCore.Relational`, such as Cosmos `FromSqlRaw`.
 
-If your build excludes EF Core's analyzers or disables EF1002/EF1003, turn the deferral off so LC018 reports every call:
+The `security`, `critical` and `strict` [presets](https://github.com/georgepwall1991/LinqContraband#configuration) raise EF1002 and EF1003 to errors along with LC018. If you set severities by hand, raise EF1002 and EF1003 too (`dotnet_diagnostic.EF1002.severity = error`). If your build excludes EF Core's analyzers or disables EF1002/EF1003, turn the deferral off so LC018 reports every call:
 
 ```ini
 [*.cs]
