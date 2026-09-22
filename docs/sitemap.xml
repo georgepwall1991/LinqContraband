@@ -4,7 +4,7 @@ permalink: /sitemap.xml
 ---
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
-{% assign public_pages = site.pages | where_exp: "item", "item.title" | sort: "url" -%}
+{% assign public_pages = site.pages | where_exp: "item", "item.title" | where_exp: "item", "item.sitemap != false" | sort: "url" -%}
 {% for item in public_pages -%}
   {% assign priority = "0.6" -%}
   {% if item.url == "/" -%}
@@ -16,8 +16,6 @@ permalink: /sitemap.xml
   {% endif -%}
   <url>
     <loc>{{ item.url | absolute_url }}</loc>
-    <lastmod>{{ site.time | date: "%Y-%m-%d" }}</lastmod>
-    <changefreq>weekly</changefreq>
     <priority>{{ priority }}</priority>
     {% if item.url == "/" -%}
     <image:image>
