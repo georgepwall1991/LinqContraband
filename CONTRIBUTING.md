@@ -81,6 +81,7 @@ If a rule intentionally has no fixer, record the rationale in the catalog. `test
 ```bash
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
 ```
+The same command regenerates the severity presets (`src/LinqContraband/build/presets/*.globalconfig` and `src/LinqContraband/build/LinqContraband.targets`) from `RuleCatalogPresets`, so a new rule joins `strict` (and `essentials`, if it is an Info rule) automatically.
 CI runs the same tool with `--check` and fails if any of them is stale.
 
 Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `RuleCatalog.DocumentationSiteUri` plus the docs page name, for example `RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html"`. The README is also the NuGet package readme, so keep rule write-ups in `docs/LCxxx_Name.md` rather than in the README.

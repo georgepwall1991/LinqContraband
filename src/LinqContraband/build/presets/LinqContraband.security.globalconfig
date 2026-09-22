@@ -1,0 +1,9 @@
+# LinqContraband 'security' preset: SQL injection rules are build errors.
+# Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.
+# Enable it with <LinqContrabandPreset>security</LinqContrabandPreset> in your project file.
+is_global = true
+global_level = -10
+
+dotnet_diagnostic.LC018.severity = error
+dotnet_diagnostic.LC034.severity = error
+dotnet_diagnostic.LC037.severity = error

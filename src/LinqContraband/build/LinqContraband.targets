@@ -1,0 +1,29 @@
+<Project>
+  <!-- Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.
+       Opt-in severity presets: set <LinqContrabandPreset> to one or more of security, critical, strict, essentials
+       (separated by ';' or ','). Imported as a .targets file so the property can be set anywhere in the project.
+       The presets are global analyzer configs (is_global = true); they go straight into EditorConfigFiles because
+       Roslyn copies GlobalAnalyzerConfigFiles into EditorConfigFiles before package targets are imported. -->
+  <PropertyGroup>
+    <_LinqContrabandPresetList>;$([System.String]::Copy('$(LinqContrabandPreset)').ToLowerInvariant().Replace(',', ';').Replace(' ', ''));</_LinqContrabandPresetList>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EditorConfigFiles Include="$(MSBuildThisFileDirectory)presets/LinqContraband.security.globalconfig" Condition="$(_LinqContrabandPresetList.Contains(';security;'))" />
+    <EditorConfigFiles Include="$(MSBuildThisFileDirectory)presets/LinqContraband.critical.globalconfig" Condition="$(_LinqContrabandPresetList.Contains(';critical;'))" />
+    <EditorConfigFiles Include="$(MSBuildThisFileDirectory)presets/LinqContraband.strict.globalconfig" Condition="$(_LinqContrabandPresetList.Contains(';strict;'))" />
+    <EditorConfigFiles Include="$(MSBuildThisFileDirectory)presets/LinqContraband.essentials.globalconfig" Condition="$(_LinqContrabandPresetList.Contains(';essentials;'))" />
+  </ItemGroup>
+
+  <Target Name="_LinqContrabandValidatePreset" BeforeTargets="CoreCompile" Condition="'$(LinqContrabandPreset)' != ''">
+    <PropertyGroup>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandPresetList)</_LinqContrabandUnknownPresets>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Replace(';security;', ';'))</_LinqContrabandUnknownPresets>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Replace(';critical;', ';'))</_LinqContrabandUnknownPresets>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Replace(';strict;', ';'))</_LinqContrabandUnknownPresets>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Replace(';essentials;', ';'))</_LinqContrabandUnknownPresets>
+      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Trim(';'))</_LinqContrabandUnknownPresets>
+    </PropertyGroup>
+    <Warning Code="LCPRESET" Condition="'$(_LinqContrabandUnknownPresets)' != ''" Text="Unknown LinqContrabandPreset '$(_LinqContrabandUnknownPresets)'. Valid presets: security, critical, strict, essentials." />
+  </Target>
+</Project>

@@ -35,6 +35,12 @@ if (!TryReplaceReadmeRuleTable(currentReadme, GenerateReadmeRuleTable(), out var
     return 1;
 }
 
+var buildDirectory = Path.Combine(repoRoot, "src", "LinqContraband", "build");
+var presetOutputs = RuleCatalogPresets.All
+    .Select(preset => (Path: Path.Combine(buildDirectory, "presets", preset.FileName), Name: "src/LinqContraband/build/presets/" + preset.FileName, Generated: preset.ToGlobalConfig()))
+    .Append((Path: Path.Combine(buildDirectory, "LinqContraband.targets"), Name: "src/LinqContraband/build/LinqContraband.targets", Generated: GeneratePresetTargets()))
+    .Select(output => (output.Path, output.Name, Current: File.Exists(output.Path) ? NormalizeNewlines(File.ReadAllText(output.Path)) : string.Empty, output.Generated));
+
 var currentRulesData = File.Exists(rulesDataPath) ? NormalizeNewlines(File.ReadAllText(rulesDataPath)) : string.Empty;
 var generatedRulesData = GenerateRulesData();
 
@@ -43,7 +49,7 @@ var outputs = new[]
     (Path: catalogPath, Name: "docs/rule-catalog.md", Current: currentCatalog, Generated: generatedCatalog),
     (Path: readmePath, Name: "README.md rule table", Current: currentReadme, Generated: generatedReadme),
     (Path: rulesDataPath, Name: "docs/_data/rules.json", Current: currentRulesData, Generated: generatedRulesData),
-};
+}.Concat(presetOutputs).ToArray();
 
 if (checkOnly)
 {
@@ -54,7 +60,7 @@ if (checkOnly)
     if (stale.Length > 0)
         return 1;
 
-    Console.WriteLine("docs/rule-catalog.md, docs/_data/rules.json and the README.md rule table are up to date.");
+    Console.WriteLine("docs/rule-catalog.md, docs/_data/rules.json, the README.md rule table, and the severity presets are up to date.");
     return 0;
 }
 
@@ -66,6 +72,42 @@ foreach (var output in outputs)
 }
 
 return 0;
+
+static string GeneratePresetTargets()
+{
+    var names = RuleCatalogPresets.All.Select(preset => preset.Name).ToArray();
+    var builder = new StringBuilder();
+    builder.Append("<Project>\n");
+    builder.Append("  <!-- Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.\n");
+    builder.Append("       Opt-in severity presets: set <LinqContrabandPreset> to one or more of ").Append(string.Join(", ", names)).Append("\n");
+    builder.Append("       (separated by ';' or ','). Imported as a .targets file so the property can be set anywhere in the project.\n");
+    builder.Append("       The presets are global analyzer configs (is_global = true); they go straight into EditorConfigFiles because\n");
+    builder.Append("       Roslyn copies GlobalAnalyzerConfigFiles into EditorConfigFiles before package targets are imported. -->\n");
+    builder.Append("  <PropertyGroup>\n");
+    builder.Append("    <_LinqContrabandPresetList>;$([System.String]::Copy('$(LinqContrabandPreset)').ToLowerInvariant().Replace(',', ';').Replace(' ', ''));</_LinqContrabandPresetList>\n");
+    builder.Append("  </PropertyGroup>\n");
+    builder.Append("\n");
+    builder.Append("  <ItemGroup>\n");
+    foreach (var preset in RuleCatalogPresets.All)
+    {
+        builder.Append("    <EditorConfigFiles Include=\"$(MSBuildThisFileDirectory)presets/").Append(preset.FileName)
+            .Append("\" Condition=\"$(_LinqContrabandPresetList.Contains(';").Append(preset.Name).Append(";'))\" />\n");
+    }
+
+    builder.Append("  </ItemGroup>\n");
+    builder.Append("\n");
+    builder.Append("  <Target Name=\"_LinqContrabandValidatePreset\" BeforeTargets=\"CoreCompile\" Condition=\"'$(LinqContrabandPreset)' != ''\">\n");
+    builder.Append("    <PropertyGroup>\n");
+    builder.Append("      <_LinqContrabandUnknownPresets>$(_LinqContrabandPresetList)</_LinqContrabandUnknownPresets>\n");
+    foreach (var name in names)
+        builder.Append("      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Replace(';").Append(name).Append(";', ';'))</_LinqContrabandUnknownPresets>\n");
+    builder.Append("      <_LinqContrabandUnknownPresets>$(_LinqContrabandUnknownPresets.Trim(';'))</_LinqContrabandUnknownPresets>\n");
+    builder.Append("    </PropertyGroup>\n");
+    builder.Append("    <Warning Code=\"LCPRESET\" Condition=\"'$(_LinqContrabandUnknownPresets)' != ''\" Text=\"Unknown LinqContrabandPreset '$(_LinqContrabandUnknownPresets)'. Valid presets: ").Append(string.Join(", ", names)).Append(".\" />\n");
+    builder.Append("  </Target>\n");
+    builder.Append("</Project>\n");
+    return builder.ToString();
+}
 
 static string FindRepoRoot()
 {
