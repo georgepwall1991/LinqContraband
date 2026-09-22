@@ -37,6 +37,8 @@ using LinqContraband.Sample.Samples.LC044_AsNoTrackingThenModify;
 using LinqContraband.Sample.Samples.LC045_MissingInclude;
 using LinqContraband.Sample.Samples.LC046_ConcurrentDbContextOperations;
 using LinqContraband.Sample.Samples.LC047_ExecuteDeleteBypassesTrackedDelete;
+using LinqContraband.Sample.Samples.LC049_IncludeIgnoredByProjection;
+using LinqContraband.Sample.Samples.LC050_OrderByBeforeDistinct;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -100,5 +102,7 @@ internal class Program
         MissingIncludeSample.Run(db);
         await ConcurrentDbContextOperationsSample.RunAsync(db, CancellationToken.None);
         ExecuteDeleteBypassesTrackedDeleteSample.Run();
+        IncludeIgnoredByProjectionSample.Run(db);
+        OrderByBeforeDistinctSample.Run(db);
     }
 }

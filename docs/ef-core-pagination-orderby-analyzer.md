@@ -51,6 +51,7 @@ var page = await db.Users
 | [LC015: missing OrderBy](/LinqContraband/LC015_MissingOrderBy.html) | `Skip`, `Take`, `Last`, `LastOrDefault`, `ElementAt`, `ElementAtOrDefault`, and `Chunk` on unordered EF Core queries. | Pagination, positional access, and "last row" lookups need a stable order. |
 | [LC015: misplaced OrderBy](/LinqContraband/LC015_MissingOrderBy.html) | `OrderBy` after `Skip` or `Take`. | Sorting an already selected page does not make the page selection deterministic. |
 | [LC005: multiple OrderBy](/LinqContraband/LC005_MultipleOrderBy.html) | A later `OrderBy` that resets an earlier sort. | Accidental sort reset can hide the intended page order. |
+| [LC050: OrderBy before Distinct](/LinqContraband/LC050_OrderByBeforeDistinct.html) | `OrderBy` followed by `Distinct()` with no `Skip`/`Take` in between. | SQL `DISTINCT` drops the `ORDER BY`, so sort after `Distinct()`. |
 | [LC031: unbounded materialization](/LinqContraband/LC031_UnboundedQueryMaterialization.html) | Broad reads without a bound. | Pagination should be explicit when a query can return many rows. |
 
 ## Misplaced OrderBy Example

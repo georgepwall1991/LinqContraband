@@ -49,6 +49,7 @@ null or empty. Adding `Include()` can be right, but a projection may be cheaper 
 | [LC019: conditional include expression](/LinqContraband/LC019_ConditionalInclude.html) | Conditional navigation choices inside `Include` or `ThenInclude` paths. | Split the query branch before `Include`, eager-load both explicit paths, or project a conditional result shape. |
 | [LC028: deep ThenInclude chain](/LinqContraband/LC028_DeepThenInclude.html) | `ThenInclude` chains deeper than the configured review threshold. | Prefer focused projections, split queries, or a documented threshold/suppression for known aggregate loads. |
 | [LC038: excessive eager loading](/LinqContraband/LC038_ExcessiveEagerLoading.html) | Too many `Include`/`ThenInclude` calls on one provable EF query root. | Check whether every navigation is used and whether unrelated branches should be loaded separately. |
+| [LC049: Include ignored by projection](/LinqContraband/LC049_IncludeIgnoredByProjection.html) | `Include` on a query whose `Select` projects the entity into scalars, DTOs, or anonymous types, so EF Core ignores it. | Delete the `Include`; the projection already reads the related columns it names. |
 | [LC042: missing query tags](/LinqContraband/LC042_MissingQueryTags.html) | Complex EF query shapes without `TagWith(...)` or `TagWithCallSite()`. | Add a stable tag so expensive Include graphs can be found in logs, profilers, and query plans. |
 
 ## Safer Loading Patterns

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LC049 (Info, code fix) reports an EF Core `Include` / `ThenInclude` on a query whose `Select` projects the entity into scalars, DTOs, or anonymous types. EF Core ignores those includes, so they load nothing and mislead readers. The rule stays quiet when the projection can still return an entity (`o => o`, `new { Order = o }`, `o => o.Customer`, `new { o.Lines }`, `o.Lines.Select(l => l.Product)`, or an entity passed to a helper), after `AsEnumerable()`, and across shape-changing operators. The fixer removes the ignored `Include` together with its `ThenInclude` calls; Fix All clears every ignored include in a chain at once.
+- LC050 (Warning, code fix) reports `Distinct()` after `OrderBy` / `OrderByDescending` on a queryable with no `Skip` / `Take` in between. SQL `DISTINCT` does not keep row order, so EF Core drops the `ORDER BY` and the results come back unsorted. LINQ to Objects, `AsQueryable()` over in-memory data, and `Distinct(comparer)` stay quiet. The fixer moves a sort chain after `Distinct()`, or, when the sort key is the projected value, rewrites `OrderBy(o => o.Name).Select(o => o.Name).Distinct()` to `Select(o => o.Name).Distinct().OrderBy(x => x)`. It declines when the result initializes a `var` local that is later reassigned, because the fixed expression is an `IOrderedQueryable<T>`.
+
 ## [5.8.1] - 2026-09-22
 
 ### Changed
