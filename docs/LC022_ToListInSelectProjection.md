@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC022: Nested Collection Materialization Inside Projection"
+description: "LC022 flags ToList or ToArray on nested collections inside EF Core Select projections, which can be expensive or translate differently per provider."
 ---
 
 # LC022: Nested Collection Materialization Inside Projection

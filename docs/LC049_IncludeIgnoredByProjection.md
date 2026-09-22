@@ -1,10 +1,10 @@
 ---
 layout: default
-title: "Spec: LC049 - Include is ignored by a Select projection"
+title: "LC049: Include is ignored by a Select projection"
 description: "LC049 flags EF Core Include calls that a later Select projection makes EF Core ignore, and removes them."
 ---
 
-# Spec: LC049 - Include is ignored by a Select projection
+# LC049: Include is ignored by a Select projection
 
 ## In Plain Terms
 

@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC039 - Nested SaveChanges"
+title: "LC039: Nested SaveChanges"
+description: "LC039 flags repeated SaveChanges calls on the same DbContext in one method, which add round trips and can leave partial writes. Save once."
 ---
 
-# Spec: LC039 - Nested SaveChanges
+# LC039: Nested SaveChanges
 
 ## In Plain Terms
 

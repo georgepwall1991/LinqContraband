@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC035: Missing Where Before ExecuteDelete or ExecuteUpdate"
+description: "LC035 flags EF Core ExecuteDelete and ExecuteUpdate calls with no proven Where filter, which delete or rewrite every row in the table."
 ---
 
 # LC035: Missing Where Before ExecuteDelete or ExecuteUpdate

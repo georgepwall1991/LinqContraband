@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "LC025 - Avoid AsNoTracking with Update/Remove"
+title: "LC025: Avoid AsNoTracking with Update/Remove"
+description: "LC025 detects entities loaded with AsNoTracking() and then passed to Update or Remove, which can overwrite every column or fail on identity conflicts."
 ---
 
-# LC025 - Avoid AsNoTracking with Update/Remove
+# LC025: Avoid AsNoTracking with Update/Remove
 
 ## In Plain Terms
 

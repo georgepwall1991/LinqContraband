@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC016 - Avoid DateTime.Now in Queries"
+title: "LC016: Avoid DateTime.Now in Queries"
+description: "LC016 flags DateTime.Now, UtcNow and DateTimeOffset.Now inside EF Core LINQ queries. Hoist the value into a local for cacheable, testable queries."
 ---
 
-# Spec: LC016 - Avoid DateTime.Now in Queries
+# LC016: Avoid DateTime.Now in Queries
 
 ## In Plain Terms
 

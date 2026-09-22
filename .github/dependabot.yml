@@ -22,6 +22,10 @@ updates:
       - dependency-name: "Microsoft.CodeAnalysis.CSharp"
       - dependency-name: "Microsoft.CodeAnalysis.CSharp.Workspaces"
       - dependency-name: "Microsoft.CodeAnalysis.Workspaces.Common"
+      # Dependabot moves this together with Microsoft.CodeAnalysis.CSharp (it
+      # opened a 4.14 -> 5.9 compiler bump for the tests through it), and its RS
+      # rules should track the Roslyn version the analyzer targets anyway.
+      - dependency-name: "Microsoft.CodeAnalysis.Analyzers"
       # The sample pins one EF Core major per target framework (net8/net9/net10).
       # A major bump would move a TFM onto an EF version it cannot run.
       - dependency-name: "Microsoft.EntityFrameworkCore*"

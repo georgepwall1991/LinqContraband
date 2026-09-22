@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC015 - Ensure OrderBy Before Skip/Take"
+title: "LC015: Ensure OrderBy Before Skip/Take"
+description: "LC015 flags Skip, Take, Last, ElementAt and Chunk on unordered EF Core queries, where the database may return rows in a different order each run."
 ---
 
-# Spec: LC015 - Ensure OrderBy Before Skip/Take
+# LC015: Ensure OrderBy Before Skip/Take
 
 ## In Plain Terms
 

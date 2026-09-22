@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC019: Conditional Include Expression"
+description: "LC019 flags ternary and null-coalescing expressions inside EF Core Include paths, which cannot translate. Apply the Include conditionally instead."
 ---
 
 # LC019: Conditional Include Expression

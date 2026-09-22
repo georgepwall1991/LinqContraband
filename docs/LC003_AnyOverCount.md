@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC003: Prefer Any() Over Count() Existence Checks"
+description: "LC003 flags Count() > 0 style existence checks on EF Core queries and suggests Any() or AnyAsync(), which can stop at the first matching row."
 ---
 
 # LC003: Prefer Any() Over Count() Existence Checks

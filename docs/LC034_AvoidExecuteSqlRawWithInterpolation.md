@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation"
+title: "LC034: Avoid ExecuteSqlRaw with Interpolation"
+description: "LC034 flags ExecuteSqlRaw and ExecuteSqlRawAsync called with interpolated or concatenated SQL, an injection risk. Use ExecuteSql or parameters."
 ---
 
-# Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation
+# LC034: Avoid ExecuteSqlRaw with Interpolation
 
 ## In Plain Terms
 

@@ -1,10 +1,10 @@
 ---
 layout: default
-title: "Spec: LC050 - OrderBy before Distinct is discarded"
+title: "LC050: OrderBy before Distinct is discarded"
 description: "LC050 flags EF Core queries that sort before Distinct(), where SQL DISTINCT silently drops the ORDER BY, and moves the sort after Distinct()."
 ---
 
-# Spec: LC050 - OrderBy before Distinct is discarded
+# LC050: OrderBy before Distinct is discarded
 
 ## In Plain Terms
 

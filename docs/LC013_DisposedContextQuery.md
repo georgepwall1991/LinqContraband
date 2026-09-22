@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC013 - Disposed Context Query Leak"
+title: "LC013: Disposed Context Query Leak"
+description: "LC013 detects an IQueryable or IAsyncEnumerable returned after its DbContext is disposed, which throws when the caller finally enumerates it."
 ---
 
-# Spec: LC013 - Disposed Context Query Leak
+# LC013: Disposed Context Query Leak
 
 ## In Plain Terms
 

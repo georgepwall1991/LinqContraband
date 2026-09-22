@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC045 - Missing Include: navigation accessed on materialized entity"
+title: "LC045: Missing Include on Accessed Navigation"
+description: "LC045 detects navigation properties read after an EF Core query without a matching Include, causing N+1 lazy loads or null and empty data."
 ---
 
-# Spec: LC045 - Missing Include: navigation accessed on materialized entity
+# LC045: Missing Include on Accessed Navigation
 
 ## In Plain Terms
 

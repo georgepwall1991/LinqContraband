@@ -36,7 +36,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
-> The 2026-09-22 LC049/LC050 new-rule pass adds Include-ignored-by-projection and OrderBy-before-Distinct detection with fixers, raising the full local net10.0 suite to **3,726 tests**.
+> The 2026-09-22 LC049/LC050 new-rule pass adds Include-ignored-by-projection and OrderBy-before-Distinct detection with fixers, raising the full local net10.0 suite to **3,727 tests**.
 
 > The 2026-09-22 5.8.1 patch lands 31 coverage pins, LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and a cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (with a real-EF Core two-project test over every analyzer), raising the full local net10.0 suite to **3,671 tests**.
 
@@ -1191,6 +1191,6 @@ Final verification (2026-09-10, helper-identity hardening LC044–LC048 + LC007 
 
 Final verification (2026-09-22, 5.8.1: bot coverage pins, LC044 async-helper completion, cross-project crash guard): the full local net10.0 suite passes 3,671 tests.
 
-Final verification (2026-09-22, LC049/LC050 new rules): 53 focused LC049/LC050 tests pass, and the full local net10.0 suite passes 3,726 tests.
+Final verification (2026-09-22, LC049/LC050 new rules): 53 focused LC049/LC050 tests pass, and the full local net10.0 suite passes 3,727 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

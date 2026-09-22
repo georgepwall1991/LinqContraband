@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC046 - Concurrent DbContext Operations"
+title: "LC046: Concurrent DbContext Operations"
+description: "LC046 detects overlapping async operations on the same DbContext instance, which EF Core rejects at runtime. Await each call or use separate contexts."
 ---
 
-# Spec: LC046 - Concurrent DbContext Operations
+# LC046: Concurrent DbContext Operations
 
 ## Goal
 

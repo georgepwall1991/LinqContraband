@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC043 - Async Enumerable Buffering"
+title: "LC043: Async Enumerable Buffering"
+description: "LC043 flags an IAsyncEnumerable buffered with ToListAsync or ToArrayAsync only to loop over it once. Use await foreach to stream instead."
 ---
 
-# Spec: LC043 - Async Enumerable Buffering
+# LC043: Async Enumerable Buffering
 
 ## In Plain Terms
 

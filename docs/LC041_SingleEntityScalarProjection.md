@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC041 - Single Entity Scalar Projection"
+title: "LC041: Single Entity Scalar Projection"
+description: "LC041 flags First or Single queries that load a whole EF Core entity when only one property is read. Select that property to fetch one column."
 ---
 
-# Spec: LC041 - Single Entity Scalar Projection
+# LC041: Single Entity Scalar Projection
 
 ## In Plain Terms
 

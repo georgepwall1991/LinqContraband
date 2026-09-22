@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC010 - SaveChanges inside Loop"
+title: "LC010: SaveChanges Inside Loop"
+description: "LC010 flags SaveChanges or SaveChangesAsync inside a loop, which costs one database round trip per item instead of one batched save."
 ---
 
-# Spec: LC010 - SaveChanges inside Loop
+# LC010: SaveChanges Inside Loop
 
 ## In Plain Terms
 

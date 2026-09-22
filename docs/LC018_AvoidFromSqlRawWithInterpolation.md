@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings"
+title: "LC018: Avoid FromSqlRaw with Interpolated Strings"
+description: "LC018 flags FromSqlRaw and SqlQueryRaw called with interpolated or concatenated SQL, an injection risk. Use FromSql or SQL parameters instead."
 ---
 
-# Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings
+# LC018: Avoid FromSqlRaw with Interpolated Strings
 
 ## In Plain Terms
 

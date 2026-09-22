@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC048 - Lost Update Risk"
+title: "LC048: Lost Update Risk"
+description: "LC048 detects tracked EF Core read-modify-write updates, such as counters, saved without a concurrency token, so concurrent requests overwrite each other."
 ---
 
-# Spec: LC048 - Lost Update Risk
+# LC048: Lost Update Risk
 
 ## Goal
 

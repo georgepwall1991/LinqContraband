@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC011 - Entity Missing Primary Key"
+title: "LC011: Entity Missing Primary Key"
+description: "LC011 detects EF Core entity types exposed through a DbSet that have no primary key from convention, a [Key] attribute or fluent configuration."
 ---
 
-# Spec: LC011 - Entity Missing Primary Key
+# LC011: Entity Missing Primary Key
 
 ## In Plain Terms
 
