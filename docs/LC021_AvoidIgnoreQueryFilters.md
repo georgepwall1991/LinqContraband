@@ -5,6 +5,12 @@ title: "Spec: LC021 - Avoid IgnoreQueryFilters"
 
 # Spec: LC021 - Avoid IgnoreQueryFilters
 
+## In Plain Terms
+
+Imagine a high-security building where every door has a lock. `IgnoreQueryFilters`
+is like a skeleton key that opens every single door at once. It's powerful, but if you use it by accident, you might
+end up somewhere you're not supposed to be.
+
 ## Goal
 Detect usage of EF Core's `IgnoreQueryFilters()` on an `IQueryable`. Global query filters are often used for critical cross-cutting concerns like multi-tenancy, soft-delete, or security. Bypassing them can lead to data leaks or incorrect business logic.
 

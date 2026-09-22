@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -27,7 +28,7 @@ public sealed partial class RawSqlStringConstructionAnalyzer : DiagnosticAnalyze
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC037_RawSqlStringConstruction.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC037_RawSqlStringConstruction.html");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "FromSqlRaw",

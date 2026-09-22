@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -34,11 +35,11 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
 
     public static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC015_MissingOrderBy.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC015_MissingOrderBy.html");
 
     public static readonly DiagnosticDescriptor MisplacedRule = new(
         DiagnosticId, "OrderBy after Skip/Take", MisplacedMessageFormat, Category, DiagnosticSeverity.Warning, true, Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC015_MissingOrderBy.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC015_MissingOrderBy.html");
 
     private static readonly ImmutableHashSet<string> PaginationMethods = ImmutableHashSet.Create(
         "Skip", "Take", "Last", "LastOrDefault", "Chunk",

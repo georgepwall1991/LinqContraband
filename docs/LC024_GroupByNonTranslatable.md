@@ -5,6 +5,12 @@ title: "LC024: GroupBy with Non-Translatable Projection"
 
 # LC024: GroupBy with Non-Translatable Projection
 
+## In Plain Terms
+
+Imagine a teacher asks "How many students are in each class?" That's easy —
+just count the names on the list. But if the teacher says "For each class, tell me every single thing every student had
+for lunch," the teacher has to go ask every student individually. The counting is quick; the lunch survey is not.
+
 ## What it flags
 
 Flags `IQueryable.GroupBy(...)` pipelines that project values EF Core cannot translate cleanly to SQL, which usually triggers runtime failures or accidental client-side grouping.

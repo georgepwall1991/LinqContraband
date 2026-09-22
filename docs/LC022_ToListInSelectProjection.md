@@ -5,6 +5,13 @@ title: "LC022: Nested Collection Materialization Inside Projection"
 
 # LC022: Nested Collection Materialization Inside Projection
 
+## In Plain Terms
+
+Imagine you ask a baker to put frosting on 100 cupcakes. But for each
+cupcake, you tell them "First, put all the frosting in a separate bowl, then frost the cupcake from the bowl." The baker
+gets frustrated because they could just frost the cupcake directly — the extra bowl step is pointless and slows
+everything down.
+
 ## What it flags
 
 Flags nested collection materialization inside projections because it can be expensive, provider-version sensitive, or better expressed with direct projection/split-query shaping.

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Diagnostic help links now open each rule's page on the documentation site instead of the raw markdown file on GitHub.
+- The README (also the NuGet readme) is now a short landing page with a rule table generated from the rule catalog; full rule write-ups live on the per-rule docs pages, which gain an "In Plain Terms" section.
 - Releases are automated: after a `chore: release X.Y.Z` PR merges and `master` is green, the `vX.Y.Z` tag and GitHub Release (notes from this changelog) are created automatically and the NuGet publish is dispatched. Publishing fails when the tag and csproj `Version` differ, uses NuGet Trusted Publishing instead of a long-lived API key, and CI checks that the csproj version has a changelog section. The README install snippet no longer hardcodes a version.
 
 ### Fixed

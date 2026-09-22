@@ -5,6 +5,12 @@ title: "Spec: LC030 - Review DbContext Lifetime Mismatches"
 
 # Spec: LC030 - Review DbContext Lifetime Mismatches
 
+## In Plain Terms
+
+Imagine you have one paintbrush (DbContext) that everyone in the class has
+to share at the same time. Paint gets mixed up, bristles break, and everyone makes a mess! Instead, give each person
+their own paintbrush from a box (IDbContextFactory) when they need one, and put it back when they're done.
+
 ## Goal
 Flag proven long-lived types that store or directly receive a `DbContext`, and flag explicit singleton
 `DbContext` registrations, so the lifetime can be reviewed.

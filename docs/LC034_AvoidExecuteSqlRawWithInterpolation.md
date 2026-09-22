@@ -5,6 +5,12 @@ title: "Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation"
 
 # Spec: LC034 - Avoid ExecuteSqlRaw with Interpolation
 
+## In Plain Terms
+
+Imagine writing a note to the cafeteria that says "Throw away lunch for
+${name}". If somebody scribbles extra instructions into the blank, the cafeteria might throw away *everybody's* lunch.
+You want a form with a locked box for the name instead.
+
 ## Goal
 Detect unsafe SQL flowing into `ExecuteSqlRaw(...)` and `ExecuteSqlRawAsync(...)`.
 

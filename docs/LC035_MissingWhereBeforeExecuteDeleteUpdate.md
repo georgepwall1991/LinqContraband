@@ -5,6 +5,11 @@ title: "LC035: Missing Where Before ExecuteDelete or ExecuteUpdate"
 
 # LC035: Missing Where Before ExecuteDelete or ExecuteUpdate
 
+## In Plain Terms
+
+Imagine you meant to erase one line on the whiteboard, but instead you
+pressed the giant "erase whole board" button.
+
 ## What it flags
 
 Flags EF Core `ExecuteDelete`, `ExecuteDeleteAsync`, `ExecuteUpdate`, and `ExecuteUpdateAsync` calls when the target query has no proven `Where` filter.

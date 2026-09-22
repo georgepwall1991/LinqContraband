@@ -1,0 +1,40 @@
+name: Link Check
+
+# Builds the Pages site exactly as pages.yml does, then checks every internal link,
+# #fragment and analyzer help link offline (scripts/check-links.sh).
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "src/**/*.cs"
+      - "scripts/check-links.sh"
+      - ".github/workflows/links.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build site
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site/LinqContraband
+
+      - name: Check links
+        run: scripts/check-links.sh _site

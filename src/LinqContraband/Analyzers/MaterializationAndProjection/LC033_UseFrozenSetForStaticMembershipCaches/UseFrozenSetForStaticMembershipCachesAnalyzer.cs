@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -27,7 +28,7 @@ public sealed partial class UseFrozenSetForStaticMembershipCachesAnalyzer : Diag
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC033_UseFrozenSetForStaticMembershipCaches.md",
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC033_UseFrozenSetForStaticMembershipCaches.html",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

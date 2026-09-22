@@ -5,6 +5,12 @@ title: "Spec: LC006 - Cartesian Explosion Risk"
 
 # Spec: LC006 - Cartesian Explosion Risk
 
+## In Plain Terms
+
+Imagine a teacher asks 30 students what they ate. Instead of getting 30
+answers, she asks every student to list every single fry they ate individually. You end up with thousands of answers ("I
+ate fry #1", "I ate fry #2") instead of just "I had fries".
+
 ## Goal
 Detect sibling collection `Include` paths on the same query without an effective `AsSplitQuery()`.
 

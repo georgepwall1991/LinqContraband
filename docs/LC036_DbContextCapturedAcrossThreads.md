@@ -5,6 +5,11 @@ title: "Spec: LC036 - DbContext Captured Across Threads"
 
 # Spec: LC036 - DbContext Captured Across Threads
 
+## In Plain Terms
+
+Imagine two people trying to write in the same notebook at the exact same
+time. They bump elbows, write over each other, and ruin the page.
+
 ## Goal
 Detect a single `DbContext` captured into multi-threaded delegates.
 

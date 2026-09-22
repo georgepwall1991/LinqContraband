@@ -5,6 +5,11 @@ title: "LC038: Excessive Eager Loading"
 
 # LC038: Excessive Eager Loading
 
+## In Plain Terms
+
+Imagine ordering a backpack, then asking the shop to also stuff in your
+books, your desk, your chair, and your whole bedroom. Technically they can try, but it becomes a terrible delivery.
+
 ## What it flags
 
 Flags EF Core query chains that use too many `Include(...)` / `ThenInclude(...)` calls on the same provable query root.

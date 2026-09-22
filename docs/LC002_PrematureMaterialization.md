@@ -5,6 +5,12 @@ title: "LC002: Premature Materialization"
 
 # LC002: Premature Materialization
 
+## In Plain Terms
+
+Imagine you want a pepperoni pizza. Instead of ordering just pepperoni, you
+order a pizza with *every single topping in the restaurant*. When it arrives, you have to spend an hour picking off the
+anchovies, pineapple, and mushrooms before you can eat. It’s a waste of food and time.
+
 ## Goal
 Catch query work that moves from the provider to LINQ-to-Objects only because an `IQueryable` was materialized too early, and catch redundant second materializers layered on top of an already materialized query.
 

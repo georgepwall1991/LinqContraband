@@ -5,6 +5,11 @@ title: "Spec: LC043 - Async Enumerable Buffering"
 
 # Spec: LC043 - Async Enumerable Buffering
 
+## In Plain Terms
+
+Imagine waiting for every toy to arrive in one giant pile before you start
+playing, even though you could play with each toy as soon as it shows up.
+
 ## Goal
 Detect immediate buffering of an `IAsyncEnumerable<T>` into a list or array before a single `foreach`.
 

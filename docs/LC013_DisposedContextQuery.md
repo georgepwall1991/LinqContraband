@@ -5,6 +5,11 @@ title: "Spec: LC013 - Disposed Context Query Leak"
 
 # Spec: LC013 - Disposed Context Query Leak
 
+## In Plain Terms
+
+Imagine buying a ticket to a movie. But the ticket is only valid *inside* the
+ticket booth. As soon as you walk out to the theater (return the query), the ticket dissolves in your hand.
+
 ## Goal
 Detect when an `IQueryable` or `IAsyncEnumerable` is returned from a method while the `DbContext` that created it is disposed.
 
