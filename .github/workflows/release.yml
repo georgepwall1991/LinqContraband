@@ -1,0 +1,105 @@
+name: Release
+
+# Tags and releases whatever version the csproj declares, once that commit is green.
+#
+# A `chore: release X.Y.Z` PR bumps <Version> in src/LinqContraband/LinqContraband.csproj
+# and adds a `## [X.Y.Z]` section to CHANGELOG.md. After it merges and "Build and Test"
+# passes on master, this workflow creates the annotated vX.Y.Z tag and the GitHub Release
+# (notes = that CHANGELOG section), then dispatches publish.yml for the tag.
+#
+# Commits whose Version already has a release are a no-op, so this is safe to run after
+# every green master build. Run it by hand (workflow_dispatch) to release master's HEAD.
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the tag and create the release
+      actions: write    # dispatch publish.yml
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Read release metadata
+        id: meta
+        run: |
+          VERSION="$(python3 scripts/release_info.py version)"
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release ${TAG} already exists; nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 scripts/release_info.py check --tag "$TAG"
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag
+        if: steps.meta.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
+            echo "Tag ${TAG} already exists; creating the release from it."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "Release ${VERSION}" "$TARGET_SHA"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create GitHub Release
+        if: steps.meta.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          {
+            python3 scripts/release_info.py notes "$VERSION"
+            echo
+            echo "---"
+            echo
+            echo "Package: https://www.nuget.org/packages/LinqContraband/${VERSION}"
+            echo "Full history: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md)"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      # Releases created with GITHUB_TOKEN do not fire `release: published`, so start the
+      # NuGet publish explicitly. workflow_dispatch is the one event GITHUB_TOKEN may trigger.
+      - name: Dispatch NuGet publish
+        if: steps.meta.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+          echo "Dispatched publish.yml for ${TAG}" >> "$GITHUB_STEP_SUMMARY"

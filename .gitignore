@@ -68,7 +68,10 @@ _ReSharper*/
 *.ReSharper
 *.DotSettings.user
 .idea/
-.cursor/
+.cursor/*
+# Keep the committed Cloud Agent environment config so agents share the same setup.
+!.cursor/environment.json
+!.cursor/install.sh
 terminals/
 .plugin-config/
 
