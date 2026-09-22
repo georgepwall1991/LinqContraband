@@ -5,6 +5,12 @@ title: "Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings"
 
 # Spec: LC018 - Avoid FromSqlRaw with Interpolated Strings
 
+## In Plain Terms
+
+Imagine a bank where you write your name on a slip to get money. If you use
+a special pen that lets you erase "Name: John" and write "Give John everything in the vault," you've just robbed the
+bank. Raw query SQL with interpolated strings is like using that erasable pen.
+
 ## Goal
 Detect `FromSqlRaw(...)` and `SqlQueryRaw<T>(...)` calls where the SQL string is an interpolated string or contains non-constant concatenations. This pattern is a major security risk because it can lead to SQL injection.
 

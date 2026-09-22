@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -23,7 +24,7 @@ public sealed partial class AsNoTrackingWithUpdateAnalyzer : DiagnosticAnalyzer
         "Passing untracked entities to Update() causes EF Core to mark all properties as modified, leading to inefficient SQL. Remove AsNoTracking() if the entity will be modified.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC025_AsNoTrackingWithUpdate.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC025_AsNoTrackingWithUpdate.html");
 
     private static readonly ImmutableHashSet<string> TrackingMethods = ImmutableHashSet.Create(
         "Update", "UpdateRange", "Remove", "RemoveRange"

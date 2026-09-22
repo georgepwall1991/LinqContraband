@@ -5,6 +5,11 @@ title: "Spec: LC041 - Single Entity Scalar Projection"
 
 # Spec: LC041 - Single Entity Scalar Projection
 
+## In Plain Terms
+
+Imagine asking the library to deliver an entire encyclopedia just because you
+wanted to read one sentence.
+
 ## Goal
 Detect single-entity queries that materialize an entire entity when only one scalar property is consumed.
 

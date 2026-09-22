@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **48 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.8.0
-- Base audited commit: 2ebd35640c3dfc4090237efac8df9d57dd2ccae5
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.8.0-final`
+- Package version: 5.8.1
+- Base audited commit: 1166a0705b5b43de1f5a5540e141fe9608638935
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.8.1-final`
 
 ## Rubric
 
@@ -35,6 +35,8 @@ Harsh calibration notes:
 Priority is a planning signal: `High` means the analyzer is important and has meaningful health gaps, `Medium` means useful follow-up work is warranted, and `Low` means no immediate work is needed.
 
 ## Scorecard
+
+> The 2026-09-22 5.8.1 patch lands 31 coverage pins, LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and a cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (with a real-EF Core two-project test over every analyzer), raising the full local net10.0 suite to **3,671 tests**.
 
 > The 2026-09-10 LC044 async-completion/entry-state and LC047 entry-linked-dominance passes raise the full local net10.0 suite to **3,460 tests**.
 
@@ -1037,9 +1039,9 @@ These claims were **not** acted on — do not re-chase without new evidence:
 
 ## Verification Baseline
 
-Package version: **5.8.0**
+Package version: **5.8.1**
 
-Base audited commit: master at `2ebd35640c3dfc4090237efac8df9d57dd2ccae5` (5.8.0 release-preparation base). The baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
+Base audited commit: master at `1166a0705b5b43de1f5a5540e141fe9608638935` (5.8.1 release-preparation base). 5.8.1 adds the cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (which also restores LC012's tracked-delete gate in multi-project IDE workspaces), LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and 31 coverage pins on top of the 5.8.0 baseline. The 5.8.0 baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -1118,7 +1120,12 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-09-10, LC044/LC046/LC047/LC048 helper-identity, async-completion, entry-state, and entry-linkage hardening for 5.8.0, with 3,460 full net10.0 tests):
+Current verification (2026-09-22, LC004/LC012/LC044/LC045/LC046/LC047/LC048 cross-project crash guard and LC044 async-helper completion for 5.8.1, with 3,671 full net10.0 tests):
+
+- A two-project test compiles a `Shop.Data` library and a `Shop.App` against real EF Core 8 metadata, references the library as a compilation (as IDE workspaces do), and runs every analyzer over the app with no analyzer exceptions and no AD0001/AD0000. Before the guard it failed for LC004, LC012, LC045, and LC047.
+- 19 LC044 tests cover `Task.WhenAll`/`WaitAll` (params and collection-expression), declared and assigned stored tasks, and `ConfigureAwait`/`GetAwaiter` unwrapping; 14 of them fail on the 5.8.0 analyzer.
+
+Previous verification (2026-09-10, LC044/LC046/LC047/LC048 helper-identity, async-completion, entry-state, and entry-linkage hardening for 5.8.0, with 3,460 full net10.0 tests):
 
 - LC048 red/green coverage proves tracked compound, increment/decrement, self-read, and guarded state-transition reports, with stable query/entity/context aliases, direct private helpers, shape-preserving operators, and reachable same-context saves. Negative coverage locks blind writes, absent or different-context saves, both no-tracking forms, attribute and real Fluent concurrency tokens, explicit EF transactions, projections, custom operators, computed context properties, uninvoked nested executables, unreachable saves, conditional helpers, and different receiver instances for readonly context fields. Codex CLI review found and drove fixes for real `ModelBuilder.Entity<T>()` namespace recognition, `AsNoTrackingWithIdentityResolution`, helper branch correlation, and readonly-field receiver identity.
 
@@ -1168,5 +1175,7 @@ Current verification (2026-09-10, LC044/LC046/LC047/LC048 helper-identity, async
 Final 5.8.0 verification: 85 focused LC048 tests pass, and the full local net10.0 suite passes 3,269 tests.
 
 Final verification (2026-09-10, helper-identity hardening LC044–LC048 + LC007 fix-all + LC044 async/state modeling + LC047 entry linkage): the full local net10.0 suite passes 3,460 tests.
+
+Final verification (2026-09-22, 5.8.1: bot coverage pins, LC044 async-helper completion, cross-project crash guard): the full local net10.0 suite passes 3,671 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

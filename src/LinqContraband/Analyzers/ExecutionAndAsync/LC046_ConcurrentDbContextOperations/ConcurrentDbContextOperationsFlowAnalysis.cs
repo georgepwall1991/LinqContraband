@@ -6985,9 +6985,12 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            var semanticModel = rootSemanticModel.SyntaxTree == expression.SyntaxTree
-                ? rootSemanticModel
-                : rootSemanticModel.Compilation.GetSemanticModel(expression.SyntaxTree);
+            SemanticModel semanticModel;
+            if (rootSemanticModel.SyntaxTree == expression.SyntaxTree)
+                semanticModel = rootSemanticModel;
+            else if (!rootSemanticModel.Compilation.TryGetOwnedSemanticModel(expression.SyntaxTree, out semanticModel))
+                continue;
+
             if (semanticModel.GetOperation(expression) is IInvocationOperation callbackInvocation &&
                 callbackInvocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
                 callbackInvocation.Instance?.UnwrapConversions() is

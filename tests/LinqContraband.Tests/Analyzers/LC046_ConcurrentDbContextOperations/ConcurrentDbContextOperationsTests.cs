@@ -615,6 +615,32 @@ namespace TestApp
                 {|#21:Save(db, 1)|});
         }
 
+        public async Task ShortCircuitCompanionAssignmentDoesNotInvalidateValidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                {|#22:Execute(db, flag && (sql = """") != null)|},
+                {|#23:Execute(db, false)|});
+        }
+
+        public async Task TernaryCompanionAssignmentDoesNotInvalidateValidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = ""SELECT 1"";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                {|#24:Execute(db, flag ? (sql = """") != null : false)|},
+                {|#25:Execute(db, false)|});
+        }
+
         private static bool Observe(CancellationToken token) =>
             token.IsCancellationRequested;
     }
@@ -664,6 +690,14 @@ namespace TestApp
             .WithLocation(21)
             .WithLocation(20)
             .WithArguments("db");
+        var shortCircuitDoesNotInvalidate = VerifyCS.Diagnostic()
+            .WithLocation(23)
+            .WithLocation(22)
+            .WithArguments("db");
+        var ternaryDoesNotInvalidate = VerifyCS.Diagnostic()
+            .WithLocation(25)
+            .WithLocation(24)
+            .WithArguments("db");
 
         await VerifyCS.VerifyAnalyzerAsync(
             test,
@@ -677,7 +711,9 @@ namespace TestApp
             writableInRefEscape,
             validatedCapturedRequiredLocal,
             uninvokedLambdaTokenReference,
-            uninvokedLambdaInvalidRequiredValue);
+            uninvokedLambdaInvalidRequiredValue,
+            shortCircuitDoesNotInvalidate,
+            ternaryDoesNotInvalidate);
     }
 
     [Fact]
@@ -1046,6 +1082,66 @@ namespace TestApp
             mutator.Replace(ref db, other);
             var second = Load(db, 1);
             await Task.WhenAll(first, second);
+        }
+
+        public async Task ShortCircuitCompanionAssignmentDoesNotValidateInvalidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = """";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, flag && (sql = ""SELECT 1"") != null),
+                Execute(db, false));
+        }
+
+        public async Task TernaryCompanionAssignmentDoesNotValidateInvalidRequiredLocal(
+            AppDbContext db,
+            bool flag)
+        {
+            var sql = """";
+            Task<int> Execute(AppDbContext current, bool ignored) =>
+                current.Database.ExecuteSqlRawAsync(sql);
+
+            await Task.WhenAll(
+                Execute(db, flag ? (sql = ""SELECT 1"") != null : false),
+                Execute(db, false));
+        }
+
+        public async Task ContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int index, AppDbContext current) =>
+                current.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(Load(0, db), Load(1, db));
+        }
+
+        public async Task NamedContextArgumentEvaluatedAfterCompanion(AppDbContext db)
+        {
+            Task<User> Load(int index, AppDbContext current) =>
+                current.Users.ElementAtAsync(index);
+
+            await Task.WhenAll(
+                Load(index: 0, current: db),
+                Load(index: 1, current: db));
+        }
+
+        public async Task ExplicitContextReceiverConversion(AppDbContext db)
+        {
+            Task<int> Save(AppDbContext current, int ignored) =>
+                ((DbContext)current).SaveChangesAsync();
+
+            await Task.WhenAll(Save(db, 0), Save(db, 1));
+        }
+
+        public async Task ContextParameterUsedOutsideReceiver(AppDbContext db)
+        {
+            Task<User> Load(AppDbContext current, int ignored) =>
+                current.Users.ElementAtAsync(current != null ? 0 : 1);
+
+            await Task.WhenAll(Load(db, 0), Load(db, 1));
         }
 
         private static int GetIndex() => 0;

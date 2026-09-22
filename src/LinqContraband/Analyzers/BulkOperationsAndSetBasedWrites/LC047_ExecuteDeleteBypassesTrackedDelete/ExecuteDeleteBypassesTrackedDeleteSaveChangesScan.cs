@@ -77,7 +77,9 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (syntax is not (MethodDeclarationSyntax or LocalFunctionStatementSyntax))
                 continue;
 
-            var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (!compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var model))
+                continue;
+
             var operation = model.GetOperation(syntax, cancellationToken);
             if (operation == null)
                 continue;
@@ -505,7 +507,9 @@ internal sealed partial class TrackedDeletePipelineEvidence
             if (reference.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
                 continue;
 
-            var model = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
+            if (!compilation.TryGetOwnedSemanticModel(methodSyntax.SyntaxTree, out var model))
+                continue;
+
             var operation = methodSyntax.Body != null
                 ? model.GetOperation(methodSyntax.Body) ?? model.GetOperation(methodSyntax)
                 : methodSyntax.ExpressionBody != null

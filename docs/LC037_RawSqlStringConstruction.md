@@ -5,6 +5,11 @@ title: "Spec: LC037 - Raw SQL String Construction"
 
 # Spec: LC037 - Raw SQL String Construction
 
+## In Plain Terms
+
+Imagine building a train track out of random spare pieces and hoping the
+train still goes where you wanted. One bad piece and it flies off the rails.
+
 ## Goal
 Detect string-built SQL before it reaches `FromSqlRaw(...)`, `ExecuteSqlRaw(...)`, or `SqlQueryRaw<T>(...)` (the EF7+ scalar/keyless raw-SQL query on `DbContext.Database`).
 

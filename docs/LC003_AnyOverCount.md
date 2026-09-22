@@ -5,6 +5,12 @@ title: "LC003: Prefer Any() Over Count() Existence Checks"
 
 # LC003: Prefer Any() Over Count() Existence Checks
 
+## In Plain Terms
+
+Imagine you want to know if there are any cookies left in the jar. Count() > 0
+is like dumping the entire jar onto the table and counting 500 cookies one by one just to say "Yes". Any() is like
+opening the lid, seeing one cookie, and saying "Yes" immediately.
+
 ## What It Flags
 
 LC003 reports `IQueryable` existence checks that use `Count`, `LongCount`, `CountAsync`, or `LongCountAsync` when `Any` or `AnyAsync` communicates the same intent more directly.

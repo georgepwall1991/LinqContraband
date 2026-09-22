@@ -5,6 +5,12 @@ title: "Spec: LC008 - Sync-over-Async Blocker"
 
 # Spec: LC008 - Sync-over-Async Blocker
 
+## In Plain Terms
+
+Imagine a waiter taking your order, then walking into the kitchen and staring
+at the chef for 20 minutes until the food is ready. No one else gets served. That's Sync-over-Async. Async means the
+waiter takes the order and goes to serve other tables while the food cooks.
+
 ## Goal
 Detect synchronous EF Core query and save operations inside an `async` context when an async counterpart exists.
 

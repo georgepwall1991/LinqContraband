@@ -5,6 +5,11 @@ title: "Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent dat
 
 # Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss
 
+## In Plain Terms
+
+Imagine writing corrections on a photocopy and then asking the teacher to
+re-grade your exam. The teacher only re-reads the original exam, so your corrections are ignored.
+
 ## Goal
 Detect the chain `AsNoTracking origin → property or nested-member mutation → SaveChanges on the same context` when no persistence-enabling tracking operation intervenes. `Update` / `UpdateRange` or `Entry(entity).State = Modified | Added` can persist an existing mutation; `Attach` / `AttachRange` are sufficient only when guaranteed before the mutation. Otherwise EF Core silently persists nothing — no exception, no log — and callers typically spend hours debugging why their update "didn't stick".
 

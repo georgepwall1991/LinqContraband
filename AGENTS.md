@@ -1,6 +1,7 @@
 # LinqContraband — agent router
 
 Mac-wide automation: **`~/automation/AGENTS.md`** · jump: `gf` then `cd LinqContraband`
+Claude Code on the web: `.claude/CLAUDE.md` (the SessionStart hook installs .NET; repo skills live in `.claude/skills/`).
 
 Roslyn analyzer repo. Package: `LinqContraband` (NuGet). Health tracker: **`docs/analyzer-health.md`**.
 

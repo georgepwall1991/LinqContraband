@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -30,7 +31,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC031_UnboundedQueryMaterialization.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC031_UnboundedQueryMaterialization.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

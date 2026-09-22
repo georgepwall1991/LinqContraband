@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 
 namespace LinqContraband.Analyzers.LC002_PrematureMaterialization;
@@ -8,7 +9,7 @@ public sealed partial class PrematureMaterializationAnalyzer
     public const string DiagnosticId = "LC002";
     private const string Category = "Performance";
     private const string HelpLinkUri =
-        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC002_PrematureMaterialization.md";
+        RuleCatalog.DocumentationSiteUri + "LC002_PrematureMaterialization.html";
 
     internal const string DiagnosticKindKey = "DiagnosticKind";
     internal const string OriginKindKey = "OriginKind";

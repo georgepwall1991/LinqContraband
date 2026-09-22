@@ -75,8 +75,8 @@ public sealed class RuleQualityContractTests
 
         foreach (var rule in RuleCatalog.All)
         {
-            if (!readme.Contains($"### {rule.Id}:", StringComparison.Ordinal))
-                failures.Add($"README.md should contain a section for {rule.Id}.");
+            if (!readme.Contains($"| [{rule.Id}]({rule.HelpLinkUri}) |", StringComparison.Ordinal))
+                failures.Add($"README.md rule table should link {rule.Id} to {rule.HelpLinkUri}.");
         }
 
         var relativeDestinations = ExtractPotentialMarkdownDestinations(readme)

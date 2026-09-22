@@ -5,6 +5,12 @@ title: "LC023 - Use Find/FindAsync for Primary Key Lookups"
 
 # LC023 - Use Find/FindAsync for Primary Key Lookups
 
+## In Plain Terms
+
+Imagine you want to know if you have a blue shirt. `FirstOrDefault` is like
+driving to the store to buy a new one just to check. `Find` is like looking in your closet first. If it's in the closet,
+you save a trip!
+
 ## Goal
 
 Suggest `Find(...)` or `FindAsync(...)` when a query directly looks up a `DbSet` entity by its primary key with `FirstOrDefault`, `SingleOrDefault`, `FirstOrDefaultAsync`, or `SingleOrDefaultAsync`.

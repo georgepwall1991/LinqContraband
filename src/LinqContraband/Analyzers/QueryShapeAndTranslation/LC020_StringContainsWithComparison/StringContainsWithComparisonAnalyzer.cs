@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -24,7 +25,7 @@ public sealed partial class StringContainsWithComparisonAnalyzer : DiagnosticAna
         "Using StringComparison overloads in LINQ to Entities queries often leads to translation failures or client-side evaluation. Use the simple overload instead.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC020_StringContainsWithComparison.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC020_StringContainsWithComparison.html");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "Contains", "StartsWith", "EndsWith"

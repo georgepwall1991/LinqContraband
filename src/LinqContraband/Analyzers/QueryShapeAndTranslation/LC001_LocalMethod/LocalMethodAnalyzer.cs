@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Collections.Generic;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -67,7 +68,7 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC001_LocalMethod.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

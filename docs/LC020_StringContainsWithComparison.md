@@ -5,6 +5,12 @@ title: "Spec: LC020 - Avoid StringComparison overloads in query expressions"
 
 # Spec: LC020 - Avoid StringComparison overloads in query expressions
 
+## In Plain Terms
+
+Imagine asking a robot to find all red blocks in a giant bin. But you give
+the robot a very complicated rule: "Find blocks that are red, but only if they are the exact shade of 'Sunset Crimson'
+from a specific 1990s crayon box." The robot gets confused and just hands you the *entire* bin to sort yourself.
+
 ## Goal
 Detect `string.Contains(...)`, `StartsWith(...)`, and `EndsWith(...)` overloads that pass `StringComparison` inside `System.Linq.Queryable` expression lambdas. These overloads often cannot be translated by EF Core providers, or they translate with provider-specific semantics that do not match the requested .NET comparison.
 

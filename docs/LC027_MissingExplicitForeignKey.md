@@ -5,6 +5,12 @@ title: "LC027: Missing Explicit Foreign Key Property"
 
 # LC027: Missing Explicit Foreign Key Property
 
+## In Plain Terms
+
+Imagine you have a friend's phone number written on a secret sticky note
+hidden under your desk. When someone asks "What's your friend's number?", you have to crawl under the desk to find it.
+If you just wrote the number in your address book (an explicit FK), anyone could look it up instantly.
+
 ## What it flags
 
 Flags public reference navigation properties between `DbSet` entity types when the dependent entity does not expose a matching foreign-key property and the relationship is not otherwise configured.

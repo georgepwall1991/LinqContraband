@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -44,7 +45,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC045_MissingInclude.md"
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC045_MissingInclude.html"
     );
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>

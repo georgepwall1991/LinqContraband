@@ -1192,8 +1192,9 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
             if (initializer == null)
                 continue;
 
-            var initializerModel =
-                semanticModel.Compilation.GetSemanticModel(initializer.SyntaxTree);
+            if (!semanticModel.Compilation.TryGetOwnedSemanticModel(initializer.SyntaxTree, out var initializerModel))
+                continue;
+
             var initializerOperation =
                 initializerModel.GetOperation(initializer);
             if (initializerOperation != null &&
@@ -1228,8 +1229,10 @@ public sealed partial class ConcurrentDbContextOperationsAnalyzer
                 continue;
             }
 
-            var model = semanticModel.Compilation.GetSemanticModel(
-                typeDeclaration.SyntaxTree);
+            // A declaration owned by another project cannot be inspected: assume a write.
+            if (!semanticModel.Compilation.TryGetOwnedSemanticModel(typeDeclaration.SyntaxTree, out var model))
+                return true;
+
             foreach (var constructor in typeDeclaration.Members
                          .OfType<ConstructorDeclarationSyntax>())
             {

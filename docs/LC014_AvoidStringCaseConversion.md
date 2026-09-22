@@ -5,6 +5,12 @@ title: "Spec: LC014 - Avoid String Case Conversion in Queries"
 
 # Spec: LC014 - Avoid String Case Conversion in Queries
 
+## In Plain Terms
+
+Imagine looking for "John" in a phone book. If you look for "John", you can
+jump straight to 'J'. But if you decide to convert every single name in the book to lowercase first, you have to read
+*every single name* from A to Z to check if it matches "john".
+
 ## Goal
 Detect usage of `ToLower()` or `ToUpper()` on entity properties within LINQ queries.
 

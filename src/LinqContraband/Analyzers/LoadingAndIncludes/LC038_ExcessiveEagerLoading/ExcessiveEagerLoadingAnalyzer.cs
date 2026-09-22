@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -33,7 +34,7 @@ public sealed partial class ExcessiveEagerLoadingAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC038_ExcessiveEagerLoading.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC038_ExcessiveEagerLoading.html");
 
     private static readonly ImmutableHashSet<string> IncludeLikeMethods = ImmutableHashSet.Create(
         StringComparer.Ordinal,

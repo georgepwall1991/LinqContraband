@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -31,7 +32,7 @@ public sealed partial class NestedSaveChangesAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC039_NestedSaveChanges.md",
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC039_NestedSaveChanges.html",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     private static readonly ImmutableHashSet<string> SaveMethodNames = ImmutableHashSet.Create(

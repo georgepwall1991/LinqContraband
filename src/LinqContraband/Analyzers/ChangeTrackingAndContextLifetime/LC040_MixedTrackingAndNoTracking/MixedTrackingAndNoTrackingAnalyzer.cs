@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -31,7 +32,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC040_MixedTrackingAndNoTracking.md",
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC040_MixedTrackingAndNoTracking.html",
         customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     private static readonly ImmutableHashSet<string> MaterializerNames = ImmutableHashSet.Create(
