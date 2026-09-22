@@ -13,7 +13,7 @@
         <PackageReference Include="coverlet.collector" Version="10.0.1"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" Version="1.1.2"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0"/>
 
         <!-- The analyzer compiles against the Roslyn 4.3 API surface for broad consumer
              compatibility, but the tests host it on a current Roslyn so test sources can use
