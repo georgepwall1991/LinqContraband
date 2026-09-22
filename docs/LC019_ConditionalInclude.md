@@ -5,6 +5,12 @@ title: "LC019: Conditional Include Expression"
 
 # LC019: Conditional Include Expression
 
+## In Plain Terms
+
+Imagine you're at a restaurant and you tell the waiter "If it's Tuesday,
+bring me pizza; otherwise bring me pasta" — but this waiter only understands one order at a time. He gets confused and
+drops your plate on the floor every single time.
+
 ## What it flags
 
 Flags conditional logic embedded in EF Core Include paths because include graphs must stay shape-stable to translate reliably and remain predictable. This includes root-level ternary/null-coalescing expressions and conditional receivers inside a longer navigation path.

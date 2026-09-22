@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -33,7 +34,7 @@ public sealed partial class DbContextInSingletonAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC030_DbContextInSingleton.md",
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC030_DbContextInSingleton.html",
         customTags: WellKnownDiagnosticTags.CompilationEnd);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

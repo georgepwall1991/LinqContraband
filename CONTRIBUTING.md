@@ -77,11 +77,13 @@ Every rule is now governed by the central catalog in `src/LinqContraband/Catalog
 
 If a rule intentionally has no fixer, record the rationale in the catalog. `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforces this contract in CI.
 
-`docs/rule-catalog.md` is generated from `RuleCatalog`. Regenerate it locally with:
+`docs/rule-catalog.md` and the rule table in `README.md` are generated from `RuleCatalog`. Regenerate both locally with:
 ```bash
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
 ```
-CI runs the same tool with `--check` and fails if the checked-in file is stale.
+CI runs the same tool with `--check` and fails if either is stale.
+
+Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `RuleCatalog.DocumentationSiteUri` plus the docs page name, for example `RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html"`. The README is also the NuGet package readme, so keep rule write-ups in `docs/LCxxx_Name.md` rather than in the README.
 
 ### Quick Summary
 
@@ -130,7 +132,7 @@ Before submitting a PR, ensure:
 - [ ] New analyzers have both "crime" and "innocent" test cases
 - [ ] **If a change makes a new code shape report, that shape was added to the analyzer's fixer-coverage corpus in the same change.** For LC045 that is `MissingIncludeFixerCoverageContractTests`. Nothing enforces this mechanically, and it has been missed twice — a shape that reports but is never asked whether it has a compiling fix is how 5.7.28 shipped a code fix that produced uncompilable code.
 - [ ] Code follows existing patterns in the codebase
-- [ ] README/docs taxonomy are updated if adding a new analyzer
+- [ ] Rule docs page and generated rule catalog/README table are updated if adding a new analyzer
 - [ ] RuleCatalog entry was added or updated
 - [ ] Architecture integrity tests pass
 - [ ] Commit messages follow conventional format

@@ -5,6 +5,12 @@ title: "Spec: LC009 - Missing AsNoTracking in Read Path"
 
 # Spec: LC009 - Missing AsNoTracking in Read Path
 
+## In Plain Terms
+
+Imagine you go to a museum. You promise not to touch anything. But security
+guards still follow you and take high-resolution photos of every painting you look at, just in case you decide to draw a
+mustache on one. It wastes their time and memory.
+
 ## Goal
 Suggest using `AsNoTracking()` for queries that only read data and do not modify entities.
 

@@ -5,6 +5,12 @@ title: "LC001: Local Method Usage in IQueryable"
 
 # LC001: Local Method Usage in IQueryable
 
+## In Plain Terms
+
+Imagine hiring a translator to translate a book into Spanish, but you used
+made-up slang words they don't know. They can't finish the job, so they hand you the *entire* dictionary and say "You
+figure it out." You have to read the whole dictionary just to find one word.
+
 ## What It Flags
 
 LC001 reports source-defined helper methods inside translation-critical `IQueryable` lambdas when the helper depends on the query row.

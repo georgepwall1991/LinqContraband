@@ -56,6 +56,7 @@ public sealed class RuleCatalogEntry
         AnalyzerTypeName = analyzerTypeName;
         FixerTypeName = fixerTypeName;
         DocumentationPath = documentationPath;
+        HelpLinkUri = CreateHelpLinkUri(documentationPath);
         SamplePath = samplePath;
         AnalyzerSourcePath = analyzerSourcePath;
         HasCodeFix = hasCodeFix;
@@ -71,8 +72,18 @@ public sealed class RuleCatalogEntry
     public string AnalyzerTypeName { get; }
     public string? FixerTypeName { get; }
     public string DocumentationPath { get; }
+    public string HelpLinkUri { get; }
     public string SamplePath { get; }
     public string AnalyzerSourcePath { get; }
     public bool HasCodeFix { get; }
     public string? NoCodeFixRationale { get; }
+
+    private static string CreateHelpLinkUri(string documentationPath)
+    {
+        // docs/LC001_LocalMethod.md is published by the Pages site as LC001_LocalMethod.html.
+        var fileName = documentationPath.Substring(documentationPath.LastIndexOfAny(new[] { '/', '\\' }) + 1);
+        var extensionStart = fileName.LastIndexOf('.');
+        var pageName = extensionStart > 0 ? fileName.Substring(0, extensionStart) : fileName;
+        return RuleCatalog.DocumentationSiteUri + pageName + ".html";
+    }
 }

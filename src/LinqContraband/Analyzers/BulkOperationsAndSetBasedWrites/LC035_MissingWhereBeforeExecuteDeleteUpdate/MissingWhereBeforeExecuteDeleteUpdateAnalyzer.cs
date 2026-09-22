@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -27,7 +28,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : Diag
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC035_MissingWhereBeforeExecuteDeleteUpdate.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC035_MissingWhereBeforeExecuteDeleteUpdate.html");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "ExecuteDelete",

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -36,7 +37,7 @@ public sealed partial class AnyOverCountAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC003_AnyOverCount.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC003_AnyOverCount.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

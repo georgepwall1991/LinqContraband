@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -34,7 +35,7 @@ public sealed class IQueryableLeakAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC004_IQueryableLeak.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC004_IQueryableLeak.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

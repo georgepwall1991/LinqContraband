@@ -5,6 +5,12 @@ title: "Spec: LC045 - Missing Include: navigation accessed on materialized entit
 
 # Spec: LC045 - Missing Include: navigation accessed on materialized entity
 
+## In Plain Terms
+
+You ordered a burger but didn't ask for fries. Now either the kitchen makes
+a separate trip for every single fry you reach for (slow!), or there are simply no fries on your plate and you go
+hungry (null!).
+
 ## Goal
 Detect the canonical EF Core read-side bug: a DbSet-rooted query is materialized (`ToList`, `FirstOrDefault`, …), or synchronously enumerated directly with `foreach`, and a navigation property of the entity is then read without a matching `Include`/`ThenInclude` in the chain. With lazy-loading proxies the access can fire an extra query (the classic N+1); without lazy loading, and when explicit loading, `AutoInclude`, or relationship fix-up has not populated it, the navigation can remain `null` or empty. Both failure modes can ship invisibly and surface only as production slowness or missing data.
 

@@ -5,6 +5,12 @@ title: "Spec: LC015 - Ensure OrderBy Before Skip/Take"
 
 # Spec: LC015 - Ensure OrderBy Before Skip/Take
 
+## In Plain Terms
+
+Imagine a teacher asks you to "Skip the first 5 students and pick the next
+one." If the students are standing in a line, you know who to pick. But if they are running around the playground
+randomly, you have no idea who "the first 5" are, and you might pick a different person every time.
+
 ## Goal
 Detect usages of `Skip()`, `Take()`, `Last()`/`LastOrDefault()` (and their async `LastAsync()`/`LastOrDefaultAsync()` forms), `ElementAt()`/`ElementAtOrDefault()` (and async), or `Chunk()` on an `IQueryable` that has not been ordered. Without an explicit ordering, the database is free to return rows in any order, so pagination, positional access, "last item" lookups, and chunked enumeration become non-deterministic.
 

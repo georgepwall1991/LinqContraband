@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -32,7 +33,7 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC022_ToListInSelectProjection.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC022_ToListInSelectProjection.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

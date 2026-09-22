@@ -5,6 +5,11 @@ title: "Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Cac
 
 # Spec: LC033 - Use FrozenSet for Provably Read-Only Static Membership Caches
 
+## In Plain Terms
+
+Imagine you made a VIP guest list and then laminated it forever. You do not
+need an editable whiteboard anymore. A laminated list is faster to check and nobody can accidentally scribble on it.
+
 ## Goal
 Detect `private static readonly HashSet<T>` membership caches that can be safely converted to `FrozenSet<T>` on .NET 8+.
 

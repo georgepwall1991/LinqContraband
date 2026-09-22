@@ -5,6 +5,12 @@ title: "Spec: LC010 - SaveChanges inside Loop"
 
 # Spec: LC010 - SaveChanges inside Loop
 
+## In Plain Terms
+
+Imagine mailing 100 letters. Instead of putting them all in the mailbox at
+once, you put one in, wait for the mailman to pick it up, then put the next one in. It takes 100 days to mail your
+invites!
+
 ## Goal
 Detect usage of `SaveChanges()` or `SaveChangesAsync()` inside a loop.
 

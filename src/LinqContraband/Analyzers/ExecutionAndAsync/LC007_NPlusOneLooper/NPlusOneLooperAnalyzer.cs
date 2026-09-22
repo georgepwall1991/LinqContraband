@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -20,7 +21,7 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC007";
     private const string Category = "Performance";
-    private const string HelpLinkUri = "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC007_NPlusOneLooper.md";
+    private const string HelpLinkUri = RuleCatalog.DocumentationSiteUri + "LC007_NPlusOneLooper.html";
 
     private static readonly LocalizableString Title = "N+1 Problem: Database execution inside loop";
 

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -26,7 +27,7 @@ public sealed partial class DbContextCapturedAcrossThreadsAnalyzer : DiagnosticA
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC036_DbContextCapturedAcrossThreads.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC036_DbContextCapturedAcrossThreads.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

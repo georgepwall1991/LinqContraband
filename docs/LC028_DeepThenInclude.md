@@ -5,6 +5,12 @@ title: "LC028: Deep ThenInclude Chain"
 
 # LC028: Deep ThenInclude Chain
 
+## In Plain Terms
+
+Imagine asking your friend to bring their mom, who brings their grandma, who
+brings their great-grandma, who brings their great-great-grandma. At some point, the car is full and everyone is
+uncomfortable. It's better to just ask for the specific people you actually need.
+
 ## What it flags
 
 Flags EF Core `ThenInclude(...)` chains once they exceed the configured maximum depth. By default, LC028 allows three consecutive `ThenInclude(...)` calls after an `Include(...)` and reports the fourth call as the point where the query should be reviewed.

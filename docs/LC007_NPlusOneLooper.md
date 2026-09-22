@@ -5,6 +5,12 @@ title: "LC007: Database Execution Inside Loop"
 
 # LC007: Database Execution Inside Loop
 
+## In Plain Terms
+
+Imagine you need 10 eggs. You drive to the store, buy *one* egg, drive home.
+Drive back, buy *one* egg, drive home. You do this 10 times. You spend all day driving instead of just buying the carton
+at once.
+
 ## Goal
 Catch EF Core database execution that is provably performed once per loop iteration.
 

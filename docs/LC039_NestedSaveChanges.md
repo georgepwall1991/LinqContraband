@@ -5,6 +5,11 @@ title: "Spec: LC039 - Nested SaveChanges"
 
 # Spec: LC039 - Nested SaveChanges
 
+## In Plain Terms
+
+Imagine mailing each page of your homework in a separate envelope instead of
+sending one finished packet.
+
 ## Goal
 Detect repeated `SaveChanges()` / `SaveChangesAsync()` calls on the same context in one method scope.
 
