@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.9.0] - 2026-09-22
+
 ### Added
 - One-line severity presets. Set `<LinqContrabandPreset>` in a project file or `Directory.Build.props` to `security` (SQL injection rules LC018, LC034, and LC037 fail the build), `critical` (security plus the runtime-failure and data-loss rules LC013, LC019, LC036, LC044, LC046, LC047, and LC048), `strict` (warnings become errors, advisories become warnings), or `essentials` (advisory rules off). Presets combine with `;`, ship as global analyzer configs generated from the rule catalog, and yield to `.editorconfig` and user `.globalconfig` entries. An unknown preset name raises an `LCPRESET` build warning.
 - LC049 (Info, code fix) reports an EF Core `Include` / `ThenInclude` on a query whose `Select` projects the entity into scalars, DTOs, or anonymous types. EF Core ignores those includes, so they load nothing and mislead readers. The rule stays quiet when the projection can still return an entity (`o => o`, `new { Order = o }`, `o => o.Customer`, `new { o.Lines }`, `o.Lines.Select(l => l.Product)`, or an entity passed to a helper), after `AsEnumerable()`, and across shape-changing operators. The fixer removes the ignored `Include` together with its `ThenInclude` calls; Fix All clears every ignored include in a chain at once.
