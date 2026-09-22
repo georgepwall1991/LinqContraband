@@ -57,7 +57,27 @@ reviews C# source during compilation.
 
 ## Make Selected Rules Block Pull Requests
 
-Control diagnostic severity with `.editorconfig`. Start by promoting high-confidence security and query-cost rules:
+The quickest gate is a preset. Add one property to the project file, or to `Directory.Build.props` to cover a whole
+solution:
+
+```xml
+<PropertyGroup>
+  <LinqContrabandPreset>security</LinqContrabandPreset>
+</PropertyGroup>
+```
+
+| Preset | Effect |
+| --- | --- |
+| `security` | LC018, LC034, and LC037 (SQL injection through raw SQL) become build errors. |
+| `critical` | `security` plus LC013, LC019, LC036, LC044, LC046, LC047, and LC048 (runtime failures and silent data loss) become build errors. |
+| `strict` | Every warning rule becomes an error and every advisory rule becomes a warning. |
+| `essentials` | Advisory (Info) rules are turned off, so only the warnings remain. |
+
+Presets combine with `;` (`security;essentials`). They ship as global analyzer configs inside the package, so any
+`dotnet_diagnostic.LCxxx.severity` line in your `.editorconfig` still overrides them. An unknown preset name produces
+an `LCPRESET` build warning.
+
+For finer control, set severities in `.editorconfig`. Start by promoting high-confidence security and query-cost rules:
 
 ```ini
 [*.cs]
