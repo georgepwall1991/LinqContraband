@@ -122,6 +122,26 @@
             <h1>{{ page.title | default: site.title | escape }}</h1>
             <p>{{ page_description | escape }}</p>
           </header>
+          {% if is_rule_page %}
+            {% assign rule_id = page.name | slice: 0, 5 %}
+            {% assign rule_facts = site.data.rules | where: "id", rule_id | first %}
+            {% if rule_facts %}
+            <section class="rule-facts" aria-label="{{ rule_id }} at a glance">
+              <dl class="rule-facts__grid">
+                <div><dt>Default severity</dt><dd><span class="pill pill--{{ rule_facts.severity | downcase }}">{{ rule_facts.severity }}</span></dd></div>
+                <div><dt>Code fix</dt><dd>{% if rule_facts.code_fix %}<span class="pill pill--fix">Available</span>{% else %}<span class="pill pill--manual">Manual only</span>{% endif %}</dd></div>
+                <div><dt>Category</dt><dd>{{ rule_facts.category | escape }}</dd></div>
+                <div><dt>Domain</dt><dd><a href="{{ '/rule-catalog.html' | relative_url }}#{{ rule_facts.domain_anchor }}">{{ rule_facts.domain | escape }}</a></dd></div>
+              </dl>
+              <div class="rule-facts__config">
+                <p>Change the severity in <code>.editorconfig</code>:</p>
+                <pre><code>[*.cs]
+dotnet_diagnostic.{{ rule_id }}.severity = error</code></pre>
+                <p><a href="{{ rule_facts.sample_url }}">Sample code</a> · <a href="{{ rule_facts.source_url }}">Analyzer source</a></p>
+              </div>
+            </section>
+            {% endif %}
+          {% endif %}
           {{ content }}
           {% if is_rule_page %}
             {% assign rule_pages = site.pages | where_exp: "item", "item.name contains 'LC0'" | sort: "name" %}

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using LinqContraband.Catalog;
 
 const string ReadmeTableStartMarker = "<!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->";
@@ -9,6 +11,7 @@ const string WriteCommand = "dotnet run --project tools/RuleCatalogDocGenerator/
 var repoRoot = FindRepoRoot();
 var catalogPath = Path.Combine(repoRoot, "docs", "rule-catalog.md");
 var readmePath = Path.Combine(repoRoot, "README.md");
+var rulesDataPath = Path.Combine(repoRoot, "docs", "_data", "rules.json");
 
 var checkOnly = args.Contains("--check", StringComparer.Ordinal);
 var writeOnly = args.Contains("--write", StringComparer.Ordinal);
@@ -32,10 +35,14 @@ if (!TryReplaceReadmeRuleTable(currentReadme, GenerateReadmeRuleTable(), out var
     return 1;
 }
 
+var currentRulesData = File.Exists(rulesDataPath) ? NormalizeNewlines(File.ReadAllText(rulesDataPath)) : string.Empty;
+var generatedRulesData = GenerateRulesData();
+
 var outputs = new[]
 {
     (Path: catalogPath, Name: "docs/rule-catalog.md", Current: currentCatalog, Generated: generatedCatalog),
     (Path: readmePath, Name: "README.md rule table", Current: currentReadme, Generated: generatedReadme),
+    (Path: rulesDataPath, Name: "docs/_data/rules.json", Current: currentRulesData, Generated: generatedRulesData),
 };
 
 if (checkOnly)
@@ -47,12 +54,13 @@ if (checkOnly)
     if (stale.Length > 0)
         return 1;
 
-    Console.WriteLine("docs/rule-catalog.md and the README.md rule table are up to date.");
+    Console.WriteLine("docs/rule-catalog.md, docs/_data/rules.json and the README.md rule table are up to date.");
     return 0;
 }
 
 foreach (var output in outputs)
 {
+    Directory.CreateDirectory(Path.GetDirectoryName(output.Path)!);
     File.WriteAllText(output.Path, output.Generated, new UTF8Encoding(false));
     Console.WriteLine($"Wrote {output.Path}");
 }
@@ -176,6 +184,38 @@ static string GenerateReadmeRuleTable()
     }
 
     return NormalizeNewlines(builder.ToString());
+}
+
+static string GenerateRulesData()
+{
+    // Rule pages on the docs site read this file (site.data.rules) to show each rule's default
+    // severity, code-fix availability and configuration snippet straight from the catalog.
+    const string repositoryBlobUri = "https://github.com/georgepwall1991/LinqContraband/blob/master/";
+    const string repositoryTreeUri = "https://github.com/georgepwall1991/LinqContraband/tree/master/";
+
+    var rules = RuleCatalog.All
+        .OrderBy(rule => rule.Id, StringComparer.Ordinal)
+        .Select(rule => new Dictionary<string, object>
+        {
+            ["id"] = rule.Id,
+            ["title"] = rule.Title,
+            ["category"] = rule.Category,
+            ["domain"] = rule.Domain,
+            ["domain_anchor"] = ToToken(rule.Domain),
+            ["severity"] = rule.Severity.ToString(),
+            ["code_fix"] = rule.HasCodeFix,
+            ["sample_url"] = repositoryBlobUri + rule.SamplePath.Replace('\\', '/'),
+            ["source_url"] = repositoryTreeUri + rule.AnalyzerSourcePath.Replace('\\', '/'),
+        })
+        .ToArray();
+
+    var options = new JsonSerializerOptions
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    return NormalizeNewlines(JsonSerializer.Serialize(rules, options)) + "\n";
 }
 
 static bool TryReplaceReadmeRuleTable(string readme, string table, out string updated)

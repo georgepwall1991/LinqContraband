@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Every rule page on the documentation site now has its own search description, a consistent `LCxxx: Name` title, a Home / Rule catalog breadcrumb (also in its structured data), and previous/next rule links. A test keeps descriptions present, unique and sized for search results.
 - The documentation site has a 404 page (kept out of search indexes and the sitemap) that points back to the rule catalog and setup guide. The sitemap no longer stamps every page with the build date as its last-modified time.
+- Each rule page on the documentation site opens with a box showing the rule's default severity, whether a code fix exists, its category and domain, the `.editorconfig` line to change its severity, and links to its sample and analyzer source. The data comes from the rule catalog through a generated `docs/_data/rules.json`, which CI checks for staleness.
 
 ## [5.8.1] - 2026-09-22
 
