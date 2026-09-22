@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Every rule page on the documentation site now has its own search description, a consistent `LCxxx: Name` title, a Home / Rule catalog breadcrumb (also in its structured data), and previous/next rule links. A test keeps descriptions present, unique and sized for search results.
 - The documentation site has a 404 page (kept out of search indexes and the sitemap) that points back to the rule catalog and setup guide. The sitemap no longer stamps every page with the build date as its last-modified time.
+- LC018 and LC034 no longer double-report lines that EF Core's own analyzers already flag. EF Core 8+ reports interpolated SQL passed straight to `FromSqlRaw`, `SqlQueryRaw`, `ExecuteSqlRaw` and `ExecuteSqlRawAsync` as EF1002, and EF Core 10+ reports concatenated SQL there as EF1003, each with its own fix. LC018 and LC034 now stay quiet on exactly those calls and keep reporting what EF misses: concatenation on EF Core 8 and 9, reordered named `sql:` arguments, EF Core 7 and older, and non-relational providers such as Cosmos. Set `dotnet_code_quality.LC018.defer_to_ef_analyzers = false` (or `LC034`) if your build excludes EF Core's analyzers. LC037 does not overlap EF's analyzers and is unchanged.
+
+### Fixed
+- The LC018 code fix now rewrites `FromSqlRaw($"...")` to `FromSql($"...")` instead of `FromSqlInterpolated`, which EF Core 11 marks obsolete (CS0618, a build error under `TreatWarningsAsErrors`) and Cosmos never had. It checks what the rewritten call binds to, falls back to `FromSqlInterpolated` only on EF Core 6 and older, and offers no fix when the only candidate is obsolete or missing. The diagnostic message names the same API.
 
 ## [5.8.1] - 2026-09-22
 

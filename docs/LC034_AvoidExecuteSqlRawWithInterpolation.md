@@ -39,6 +39,18 @@ await db.Database.ExecuteSqlRawAsync(
     name);
 ```
 
+## Overlap with EF Core's own analyzers
+EF Core ships analyzers with the `Microsoft.EntityFrameworkCore` package. Since EF Core 8, **EF1002** reports an interpolated string passed straight to `ExecuteSqlRaw`/`ExecuteSqlRawAsync`, and since EF Core 10, **EF1003** reports a concatenated one. Both come with EF's own fix to `ExecuteSql`/`ExecuteSqlAsync`.
+
+LC034 does not add a second warning to those lines. It stays quiet when the call comes from `Microsoft.EntityFrameworkCore.Relational` 8.0 or later (10.0 or later for concatenation) and the SQL is the call's second positional argument, which is exactly what EF checks. LC034 still reports on EF Core 7 and older, concatenation on EF Core 8 and 9, and a reordered named argument such as `ExecuteSqlRaw(parameters: args, sql: $"... {id}")`, which EF's analyzer does not see.
+
+If your build excludes EF Core's analyzers or disables EF1002/EF1003, turn the deferral off so LC034 reports every call:
+
+```ini
+[*.cs]
+dotnet_code_quality.LC034.defer_to_ef_analyzers = false
+```
+
 ## Analyzer Logic
 
 ### ID: `LC034`
@@ -89,7 +101,7 @@ No-hole interpolated strings and constant-only interpolations stay quiet because
 
 ### Boundary Examples
 
-Direct `ExecuteSqlRaw` interpolation is `LC034`:
+Direct `ExecuteSqlRaw` interpolation is `LC034` (EF1002 instead on EF Core 8+):
 
 ```csharp
 await db.Database.ExecuteSqlRawAsync($"DELETE FROM Users WHERE Name = {name}");

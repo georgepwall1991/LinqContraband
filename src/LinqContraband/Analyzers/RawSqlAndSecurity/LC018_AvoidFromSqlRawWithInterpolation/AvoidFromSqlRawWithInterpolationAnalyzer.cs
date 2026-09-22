@@ -22,7 +22,7 @@ public sealed partial class AvoidFromSqlRawWithInterpolationAnalyzer : Diagnosti
         "Use '{0}' instead of '{1}' when using interpolated strings or non-constant concatenations to prevent SQL injection";
 
     private static readonly LocalizableString Description =
-        "Using interpolated strings with FromSqlRaw can lead to SQL injection. Use FromSqlInterpolated for safe parameterization.";
+        "Using interpolated strings with FromSqlRaw can lead to SQL injection. Use FromSql (FromSqlInterpolated before EF Core 7) or SqlQuery for safe parameterization.";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC018_AvoidFromSqlRawWithInterpolation.html");
@@ -56,13 +56,50 @@ public sealed partial class AvoidFromSqlRawWithInterpolationAnalyzer : Diagnosti
             !IsDatabaseFacade(receiverType))
             return;
 
-        var sqlArgument = invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == "sql")?.Value;
+        var sqlArgument = invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == "sql");
 
-        if (sqlArgument != null && IsPotentiallyUnsafe(sqlArgument))
+        if (sqlArgument == null || !IsPotentiallyUnsafe(sqlArgument.Value))
+            return;
+
+        // EF Core 8+ reports the same call as EF1002 (and EF Core 10+ the concatenation as EF1003),
+        // with its own FromSql/SqlQuery fix, so a second warning on the same line adds only noise.
+        if (EfCoreRawSqlAnalyzerOverlap.IsReportedByEfCoreAnalyzer(invocation, sqlArgument) &&
+            EfCoreRawSqlAnalyzerOverlap.DefersToEfCoreAnalyzers(context.Options, invocation.Syntax.SyntaxTree, DiagnosticId))
+            return;
+
+        var safeAlternative = method.Name == "SqlQueryRaw" ? "SqlQuery" : GetSafeFromSqlName(method);
+        context.ReportDiagnostic(Diagnostic.Create(Rule, sqlArgument.Value.Syntax.GetLocation(), safeAlternative, method.Name));
+    }
+
+    /// <summary>
+    /// The parameterizing sibling of <paramref name="fromSqlRaw"/> declared next to it: <c>FromSql</c>
+    /// (EF Core 7+, and the only one on Cosmos), else <c>FromSqlInterpolated</c>. Obsolete members are
+    /// skipped because EF Core 11 marks <c>FromSqlInterpolated</c> obsolete.
+    /// </summary>
+    internal static string GetSafeFromSqlName(IMethodSymbol fromSqlRaw)
+    {
+        var containingType = fromSqlRaw.ContainingType;
+        if (containingType is null)
+            return "FromSql";
+
+        if (HasFormattableSqlOverload(containingType, "FromSql"))
+            return "FromSql";
+
+        return HasFormattableSqlOverload(containingType, "FromSqlInterpolated") ? "FromSqlInterpolated" : "FromSql";
+    }
+
+    private static bool HasFormattableSqlOverload(INamedTypeSymbol containingType, string name)
+    {
+        foreach (var member in containingType.GetMembers(name))
         {
-            var safeAlternative = method.Name == "SqlQueryRaw" ? "SqlQuery" : "FromSqlInterpolated";
-            context.ReportDiagnostic(Diagnostic.Create(Rule, sqlArgument.Syntax.GetLocation(), safeAlternative, method.Name));
+            if (member is IMethodSymbol { Parameters.Length: >= 2 } candidate &&
+                candidate.Parameters[1].Type.Name == "FormattableString" &&
+                candidate.Parameters[1].Type.ContainingNamespace?.ToDisplayString() == "System" &&
+                !candidate.IsObsolete())
+                return true;
         }
+
+        return false;
     }
 
     private static bool IsDatabaseFacade(ITypeSymbol? type)
