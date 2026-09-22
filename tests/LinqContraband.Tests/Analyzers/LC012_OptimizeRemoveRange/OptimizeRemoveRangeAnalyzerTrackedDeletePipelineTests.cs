@@ -879,8 +879,10 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task RemoveRange_WithUnaryNotEqualsDeletedThenConvert_StillTriggers()
+    public async Task RemoveRange_WithUnaryNotEqualsDeletedThenConvert_ShouldNotTrigger()
     {
+        // `!(State != Deleted)` is a Deleted test (#468), so the pipeline converts deletes and
+        // ExecuteDelete would bypass it: LC012 must not suggest it.
         var test = Usings + @"
 namespace TestApp
 {
@@ -906,7 +908,7 @@ namespace TestApp
         {
             using var db = new AppDbContext();
             var usersToDelete = db.Users.Where(u => u.Id > 10);
-            {|LC012:db.Users.RemoveRange(usersToDelete)|};
+            db.Users.RemoveRange(usersToDelete);
         }
     }
 }" + PipelineMock;

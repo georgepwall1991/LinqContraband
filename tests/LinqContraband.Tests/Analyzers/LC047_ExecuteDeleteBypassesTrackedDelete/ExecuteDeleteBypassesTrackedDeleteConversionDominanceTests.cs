@@ -1614,8 +1614,9 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
         var guardIndex = source.LastIndexOf("dominatedEntries", recordIndex, StringComparison.Ordinal);
         Assert.True(guardIndex >= 0, "RecordAssignment must be dominated by a Deleted-state test on the same entry.");
 
-        var guardIndex = source.LastIndexOf("deletedDominates", recordIndex, StringComparison.Ordinal);
-        Assert.True(guardIndex >= 0, "RecordAssignment must be dominated by a Deleted-state test.");
+        // `deletedDominates` became the per-entry `dominatedEntries` set in #488.
+        var deletedGuardIndex = source.LastIndexOf("dominatedEntries", recordIndex, StringComparison.Ordinal);
+        Assert.True(deletedGuardIndex >= 0, "RecordAssignment must be dominated by a Deleted-state test.");
 
         var exitIndex = source.IndexOf("private static bool IsUnconditionalExit", StringComparison.Ordinal);
         Assert.True(exitIndex >= 0, "IsUnconditionalExit must remain the sequential-dominance exit classifier.");
@@ -2526,8 +2527,9 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
-    public async Task ExecuteDelete_WithUnaryNotEqualsDeletedThenConvert_ShouldNotTrigger()
+    public async Task ExecuteDelete_WithUnaryNotEqualsDeletedThenConvert_ShouldTrigger()
     {
+        // `!(State != Deleted)` is a Deleted test; #468 taught the scan to unwrap unary `!`.
         var test = App(@"
     public interface ISoftDelete { bool IsDeleted { get; set; } }
     public sealed class User : ISoftDelete
@@ -2557,7 +2559,7 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     {
         public void Run(AppDbContext db)
         {
-            var result = db.Users.ExecuteDelete();
+            var result = {|LC047:db.Users.ExecuteDelete()|};
         }
     }
 ");
@@ -2566,8 +2568,9 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     }
 
     [Fact]
-    public async Task ExecuteDelete_WithUnaryNotEqualsDeletedContinueThenConvert_ShouldNotTrigger()
+    public async Task ExecuteDelete_WithUnaryNotEqualsDeletedContinueThenConvert_ShouldTrigger()
     {
+        // `if (!(State == Deleted)) continue;` leaves only Deleted entries below it (#468).
         var test = App(@"
     public interface ISoftDelete { bool IsDeleted { get; set; } }
     public sealed class User : ISoftDelete
@@ -2596,7 +2599,7 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
     {
         public void Run(AppDbContext db)
         {
-            var result = db.Users.ExecuteDelete();
+            var result = {|LC047:db.Users.ExecuteDelete()|};
         }
     }
 ");

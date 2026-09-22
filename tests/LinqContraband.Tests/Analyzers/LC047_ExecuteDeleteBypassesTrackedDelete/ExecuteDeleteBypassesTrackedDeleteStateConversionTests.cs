@@ -111,8 +111,9 @@ public partial class ExecuteDeleteBypassesTrackedDeleteTests
             "IsEntityStateMember(assignment.Value, \"Unchanged\")",
             source,
             StringComparison.Ordinal);
+        // #488 replaced the coarse `deletedDominates` flag with per-entry `dominatedEntries`.
         var recordIndex = source.IndexOf(
-            "if (operation is IAssignmentOperation assignment && deletedDominates)",
+            "dominatedEntries.Contains(assignedEntry))",
             StringComparison.Ordinal);
         var unchangedIndex = source.IndexOf(
             "IsEntityStateMember(assignment.Value, \"Unchanged\")",

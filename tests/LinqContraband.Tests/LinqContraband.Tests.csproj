@@ -7,6 +7,9 @@
         <IsPackable>false</IsPackable>
         <LangVersion>latestmajor</LangVersion>
         <NoWarn>$(NoWarn);CS0618</NoWarn>
+        <!-- The inline test sources exceed the 16 MB #US metadata heap (CS8103). Emit long
+             string literals into a data section instead of the user-string heap. -->
+        <Features>$(Features);experimental-data-section-string-literals=100</Features>
     </PropertyGroup>
 
     <ItemGroup>
