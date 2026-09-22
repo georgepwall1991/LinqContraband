@@ -1,12 +1,26 @@
 name: Claude Code Review
 
-# Automated review of every ready-for-review PR by Claude (anthropics/claude-code-action).
+# Claude (anthropics/claude-code-action) reviews a pull request once, when it is opened or
+# marked ready for review. To keep usage low it does NOT re-review on every push, and it
+# skips drafts, docs-only changes and bot PRs (Dependabot, Cursor) except claude[bot].
+# For another pass later, add the `claude-review` label (remove and re-add to repeat), or
+# comment `@claude review this` (see claude.yml).
+#
 # Needs the Claude GitHub App on this repo and one repository secret:
-# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
-# Without either secret (including PRs from forks) the job skips instead of failing.
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`, uses your Claude subscription) or
+# ANTHROPIC_API_KEY (pay per use). Without either (including fork PRs) the job skips.
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, ready_for_review, labeled]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "tools/**"
+      - "samples/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "**/*.csproj"
+      - "**/*.props"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -17,8 +31,14 @@ permissions:
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'claude-review') ||
+      (github.event.action != 'labeled' &&
+       github.event.pull_request.draft == false &&
+       (github.event.pull_request.user.type != 'Bot' ||
+        github.event.pull_request.user.login == 'claude[bot]'))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -42,9 +62,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Claude-authored PRs (claude[bot]) should be reviewed too. Dependabot and fork
-          # PRs never see the secret above, so they skip at the first step instead.
-          allowed_bots: "*"
+          # Let claude[bot]-authored PRs through the action's bot check; other bot PRs are
+          # filtered out by the job condition above.
+          allowed_bots: "claude,claude[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -67,4 +87,6 @@ jobs:
             Put each finding as an inline comment on the relevant line, and finish with
             one short PR comment summarizing the review (or saying it found nothing).
           claude_args: |
+            --model sonnet
+            --max-turns 30
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
