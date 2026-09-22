@@ -12,6 +12,7 @@ dotnet test --no-build -f net10.0                                   # full suite
 dotnet test --no-build -f net10.0 --filter "FullyQualifiedName~LC044"
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check   # --write to regenerate docs/rule-catalog.md
 dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --frameworks net8.0 net9.0 net10.0
+python3 scripts/release_info.py check                               # csproj Version has a CHANGELOG section
 ```
 
 These are the same checks `.github/workflows/dotnet.yml` runs. Run them before every push instead of relying on CI to find failures. CI also fails if line coverage drops below 75%.
@@ -30,5 +31,5 @@ These are the same checks `.github/workflows/dotnet.yml` runs. Run them before e
 
 - One focused change per branch and PR, conventional commits (`feat(LC0xx):`, `fix(LC0xx):`, `docs:`, `chore:`, `ci:`), squash-merge to `master`.
 - Every behavior change gets an entry in `CHANGELOG.md`.
-- Releases follow the "Releasing" section of `CONTRIBUTING.md` when it exists. Otherwise, a `chore: release X.Y.Z` PR bumps `<Version>` and `<PackageReleaseNotes>` in the csproj, adds the CHANGELOG section, and updates the health doc's release metadata.
+- Releases follow the "Releasing" section of `CONTRIBUTING.md`: a `chore: release X.Y.Z` PR bumps `<Version>` and `<PackageReleaseNotes>`, turns `## [Unreleased]` into the version's CHANGELOG section, and updates the health doc's release metadata. `release.yml` then tags, creates the GitHub Release and publishes. Never create tags or releases by hand.
 - For analyzer hardening, use the `analyzer-hardening` skill.
