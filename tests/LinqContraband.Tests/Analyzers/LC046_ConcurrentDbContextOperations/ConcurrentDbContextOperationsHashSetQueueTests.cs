@@ -244,6 +244,228 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ForeachOverTwoElementArray_AddsEfTasksToHashSetAndQueueCollectionExpressions_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task HashSetExpression(AppDbContext db)
+        {
+            HashSet<Task> tasks = [];
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add({|#0:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task QueueExpression(AppDbContext db)
+        {
+            Queue<Task> tasks = [];
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue({|#1:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        var hashSet = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+        var queue = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, hashSet, queue);
+    }
+
+    [Fact]
+    public async Task ForeachOverTwoElementArray_ConditionallyAccumulatesEfTasksOnProvenHashSetAndQueue_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task HashSetAccess(AppDbContext db)
+        {
+            var tasks = new HashSet<Task>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks?.Add({|#0:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task QueueAccess(AppDbContext db)
+        {
+            var tasks = new Queue<Task>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks?.Enqueue({|#1:db.Users.AnyAsync()|});
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        var hashSet = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+        var queue = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, hashSet, queue);
+    }
+
+    [Fact]
+    public async Task ForeachOverTwoElementArray_AddsSafelyConvertedEfTasksToHashSetAndQueue_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void HashSetUpcast(AppDbContext db)
+        {
+            var tasks = new HashSet<Task>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add((Task){|#0:db.Users.AnyAsync()|});
+            }
+        }
+
+        public void QueueUpcast(AppDbContext db)
+        {
+            var tasks = new Queue<Task>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue((Task){|#1:db.Users.AnyAsync()|});
+            }
+        }
+    }
+}";
+
+        var hashSet = VerifyCS.Diagnostic()
+            .WithLocation(0)
+            .WithArguments("db");
+        var queue = VerifyCS.Diagnostic()
+            .WithLocation(1)
+            .WithArguments("db");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, hashSet, queue);
+    }
+
+    [Fact]
+    public async Task ForeachTaskHashSetQueue_WithCapacityComparerOrLookalikeAccumulators_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public async Task HashSetCapacity(AppDbContext db)
+        {
+            var tasks = new HashSet<Task>(16);
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task QueueCapacity(AppDbContext db)
+        {
+            var tasks = new Queue<Task>(16);
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task HashSetComparer(AppDbContext db)
+        {
+            var tasks = new HashSet<Task>(EqualityComparer<Task>.Default);
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task SortedSet(AppDbContext db)
+        {
+            var tasks = new SortedSet<Task>(Comparer<Task>.Create((_, _) => 0));
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task StackPush(AppDbContext db)
+        {
+            var tasks = new Stack<Task>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Push(db.Users.AnyAsync());
+            }
+
+            await Task.WhenAll(tasks);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public void LoopAccumulatorProof_AllowsHashSetAddAndQueueEnqueue()
     {
         var analysisPath = Path.Combine(
