@@ -526,5 +526,27 @@
     "code_fix": false,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC048_LostUpdateRisk/LostUpdateRiskSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC048_LostUpdateRisk"
+  },
+  {
+    "id": "LC049",
+    "title": "Include is ignored by a Select projection",
+    "category": "Performance",
+    "domain": "Loading & Includes",
+    "domain_anchor": "loading-includes",
+    "severity": "Info",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC049_IncludeIgnoredByProjection/IncludeIgnoredByProjectionSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/LoadingAndIncludes/LC049_IncludeIgnoredByProjection"
+  },
+  {
+    "id": "LC050",
+    "title": "OrderBy before Distinct is discarded",
+    "category": "Correctness",
+    "domain": "Query Shape & Translation",
+    "domain_anchor": "query-shape-translation",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC050_OrderByBeforeDistinct/OrderByBeforeDistinctSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC050_OrderByBeforeDistinct"
   }
 ]
