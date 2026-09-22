@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.8.1] - 2026-09-22
+
 ### Changed
 - Diagnostic help links now open each rule's page on the documentation site instead of the raw markdown file on GitHub.
 - The README (also the NuGet readme) is now a short landing page with a rule table generated from the rule catalog; full rule write-ups live on the per-rule docs pages, which gain an "In Plain Terms" section.
