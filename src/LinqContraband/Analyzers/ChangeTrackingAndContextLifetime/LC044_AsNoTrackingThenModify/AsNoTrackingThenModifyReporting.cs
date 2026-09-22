@@ -3074,6 +3074,17 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 current = current.Parent;
             }
 
+            // `Task.WhenAll(F())` / `new[] { F() }` places the call in an
+            // array initializer, not directly under the array creation.
+            if (current.Parent is IArrayInitializerOperation
+                {
+                    Parent: IArrayCreationOperation createdArray
+                })
+            {
+                current = createdArray;
+                continue;
+            }
+
             // `await task.ConfigureAwait(false)` awaits the invocation through
             // the configured-await wrapper: keep unwrapping to the await.
             if (current.Parent is IInvocationOperation wrapper &&
@@ -3141,15 +3152,69 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
                 continue;
             }
 
+            // `await Task.WhenAll([F()])` wraps the call in a collection expression.
+            // Compiled against Roslyn 4.3, so walk Kind rather than the 4.12+ interface.
+            if (TryGetCollectionExpressionCombinator(current, out var collectionCombinator))
+            {
+                if (collectionCombinator.TargetMethod.Name == "WaitAll")
+                    return collectionCombinator.Syntax.SpanStart < save.Syntax.SpanStart;
+
+                current = collectionCombinator;
+                continue;
+            }
+
             break;
 
         }
 
+        var stored = candidate.Parent;
+        while (stored is IConversionOperation or IParenthesizedOperation)
+            stored = stored.Parent;
+
         // `var t = F(); await t;` stores the task and completes it later.
-        if (candidate.Parent is IVariableDeclaratorOperation declarator &&
+        // The invocation's parent is the initializer, not the declarator.
+        var declared = stored is IVariableInitializerOperation ? stored.Parent : stored;
+        if (declared is IVariableDeclaratorOperation declarator &&
             ReferenceEquals(declarator.Initializer?.Value?.UnwrapConversions(), candidate))
         {
             return CompletesStoredTask(root, declarator.Symbol, save);
+        }
+
+        // `t = F(); await t;` assigns the task after a prior declaration.
+        if (stored is IAssignmentOperation assignment &&
+            ReferenceEquals(assignment.Value?.UnwrapConversions(), candidate) &&
+            assignment.Target?.UnwrapConversions() is ILocalReferenceOperation assigned)
+        {
+            return CompletesStoredTask(root, assigned.Local, save);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetCollectionExpressionCombinator(
+        IOperation current,
+        out IInvocationOperation combinator)
+    {
+        combinator = null!;
+        var ancestor = current.Parent;
+        for (var depth = 0; depth < 8 && ancestor != null; depth++, ancestor = ancestor.Parent)
+        {
+            if (ancestor.Kind.ToString() != "CollectionExpression")
+                continue;
+
+            var parent = ancestor.Parent;
+            while (parent is IConversionOperation or IParenthesizedOperation)
+                parent = parent.Parent;
+
+            if (parent is IArgumentOperation collectionArgument &&
+                collectionArgument.Parent is IInvocationOperation collectionCombinator &&
+                collectionCombinator.TargetMethod.Name is "WhenAll" or "WaitAll")
+            {
+                combinator = collectionCombinator;
+                return true;
+            }
+
+            return false;
         }
 
         return false;
@@ -3207,8 +3272,17 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
         if (current is ILocalReferenceOperation reference)
             return SymbolEqualityComparer.Default.Equals(reference.Local, local);
 
+        if (current is IInvocationOperation wrapper &&
+            wrapper.TargetMethod.Name is "ConfigureAwait" or "GetAwaiter")
+        {
+            return ReferencesLocal(wrapper.Instance, local);
+        }
+
         if (current is IArrayCreationOperation arrayCreation && arrayCreation.Initializer != null)
             return arrayCreation.Initializer.ElementValues.Any(element => ReferencesLocal(element, local));
+
+        if (current != null && current.Kind.ToString() == "CollectionExpression")
+            return current.ChildOperations.Any(child => ReferencesLocal(child, local));
 
         return false;
     }

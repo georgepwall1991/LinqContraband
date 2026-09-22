@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The README (also the NuGet readme) is now a short landing page with a rule table generated from the rule catalog; full rule write-ups live on the per-rule docs pages, which gain an "In Plain Terms" section.
 - Releases are automated: after a `chore: release X.Y.Z` PR merges and `master` is green, the `vX.Y.Z` tag and GitHub Release (notes from this changelog) are created automatically and the NuGet publish is dispatched. Publishing fails when the tag and csproj `Version` differ, uses NuGet Trusted Publishing instead of a long-lived API key, and CI checks that the csproj version has a changelog section. The README install snippet no longer hardcodes a version.
 
+### Fixed
+- LC044 now walks implicit `params` array initializers and variable initializers when proving async-helper completion, so post-await mutations completed by `Task.WhenAll`/`WaitAll` or store-then-await reach the caller's `SaveChanges`. Prefix-only pins from 5.8.0 hid those IOperation parents.
+- LC044 now treats assignment-store completion (`t = Helper(); await t` / `Wait` / `Result` / `WhenAll` / `WaitAll` / `GetResult`) and collection-expression combinators (`Task.WhenAll([Helper()])`) as completing an async helper before `SaveChanges`. Stored `await t.ConfigureAwait(false)` unwraps the configured-await wrapper. Prefix-only and declarator-only pins hid those IOperation parents.
+
 ## [5.8.0] - 2026-09-10
 
 ### Fixed
