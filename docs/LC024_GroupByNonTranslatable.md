@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC024: GroupBy with Non-Translatable Projection"
+description: "LC024 flags EF Core GroupBy queries that project values SQL cannot translate, which causes runtime errors or accidental client-side grouping."
 ---
 
 # LC024: GroupBy with Non-Translatable Projection

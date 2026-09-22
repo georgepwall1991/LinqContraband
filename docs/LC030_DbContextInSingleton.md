@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC030 - Review DbContext Lifetime Mismatches"
+title: "LC030: Review DbContext Lifetime Mismatches"
+description: "LC030 flags singletons and hosted services that store a DbContext, a lifetime mismatch that leads to threading errors and stale data. Use a factory."
 ---
 
-# Spec: LC030 - Review DbContext Lifetime Mismatches
+# LC030: Review DbContext Lifetime Mismatches
 
 ## In Plain Terms
 

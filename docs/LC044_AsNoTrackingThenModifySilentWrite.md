@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss"
+title: "LC044: AsNoTracking Query Mutated Then Saved"
+description: "LC044 detects entities loaded with AsNoTracking(), modified, then followed by SaveChanges, which silently saves nothing: data loss with no error."
 ---
 
-# Spec: LC044 - AsNoTracking query mutated then SaveChanges — silent data loss
+# LC044: AsNoTracking Query Mutated Then Saved
 
 ## In Plain Terms
 

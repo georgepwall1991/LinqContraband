@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC012 - Optimize Bulk Delete with ExecuteDelete"
+title: "LC012: Optimize Bulk Delete with ExecuteDelete"
+description: "LC012 suggests ExecuteDelete() instead of RemoveRange() for EF Core bulk deletes, removing rows in one SQL DELETE without loading them first."
 ---
 
-# Spec: LC012 - Optimize Bulk Delete with ExecuteDelete
+# LC012: Optimize Bulk Delete with ExecuteDelete
 
 ## In Plain Terms
 

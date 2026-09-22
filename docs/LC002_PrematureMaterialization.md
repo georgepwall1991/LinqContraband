@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC002: Premature Materialization"
+description: "LC002 catches ToList, ToArray or AsEnumerable before Where, Select or OrderBy, which moves EF Core query work out of SQL and into memory."
 ---
 
 # LC002: Premature Materialization

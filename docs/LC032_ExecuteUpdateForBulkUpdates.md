@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates"
+title: "LC032: Use ExecuteUpdate for Provable Bulk Scalar Updates"
+description: "LC032 detects loops that load EF Core entities only to set scalar properties and save, and suggests one set-based ExecuteUpdate() call instead."
 ---
 
-# Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates
+# LC032: Use ExecuteUpdate for Provable Bulk Scalar Updates
 
 ## In Plain Terms
 

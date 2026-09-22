@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC042 - Missing Query Tags"
+title: "LC042: Missing Query Tags"
+description: "LC042 flags complex EF Core queries without TagWith() or TagWithCallSite(), so the SQL they produce is hard to trace back to code in logs."
 ---
 
-# Spec: LC042 - Missing Query Tags
+# LC042: Missing Query Tags
 
 ## In Plain Terms
 

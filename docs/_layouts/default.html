@@ -38,7 +38,11 @@
   {"@context":"https://schema.org","@type":"TechArticle","headline":{{ page.title | jsonify }},"description":{{ page_description | jsonify }},"url":"{{ page.url | absolute_url }}","image":"{{ share_image }}","about":["Entity Framework Core","Roslyn analyzer","LINQ query performance"],"author":{"@type":"Person","name":"George Wall","url":"https://www.georgewall.uk/"}}
   </script>
   {% endif %}
-  {% if page.url != "/" and page.title %}
+  {% if is_rule_page %}
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"LinqContraband","item":"{{ '/' | absolute_url }}"},{"@type":"ListItem","position":2,"name":"Rule catalog","item":"{{ '/rule-catalog.html' | absolute_url }}"},{"@type":"ListItem","position":3,"name":{{ page.title | jsonify }},"item":"{{ page.url | absolute_url }}"}]}
+  </script>
+  {% elsif page.url != "/" and page.title %}
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"LinqContraband","item":"{{ '/' | absolute_url }}"},{"@type":"ListItem","position":2,"name":{{ page.title | jsonify }},"item":"{{ page.url | absolute_url }}"}]}
   </script>
@@ -93,6 +97,15 @@
         </aside>
         <article class="page-content markdown">
           <header class="page-hero">
+            {% if is_rule_page %}
+            <nav class="breadcrumbs" aria-label="Breadcrumb">
+              <a href="{{ '/' | relative_url }}">Home</a>
+              <span aria-hidden="true">/</span>
+              <a href="{{ '/rule-catalog.html' | relative_url }}">Rule catalog</a>
+              <span aria-hidden="true">/</span>
+              <span aria-current="page">{{ page.name | slice: 0, 5 }}</span>
+            </nav>
+            {% endif %}
             <p class="eyebrow">
               {% if is_rule_page %}
                 Analyzer rule
@@ -106,6 +119,26 @@
             <p>{{ page_description | escape }}</p>
           </header>
           {{ content }}
+          {% if is_rule_page %}
+            {% assign rule_pages = site.pages | where_exp: "item", "item.name contains 'LC0'" | sort: "name" %}
+            {% for rule in rule_pages %}
+              {% if rule.url == page.url %}
+                {% assign prev_index = forloop.index0 | minus: 1 %}
+                {% assign next_index = forloop.index0 | plus: 1 %}
+              {% endif %}
+            {% endfor %}
+            <nav class="rule-pager" aria-label="Adjacent rules">
+              {% if prev_index >= 0 %}
+                {% assign prev_rule = rule_pages[prev_index] %}
+                <a class="rule-pager__prev" href="{{ prev_rule.url | relative_url }}" rel="prev"><span>Previous rule</span>{{ prev_rule.title | escape }}</a>
+              {% endif %}
+              <a class="rule-pager__all" href="{{ '/rule-catalog.html' | relative_url }}">All rules</a>
+              {% if next_index < rule_pages.size %}
+                {% assign next_rule = rule_pages[next_index] %}
+                <a class="rule-pager__next" href="{{ next_rule.url | relative_url }}" rel="next"><span>Next rule</span>{{ next_rule.title | escape }}</a>
+              {% endif %}
+            </nav>
+          {% endif %}
         </article>
       </div>
     {% endif %}

@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC029 - Redundant Identity Select"
+title: "LC029: Redundant Identity Select"
+description: "LC029 flags Select(x => x) in LINQ and EF Core query chains. The identity projection does nothing and only adds noise to the expression tree."
 ---
 
-# Spec: LC029 - Redundant Identity Select
+# LC029: Redundant Identity Select
 
 ## In Plain Terms
 

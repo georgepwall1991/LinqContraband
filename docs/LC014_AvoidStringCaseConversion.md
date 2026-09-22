@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC014 - Avoid String Case Conversion in Queries"
+title: "LC014: Avoid String Case Conversion in Queries"
+description: "LC014 flags ToLower() and ToUpper() on entity properties in EF Core queries, which can stop the database using an index. Use a collation instead."
 ---
 
-# Spec: LC014 - Avoid String Case Conversion in Queries
+# LC014: Avoid String Case Conversion in Queries
 
 ## In Plain Terms
 

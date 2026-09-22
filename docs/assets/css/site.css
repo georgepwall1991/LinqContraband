@@ -440,6 +440,80 @@ a:hover {
   display: none;
 }
 
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.breadcrumbs a {
+  color: var(--teal-dark);
+}
+
+.rule-pager {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: stretch;
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.rule-pager a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.rule-pager a:hover,
+.rule-pager a:focus-visible {
+  border-color: var(--teal);
+}
+
+.rule-pager span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rule-pager__all {
+  justify-content: center;
+  grid-column: 2;
+}
+
+.rule-pager__prev {
+  grid-column: 1;
+}
+
+.rule-pager__next {
+  grid-column: 3;
+  text-align: right;
+}
+
+@media (max-width: 620px) {
+  .rule-pager {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-pager__prev,
+  .rule-pager__all,
+  .rule-pager__next {
+    grid-column: auto;
+    text-align: left;
+  }
+}
+
 .markdown h2 {
   margin-top: 42px;
   padding-top: 6px;

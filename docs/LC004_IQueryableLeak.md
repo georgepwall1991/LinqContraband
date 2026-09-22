@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC004 - IQueryable to IEnumerable Leak"
+title: "LC004: IQueryable to IEnumerable Leak"
+description: "LC004 detects an EF Core IQueryable passed as IEnumerable to a method that enumerates it, so filtering runs in memory instead of in SQL."
 ---
 
-# Spec: LC004 - IQueryable to IEnumerable Leak
+# LC004: IQueryable to IEnumerable Leak
 
 ## In Plain Terms
 

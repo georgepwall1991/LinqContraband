@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC026: Missing CancellationToken in Async Call"
+description: "LC026 flags EF Core async calls that omit an available CancellationToken, so cancelled requests keep running queries against the database."
 ---
 
 # LC026: Missing CancellationToken in Async Call

@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "Spec: LC040 - Mixed Tracking and No-Tracking"
+title: "LC040: Mixed Tracking and No-Tracking"
+description: "LC040 flags methods that mix tracked and AsNoTracking() queries on the same DbContext, which makes later update behavior hard to predict."
 ---
 
-# Spec: LC040 - Mixed Tracking and No-Tracking
+# LC040: Mixed Tracking and No-Tracking
 
 ## In Plain Terms
 

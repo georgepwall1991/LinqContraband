@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC017: Whole Entity Projection"
+description: "LC017 flags EF Core queries that load whole entities when only a few properties are used. Project with Select to fetch just the needed columns."
 ---
 
 # LC017: Whole Entity Projection

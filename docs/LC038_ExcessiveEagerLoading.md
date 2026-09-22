@@ -1,6 +1,7 @@
 ---
 layout: default
 title: "LC038: Excessive Eager Loading"
+description: "LC038 flags EF Core queries with more Include and ThenInclude steps than the configured threshold, which load oversized graphs in one query."
 ---
 
 # LC038: Excessive Eager Loading

@@ -1,9 +1,10 @@
 ---
 layout: default
-title: "LC007: Database Execution Inside Loop"
+title: "LC007: N+1 Database Execution Inside Loop"
+description: "LC007 finds EF Core N+1 queries: Find, ToList, Count and other database calls that provably run once per loop iteration instead of once."
 ---
 
-# LC007: Database Execution Inside Loop
+# LC007: N+1 Database Execution Inside Loop
 
 ## In Plain Terms
 
