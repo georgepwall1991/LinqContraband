@@ -5466,7 +5466,9 @@ internal static class LostUpdateFlowAnalysis
         foreach (var syntaxReference in method.DeclaringSyntaxReferences)
         {
             var syntax = syntaxReference.GetSyntax();
-            var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (!compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var model))
+                continue;
+
             var candidate = syntax switch
             {
                 MethodDeclarationSyntax methodSyntax => model.GetOperation(methodSyntax)
@@ -6315,7 +6317,9 @@ internal static class LostUpdateFlowAnalysis
         if (statement == null)
             return false;
 
-        var semanticModel = callerModel.Compilation.GetSemanticModel(accessor.SyntaxTree);
+        if (!callerModel.Compilation.TryGetOwnedSemanticModel(accessor.SyntaxTree, out var semanticModel))
+            return false;
+
         var operation = semanticModel.GetOperation(statement);
         if (operation is IExpressionStatementOperation expressionStatement)
             operation = expressionStatement.Operation;

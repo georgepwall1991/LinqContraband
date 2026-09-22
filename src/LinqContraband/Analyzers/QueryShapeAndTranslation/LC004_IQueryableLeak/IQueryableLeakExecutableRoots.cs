@@ -1,3 +1,4 @@
+using LinqContraband.Extensions;
 using System;
 using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
@@ -13,7 +14,9 @@ internal sealed partial class IQueryableLeakCompilationState
         foreach (var syntaxReference in method.DeclaringSyntaxReferences)
         {
             var syntax = syntaxReference.GetSyntax();
-            var semanticModel = _compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (!_compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var semanticModel))
+                continue;
+
 
             switch (syntax)
             {
