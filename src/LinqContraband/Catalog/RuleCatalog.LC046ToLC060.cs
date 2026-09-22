@@ -97,6 +97,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC051_ToAsyncEnumerableOnQuery",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC052",
+                slug: "LC052_NonDeterministicModelData",
+                title: "Model data uses a value that changes on every run",
+                category: "Reliability",
+                domain: "Schema & Modeling",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "NonDeterministicModelDataAnalyzer",
+                fixerTypeName: null,
+                documentationPath: "docs/LC052_NonDeterministicModelData.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC052_NonDeterministicModelData/NonDeterministicModelDataSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC052_NonDeterministicModelData",
+                hasCodeFix: false,
+                noCodeFixRationale: "No safe automated rewrite: a seed value needs a fixed literal only the author can choose, and a database-side default needs provider-specific SQL (GETUTCDATE(), now(), CURRENT_TIMESTAMP)."
             )
         );
     }

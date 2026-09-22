@@ -11,8 +11,8 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>51</strong><span>rules</span></div>
-    <div class="metric"><strong>32</strong><span>warnings</span></div>
+    <div class="metric"><strong>52</strong><span>rules</span></div>
+    <div class="metric"><strong>33</strong><span>warnings</span></div>
     <div class="metric"><strong>35</strong><span>code fixes</span></div>
   </div>
 </section>
@@ -761,6 +761,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC027_MissingExplicitForeignKey/</span>
+    </a>
+    <a class="rule-card" href="./LC052_NonDeterministicModelData.html" data-severity="warning" data-fix="false">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC052</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>Model data uses a value that changes on every run</h3>
+      <p class="rule-card__summary">Flags HasData and HasDefaultValue with DateTime.Now or Guid.NewGuid(), which change the EF Core model every run and make EF Core 9 Migrate() throw.</p>
+      <span class="rule-card__meta">
+        <span>Reliability</span>
+        <span class="pill pill--manual">Manual only</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC052_NonDeterministicModelData/</span>
     </a>
   </div>
 </section>

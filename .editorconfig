@@ -228,3 +228,6 @@ indent_size = 2
 
 # LC051: ToAsyncEnumerable On Query - System.Linq ToAsyncEnumerable() enumerates the EF Core query synchronously
 # dotnet_diagnostic.LC051.severity = warning
+
+# LC052: Non-Deterministic Model Data - HasData/HasDefaultValue with DateTime.Now or Guid.NewGuid() changes the model on every run
+# dotnet_diagnostic.LC052.severity = warning

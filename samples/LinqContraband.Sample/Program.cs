@@ -40,6 +40,7 @@ using LinqContraband.Sample.Samples.LC047_ExecuteDeleteBypassesTrackedDelete;
 using LinqContraband.Sample.Samples.LC049_IncludeIgnoredByProjection;
 using LinqContraband.Sample.Samples.LC050_OrderByBeforeDistinct;
 using LinqContraband.Sample.Samples.LC051_ToAsyncEnumerableOnQuery;
+using LinqContraband.Sample.Samples.LC052_NonDeterministicModelData;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -106,5 +107,6 @@ internal class Program
         IncludeIgnoredByProjectionSample.Run(db);
         OrderByBeforeDistinctSample.Run(db);
         await ToAsyncEnumerableOnQuerySample.RunAsync(db);
+        NonDeterministicModelDataSample.Run();
     }
 }
