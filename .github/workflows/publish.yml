@@ -1,8 +1,33 @@
 name: Publish to NuGet
 
+# Runs for every published GitHub Release: the ones release.yml creates (it dispatches
+# this workflow, because GITHUB_TOKEN-created releases do not fire `release: published`)
+# and any release created by hand.
+#
+# Publishing uses NuGet Trusted Publishing: NuGet/login exchanges this job's GitHub OIDC
+# token for a short-lived API key, so no long-lived NuGet key is stored in the repo.
+# One-time setup on nuget.org: add a Trusted Publishing policy for owner
+# georgepwall1991, repository LinqContraband, workflow file publish.yml (no environment),
+# and store the nuget.org profile name in the NUGET_USER repository secret.
+
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (vX.Y.Z); must equal v<csproj Version>"
+        required: true
+        type: string
+      force_publish:
+        description: "Skip the 12-hour publish cooldown"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -10,9 +35,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # NuGet Trusted Publishing (OIDC)
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
     - uses: actions/checkout@v7
-    
+      with:
+        ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+    # Refuse to ship a package whose version disagrees with the tag it is released under.
+    - name: Verify tag matches csproj Version
+      run: python3 scripts/release_info.py check --tag "$RELEASE_TAG"
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
@@ -48,6 +84,7 @@ jobs:
       id: nuget_cooldown
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        FORCE_PUBLISH: ${{ inputs.force_publish && 'true' || 'false' }}
       run: |
         python3 <<'PY'
         import json
@@ -74,19 +111,34 @@ jobs:
                 return None
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
+        repo = os.environ["GITHUB_REPOSITORY"]
+        current_tag = os.environ["RELEASE_TAG"]
+
         with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
             event = json.load(handle)
-        release_event = event.get("release") or {}
+        release_event = event.get("release")
+        if release_event is None:
+            # workflow_dispatch: look the release up by tag (it may not exist yet).
+            lookup = subprocess.run(
+                ["gh", "api", f"/repos/{repo}/releases/tags/{current_tag}"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            release_event = json.loads(lookup.stdout) if lookup.returncode == 0 else {}
         body = release_event.get("body") or ""
         current_id = str(release_event.get("id") or "")
-        current_tag = release_event.get("tag_name") or ""
+
+        if os.environ.get("FORCE_PUBLISH") == "true":
+            print("force_publish input set; continuing with NuGet pack/push")
+            write_skip_push(False)
+            sys.exit(0)
 
         if "force-publish" in body.lower():
             print("force-publish found in release body; continuing with NuGet pack/push")
             write_skip_push(False)
             sys.exit(0)
 
-        repo = os.environ["GITHUB_REPOSITORY"]
         endpoint = f"/repos/{repo}/releases?per_page=100"
         result = subprocess.run(
             ["gh", "api", "--paginate", "--slurp", endpoint],
@@ -134,7 +186,7 @@ jobs:
         age_text = format_age(age)
         if age < window:
             print(f"last release tag: {tag_name}, age: {age_text}")
-            print("skipped nuget push; add force-publish to the release body to override")
+            print("skipped nuget push; add force-publish to the release body, or re-run publish.yml with force_publish, to override")
             write_skip_push(True)
             sys.exit(0)
 
@@ -149,6 +201,25 @@ jobs:
       if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
       run: dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
       
+    - name: Require NUGET_USER for Trusted Publishing
+      if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
+      env:
+        NUGET_USER: ${{ secrets.NUGET_USER }}
+      run: |
+        if [ -z "$NUGET_USER" ]; then
+          echo "::error::Set the NUGET_USER repository secret to the nuget.org profile name that owns the Trusted Publishing policy."
+          exit 1
+        fi
+
+    - name: NuGet login (Trusted Publishing)
+      id: nuget_login
+      if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
+      uses: NuGet/login@v1
+      with:
+        user: ${{ secrets.NUGET_USER }}
+
     - name: Push to NuGet
       if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
-      run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
+      run: dotnet nuget push *.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Releases are automated: after a `chore: release X.Y.Z` PR merges and `master` is green, the `vX.Y.Z` tag and GitHub Release (notes from this changelog) are created automatically and the NuGet publish is dispatched. Publishing fails when the tag and csproj `Version` differ, uses NuGet Trusted Publishing instead of a long-lived API key, and CI checks that the csproj version has a changelog section. The README install snippet no longer hardcodes a version.
+
 ## [5.8.0] - 2026-09-10
 
 ### Fixed
