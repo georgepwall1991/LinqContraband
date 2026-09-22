@@ -481,4 +481,43 @@ namespace TestApp
         Assert.Contains("System.Collections.Generic.Queue`1", source, StringComparison.Ordinal);
         Assert.Contains("Enqueue", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task ForeachTaskHashSetQueue_WithNonThrowingAccumulatorIndex_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { }
+    public sealed class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; } = new DbSet<User>();
+    }
+
+    public sealed class Program
+    {
+        public void HashSet(AppDbContext db)
+        {
+            var tasks = new HashSet<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Add(db.Users.ElementAtAsync(tasks != null ? 0 : 1));
+            }
+        }
+
+        public void Queue(AppDbContext db)
+        {
+            var tasks = new Queue<Task<User>>();
+            foreach (var id in new[] { 1, 2 })
+            {
+                tasks.Enqueue(db.Users.ElementAtAsync(tasks != null ? 0 : 1));
+            }
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
