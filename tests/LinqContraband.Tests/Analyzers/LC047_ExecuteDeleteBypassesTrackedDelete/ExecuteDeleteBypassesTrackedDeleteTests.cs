@@ -145,6 +145,8 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TSource> AsNoTrackingWithIdentityResolution<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> TagWith<TSource>(this IQueryable<TSource> source, string tag) => source;
         public static IQueryable<TSource> Include<TSource, TProperty>(this IQueryable<TSource> source, Expression<Func<TSource, TProperty>> navigation) => source;
+
+        public static IQueryable<TSource> IgnoreQueryFilters<TSource>(this IQueryable<TSource> source) => source;
     }
 }
 
