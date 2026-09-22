@@ -34,3 +34,4 @@ These are the checks `.github/workflows/dotnet.yml` and `links.yml` run. Run the
 - Every behavior change gets an entry in `CHANGELOG.md`.
 - Releases follow the "Releasing" section of `CONTRIBUTING.md`: a `chore: release X.Y.Z` PR bumps `<Version>` and `<PackageReleaseNotes>`, turns `## [Unreleased]` into the version's CHANGELOG section, and updates the health doc's release metadata. `release.yml` then tags, creates the GitHub Release and publishes. Never create tags or releases by hand.
 - For analyzer hardening, use the `analyzer-hardening` skill.
+- `.github/workflows/claude-review.yml` reviews every ready-for-review PR once a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` secret exists. Treat its inline findings like any reviewer's.
