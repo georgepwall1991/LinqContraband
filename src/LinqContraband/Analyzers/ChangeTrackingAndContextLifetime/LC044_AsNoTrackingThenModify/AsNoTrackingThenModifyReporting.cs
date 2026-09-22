@@ -3167,23 +3167,20 @@ public sealed partial class AsNoTrackingThenModifyAnalyzer
 
         }
 
-        // `var t = F(); await t;` stores the task and completes it later.
-        // The invocation's parent is the initializer, not the declarator.
         var stored = candidate.Parent;
         while (stored is IConversionOperation or IParenthesizedOperation)
             stored = stored.Parent;
-        if (stored is IVariableInitializerOperation)
-            stored = stored.Parent;
-        if (stored is IVariableDeclaratorOperation declarator &&
+
+        // `var t = F(); await t;` stores the task and completes it later.
+        // The invocation's parent is the initializer, not the declarator.
+        var declared = stored is IVariableInitializerOperation ? stored.Parent : stored;
+        if (declared is IVariableDeclaratorOperation declarator &&
             ReferenceEquals(declarator.Initializer?.Value?.UnwrapConversions(), candidate))
         {
             return CompletesStoredTask(root, declarator.Symbol, save);
         }
 
         // `t = F(); await t;` assigns the task after a prior declaration.
-        var stored = candidate.Parent;
-        while (stored is IConversionOperation or IParenthesizedOperation)
-            stored = stored.Parent;
         if (stored is IAssignmentOperation assignment &&
             ReferenceEquals(assignment.Value?.UnwrapConversions(), candidate) &&
             assignment.Target?.UnwrapConversions() is ILocalReferenceOperation assigned)
