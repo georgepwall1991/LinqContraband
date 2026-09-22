@@ -197,7 +197,24 @@ Browse the same rules grouped by failure mode in the [rule catalog](https://geor
 
 ## Configuration
 
-Set any rule's severity in `.editorconfig`:
+Pick a preset with one line in your project file (or `Directory.Build.props`):
+
+```xml
+<PropertyGroup>
+  <LinqContrabandPreset>security</LinqContrabandPreset>
+</PropertyGroup>
+```
+
+| Preset | What it does |
+| --- | --- |
+| `security` | SQL injection rules (LC018, LC034, LC037) fail the build. |
+| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048) fail the build. |
+| `strict` | Every warning rule fails the build and every advisory rule becomes a warning. |
+| `essentials` | Advisory (Info) rules are turned off; warning rules keep their defaults. |
+
+Combine presets with `;`, for example `security;essentials`. Your own `.editorconfig` entries still win over a preset.
+
+Or set any rule's severity yourself in `.editorconfig`:
 
 ```ini
 [*.cs]
@@ -221,7 +238,8 @@ LinqContraband runs inside the normal `dotnet build`, so a CI job needs no datab
 - run: dotnet build --configuration Release --no-restore
 ```
 
-Promote the rules you want to block pull requests to `error` in `.editorconfig`. The
+Use the `security` or `critical` preset (see Configuration) to block pull requests on the rules that matter most, or
+promote individual rules to `error` in `.editorconfig`. The
 [CI guide](https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/) covers a gradual rollout.
 
 ## Contributing

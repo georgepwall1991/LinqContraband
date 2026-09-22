@@ -1,0 +1,56 @@
+# LinqContraband 'strict' preset: every warning rule is a build error and every advisory (Info) rule is a warning.
+# Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.
+# Enable it with <LinqContrabandPreset>strict</LinqContrabandPreset> in your project file.
+is_global = true
+global_level = -30
+
+dotnet_diagnostic.LC001.severity = error
+dotnet_diagnostic.LC002.severity = error
+dotnet_diagnostic.LC003.severity = error
+dotnet_diagnostic.LC004.severity = error
+dotnet_diagnostic.LC005.severity = error
+dotnet_diagnostic.LC006.severity = error
+dotnet_diagnostic.LC007.severity = error
+dotnet_diagnostic.LC008.severity = error
+dotnet_diagnostic.LC009.severity = warning
+dotnet_diagnostic.LC010.severity = error
+dotnet_diagnostic.LC011.severity = error
+dotnet_diagnostic.LC012.severity = error
+dotnet_diagnostic.LC013.severity = error
+dotnet_diagnostic.LC014.severity = error
+dotnet_diagnostic.LC015.severity = error
+dotnet_diagnostic.LC016.severity = error
+dotnet_diagnostic.LC017.severity = warning
+dotnet_diagnostic.LC018.severity = error
+dotnet_diagnostic.LC019.severity = error
+dotnet_diagnostic.LC020.severity = error
+dotnet_diagnostic.LC021.severity = error
+dotnet_diagnostic.LC022.severity = warning
+dotnet_diagnostic.LC023.severity = warning
+dotnet_diagnostic.LC024.severity = error
+dotnet_diagnostic.LC025.severity = error
+dotnet_diagnostic.LC026.severity = warning
+dotnet_diagnostic.LC027.severity = warning
+dotnet_diagnostic.LC028.severity = error
+dotnet_diagnostic.LC029.severity = warning
+dotnet_diagnostic.LC030.severity = warning
+dotnet_diagnostic.LC031.severity = warning
+dotnet_diagnostic.LC032.severity = warning
+dotnet_diagnostic.LC033.severity = warning
+dotnet_diagnostic.LC034.severity = error
+dotnet_diagnostic.LC035.severity = warning
+dotnet_diagnostic.LC036.severity = error
+dotnet_diagnostic.LC037.severity = error
+dotnet_diagnostic.LC038.severity = warning
+dotnet_diagnostic.LC039.severity = warning
+dotnet_diagnostic.LC040.severity = warning
+dotnet_diagnostic.LC041.severity = warning
+dotnet_diagnostic.LC042.severity = warning
+dotnet_diagnostic.LC043.severity = warning
+dotnet_diagnostic.LC044.severity = error
+dotnet_diagnostic.LC045.severity = error
+dotnet_diagnostic.LC046.severity = error
+dotnet_diagnostic.LC047.severity = error
+dotnet_diagnostic.LC048.severity = error
+dotnet_diagnostic.LC049.severity = warning
+dotnet_diagnostic.LC050.severity = error

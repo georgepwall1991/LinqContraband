@@ -1,0 +1,25 @@
+# LinqContraband 'essentials' preset: advisory (Info) rules are turned off; warning rules keep their defaults.
+# Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.
+# Enable it with <LinqContrabandPreset>essentials</LinqContrabandPreset> in your project file.
+is_global = true
+global_level = -40
+
+dotnet_diagnostic.LC009.severity = none
+dotnet_diagnostic.LC017.severity = none
+dotnet_diagnostic.LC022.severity = none
+dotnet_diagnostic.LC023.severity = none
+dotnet_diagnostic.LC026.severity = none
+dotnet_diagnostic.LC027.severity = none
+dotnet_diagnostic.LC029.severity = none
+dotnet_diagnostic.LC030.severity = none
+dotnet_diagnostic.LC031.severity = none
+dotnet_diagnostic.LC032.severity = none
+dotnet_diagnostic.LC033.severity = none
+dotnet_diagnostic.LC035.severity = none
+dotnet_diagnostic.LC038.severity = none
+dotnet_diagnostic.LC039.severity = none
+dotnet_diagnostic.LC040.severity = none
+dotnet_diagnostic.LC041.severity = none
+dotnet_diagnostic.LC042.severity = none
+dotnet_diagnostic.LC043.severity = none
+dotnet_diagnostic.LC049.severity = none

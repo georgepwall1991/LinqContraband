@@ -1,0 +1,16 @@
+# LinqContraband 'critical' preset: SQL injection, runtime-failure, and silent data-loss rules are build errors.
+# Generated from RuleCatalogPresets by tools/RuleCatalogDocGenerator; do not edit by hand.
+# Enable it with <LinqContrabandPreset>critical</LinqContrabandPreset> in your project file.
+is_global = true
+global_level = -20
+
+dotnet_diagnostic.LC013.severity = error
+dotnet_diagnostic.LC018.severity = error
+dotnet_diagnostic.LC019.severity = error
+dotnet_diagnostic.LC034.severity = error
+dotnet_diagnostic.LC036.severity = error
+dotnet_diagnostic.LC037.severity = error
+dotnet_diagnostic.LC044.severity = error
+dotnet_diagnostic.LC046.severity = error
+dotnet_diagnostic.LC047.severity = error
+dotnet_diagnostic.LC048.severity = error
