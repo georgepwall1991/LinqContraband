@@ -52,6 +52,36 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC048_LostUpdateRisk",
                 hasCodeFix: false,
                 noCodeFixRationale: "No safe automated rewrite: concurrency tokens, atomic updates, and explicit transactions have different schema, retry, transaction, and behavioral semantics."
+            ),
+            new RuleCatalogEntry(
+                id: "LC049",
+                slug: "LC049_IncludeIgnoredByProjection",
+                title: "Include is ignored by a Select projection",
+                category: "Performance",
+                domain: "Loading & Includes",
+                severity: DiagnosticSeverity.Info,
+                analyzerTypeName: "IncludeIgnoredByProjectionAnalyzer",
+                fixerTypeName: "IncludeIgnoredByProjectionFixer",
+                documentationPath: "docs/LC049_IncludeIgnoredByProjection.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC049_IncludeIgnoredByProjection/IncludeIgnoredByProjectionSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/LoadingAndIncludes/LC049_IncludeIgnoredByProjection",
+                hasCodeFix: true,
+                noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC050",
+                slug: "LC050_OrderByBeforeDistinct",
+                title: "OrderBy before Distinct is discarded",
+                category: "Correctness",
+                domain: "Query Shape & Translation",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "OrderByBeforeDistinctAnalyzer",
+                fixerTypeName: "OrderByBeforeDistinctFixer",
+                documentationPath: "docs/LC050_OrderByBeforeDistinct.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC050_OrderByBeforeDistinct/OrderByBeforeDistinctSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC050_OrderByBeforeDistinct",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

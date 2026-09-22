@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>48</strong><span>rules</span></div>
-    <div class="metric"><strong>30</strong><span>warnings</span></div>
-    <div class="metric"><strong>31</strong><span>code fixes</span></div>
+    <div class="metric"><strong>50</strong><span>rules</span></div>
+    <div class="metric"><strong>31</strong><span>warnings</span></div>
+    <div class="metric"><strong>33</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -352,6 +352,18 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC045_MissingInclude/</span>
     </a>
+    <a class="rule-card" href="./LC049_IncludeIgnoredByProjection.html">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC049</span>
+        <span class="pill pill--info">Info</span>
+      </span>
+      <h3>Include is ignored by a Select projection</h3>
+      <span class="rule-card__meta">
+        <span>Performance</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC049_IncludeIgnoredByProjection/</span>
+    </a>
   </div>
 </section>
 
@@ -573,6 +585,18 @@ body_class: page-rule-catalog
         <span class="pill pill--manual">Manual only</span>
       </span>
       <span class="rule-card__sample">Samples/LC024_GroupByNonTranslatable/</span>
+    </a>
+    <a class="rule-card" href="./LC050_OrderByBeforeDistinct.html">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC050</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>OrderBy before Distinct is discarded</h3>
+      <span class="rule-card__meta">
+        <span>Correctness</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC050_OrderByBeforeDistinct/</span>
     </a>
   </div>
 </section>

@@ -128,7 +128,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**48 rules**, 31 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**50 rules**, 33 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -180,6 +180,8 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC046](https://georgepwall1991.github.io/LinqContraband/LC046_ConcurrentDbContextOperations.html) | Concurrent EF Core operations on the same DbContext | Warning | Manual |
 | [LC047](https://georgepwall1991.github.io/LinqContraband/LC047_ExecuteDeleteBypassesTrackedDelete.html) | ExecuteDelete bypasses the tracked delete pipeline | Warning | Yes |
 | [LC048](https://georgepwall1991.github.io/LinqContraband/LC048_LostUpdateRisk.html) | Tracked update can overwrite a concurrent change | Warning | Manual |
+| [LC049](https://georgepwall1991.github.io/LinqContraband/LC049_IncludeIgnoredByProjection.html) | Include is ignored by a Select projection | Info | Yes |
+| [LC050](https://georgepwall1991.github.io/LinqContraband/LC050_OrderByBeforeDistinct.html) | OrderBy before Distinct is discarded | Warning | Yes |
 
 <!-- rule-table:end -->
 

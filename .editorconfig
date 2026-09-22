@@ -219,3 +219,9 @@ indent_size = 2
 
 # LC048: Lost Update Risk - Tracked read-modify-write can overwrite a concurrent change
 # dotnet_diagnostic.LC048.severity = warning
+
+# LC049: Include Ignored By Projection - Select projection makes EF Core drop the Include
+# dotnet_diagnostic.LC049.severity = info
+
+# LC050: OrderBy Before Distinct - SQL DISTINCT discards the earlier ORDER BY
+# dotnet_diagnostic.LC050.severity = warning

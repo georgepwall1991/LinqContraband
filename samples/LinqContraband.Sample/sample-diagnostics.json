@@ -474,6 +474,24 @@
       "ruleIds": [
         "LC048"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC049_IncludeIgnoredByProjection/IncludeIgnoredByProjectionSample.cs",
+      "samplePaths": [
+        "Samples/LC049_IncludeIgnoredByProjection/IncludeIgnoredByProjectionSample.cs"
+      ],
+      "ruleIds": [
+        "LC049"
+      ]
+    },
+    {
+      "diagnosticPath": "Samples/LC050_OrderByBeforeDistinct/OrderByBeforeDistinctSample.cs",
+      "samplePaths": [
+        "Samples/LC050_OrderByBeforeDistinct/OrderByBeforeDistinctSample.cs"
+      ],
+      "ruleIds": [
+        "LC050"
+      ]
     }
   ]
 }
