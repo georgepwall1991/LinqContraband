@@ -13,9 +13,10 @@ dotnet test --no-build -f net10.0 --filter "FullyQualifiedName~LC044"
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check   # --write to regenerate docs/rule-catalog.md
 dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --frameworks net8.0 net9.0 net10.0
 python3 scripts/release_info.py check                               # csproj Version has a CHANGELOG section
+scripts/check-links.sh _site      # docs + help-link check (links.yml); first: gem install github-pages && jekyll build -s docs -d _site/LinqContraband
 ```
 
-These are the same checks `.github/workflows/dotnet.yml` runs. Run them before every push instead of relying on CI to find failures. CI also fails if line coverage drops below 75%.
+These are the checks `.github/workflows/dotnet.yml` and `links.yml` run. Run them before every push instead of relying on CI to find failures. CI also fails if line coverage drops below 75%.
 
 ## Load-bearing facts
 
