@@ -34,7 +34,7 @@ Every rule now has to update the central catalog and keep all four mirrored surf
 If a rule intentionally has no code fix, add an explicit rationale in `RuleCatalog.cs`.
 The architecture tests in `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforce this contract in CI.
 
-`docs/rule-catalog.md`, the `README.md` rule table and `docs/_data/rules.json` are generated from `RuleCatalog`. After updating rule metadata, regenerate them with:
+`docs/rule-catalog.md`, the `README.md` rule table, `docs/_data/rules.json` and the `docs/llms.txt` rule list are generated from `RuleCatalog` and each rule page's `description` front matter. After updating rule metadata, regenerate them with:
 ```bash
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
 ```
