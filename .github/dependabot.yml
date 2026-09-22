@@ -12,6 +12,35 @@ updates:
       - "nuget"
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # The analyzer compiles against Roslyn 4.3.0 on purpose so it loads in
+      # older Visual Studio and .NET SDK hosts. The tests and doc generator pin
+      # their compiler version to match the rules they verify. Roslyn moves
+      # are deliberate, manual changes, never automatic bumps.
+      - dependency-name: "Microsoft.CodeAnalysis"
+      - dependency-name: "Microsoft.CodeAnalysis.Common"
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp.Workspaces"
+      - dependency-name: "Microsoft.CodeAnalysis.Workspaces.Common"
+      # The sample pins one EF Core major per target framework (net8/net9/net10).
+      # A major bump would move a TFM onto an EF version it cannot run.
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # One PR for all EF Core and Microsoft.Extensions patch/minor bumps.
+      ef-core:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Microsoft.Extensions.*"
+      # One PR for the test runner, SDK, coverage and analyzer-testing stack.
+      test-tooling:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+          - "Microsoft.CodeAnalysis.*.Testing*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -25,3 +54,8 @@ updates:
       - "github-actions"
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      # One PR per week for all workflow action bumps.
+      github-actions:
+        patterns:
+          - "*"
