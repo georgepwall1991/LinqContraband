@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Constants;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -38,7 +39,7 @@ public sealed partial class SyncBlockerAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC008_SyncBlocker.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC008_SyncBlocker.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

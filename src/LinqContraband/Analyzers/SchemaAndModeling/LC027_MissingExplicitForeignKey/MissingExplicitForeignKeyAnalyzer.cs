@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -32,7 +33,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer : DiagnosticAnalyz
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC027_MissingExplicitForeignKey.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC027_MissingExplicitForeignKey.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

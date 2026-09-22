@@ -5,6 +5,12 @@ title: "LC025 - Avoid AsNoTracking with Update/Remove"
 
 # LC025 - Avoid AsNoTracking with Update/Remove
 
+## In Plain Terms
+
+Imagine you check out a library book but tell the librarian, "I'm just going
+to look at the pictures." Then you go home and rewrite three chapters. When you return it, the librarian has to re-read
+the *entire* book to figure out what you changed.
+
 ## Goal
 Detect entities or materialized entity collections that come from an `AsNoTracking()` or `AsNoTrackingWithIdentityResolution()` query and are later passed to `DbContext.Update`, `DbSet.Update`, `DbContext.Remove`, `DbSet.Remove`, their `*Range` variants, or explicit `DbContext.Entry(entity).State = EntityState.Modified | Deleted` writes.
 

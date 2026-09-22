@@ -87,7 +87,9 @@ public sealed class DiscoverabilityMetadataTests
                      "## See it work",
                      "## 30-second path",
                      "## Feature snapshot",
-                     "## Rule Details",
+                     "## Rules",
+                     "## Configuration",
+                     "## Run it in CI",
                  })
         {
             Assert.Contains(section, readme, StringComparison.Ordinal);

@@ -2,8 +2,13 @@ using System.Net;
 using System.Text;
 using LinqContraband.Catalog;
 
+const string ReadmeTableStartMarker = "<!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->";
+const string ReadmeTableEndMarker = "<!-- rule-table:end -->";
+const string WriteCommand = "dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write";
+
 var repoRoot = FindRepoRoot();
-var outputPath = Path.Combine(repoRoot, "docs", "rule-catalog.md");
+var catalogPath = Path.Combine(repoRoot, "docs", "rule-catalog.md");
+var readmePath = Path.Combine(repoRoot, "README.md");
 
 var checkOnly = args.Contains("--check", StringComparer.Ordinal);
 var writeOnly = args.Contains("--write", StringComparer.Ordinal);
@@ -14,26 +19,44 @@ if (checkOnly && writeOnly)
     return 1;
 }
 
-var generated = GenerateMarkdown();
+// Compare with line endings normalized to LF: the generated text is canonical LF, but a
+// Windows (autocrlf) checkout stores the files with CRLF, so a raw byte comparison would
+// report a spurious "out of date" on Windows even when the content is identical.
+var currentCatalog = File.Exists(catalogPath) ? NormalizeNewlines(File.ReadAllText(catalogPath)) : string.Empty;
+var generatedCatalog = GenerateMarkdown();
+
+var currentReadme = NormalizeNewlines(File.ReadAllText(readmePath));
+if (!TryReplaceReadmeRuleTable(currentReadme, GenerateReadmeRuleTable(), out var generatedReadme))
+{
+    Console.Error.WriteLine($"{readmePath} must contain a single '{ReadmeTableStartMarker}' ... '{ReadmeTableEndMarker}' block.");
+    return 1;
+}
+
+var outputs = new[]
+{
+    (Path: catalogPath, Name: "docs/rule-catalog.md", Current: currentCatalog, Generated: generatedCatalog),
+    (Path: readmePath, Name: "README.md rule table", Current: currentReadme, Generated: generatedReadme),
+};
 
 if (checkOnly)
 {
-    // Compare with line endings normalized to LF: the generated text is canonical LF, but a
-    // Windows (autocrlf) checkout stores docs/rule-catalog.md with CRLF, so a raw byte comparison
-    // would report a spurious "out of date" on Windows even when the content is identical.
-    var current = File.Exists(outputPath) ? NormalizeNewlines(File.ReadAllText(outputPath)) : string.Empty;
-    if (!string.Equals(current, generated, StringComparison.Ordinal))
-    {
-        Console.Error.WriteLine($"{outputPath} is out of date. Run: dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write");
-        return 1;
-    }
+    var stale = outputs.Where(output => !string.Equals(output.Current, output.Generated, StringComparison.Ordinal)).ToArray();
+    foreach (var output in stale)
+        Console.Error.WriteLine($"{output.Name} is out of date. Run: {WriteCommand}");
 
-    Console.WriteLine("docs/rule-catalog.md is up to date.");
+    if (stale.Length > 0)
+        return 1;
+
+    Console.WriteLine("docs/rule-catalog.md and the README.md rule table are up to date.");
     return 0;
 }
 
-File.WriteAllText(outputPath, generated, new UTF8Encoding(false));
-Console.WriteLine($"Wrote {outputPath}");
+foreach (var output in outputs)
+{
+    File.WriteAllText(output.Path, output.Generated, new UTF8Encoding(false));
+    Console.WriteLine($"Wrote {output.Path}");
+}
+
 return 0;
 
 static string FindRepoRoot()
@@ -130,6 +153,52 @@ static string GenerateMarkdown()
     // StringBuilder.AppendLine emits Environment.NewLine (CRLF on Windows); normalize the whole
     // document to LF so generation is byte-identical on every platform and matches git.
     return NormalizeNewlines(builder.ToString());
+}
+
+static string GenerateReadmeRuleTable()
+{
+    // The README is also the NuGet package readme, so every link must be absolute.
+    var rules = RuleCatalog.All
+        .OrderBy(rule => rule.Id, StringComparer.Ordinal)
+        .ToArray();
+    var codeFixCount = rules.Count(rule => rule.HasCodeFix);
+
+    var builder = new StringBuilder();
+    builder.AppendLine($"**{rules.Length} rules**, {codeFixCount} with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.");
+    builder.AppendLine();
+    builder.AppendLine("| Rule | What it catches | Default severity | Code fix |");
+    builder.AppendLine("| --- | --- | --- | --- |");
+
+    foreach (var rule in rules)
+    {
+        var fixText = rule.HasCodeFix ? "Yes" : "Manual";
+        builder.AppendLine($"| [{rule.Id}]({rule.HelpLinkUri}) | {EscapeTableCell(rule.Title)} | {rule.Severity} | {fixText} |");
+    }
+
+    return NormalizeNewlines(builder.ToString());
+}
+
+static bool TryReplaceReadmeRuleTable(string readme, string table, out string updated)
+{
+    updated = readme;
+    var start = readme.IndexOf(ReadmeTableStartMarker, StringComparison.Ordinal);
+    var end = readme.IndexOf(ReadmeTableEndMarker, StringComparison.Ordinal);
+    if (start < 0 || end < start ||
+        readme.IndexOf(ReadmeTableStartMarker, start + 1, StringComparison.Ordinal) >= 0 ||
+        readme.IndexOf(ReadmeTableEndMarker, end + 1, StringComparison.Ordinal) >= 0)
+    {
+        return false;
+    }
+
+    var contentStart = start + ReadmeTableStartMarker.Length;
+    // Blank lines around the table keep the markers from merging into the table in any renderer.
+    updated = readme.Substring(0, contentStart) + "\n\n" + table + "\n" + readme.Substring(end);
+    return true;
+}
+
+static string EscapeTableCell(string value)
+{
+    return value.Replace("|", "\\|", StringComparison.Ordinal);
 }
 
 static string NormalizeNewlines(string value)

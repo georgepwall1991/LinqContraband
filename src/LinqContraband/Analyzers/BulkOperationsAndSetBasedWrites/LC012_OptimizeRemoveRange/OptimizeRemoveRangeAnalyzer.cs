@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Analyzers.LC047_ExecuteDeleteBypassesTrackedDelete;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -39,7 +40,7 @@ public sealed partial class OptimizeRemoveRangeAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC012_OptimizeRemoveRange.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC012_OptimizeRemoveRange.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

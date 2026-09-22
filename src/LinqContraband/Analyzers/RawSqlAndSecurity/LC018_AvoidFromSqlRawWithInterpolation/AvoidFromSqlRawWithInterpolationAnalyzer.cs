@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -24,7 +25,7 @@ public sealed partial class AvoidFromSqlRawWithInterpolationAnalyzer : Diagnosti
         "Using interpolated strings with FromSqlRaw can lead to SQL injection. Use FromSqlInterpolated for safe parameterization.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC018_AvoidFromSqlRawWithInterpolation.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC018_AvoidFromSqlRawWithInterpolation.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

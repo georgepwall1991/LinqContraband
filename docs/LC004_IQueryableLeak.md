@@ -5,6 +5,12 @@ title: "Spec: LC004 - IQueryable to IEnumerable Leak"
 
 # Spec: LC004 - IQueryable to IEnumerable Leak
 
+## In Plain Terms
+
+Imagine you have a coupon for "Build Your Own Burger". You give it to the
+chef, but instead of letting you choose toppings, he immediately hands you a plain burger and says "Too late, I already
+cooked it."
+
 ## Goal
 Detect when an `IQueryable` is passed to a method parameter of type `IEnumerable` and the callee is proven to force in-memory execution.
 

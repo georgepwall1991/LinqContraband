@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,7 +26,7 @@ public sealed partial class RedundantIdentitySelectAnalyzer : DiagnosticAnalyzer
         "Select(x => x) returns the object itself and is redundant. Removing it simplifies the query and improves readability.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC029_RedundantIdentitySelect.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC029_RedundantIdentitySelect.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

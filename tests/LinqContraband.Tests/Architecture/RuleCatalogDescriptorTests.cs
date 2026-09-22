@@ -117,7 +117,7 @@ public sealed class RuleCatalogDescriptorTests
             descriptor.Description.ToString()
         );
         Assert.Equal(
-            "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC048_LostUpdateRisk.md",
+            "https://georgepwall1991.github.io/LinqContraband/LC048_LostUpdateRisk.html",
             descriptor.HelpLinkUri
         );
     }
@@ -154,13 +154,11 @@ public sealed class RuleCatalogDescriptorTests
             Assert.Equal(rule.Category, descriptor.Category);
             Assert.Equal(rule.Severity, descriptor.DefaultSeverity);
 
-            var expectedHelpLink =
-                $"https://github.com/georgepwall1991/LinqContraband/blob/master/{rule.DocumentationPath}";
             Assert.True(
                 !string.IsNullOrWhiteSpace(descriptor.HelpLinkUri),
-                $"{rule.Id}: descriptor must declare a helpLinkUri pointing at {expectedHelpLink}."
+                $"{rule.Id}: descriptor must declare a helpLinkUri pointing at {rule.HelpLinkUri}."
             );
-            Assert.Equal(expectedHelpLink, descriptor.HelpLinkUri);
+            Assert.Equal(rule.HelpLinkUri, descriptor.HelpLinkUri);
         }
     }
 }

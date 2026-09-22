@@ -5,6 +5,12 @@ title: "Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates"
 
 # Spec: LC032 - Use ExecuteUpdate for Provable Bulk Scalar Updates
 
+## In Plain Terms
+
+Imagine you need to put the same sticker on 10,000 boxes. The slow way is
+opening every box, touching it, and closing it again. The fast way is using a big stamp machine that marks all matching
+boxes at once.
+
 ## Goal
 Detect tracked bulk-update loops that can be replaced with `ExecuteUpdate()` or `ExecuteUpdateAsync()`.
 

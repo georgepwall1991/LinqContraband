@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -33,7 +34,7 @@ public sealed partial class AsyncEnumerableBufferingAnalyzer : DiagnosticAnalyze
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC043_AsyncEnumerableBuffering.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC043_AsyncEnumerableBuffering.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

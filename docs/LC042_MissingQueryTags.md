@@ -5,6 +5,11 @@ title: "Spec: LC042 - Missing Query Tags"
 
 # Spec: LC042 - Missing Query Tags
 
+## In Plain Terms
+
+Imagine a giant pile of lunch boxes with no names on them. When something
+goes wrong, nobody knows which lunch belongs to whom.
+
 ## Goal
 Detect complex EF queries that lack `TagWith(...)` or `TagWithCallSite()`.
 

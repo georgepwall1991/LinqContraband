@@ -28,6 +28,72 @@ public sealed class RuleCatalogIntegrityTests
     }
 
     [Fact]
+    public void RuleCatalog_HelpLinksResolveToPublishedDocsSitePages()
+    {
+        var docsRoot = Path.Combine(_repoRoot, "docs");
+        var siteConfig = File.ReadAllLines(Path.Combine(docsRoot, "_config.yml"));
+        var siteUrl = ReadYamlScalar(siteConfig, "url");
+        var baseUrl = ReadYamlScalar(siteConfig, "baseurl");
+        var excluded = siteConfig
+            .SkipWhile(line => !line.StartsWith("exclude:", StringComparison.Ordinal))
+            .Skip(1)
+            .TakeWhile(line => line.StartsWith("  - ", StringComparison.Ordinal))
+            .Select(line => line.Substring(4).Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal($"{siteUrl}{baseUrl}/", RuleCatalog.DocumentationSiteUri);
+
+        var failures = new List<string>();
+        foreach (var rule in RuleCatalog.All)
+        {
+            if (!rule.HelpLinkUri.StartsWith(RuleCatalog.DocumentationSiteUri, StringComparison.Ordinal) ||
+                !rule.HelpLinkUri.EndsWith(".html", StringComparison.Ordinal))
+            {
+                failures.Add($"{rule.Id}: help link {rule.HelpLinkUri} is not a docs site page.");
+                continue;
+            }
+
+            // Jekyll publishes docs/<page>.md at <baseurl>/<page>.html unless the page is excluded
+            // or overrides its permalink, so the source file must sit at the docs root.
+            var pageName = rule.HelpLinkUri.Substring(RuleCatalog.DocumentationSiteUri.Length);
+            var sourceName = Path.ChangeExtension(pageName, ".md");
+            var sourcePath = Path.Combine(docsRoot, sourceName);
+
+            if (!string.Equals(rule.DocumentationPath, "docs/" + sourceName, StringComparison.Ordinal))
+                failures.Add($"{rule.Id}: help link page {pageName} does not match {rule.DocumentationPath}.");
+            if (!File.Exists(sourcePath))
+            {
+                failures.Add($"{rule.Id}: missing docs page source {sourcePath}.");
+                continue;
+            }
+
+            if (excluded.Contains(sourceName))
+                failures.Add($"{rule.Id}: {sourceName} is excluded from the docs site.");
+
+            var frontMatter = File.ReadLines(sourcePath)
+                .Skip(1)
+                .TakeWhile(line => line.Trim() != "---")
+                .ToArray();
+            if (File.ReadLines(sourcePath).FirstOrDefault()?.Trim() != "---" ||
+                !frontMatter.Any(line => line.StartsWith("title:", StringComparison.Ordinal)))
+            {
+                failures.Add($"{rule.Id}: {sourceName} needs front matter with a title so Pages renders it and lists it in the sitemap.");
+            }
+
+            if (frontMatter.Any(line => line.StartsWith("permalink:", StringComparison.Ordinal)))
+                failures.Add($"{rule.Id}: {sourceName} overrides its permalink, which would break the help link.");
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    private static string ReadYamlScalar(IEnumerable<string> lines, string key)
+    {
+        var line = lines.Single(candidate => candidate.StartsWith(key + ":", StringComparison.Ordinal));
+        return line.Substring(key.Length + 1).Trim().Trim('"');
+    }
+
+    [Fact]
     public void RuleCatalog_EntriesMatchRepositoryLayout()
     {
         var failures = new List<string>();

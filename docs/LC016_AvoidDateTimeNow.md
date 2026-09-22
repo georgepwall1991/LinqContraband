@@ -5,6 +5,12 @@ title: "Spec: LC016 - Avoid DateTime.Now in Queries"
 
 # Spec: LC016 - Avoid DateTime.Now in Queries
 
+## In Plain Terms
+
+Imagine baking a cake. If the recipe says "Bake for 30 minutes," you can use
+it every day. But if the recipe says "Bake until the clock shows exactly 4:03 PM on Tuesday," you can only use it once,
+and then you have to write a new recipe.
+
 ## Goal
 Detect usage of `DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.Now`, or `DateTimeOffset.UtcNow` directly inside LINQ queries.
 

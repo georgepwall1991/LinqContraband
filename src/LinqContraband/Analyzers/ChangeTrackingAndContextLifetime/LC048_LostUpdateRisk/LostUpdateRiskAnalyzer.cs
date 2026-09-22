@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -24,7 +25,7 @@ public sealed class LostUpdateRiskAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: "A tracked entity property is read and then written before SaveChanges. Configure an optimistic concurrency token or use an atomic database update to prevent lost updates.",
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC048_LostUpdateRisk.md"
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC048_LostUpdateRisk.html"
     );
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>

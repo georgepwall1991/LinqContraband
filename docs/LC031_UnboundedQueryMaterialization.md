@@ -5,6 +5,12 @@ title: "LC031: Unbounded Query Materialization"
 
 # LC031: Unbounded Query Materialization
 
+## In Plain Terms
+
+Imagine you go to a library and say "Give me every book." The librarian
+starts piling books onto a cart — thousands and thousands of them. Your arms break. You only needed the first 10! You
+should have said "Give me the first 10 books" instead.
+
 ## What it flags
 
 Flags materialization of an apparently unbounded query because loading an entire table or broad result set usually indicates missing filters, missing pagination, or an accidental scan.

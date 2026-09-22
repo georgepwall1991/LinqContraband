@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -23,7 +24,7 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnal
         "Find() first checks the local change tracker before hitting the database, which can be significantly faster if the entity is already loaded.";
 
     private static readonly DiagnosticDescriptor Rule = new(
-        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC023_FindInsteadOfFirstOrDefault.md");
+        DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Info, true, Description, helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC023_FindInsteadOfFirstOrDefault.html");
 
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "FirstOrDefault", "SingleOrDefault",

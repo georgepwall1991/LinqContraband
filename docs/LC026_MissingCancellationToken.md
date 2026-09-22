@@ -5,6 +5,13 @@ title: "LC026: Missing CancellationToken in Async Call"
 
 # LC026: Missing CancellationToken in Async Call
 
+## In Plain Terms
+
+Imagine you ask a robot to go get you a ball from a very far away field.
+Halfway there, you change your mind and shout "Stop!" If the robot isn't listening for your shout (no CancellationToken),
+it will walk all the way to the field, get the ball, and walk all the way back, even though you don't want it anymore.
+It’s a waste of the robot's battery!
+
 ## What It Flags
 
 LC026 reports EF Core async calls that can accept a `CancellationToken` but omit it, pass `default`, or pass `CancellationToken.None` while a usable token is available at the call site.

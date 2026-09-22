@@ -5,6 +5,12 @@ title: "Spec: LC005 - Multiple OrderBy Calls"
 
 # Spec: LC005 - Multiple OrderBy Calls
 
+## In Plain Terms
+
+Imagine telling someone to sort a deck of cards by Suit (Hearts, Spades...).
+As soon as they finish, you say "Actually, sort them by Number (2, 3, 4...) instead." They did all that work for the
+first sort for nothing because you changed the rules.
+
 ## Goal
 Detect usage of multiple `OrderBy` or `OrderByDescending` calls in a single query chain.
 

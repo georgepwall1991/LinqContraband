@@ -5,6 +5,11 @@ title: "Spec: LC040 - Mixed Tracking and No-Tracking"
 
 # Spec: LC040 - Mixed Tracking and No-Tracking
 
+## In Plain Terms
+
+Imagine half your soccer team is wearing jerseys with numbers and the other
+half is invisible. The coach cannot tell who is on the field anymore.
+
 ## Goal
 Detect methods that mix tracked and no-tracking materialization from the same `DbContext`.
 

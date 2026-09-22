@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -35,7 +36,7 @@ public sealed partial class ExecuteDeleteBypassesTrackedDeleteAnalyzer : Diagnos
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC047_ExecuteDeleteBypassesTrackedDelete.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC047_ExecuteDeleteBypassesTrackedDelete.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

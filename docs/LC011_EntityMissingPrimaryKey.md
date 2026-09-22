@@ -5,6 +5,11 @@ title: "Spec: LC011 - Entity Missing Primary Key"
 
 # Spec: LC011 - Entity Missing Primary Key
 
+## In Plain Terms
+
+Imagine a library where books have no titles or ISBN numbers. You ask for a
+book, but because there's no unique way to identify it, the librarian can't find it, or worse, gives you the wrong one.
+
 ## Goal
 
 Detect `DbSet<TEntity>` entity types that EF Core would treat as regular tracked entities but that have no primary key definition.

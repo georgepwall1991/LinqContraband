@@ -5,6 +5,12 @@ title: "Spec: LC012 - Optimize Bulk Delete with ExecuteDelete"
 
 # Spec: LC012 - Optimize Bulk Delete with ExecuteDelete
 
+## In Plain Terms
+
+Imagine you want to throw away a pile of old magazines. `RemoveRange` is like
+picking up each magazine, reading the cover, and then throwing it in the bin. `ExecuteDelete` is like dumping the whole
+box in the bin at once.
+
 ## Goal
 Suggest using `ExecuteDelete()` instead of `RemoveRange()` for bulk deletions.
 

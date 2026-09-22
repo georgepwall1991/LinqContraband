@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -31,7 +32,7 @@ public sealed partial class ExecuteUpdateForBulkUpdatesAnalyzer : DiagnosticAnal
         DiagnosticSeverity.Info,
         true,
         Description,
-        helpLinkUri: "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/LC032_ExecuteUpdateForBulkUpdates.md");
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC032_ExecuteUpdateForBulkUpdates.html");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

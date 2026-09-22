@@ -5,6 +5,12 @@ title: "LC017: Whole Entity Projection"
 
 # LC017: Whole Entity Projection
 
+## In Plain Terms
+
+Imagine you want to know your friend's phone number. Instead of asking for
+just the number, you ask them to recite their entire autobiography—name, address, favorite foods, every vacation
+they've ever taken. You only needed one fact, but you got a whole book.
+
 ## Overview
 
 **Diagnostic ID**: LC017

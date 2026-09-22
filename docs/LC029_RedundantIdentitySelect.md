@@ -5,6 +5,12 @@ title: "Spec: LC029 - Redundant Identity Select"
 
 # Spec: LC029 - Redundant Identity Select
 
+## In Plain Terms
+
+Imagine you ask a friend to go to the store and buy apples. But then you say,
+"And for every apple you find, make sure the apple you bring back is an apple." Your friend will look at you funny
+because they were already going to do that!
+
 ## Goal
 Detect usage of `Select(x => x)` on queryable or enumerable chains.
 
