@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.8.0</Version>
+        <Version>5.8.1</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LC048 detects tracked EF read-modify-write updates that can silently overwrite concurrent changes, while recognizing optimistic concurrency tokens, no-tracking queries, explicit transactions, atomic updates, and conservative same-context boundaries. LC044 hardens local-function lift persistence, async-helper completion, and entry-state modeling; LC046 lifts the helper arity cap and strengthens context-identity proofs; LC047 links Deleted-state dominance to the tested entry.</PackageReleaseNotes>
+        <PackageReleaseNotes>Analyzers no longer crash in the IDE (AD0001) when the DbContext, entity configuration, or a called helper lives in a referenced project: LC047 (and with it the LC012 tracked-delete gate) crashed at compilation start, and LC004, LC045, LC046, and LC048 had the same latent crash. LC044 now reports lost AsNoTracking mutations in async helpers completed through Task.WhenAll/WaitAll, stored tasks, and collection-expression combinators. Help links open the documentation site, and releases publish through NuGet Trusted Publishing.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
