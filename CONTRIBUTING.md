@@ -137,6 +137,16 @@ Before submitting a PR, ensure:
 - [ ] Architecture integrity tests pass
 - [ ] Commit messages follow conventional format
 
+## Releasing
+
+Releases are driven by the version in `src/LinqContraband/LinqContraband.csproj`:
+
+1. Open a `chore: release X.Y.Z` PR that bumps `<Version>` and `<PackageReleaseNotes>` and renames the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`. CI fails if the csproj version has no CHANGELOG section (`python3 scripts/release_info.py check`).
+2. Merge it. When **Build and Test** passes on `master`, `.github/workflows/release.yml` creates the annotated `vX.Y.Z` tag and a GitHub Release whose notes are that CHANGELOG section, then dispatches `.github/workflows/publish.yml`.
+3. `publish.yml` refuses to publish if the tag is not `v<csproj Version>`, runs the full build and tests, and pushes the package to NuGet with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (no stored API key).
+
+Do not create tags or releases by hand. Green `master` builds whose version is already released are a no-op. To retry a failed publish, run **Publish to NuGet** manually with the tag; tick `force_publish` to skip the 12-hour cooldown between releases.
+
 ## Code Style
 
 - We use `.editorconfig` for consistent formatting

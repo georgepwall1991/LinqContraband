@@ -1,0 +1,4 @@
+{
+  "name": "LinqContraband",
+  "install": "bash .cursor/install.sh"
+}
