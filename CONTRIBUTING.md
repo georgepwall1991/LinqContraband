@@ -77,12 +77,12 @@ Every rule is now governed by the central catalog in `src/LinqContraband/Catalog
 
 If a rule intentionally has no fixer, record the rationale in the catalog. `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforces this contract in CI.
 
-`docs/rule-catalog.md` and the rule table in `README.md` are generated from `RuleCatalog`. Regenerate both locally with:
+`docs/rule-catalog.md`, the rule table in `README.md`, and `docs/_data/rules.json` (the severity, code-fix and config box on each rule page) are generated from `RuleCatalog`. Regenerate them locally with:
 ```bash
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
 ```
 The same command regenerates the severity presets (`src/LinqContraband/build/presets/*.globalconfig` and `src/LinqContraband/build/LinqContraband.targets`) from `RuleCatalogPresets`, so a new rule joins `strict` (and `essentials`, if it is an Info rule) automatically.
-CI runs the same tool with `--check` and fails if any of these files is stale.
+CI runs the same tool with `--check` and fails if any of them is stale.
 
 Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `RuleCatalog.DocumentationSiteUri` plus the docs page name, for example `RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html"`. The README is also the NuGet package readme, so keep rule write-ups in `docs/LCxxx_Name.md` rather than in the README.
 
