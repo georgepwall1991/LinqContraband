@@ -94,7 +94,10 @@ public sealed class DiscoverabilityMetadataTests
         }
 
         Assert.Contains("PrivateAssets=\"all\"", readme, StringComparison.Ordinal);
-        Assert.Contains($"Version=\"{version}\"", readme, StringComparison.Ordinal);
+        // Install snippets must not pin the current version; they go stale on every release.
+        Assert.Contains("dotnet add package LinqContraband", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain($"Version=\"{version}\"", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain($"--version {version}", readme, StringComparison.Ordinal);
         Assert.Contains("LC001", readme, StringComparison.Ordinal);
         Assert.Contains("LC046", readme, StringComparison.Ordinal);
         Assert.Contains("LC047", readme, StringComparison.Ordinal);
