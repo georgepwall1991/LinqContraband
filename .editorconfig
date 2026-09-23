@@ -234,3 +234,6 @@ indent_size = 2
 
 # LC053: Overwritten Query Filter - a second unnamed HasQueryFilter replaces the first, silently dropping a tenant or soft-delete filter
 # dotnet_diagnostic.LC053.severity = warning
+
+# LC054: Migrate Inside Transaction - EF Core 9+ throws when Migrate runs in a user transaction
+# dotnet_diagnostic.LC054.severity = warning

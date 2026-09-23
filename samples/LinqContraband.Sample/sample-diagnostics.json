@@ -517,6 +517,15 @@
       "ruleIds": [
         "LC053"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC054_MigrateInsideTransaction/MigrateInsideTransactionSample.cs",
+      "samplePaths": [
+        "Samples/LC054_MigrateInsideTransaction/MigrateInsideTransactionSample.cs"
+      ],
+      "ruleIds": [
+        "LC054"
+      ]
     }
   ]
 }
