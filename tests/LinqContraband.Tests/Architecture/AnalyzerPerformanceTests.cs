@@ -42,10 +42,14 @@ public partial class AnalyzerPerformanceTests
     {
         var compilation = CreateCompilation(GenerateLc023MultiTreeStressSources());
 
-        await GetDiagnosticsWithinAsync(
+        var diagnostics = await GetDiagnosticsWithinAsync(
             new FindInsteadOfFirstOrDefaultAnalyzer(),
             compilation,
             AnalyzerTimeout);
+
+        // 162 trees, well past the old 64-tree cut-off: every configured-key lookup reports,
+        // including the ones whose HasKey lives in a different tree.
+        Assert.Equal(160, diagnostics.Count(diagnostic => diagnostic.Id == FindInsteadOfFirstOrDefaultAnalyzer.DiagnosticId));
     }
 
     [Fact]

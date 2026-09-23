@@ -42,7 +42,17 @@ namespace Microsoft.EntityFrameworkCore
     public class EntityTypeBuilder<TEntity> where TEntity : class
     {
         public void HasKey<TProperty>(Expression<Func<TEntity, TProperty>> keyExpression) { }
+        public EntityTypeBuilder<TEntity> HasNoKey() => this;
         public EntityTypeBuilder<TEntity> HasQueryFilter(Expression<Func<TEntity, bool>> filter) => this;
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class KeylessAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class PrimaryKeyAttribute : Attribute
+    {
+        public PrimaryKeyAttribute(string propertyName, params string[] additionalPropertyNames) { }
     }
 
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class

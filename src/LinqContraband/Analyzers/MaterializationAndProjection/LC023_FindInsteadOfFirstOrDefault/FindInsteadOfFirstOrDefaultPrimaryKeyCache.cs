@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
@@ -14,41 +15,42 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
     {
         private readonly object syncRoot = new();
         private readonly Compilation compilation;
-        private readonly bool allowFullScan;
-        private readonly bool useConventionFallbackWhenConfigurationUnknown;
         private readonly ConcurrentDictionary<ITypeSymbol, ConfiguredPrimaryKey> configuredPrimaryKeys =
             new(SymbolEqualityComparer.Default);
-        private readonly ConcurrentDictionary<SyntaxTree, byte> scannedTrees = new();
-        private bool fullyScanned;
 
-        internal PrimaryKeyCache(
-            Compilation compilation,
-            bool allowFullScan,
-            bool useConventionFallbackWhenConfigurationUnknown)
+        // Guarded by syncRoot. A tree is recorded only once its scan completed, so a scan
+        // cancelled halfway is redone rather than trusted.
+        private readonly HashSet<SyntaxTree> scannedTrees = new();
+        private volatile bool fullyScanned;
+
+        internal PrimaryKeyCache(Compilation compilation)
         {
             this.compilation = compilation;
-            this.allowFullScan = allowFullScan;
-            this.useConventionFallbackWhenConfigurationUnknown = useConventionFallbackWhenConfigurationUnknown;
         }
 
+        /// <summary>
+        /// The property Find would look up for <paramref name="entityType"/>, or null when it
+        /// cannot be proven. Fluent configuration anywhere in the compilation wins, then the
+        /// EF Core [Keyless]/[PrimaryKey] attributes, then [Key] and the Id/{Type}Id convention.
+        /// </summary>
         public string? TryFindSafePrimaryKey(ITypeSymbol entityType, CancellationToken cancellationToken)
         {
-            var configuredKey = TryGetConfiguredPrimaryKey(entityType, cancellationToken, out var primaryKey)
-                ? primaryKey
-                : ConfiguredPrimaryKey.NotConfigured;
+            EnsureFullyScanned(cancellationToken);
 
-            if (configuredKey.IsConfigured)
+            if (configuredPrimaryKeys.TryGetValue(entityType, out var configuredKey))
                 return configuredKey.PropertyName;
 
-            if (!useConventionFallbackWhenConfigurationUnknown)
-                return null;
+            var attributeKey = AnalyzeKeyAttributes(entityType);
+            if (attributeKey.IsConfigured)
+                return attributeKey.PropertyName;
 
             return entityType.TryFindPrimaryKey();
         }
 
         public void RegisterConfiguredPrimaryKey(IInvocationOperation invocation)
         {
-            if (invocation.TargetMethod.Name != "HasKey" ||
+            var methodName = invocation.TargetMethod.Name;
+            if (methodName is not ("HasKey" or "HasNoKey") ||
                 !TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType))
             {
                 return;
@@ -56,15 +58,17 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
 
             configuredPrimaryKeys.TryAdd(
                 entityType,
-                AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
+                methodName == "HasNoKey"
+                    ? ConfiguredPrimaryKey.Unsupported
+                    : AnalyzeKeyArgument(invocation.Arguments.FirstOrDefault()?.Value));
         }
 
-        public void EnsureSyntaxTreeScanned(
+        internal void ScanSyntaxTree(
             SyntaxTree syntaxTree,
             SemanticModel semanticModel,
             CancellationToken cancellationToken)
         {
-            if (!scannedTrees.TryAdd(syntaxTree, 0))
+            if (scannedTrees.Contains(syntaxTree))
                 return;
 
             var root = syntaxTree.GetRoot(cancellationToken);
@@ -73,7 +77,7 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (invocationSyntax.Expression is not MemberAccessExpressionSyntax memberAccess ||
-                    memberAccess.Name.Identifier.ValueText is not ("HasKey" or "HasQueryFilter"))
+                    memberAccess.Name.Identifier.ValueText is not ("HasKey" or "HasNoKey" or "HasQueryFilter"))
                 {
                     continue;
                 }
@@ -84,21 +88,8 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                     RegisterQueryFilter(invocation);
                 }
             }
-        }
 
-        private bool TryGetConfiguredPrimaryKey(
-            ITypeSymbol entityType,
-            CancellationToken cancellationToken,
-            out ConfiguredPrimaryKey primaryKey)
-        {
-            if (configuredPrimaryKeys.TryGetValue(entityType, out primaryKey))
-                return true;
-
-            if (!allowFullScan)
-                return false;
-
-            EnsureFullyScanned(cancellationToken);
-            return configuredPrimaryKeys.TryGetValue(entityType, out primaryKey);
+            scannedTrees.Add(syntaxTree);
         }
 
         private void EnsureFullyScanned(CancellationToken cancellationToken)
