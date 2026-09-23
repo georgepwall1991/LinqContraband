@@ -82,6 +82,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC050_OrderByBeforeDistinct",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC051",
+                slug: "LC051_ToAsyncEnumerableOnQuery",
+                title: "ToAsyncEnumerable() runs an EF Core query synchronously",
+                category: "Performance",
+                domain: "Execution & Async",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "ToAsyncEnumerableOnQueryAnalyzer",
+                fixerTypeName: "ToAsyncEnumerableOnQueryFixer",
+                documentationPath: "docs/LC051_ToAsyncEnumerableOnQuery.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC051_ToAsyncEnumerableOnQuery/ToAsyncEnumerableOnQuerySample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC051_ToAsyncEnumerableOnQuery",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

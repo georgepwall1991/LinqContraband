@@ -54,6 +54,7 @@ public async Task<List<User>> ActiveUsers(CancellationToken cancellationToken)
 | [LC026: missing CancellationToken](/LinqContraband/LC026_MissingCancellationToken.html) | Async EF Core calls that omit a token, pass `default`, or pass `CancellationToken.None` while a usable token is in scope. | Cancelled requests and stopping workers should not leave database queries running unnecessarily. See the [EF Core CancellationToken analyzer guide](/LinqContraband/ef-core-cancellation-token-analyzer/) for the focused rollout path. |
 | [LC043: async stream buffering](/LinqContraband/LC043_AsyncEnumerableBuffering.html) | Immediate `ToListAsync` or `ToArrayAsync` buffering of an `IAsyncEnumerable<T>` before a single loop. | Buffering loses the memory and latency benefits of streaming. |
 | [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html) | A second async EF Core operation starts before the first finishes on the same context, including proven `Task.WhenAll(...Select(...))` fan-out. | EF Core does not support parallel operations on one `DbContext`. |
+| [LC051: ToAsyncEnumerable on a query](/LinqContraband/LC051_ToAsyncEnumerableOnQuery.html) | `ToAsyncEnumerable()` from System.Linq.AsyncEnumerable called on an EF Core query. | It enumerates the query synchronously, blocking a thread per row; `AsAsyncEnumerable()` streams it asynchronously. |
 | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) | `SaveChanges` or `SaveChangesAsync` inside `for`, `foreach`, `while`, and related loop shapes. | Per-item commits create repeated transactions and partial-progress states. |
 
 ## Common Async EF Core Problems
@@ -156,6 +157,7 @@ dotnet_diagnostic.LC026.severity = suggestion
 dotnet_diagnostic.LC043.severity = suggestion
 dotnet_diagnostic.LC010.severity = warning
 dotnet_diagnostic.LC046.severity = warning
+dotnet_diagnostic.LC051.severity = warning
 ```
 
 Use the [EF Core query analyzer CI guide](/LinqContraband/ef-core-query-analyzer-ci/) to promote selected async rules

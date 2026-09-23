@@ -39,6 +39,7 @@ using LinqContraband.Sample.Samples.LC046_ConcurrentDbContextOperations;
 using LinqContraband.Sample.Samples.LC047_ExecuteDeleteBypassesTrackedDelete;
 using LinqContraband.Sample.Samples.LC049_IncludeIgnoredByProjection;
 using LinqContraband.Sample.Samples.LC050_OrderByBeforeDistinct;
+using LinqContraband.Sample.Samples.LC051_ToAsyncEnumerableOnQuery;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -104,5 +105,6 @@ internal class Program
         ExecuteDeleteBypassesTrackedDeleteSample.Run();
         IncludeIgnoredByProjectionSample.Run(db);
         OrderByBeforeDistinctSample.Run(db);
+        await ToAsyncEnumerableOnQuerySample.RunAsync(db);
     }
 }

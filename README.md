@@ -129,7 +129,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**50 rules**, 34 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**51 rules**, 35 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -183,6 +183,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC048](https://georgepwall1991.github.io/LinqContraband/LC048_LostUpdateRisk.html) | Tracked update can overwrite a concurrent change | Warning | Manual |
 | [LC049](https://georgepwall1991.github.io/LinqContraband/LC049_IncludeIgnoredByProjection.html) | Include is ignored by a Select projection | Info | Yes |
 | [LC050](https://georgepwall1991.github.io/LinqContraband/LC050_OrderByBeforeDistinct.html) | OrderBy before Distinct is discarded | Warning | Yes |
+| [LC051](https://georgepwall1991.github.io/LinqContraband/LC051_ToAsyncEnumerableOnQuery.html) | ToAsyncEnumerable() runs an EF Core query synchronously | Warning | Yes |
 
 <!-- rule-table:end -->
 

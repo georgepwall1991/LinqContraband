@@ -16,7 +16,7 @@ public sealed class RuleCatalogIntegrityTests
     {
         var rules = RuleCatalog.All;
 
-        Assert.Equal(50, rules.Length);
+        Assert.Equal(51, rules.Length);
         Assert.Equal(
             rules.Length,
             rules.Select(rule => rule.Id).Distinct(StringComparer.Ordinal).Count()
