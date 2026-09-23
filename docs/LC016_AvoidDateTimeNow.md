@@ -52,7 +52,7 @@ Modern EF Core providers differ in how they translate clock members, and capture
 
 ## Non-Goals
 
-LC016 only reports clock members inside `IQueryable` expressions. In-memory `IEnumerable` filtering is outside the rule because the expression is already running in process.
+LC016 only reports clock members inside `IQueryable` expressions. In-memory `IEnumerable` filtering is outside the rule because the expression is already running in process. The same goes for an `IQueryable` that provably wraps an in-memory collection, such as `list.AsQueryable()` or `new EnumerableQuery<T>(...)` in a unit test or fake repository. `AsQueryable()` over an `IEnumerable<T>`, an `IQueryable` parameter or a `DbSet` still reports.
 
 The fixer does not introduce an injected clock service, change `Now` to `UtcNow`, or rewrite the query to a provider-specific server-clock function. Those choices affect application architecture and time-zone semantics, so they remain manual.
 

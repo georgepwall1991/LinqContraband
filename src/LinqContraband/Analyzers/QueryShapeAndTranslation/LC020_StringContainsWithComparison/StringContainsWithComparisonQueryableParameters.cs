@@ -79,6 +79,8 @@ public sealed partial class StringContainsWithComparisonAnalyzer
             return false;
         }
 
-        return invocation.GetInvocationReceiverType().IsIQueryable();
+        // list.AsQueryable() runs on LINQ to Objects, which honours StringComparison.
+        var receiver = invocation.GetInvocationReceiver();
+        return receiver?.Type.IsIQueryable() == true && !receiver.IsProvablyInMemoryQueryable();
     }
 }

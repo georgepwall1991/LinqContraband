@@ -28,7 +28,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result = query.Where(x => x < {|LC016:DateTime.Now|}).ToList();
         }
     }
@@ -41,7 +41,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now = DateTime.Now;
             var result = query.Where(x => x < now).ToList();
         }
@@ -295,7 +295,7 @@ namespace LinqContraband.Test
 {
     public class TestClass
     {
-        private IQueryable<DateTime> query = new List<DateTime>().AsQueryable();
+        private IQueryable<DateTime> query = default(IQueryable<DateTime>);
 
         public IQueryable<DateTime> Recent =>
             query.Where(x => x < {|LC016:DateTime.Now|});
@@ -331,7 +331,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result = query.Where(x => x < {|LC016:DateTime.UtcNow|}).ToList();
         }
     }
@@ -344,7 +344,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now = DateTime.UtcNow;
             var result = query.Where(x => x < now).ToList();
         }
@@ -364,7 +364,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result = query.Where(static x => x < {|LC016:DateTime.Now|}).ToList();
         }
     }
@@ -383,7 +383,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod(DateTime now)
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result = query.Where(x => x < {|LC016:DateTime.Now|}).ToList();
         }
     }
@@ -396,7 +396,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod(DateTime now)
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now1 = DateTime.Now;
             var result = query.Where(x => x < now1).ToList();
         }
@@ -416,7 +416,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result = query.Where(x => x < {|LC016:DateTime.UtcNow|} && x > DateTime.UtcNow.AddDays(-1)).ToList();
         }
     }
@@ -429,7 +429,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now = DateTime.UtcNow;
             var result = query.Where(x => x < now && x > now.AddDays(-1)).ToList();
         }
@@ -449,13 +449,13 @@ namespace LinqContraband.Test
     {
         public void FirstMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result1 = query.Where(x => x < {|#0:DateTime.Now|}).ToList();
         }
 
         public void SecondMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var result2 = query.Where(x => x > {|#1:DateTime.Now|}).ToList();
         }
     }
@@ -468,14 +468,14 @@ namespace LinqContraband.Test
     {
         public void FirstMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now = DateTime.Now;
             var result1 = query.Where(x => x < now).ToList();
         }
 
         public void SecondMethod()
         {
-            var query = new List<DateTime>().AsQueryable();
+            var query = default(IQueryable<DateTime>);
             var now = DateTime.Now;
             var result2 = query.Where(x => x > now).ToList();
         }

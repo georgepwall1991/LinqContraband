@@ -95,6 +95,7 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
                     var materializerReceiver = invocation.GetInvocationReceiver();
 
                     if (receiverType.IsIQueryable() &&
+                        !selectInvocation.GetInvocationReceiver().IsProvablyInMemoryQueryable() &&
                         lambdaParameter != null &&
                         materializerReceiver != null &&
                         materializerReceiver.ReferencesParameter(lambdaParameter))
