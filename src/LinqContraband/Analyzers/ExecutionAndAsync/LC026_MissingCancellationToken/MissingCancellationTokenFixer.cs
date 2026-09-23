@@ -32,7 +32,7 @@ public sealed partial class MissingCancellationTokenFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var invocation = root.FindNode(diagnosticSpan, getInnermostNodeForTie: false) as InvocationExpressionSyntax;
+        var invocation = root.FindNode(diagnosticSpan, getInnermostNodeForTie: true) as InvocationExpressionSyntax;
         if (invocation == null) return;
 
         // Try to find a cancellation token in scope

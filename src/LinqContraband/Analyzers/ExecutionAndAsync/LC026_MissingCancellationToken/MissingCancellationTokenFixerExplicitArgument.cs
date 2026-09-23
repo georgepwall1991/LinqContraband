@@ -17,7 +17,11 @@ public sealed partial class MissingCancellationTokenFixer
 
         foreach (var argument in operation.Arguments)
         {
-            if (argument.Parameter is null ||
+            // An omitted optional token is an implicit argument whose syntax is the call itself, or
+            // the ArgumentSyntax around the call when the call is another method's argument.
+            // Only a token written in this call's own argument list can be replaced.
+            if (argument.ArgumentKind != ArgumentKind.Explicit ||
+                argument.Parameter is null ||
                 !IsCancellationTokenParameter(argument.Parameter) ||
                 argument.Syntax is not ArgumentSyntax syntax)
             {

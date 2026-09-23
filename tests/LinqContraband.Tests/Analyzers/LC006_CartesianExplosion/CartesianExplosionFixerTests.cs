@@ -411,4 +411,41 @@ class Program
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task FixCrime_IncludeChainAsMethodArgument_InjectsAsSplitQuery()
+    {
+        // The reported Include chain is the whole argument, so it shares its span with the ArgumentSyntax.
+        var test = Usings + @"
+class Program
+{
+    int Main()
+    {
+        var db = new DbContext();
+        return Count({|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|});
+    }
+
+    static int Count(IQueryable<User> users) => users.Count();
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    int Main()
+    {
+        var db = new DbContext();
+        return Count(db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles));
+    }
+
+    static int Count(IQueryable<User> users) => users.Count();
+}
+" + MockNamespace;
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        }.RunAsync();
+    }
 }

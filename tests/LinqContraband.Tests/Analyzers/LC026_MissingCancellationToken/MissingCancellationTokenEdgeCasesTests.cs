@@ -429,4 +429,46 @@ namespace LinqContraband.Test
 
         await VerifyFixWithExplicitNoneReportedAsync(test, fixedCode);
     }
+
+    [Fact]
+    public async Task CallAsMethodArgument_PassesTokenToTheReportedCall()
+    {
+        // The reported call is the whole argument, so it shares its span with the ArgumentSyntax.
+        // The token must go to ToListAsync, not to the Task.WhenAll call that receives it.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken ct)
+        {
+            await Task.WhenAll({|LC026:query.ToListAsync()|});
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public async Task TestMethod(DbSet<User> query, CancellationToken ct)
+        {
+            await Task.WhenAll(query.ToListAsync(ct));
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
 }

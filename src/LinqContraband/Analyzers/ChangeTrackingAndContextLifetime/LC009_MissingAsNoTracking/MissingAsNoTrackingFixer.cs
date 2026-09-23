@@ -35,7 +35,7 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
+        var invocation = root?.FindNode(diagnosticSpan, getInnermostNodeForTie: true) as InvocationExpressionSyntax;
         if (invocation == null) return;
 
         // The entities leave the method: a caller or callee may change and save them, and

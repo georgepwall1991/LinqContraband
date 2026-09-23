@@ -46,7 +46,7 @@ public sealed partial class PrematureMaterializationFixer : CodeFixProvider
 
         var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
         var invocation = root?
-            .FindNode(diagnostic.Location.SourceSpan)
+            .FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true)
             .FirstAncestorOrSelf<InvocationExpressionSyntax>();
 
         if (invocation == null) return;
