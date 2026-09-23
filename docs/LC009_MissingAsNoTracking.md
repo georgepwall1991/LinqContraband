@@ -55,6 +55,7 @@ One query gets one report. In `db.Orders.ToList().Where(o => o.Total > 1).ToList
 ### When it stays quiet (non-goals)
 - The query already opts a tracking mode in: `AsNoTracking()`, `AsNoTrackingWithIdentityResolution()`, or an explicit `AsTracking()`.
 - The query contains a `Select(...)` projection — a projection to a non-entity shape is not tracked anyway.
+- A helper reshapes the query into something that is not an entity, such as AutoMapper's `ProjectTo<OrderDto>()` or an extension method returning `IQueryable<int>` of IDs. EF Core does not track DTOs or scalars. A helper that still returns entities keeps the report: the root entity, a type derived from it (`OfType<PriorityOrder>()`), a base class or interface it implements (`Cast<IAuditable>()`), a type the root entity has as a navigation, an entity the context exposes as a `DbSet`, groupings of those, and anonymous types, which may carry entities.
 - The enclosing method returns `IQueryable<T>` (deferred execution — the caller owns the tracking decision).
 - The source is an `IQueryable<T>`/`DbSet<T>` **parameter or local** (ambiguous origin — the caller may use it for writes).
 - A write is detected in the same executable body (`SaveChanges`/`SaveChangesAsync`, or `Add`/`AddRange`/`Update`/`Remove`/`RemoveRange` on a `DbSet`/`DbContext`).

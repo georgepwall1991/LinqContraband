@@ -1,3 +1,4 @@
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -38,6 +39,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (prevInvocation.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.MaterializesNonEntity = MaterializesNonEntity(invocation, prevInvocation.Type, prevInvocation.Instance?.Type);
                         return result;
                     }
 
@@ -47,12 +49,18 @@ public sealed partial class MissingAsNoTrackingAnalyzer
 
                 case IPropertyReferenceOperation propRef:
                     if (propRef.Type.IsDbSet())
+                    {
                         result.IsEfQuery = true;
+                        result.MaterializesNonEntity = MaterializesNonEntity(invocation, propRef.Type, propRef.Instance?.Type);
+                    }
                     return result;
 
                 case IFieldReferenceOperation fieldRef:
                     if (fieldRef.Type.IsDbSet())
+                    {
                         result.IsEfQuery = true;
+                        result.MaterializesNonEntity = MaterializesNonEntity(invocation, fieldRef.Type, fieldRef.Instance?.Type);
+                    }
                     return result;
 
                 case IParameterReferenceOperation paramRef:
@@ -67,7 +75,10 @@ public sealed partial class MissingAsNoTrackingAnalyzer
 
                 default:
                     if (current.Type.IsDbSet())
+                    {
                         result.IsEfQuery = true;
+                        result.MaterializesNonEntity = MaterializesNonEntity(invocation, current.Type, null);
+                    }
                     else if (current.Type.IsIQueryable())
                         result.IsAmbiguousSource = true;
                     return result;
@@ -75,5 +86,95 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         }
 
         return result;
+    }
+
+    // The materializer's element type is an entity when it is the root DbSet's entity, a type
+    // derived from it (OfType<Derived>()), a navigation of the root entity or another entity the
+    // context exposes as a DbSet (SelectMany(o => o.Lines)). Groupings are judged by their
+    // elements and anonymous types (Join result selectors) may carry entities, so both keep
+    // reporting. Anything else, a DTO or a scalar, is not tracked.
+    private static bool MaterializesNonEntity(IInvocationOperation materializer, ITypeSymbol? dbSetType, ITypeSymbol? contextType)
+    {
+        if (dbSetType is not INamedTypeSymbol { TypeArguments.Length: 1 } dbSet)
+            return false;
+
+        var source = materializer.GetInvocationReceiver()?.UnwrapConversions();
+        if (source?.Type == null || !IncludePathParser.TryGetCollectionElementType(source.Type, out var elementType))
+            return false;
+
+        if (elementType is INamedTypeSymbol { Name: "IGrouping", TypeArguments.Length: 2 } grouping)
+            elementType = grouping.TypeArguments[1];
+
+        if (elementType.TypeKind is TypeKind.TypeParameter or TypeKind.Error || elementType.IsAnonymousType)
+            return false;
+
+        var rootEntity = dbSet.TypeArguments[0];
+        for (var type = elementType; type != null; type = type.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(type, rootEntity))
+                return false;
+        }
+
+        // Cast<IAuditable>() or Cast<EntityBase>() still returns the tracked entities.
+        for (var type = rootEntity.BaseType; type != null; type = type.BaseType)
+        {
+            if (type.SpecialType != SpecialType.System_Object && SymbolEqualityComparer.Default.Equals(type, elementType))
+                return false;
+        }
+
+        if (rootEntity.AllInterfaces.Contains(elementType, SymbolEqualityComparer.Default))
+            return false;
+
+        if (IsNavigationOf(rootEntity, elementType))
+            return false;
+
+        if (contextType != null)
+        {
+            for (var type = contextType; type != null; type = type.BaseType)
+            {
+                foreach (var member in type.GetMembers())
+                {
+                    var memberType = member switch
+                    {
+                        IPropertySymbol property => property.Type,
+                        IFieldSymbol field => field.Type,
+                        _ => null
+                    };
+
+                    if (memberType is INamedTypeSymbol { TypeArguments.Length: 1 } memberSet &&
+                        memberSet.IsDbSet() &&
+                        SymbolEqualityComparer.Default.Equals(memberSet.TypeArguments[0], elementType))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsNavigationOf(ITypeSymbol entity, ITypeSymbol elementType)
+    {
+        // Scalars such as Order.Id are properties too, but only classes can be navigations.
+        if (elementType.TypeKind != TypeKind.Class || elementType.SpecialType == SpecialType.System_String)
+            return false;
+
+        for (var type = entity; type != null; type = type.BaseType)
+        {
+            foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (SymbolEqualityComparer.Default.Equals(property.Type, elementType))
+                    return true;
+
+                if (IncludePathParser.TryGetCollectionElementType(property.Type, out var navigationElement) &&
+                    SymbolEqualityComparer.Default.Equals(navigationElement, elementType))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
