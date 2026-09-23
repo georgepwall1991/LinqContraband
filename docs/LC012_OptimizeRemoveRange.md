@@ -63,6 +63,10 @@ The fixer rewrites `context.RemoveRange(query)` to a direct bulk delete and prep
 
 The async branch matters: emitting a synchronous `ExecuteDelete()` inside an async method would inject a blocking, sync-over-async database call — the exact smell `LC008` flags. The fixer therefore prefers the awaited `ExecuteDeleteAsync()` overload when the **nearest enclosing function** is `async`, and declines entirely rather than introduce a blocking call when only the synchronous overload is available. "Nearest enclosing function" is deliberate: a synchronous local function nested inside an async method still receives the synchronous rewrite, because `await` would be illegal there.
 
+`RemoveRange` is a `DbSet`/`DbContext` instance member, so the file may not import EF Core yet. `ExecuteDelete()` and `ExecuteDeleteAsync()` are extension methods, so the fixer adds `using Microsoft.EntityFrameworkCore;` when no using in scope already provides them.
+
+Fix All rewrites each reported `RemoveRange` on its own. Two `RemoveRange` calls over the same query become two identical `ExecuteDelete()` statements; the second deletes no rows because the first already removed them, the same end state the tracked deletes reached. Delete the redundant statement by hand.
+
 The fixer shares the analyzer's later-save guardrails: it still declines when a following `SaveChanges()` / `SaveChangesAsync()` may commit the pending removals, but it remains available when that save is provably irrelevant because it sits in a mutually exclusive branch or resolves to a different freshly-created context local. In the different-context case, the fixer also proves the query source belongs to the `RemoveRange` receiver before it dismisses the later save; arbitrary helper-produced and multi-source queries stay diagnostic-only. The fixer also declines when LC047 pipeline evidence covers the `RemoveRange` entity and context.
 
 ### Safety contract

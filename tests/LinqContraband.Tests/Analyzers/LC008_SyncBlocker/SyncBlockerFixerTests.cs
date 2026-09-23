@@ -7,7 +7,7 @@ using CodeFixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
 
 namespace LinqContraband.Tests.Analyzers.LC008_SyncBlocker;
 
-public class SyncBlockerFixerTests
+public partial class SyncBlockerFixerTests
 {
     private const string Usings = @"
 using System;

@@ -3,6 +3,7 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -67,7 +68,8 @@ public sealed partial class OptimizeRemoveRangeFixer : CodeFixProvider
 
         var queryExpression = invocation.ArgumentList.Arguments[0].Expression;
 
-        var executeDeleteName = SyntaxFactory.IdentifierName(mode == RewriteMode.Async ? "ExecuteDeleteAsync" : "ExecuteDelete");
+        var executeDeleteMethod = mode == RewriteMode.Async ? "ExecuteDeleteAsync" : "ExecuteDelete";
+        var executeDeleteName = SyntaxFactory.IdentifierName(executeDeleteMethod);
         var memberAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, queryExpression, executeDeleteName);
         ExpressionSyntax replacement = SyntaxFactory.InvocationExpression(memberAccess);
 
@@ -82,6 +84,19 @@ public sealed partial class OptimizeRemoveRangeFixer : CodeFixProvider
         var replacementWithComment = replacement.WithLeadingTrivia(invocation.GetLeadingTrivia().Add(warningComment).Add(SyntaxFactory.ElasticLineFeed));
 
         editor.ReplaceNode(invocation, replacementWithComment);
+
+        // RemoveRange is a DbSet/DbContext instance member, so the file may not import EF Core yet;
+        // ExecuteDelete is an extension method and needs its namespace in scope.
+        if (semanticModel != null)
+        {
+            editor.EnsureUsingForExtensionMethod(
+                semanticModel,
+                invocation.SpanStart,
+                semanticModel.GetTypeInfo(queryExpression, cancellationToken).Type,
+                executeDeleteMethod,
+                QueryableExtensionNamespaceResolver.Resolve(semanticModel.Compilation, executeDeleteMethod),
+                QueryableExtensionNamespaceResolver.IsQueryableExtension);
+        }
 
         return editor.GetChangedDocument();
     }

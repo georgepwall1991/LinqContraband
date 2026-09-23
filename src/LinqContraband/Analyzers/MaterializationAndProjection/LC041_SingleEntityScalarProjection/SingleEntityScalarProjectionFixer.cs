@@ -79,6 +79,8 @@ public sealed partial class SingleEntityScalarProjectionFixer : CodeFixProvider
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         if (semanticModel != null)
         {
+            EnsureProjectionOperatorsAreImported(editor, semanticModel, invocation, cancellationToken);
+
             foreach (var memberAccess in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
             {
                 var operation = semanticModel.GetOperation(memberAccess, cancellationToken) as IPropertyReferenceOperation;
@@ -101,4 +103,25 @@ public sealed partial class SingleEntityScalarProjectionFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
+    /// <summary>
+    /// FirstAsync/SingleAsync bind through the EF Core using alone, but the Where/Select the rewrite
+    /// inserts are Queryable operators that need System.Linq.
+    /// </summary>
+    private static void EnsureProjectionOperatorsAreImported(
+        DocumentEditor editor,
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        CancellationToken cancellationToken)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return;
+
+        var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type;
+        var operators = FindPredicateIndex(invocation.ArgumentList.Arguments) >= 0
+            ? new[] { "Where", "Select" }
+            : new[] { "Select" };
+
+        foreach (var queryOperator in operators)
+            editor.EnsureUsingForExtensionMethod(semanticModel, invocation.SpanStart, receiverType, queryOperator, "System.Linq");
+    }
 }
