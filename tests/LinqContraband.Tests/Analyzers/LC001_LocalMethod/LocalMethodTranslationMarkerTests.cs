@@ -155,6 +155,28 @@ dotnet_code_quality.LC001.trusted_attributes = {optionValue}
         await test.RunAsync();
     }
 
+    // Goes through the .editorconfig parser, where ';' and '#' start an inline comment, so
+    // the list is comma-separated and the trusted attribute can sit anywhere in it.
+    [Theory]
+    [InlineData("Other.One, Other.Two, MyCompany.Data.SqlTranslatable")]
+    [InlineData("Other.One,MyCompany.Data.SqlTranslatable,Other.Two")]
+    public async Task ConfiguredTrustedAttributeList_InEditorConfig_IsQuiet(string optionValue)
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC001_LocalMethod.LocalMethodAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = Program("[MyCompany.Data.SqlTranslatable]")
+        };
+        test.TestState.AnalyzerConfigFiles.Add(("/0/.editorconfig", $@"root = true
+
+[*.cs]
+dotnet_code_quality.LC001.trusted_attributes = {optionValue}
+"));
+
+        await test.RunAsync();
+    }
+
     [Fact]
     public Task UnconfiguredProjectAttribute_StillReports() =>
         VerifyCS.VerifyAnalyzerAsync(

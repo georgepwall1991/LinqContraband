@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -26,14 +27,8 @@ public sealed partial class DbContextInSingletonAnalyzer
 
         if (options.TryGetValue(LongLivedTypesKey, out var configuredTypes))
         {
-            foreach (var configuredType in configuredTypes.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                var trimmed = configuredType.Trim();
-                if (trimmed.Length > 0)
-                {
-                    longLivedTypes.Add(trimmed);
-                }
-            }
+            // Comma-separated: the config parser treats ';' as the start of a comment.
+            longLivedTypes.UnionWith(AnalyzerConfigListOption.Split(configuredTypes));
         }
 
         return new Lc030Options(expandedDetection, longLivedTypes);

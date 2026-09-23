@@ -122,7 +122,7 @@ modelBuilder.HasDbFunction(() => Rules.IsAdult(default));
 
 LC001 reads these mappings from this project's source. `GetMethod` with a constant name trusts every overload of that name on the type; a name only known at run time, or a mapping in another project, is not seen.
 
-If your project has its own translation attribute, list it in `.editorconfig` (full names, separated by commas; the `Attribute` suffix is optional):
+If your project has its own translation attribute, list it in `.editorconfig` (full names, separated by commas, because `;` and `#` start a comment there; the `Attribute` suffix is optional):
 
 ```ini
 [*.cs]

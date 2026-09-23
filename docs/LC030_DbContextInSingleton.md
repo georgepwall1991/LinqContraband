@@ -71,7 +71,7 @@ public class MyService
     -   Stay quiet for controllers, page models, view components, `IMiddleware`, `AddScoped`, `AddTransient`, factories, options, and generic service classes with no long-lived proof.
 3.  **Optional project configuration**:
     -   `dotnet_code_quality.LC030.detection_mode = expanded` enables conservative name-based review hints such as `*Singleton*`, `*HostedService`, and `*BackgroundWorker`.
-    -   `dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton;MyApp.LongLivedBase` treats matching base types or interfaces as long-lived.
+    -   `dotnet_code_quality.LC030.long_lived_types = MyApp.IAlwaysSingleton, MyApp.LongLivedBase` treats matching base types or interfaces as long-lived. Separate the full type names with commas: in `.editorconfig` and `.globalconfig` files `;` and `#` start a comment, so anything after them is ignored.
 
 ### Notes
 LC030 is intentionally manual-only. It does not provide a code fix because the correct change may be `IDbContextFactory<TContext>`, creating a scope through `IServiceScopeFactory`, changing registration lifetimes, or moving work into a scoped collaborator.
