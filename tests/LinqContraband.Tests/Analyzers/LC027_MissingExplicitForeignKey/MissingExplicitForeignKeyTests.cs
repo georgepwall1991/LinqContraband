@@ -266,6 +266,79 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Fixer_ShouldQualifyPrimaryKeyTypeTheEntityFileDoesNotImport()
+    {
+        // The key type lives in a namespace the dependent entity never imports, so the bare name would not bind.
+        var test = EFCoreMock + @"
+namespace TestApp.Keys
+{
+    public readonly struct CustomerKey { }
+}
+
+namespace TestApp.Customers
+{
+    using TestApp.Keys;
+
+    public class Customer { public CustomerKey Id { get; set; } }
+}
+
+namespace TestApp.Orders
+{
+    using TestApp.Customers;
+
+    public class Order
+    {
+        public int Id { get; set; }
+        public Customer {|LC027:Customer|} { get; set; }
+    }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        var fixedCode = EFCoreMock + @"
+namespace TestApp.Keys
+{
+    public readonly struct CustomerKey { }
+}
+
+namespace TestApp.Customers
+{
+    using TestApp.Keys;
+
+    public class Customer { public CustomerKey Id { get; set; } }
+}
+
+namespace TestApp.Orders
+{
+    using TestApp.Customers;
+
+    public class Order
+    {
+        public int Id { get; set; }
+        public Keys.CustomerKey CustomerId { get; set; }
+        public Customer Customer { get; set; }
+    }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+    }
+}";
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        }.RunAsync();
+    }
+
+    [Fact]
     public async Task Fixer_ShouldUseFluentConfiguredPrimaryKeyType()
     {
         var test = EFCoreMock + @"

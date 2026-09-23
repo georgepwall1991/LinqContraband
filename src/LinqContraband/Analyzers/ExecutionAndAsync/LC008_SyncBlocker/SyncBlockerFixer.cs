@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LinqContraband.Constants;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -93,7 +94,37 @@ public sealed partial class SyncBlockerFixer : CodeFixProvider
         // 3. Add Formatting annotation
         editor.ReplaceNode(invocation, replacement.WithAdditionalAnnotations(Formatter.Annotation));
 
+        // 4. The sync terminal may bind through System.Linq alone; its async twin needs EF Core's namespace.
+        EnsureAsyncMethodIsImported(editor, invocation, memberAccess, asyncMethodName, cancellationToken);
+
         return editor.GetChangedDocument();
+    }
+
+    private static void EnsureAsyncMethodIsImported(
+        DocumentEditor editor,
+        InvocationExpressionSyntax invocation,
+        MemberAccessExpressionSyntax memberAccess,
+        string asyncMethodName,
+        CancellationToken cancellationToken)
+    {
+        var semanticModel = editor.SemanticModel;
+
+        // SaveChangesAsync and FindAsync are instance members and bind without any import.
+        if (semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol
+            {
+                MethodKind: MethodKind.ReducedExtension
+            })
+        {
+            return;
+        }
+
+        editor.EnsureUsingForExtensionMethod(
+            semanticModel,
+            invocation.SpanStart,
+            semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type,
+            asyncMethodName,
+            QueryableExtensionNamespaceResolver.Resolve(semanticModel.Compilation, asyncMethodName),
+            QueryableExtensionNamespaceResolver.IsQueryableExtension);
     }
 
     private static bool NeedsParenthesizedAwait(InvocationExpressionSyntax invocation)

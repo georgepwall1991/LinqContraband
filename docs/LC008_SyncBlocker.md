@@ -136,6 +136,7 @@ The fixer is intentionally narrow. It replaces the method name with the mapped a
 - Query-expression subqueries that are part of the provider expression do not report and therefore do not offer a fix.
 - Diagnostics inside non-async lambdas or non-async local functions can report, but the fixer stays quiet because inserting `await` there would not compile without refactoring the delegate/local-function shape.
 - The fixer does not add cancellation tokens or choose overloads; pass tokens explicitly after the rewrite when the surrounding code has one.
+- `ToList()`, `Count()` and the other query terminals bind through `System.Linq` alone, but their async twins are EF Core extension methods. When the file does not already import them (through a file, namespace or global using), the fixer adds `using Microsoft.EntityFrameworkCore;`. `SaveChangesAsync()` and `FindAsync()` are instance members, so those rewrites add no using.
 
 ## Analyzer Logic
 - Reports only mapped sync methods on EF Core `DbContext`, `DbSet`, or `IQueryable` sources.

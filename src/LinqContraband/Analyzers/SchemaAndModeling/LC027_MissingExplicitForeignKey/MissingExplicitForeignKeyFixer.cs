@@ -68,7 +68,12 @@ public sealed partial class MissingExplicitForeignKeyFixer : CodeFixProvider
                          TryFindConventionPrimaryKey(navType);
             if (pkProp != null)
             {
-                fkTypeName = pkProp.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                // Qualify the key type as needed where the new property lands: the principal's key
+                // type may live in a namespace the dependent entity's file never imports.
+                fkTypeName = pkProp.Type.ToMinimalDisplayString(
+                    semanticModel,
+                    navProperty.SpanStart,
+                    SymbolDisplayFormat.MinimallyQualifiedFormat);
                 nullableForeignKey = navSymbol.NullableAnnotation == NullableAnnotation.Annotated &&
                                      pkProp.Type.IsValueType &&
                                      pkProp.NullableAnnotation != NullableAnnotation.Annotated;
