@@ -13,6 +13,7 @@ namespace LinqContraband.Analyzers.LC001_LocalMethod;
 public sealed partial class LocalMethodAnalyzer
 {
     private const string TrustedAttributesOption = "dotnet_code_quality.LC001.trusted_attributes";
+    private const string TrustedNamespacesOption = "dotnet_code_quality.LC001.trusted_namespaces";
 
     // Attributes that tell EF Core, or a query-expansion library, how to translate the method.
     private static readonly ImmutableHashSet<string> TranslationMarkerAttributes = ImmutableHashSet.Create(
@@ -35,7 +36,8 @@ public sealed partial class LocalMethodAnalyzer
         // Specific database provider functions that are often used in IQueryable.
         if (ns.StartsWith("Npgsql", System.StringComparison.Ordinal) ||
             ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal) ||
-            ns.StartsWith("NetTopologySuite", System.StringComparison.Ordinal))
+            ns.StartsWith("NetTopologySuite", System.StringComparison.Ordinal) ||
+            IsInNamespace(ns, "Pgvector.EntityFrameworkCore"))
         {
             return true;
         }
@@ -65,6 +67,17 @@ public sealed partial class LocalMethodAnalyzer
                 return true;
         }
 
+        // Namespaces whose methods a provider plugin or a project's own IMethodCallTranslator translates.
+        if (options.TryGetValue(TrustedNamespacesOption, out var namespaces) &&
+            method.ContainingNamespace?.ToString() is { } methodNamespace)
+        {
+            foreach (var trustedNamespace in AnalyzerConfigListOption.Split(namespaces))
+            {
+                if (IsInNamespace(methodNamespace, trustedNamespace))
+                    return true;
+            }
+        }
+
         foreach (var candidate in EnumerateMethodVariants(method))
         {
             if (mappedDbFunctions.Contains(candidate))
@@ -73,6 +86,11 @@ public sealed partial class LocalMethodAnalyzer
 
         return false;
     }
+
+    // "A.B" and "A.B.C" are in "A.B"; "A.BC" is not.
+    private static bool IsInNamespace(string ns, string root) =>
+        ns.StartsWith(root, StringComparison.Ordinal) &&
+        (ns.Length == root.Length || ns[root.Length] == '.');
 
     private static bool HasExplicitTranslationMarker(IMethodSymbol method, ImmutableHashSet<string> attributeNames)
     {
