@@ -50,6 +50,8 @@ LC009 reports when a read-only query is materialized (`ToList`/`ToArray`/`First`
 - a `DbSet<T>` **property** (`db.Users.ToList()`), and
 - a `DbSet<T>` **returned from a method**, most importantly the generic-repository `context.Set<T>()` read path (`db.Set<User>().ToList()`).
 
+One query gets one report. In `db.Orders.ToList().Where(o => o.Total > 1).ToList()` or `(await db.Orders.ToListAsync()).Where(...).ToList()` the EF query runs at the inner `ToList()`/`ToListAsync()`, so that is where LC009 reports. The outer `ToList()` is LINQ to Objects over a list that is already loaded and is not reported again. The rule still follows the entities through that outer call: when its result is changed (for example in a `foreach` over it), the query is on a write path and stays quiet, and when it is returned or handed on, the report comes without a fix.
+
 ### When it stays quiet (non-goals)
 - The query already opts a tracking mode in: `AsNoTracking()`, `AsNoTrackingWithIdentityResolution()`, or an explicit `AsTracking()`.
 - The query contains a `Select(...)` projection — a projection to a non-entity shape is not tracked anyway.

@@ -16,6 +16,25 @@ public static partial class AnalysisExtensions
         return receiver;
     }
 
+    /// <summary>
+    /// A call that runs the query it is given and hands back loaded data (a collection or a single row). Anything
+    /// chained after it is LINQ to Objects over rows that are already in memory, not part of the EF query, so a
+    /// receiver-chain walk that meets one has left the query. <c>AsEnumerable()</c> is not one: it defers.
+    /// </summary>
+    public static bool IsQueryExecutingMaterializer(this IInvocationOperation invocation)
+    {
+        return (invocation.TargetMethod.Name is
+                   "ToList" or "ToListAsync" or
+                   "ToArray" or "ToArrayAsync" or
+                   "ToDictionary" or "ToDictionaryAsync" or
+                   "ToHashSet" or "ToHashSetAsync" or
+                   "ToLookup" or
+                   "First" or "FirstOrDefault" or "FirstAsync" or "FirstOrDefaultAsync" or
+                   "Single" or "SingleOrDefault" or "SingleAsync" or "SingleOrDefaultAsync" or
+                   "Last" or "LastOrDefault" or "LastAsync" or "LastOrDefaultAsync") &&
+               !invocation.Type.IsIQueryable();
+    }
+
     public static ITypeSymbol? GetInvocationReceiverType(this IInvocationOperation invocation, bool unwrapConversions = true)
     {
         return invocation.GetInvocationReceiver(unwrapConversions)?.Type;
