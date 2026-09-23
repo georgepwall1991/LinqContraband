@@ -43,7 +43,7 @@ internal static partial class NPlusOneLooperAnalysis
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var loop = FindPerIterationLoop(invocation);
+        var loop = FindPerIterationLoop(invocation, cancellationToken);
         if (loop == null)
             return null;
 
@@ -53,14 +53,15 @@ internal static partial class NPlusOneLooperAnalysis
         return new NPlusOneLoopMatch(match.PatternKind, match.MethodName, loop.GetLoopKind(), match.FixerEligible);
     }
 
-    private static ILoopOperation? FindPerIterationLoop(IInvocationOperation invocation)
+    private static ILoopOperation? FindPerIterationLoop(IInvocationOperation invocation, CancellationToken cancellationToken)
     {
         var current = invocation.Parent;
         while (current != null)
         {
             if (current is ILoopOperation loop &&
                 invocation.SharesOwningExecutableRoot(loop) &&
-                IsPerIterationInvocation(invocation, loop))
+                IsPerIterationInvocation(invocation, loop) &&
+                !IsBatchPollingOrRetryLoop(invocation, loop, cancellationToken))
             {
                 return loop;
             }
