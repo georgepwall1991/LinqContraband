@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.10.0] - 2026-09-23
+
 ### Changed
 - LC042 scores query shape instead of counting method names. Joins, `GroupBy` and `SelectMany` count twice, tracking, filter and split-query options (`AsNoTracking`, `IgnoreQueryFilters`, `AsSplitQuery`, ...) no longer count, and a predicate passed to the terminal (`Count(o => ...)`) counts once. Only real `Queryable` and EF Core operators are scored; a chain through an unknown helper stays quiet. Query syntax is now analyzed, subqueries inside an outer query's lambda are no longer reported separately, `Sum`/`Min`/`Max`/`Average` count as terminals, and the diagnostic sits on the terminal method name.
 - The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
