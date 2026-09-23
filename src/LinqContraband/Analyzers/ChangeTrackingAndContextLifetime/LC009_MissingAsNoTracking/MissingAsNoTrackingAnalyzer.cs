@@ -106,11 +106,31 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
     private static readonly ImmutableDictionary<string, string?> EscapeProperties =
         ImmutableDictionary<string, string?>.Empty.Add(EntitiesEscapeProperty, "true");
 
+    // Names the member the query sits in. A lambda has no name of its own (its symbol's Name
+    // is empty, which printed "Method ''"), so step out to the method, local function or
+    // accessor that contains it.
     private static string GetContainingMethodName(IOperation operation)
     {
         var sym = operation.SemanticModel?.GetEnclosingSymbol(operation.Syntax.SpanStart);
-        return sym?.Name ?? "Unknown";
+        while (sym is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction })
+            sym = sym.ContainingSymbol;
+
+        if (sym is IMethodSymbol method)
+        {
+            if (method.AssociatedSymbol != null)
+                sym = method.AssociatedSymbol;
+            else if (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor)
+                sym = method.ContainingType;
+            else if (method.Name == TopLevelStatementsEntryPointName)
+                return "<top-level statements>";
+        }
+
+        var name = sym?.Name;
+        return string.IsNullOrEmpty(name) ? "Unknown" : name!;
     }
+
+    // The compiler-generated entry point that holds top-level statements.
+    private const string TopLevelStatementsEntryPointName = "<Main>$";
 
     private sealed class ChainAnalysis
     {
