@@ -54,6 +54,7 @@ var users = db.Users.Where(u => needle.Contains("a", StringComparison.OrdinalIgn
 
 ### Exceptions
 - Calls on in-memory strings or `IEnumerable`.
+- Queries that provably run on LINQ to Objects: a chain that starts at `AsQueryable()` over an array or concrete collection, or at `new EnumerableQuery<T>(...)`. `AsQueryable()` over an `IEnumerable<T>` still reports, because the sequence may be a `DbSet` at runtime.
 - Calls on captured locals or constants inside a query predicate.
 - Calls inside nested local enumerable predicates that do not depend on the query parameter.
 - Calls inside custom `IQueryable` helpers that take delegate predicates instead of `Queryable` expression lambdas.

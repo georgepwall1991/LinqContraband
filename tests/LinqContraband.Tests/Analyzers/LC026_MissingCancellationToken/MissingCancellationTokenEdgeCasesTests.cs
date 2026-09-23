@@ -6,7 +6,7 @@ using VerifyFix = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.CodeFixVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC026_MissingCancellationToken;
 
-public class MissingCancellationTokenEdgeCasesTests
+public partial class MissingCancellationTokenEdgeCasesTests
 {
     private const string EFCoreMock = @"
 using System;
@@ -239,7 +239,7 @@ namespace LinqContraband.Test
     }
 }";
 
-        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+        await VerifyFixWithExplicitNoneReportedAsync(test, fixedCode);
     }
 
     [Fact]
@@ -427,6 +427,6 @@ namespace LinqContraband.Test
     }
 }";
 
-        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+        await VerifyFixWithExplicitNoneReportedAsync(test, fixedCode);
     }
 }

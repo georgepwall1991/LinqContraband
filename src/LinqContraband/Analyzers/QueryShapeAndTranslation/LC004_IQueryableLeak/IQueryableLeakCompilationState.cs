@@ -63,6 +63,10 @@ internal sealed partial class IQueryableLeakCompilationState
             if (!TryGetQuerySourceType(input.Value, out var querySourceType))
                 continue;
 
+            // list.AsQueryable() is already in memory, so handing it on as IEnumerable moves nothing.
+            if (input.Value.IsProvablyInMemoryQueryable())
+                continue;
+
             var properties = ImmutableDictionary<string, string?>.Empty.Add(
                 IQueryableLeakDiagnosticProperties.FixerEligible,
                 CanOfferToListFix(querySourceType) ? "true" : "false");

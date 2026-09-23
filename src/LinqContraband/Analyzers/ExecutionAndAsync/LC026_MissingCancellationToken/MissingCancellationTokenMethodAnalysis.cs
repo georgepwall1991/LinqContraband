@@ -1,6 +1,7 @@
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC026_MissingCancellationToken;
@@ -48,12 +49,27 @@ public sealed partial class MissingCancellationTokenAnalyzer
                type.ContainingNamespace?.ToString() == "System.Threading";
     }
 
-    private bool IsUsingDefault(IOperation operation)
+    private static bool IsUsingDefault(IOperation operation)
     {
-        var unwrapped = operation.UnwrapConversions();
-        return unwrapped.Kind == OperationKind.DefaultValue ||
-               (unwrapped is IPropertyReferenceOperation propRef &&
-                propRef.Property.Name == "None" &&
-                propRef.Property.ContainingType.Name == "CancellationToken");
+        return operation.UnwrapConversions().Kind == OperationKind.DefaultValue;
+    }
+
+    private static bool IsUsingCancellationTokenNone(IOperation operation)
+    {
+        return operation.UnwrapConversions() is IPropertyReferenceOperation propRef &&
+               propRef.Property.Name == "None" &&
+               IsCancellationTokenType(propRef.Property.ContainingType);
+    }
+
+    /// <summary>
+    /// <c>CancellationToken.None</c> is the explicit way to say an operation must not be cancelled (audit writes,
+    /// compensating saves in <c>finally</c>), so it is only reported when
+    /// <c>dotnet_code_quality.LC026.report_explicit_none = true</c>.
+    /// </summary>
+    private static bool ReportsExplicitNone(AnalyzerOptions options, SyntaxTree syntaxTree)
+    {
+        return options.AnalyzerConfigOptionsProvider.GetOptions(syntaxTree)
+                   .TryGetValue("dotnet_code_quality." + DiagnosticId + ".report_explicit_none", out var value) &&
+               string.Equals(value.Trim(), "true", System.StringComparison.OrdinalIgnoreCase);
     }
 }

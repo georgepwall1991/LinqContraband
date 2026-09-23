@@ -40,6 +40,19 @@ var activeUsers =
 
 It stays silent on bounded aliases and ambiguous reassigned locals rather than guessing which query shape reaches the materializer.
 
+## What counts as bounded
+
+- `Take`, `First`, `Single`, `Last`, `Find` and their async forms, applied while the source is still a query.
+- A primary-key lookup: `Where(u => u.Id == id)` (also with `&&` extra conditions, or with the operands swapped) or `Where(u => ids.Contains(u.Id))`. The key is a property named `Id`, `<EntityName>Id`, or marked `[Key]`. Foreign keys (`OrderId` on `OrderLine`) and `||` conditions can still match many rows and keep reporting.
+
+LC031 walks back through LINQ (`System.Linq`) and EF Core operators only. A project's own `IQueryable` helper, such as a `Paginate(page, size)` extension or an Ardalis-style `WithSpecification(spec)`, may apply the bound itself, so LC031 stops there and stays quiet:
+
+```csharp
+var page = await db.Orders.Paginate(pageIndex, 50).ToListAsync(); // no LC031
+```
+
+A helper that takes and returns `IEnumerable<T>` runs after the full load, so the rule looks past it and still reports.
+
 ## What does not count as a bound
 
 These operators or query options do not prove a capped result set:
@@ -50,6 +63,7 @@ These operators or query options do not prove a capped result set:
 - `TakeLast(...)` / `SkipLast(...)`: EF Core cannot translate these as bounded server-side operations for normal relational queries.
 - `Chunk(size)`: the `size` argument bounds each returned chunk, not the total number of rows fetched. Do not treat `Chunk` as pagination; put `Take` or ordered `Skip`/`Take` before chunking if the source can be large.
 - Query options such as `AsNoTracking()`, `AsTracking()`, `AsSplitQuery()`, or `AsSingleQuery()`: useful options, but not row-count bounds.
+- `Take(...)` after `AsEnumerable()`: the whole table is loaded and then trimmed in memory. `db.Users.AsEnumerable().Take(10).ToList()` reports.
 
 Add the limit before crossing to LINQ-to-Objects or materializing:
 

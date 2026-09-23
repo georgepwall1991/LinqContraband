@@ -8,11 +8,12 @@ public sealed partial class LocalMethodAnalyzer
     private static bool IsTranslationCriticalQueryableInvocation(IInvocationOperation invocation)
     {
         // Handle extension syntax (Instance populated) and static syntax (source is a bound argument).
-        var type = invocation.Instance?.Type;
-        if (type == null)
-            type = GetInputSequenceArgument(invocation)?.Value.Type;
+        var source = invocation.Instance ?? GetInputSequenceArgument(invocation)?.Value;
 
-        return type.IsIQueryable() && TranslationCriticalQueryMethods.Contains(invocation.TargetMethod.Name);
+        // list.AsQueryable() runs on LINQ to Objects, where any method can be called.
+        return source?.Type.IsIQueryable() == true &&
+               TranslationCriticalQueryMethods.Contains(invocation.TargetMethod.Name) &&
+               !source.IsProvablyInMemoryQueryable();
     }
 
     private static IArgumentOperation? GetInputSequenceArgument(IInvocationOperation invocation)

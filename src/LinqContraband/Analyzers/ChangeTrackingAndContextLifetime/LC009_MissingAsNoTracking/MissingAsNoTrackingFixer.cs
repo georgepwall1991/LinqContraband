@@ -38,6 +38,10 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
         if (invocation == null) return;
 
+        // The entities leave the method: a caller or callee may change and save them, and
+        // AsNoTracking() would silently drop that save. Leave the decision to a person.
+        if (diagnostic.Properties.ContainsKey(MissingAsNoTrackingAnalyzer.EntitiesEscapeProperty)) return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Add AsNoTracking()",

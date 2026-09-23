@@ -44,7 +44,33 @@ public sealed partial class MissingIncludeAnalyzer
                 is not IObjectCreationOperation configurationCreation
             || configurationCreation.Arguments.Length != 0
             || configurationCreation.Type is not INamedTypeSymbol configurationType
-            || !TryGetExactConfigureMethod(
+            || !TryCollectAppliedConfigurationChanges(
+                configurationType,
+                entityType,
+                compilation,
+                cancellationToken,
+                out var changes
+            )
+        )
+        {
+            return false;
+        }
+
+        ApplyAutoIncludeChanges(entityType, changes, prefixesByEntity);
+        return true;
+    }
+
+    private static bool TryCollectAppliedConfigurationChanges(
+        INamedTypeSymbol configurationType,
+        INamedTypeSymbol entityType,
+        Compilation compilation,
+        CancellationToken cancellationToken,
+        out List<AppliedAutoIncludeChange> changes
+    )
+    {
+        changes = new List<AppliedAutoIncludeChange>();
+        if (
+            !TryGetExactConfigureMethod(
                 configurationType,
                 entityType,
                 out var configureMethod
@@ -58,7 +84,6 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var changes = new List<AppliedAutoIncludeChange>();
         foreach (var syntaxReference in configureMethod.DeclaringSyntaxReferences)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -161,6 +186,15 @@ public sealed partial class MissingIncludeAnalyzer
             }
         }
 
+        return true;
+    }
+
+    private static void ApplyAutoIncludeChanges(
+        INamedTypeSymbol entityType,
+        List<AppliedAutoIncludeChange> changes,
+        Dictionary<INamedTypeSymbol, HashSet<string>> prefixesByEntity
+    )
+    {
         if (!prefixesByEntity.TryGetValue(entityType, out var prefixes))
         {
             prefixes = new HashSet<string>(System.StringComparer.Ordinal);
@@ -181,8 +215,6 @@ public sealed partial class MissingIncludeAnalyzer
                 || path.StartsWith(disabledPath + ".", System.StringComparison.Ordinal)
             );
         }
-
-        return true;
     }
 
     private static bool HasEscapedConfigurationBuilder(

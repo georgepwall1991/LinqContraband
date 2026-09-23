@@ -15,7 +15,7 @@ It’s a waste of the robot's battery!
 
 ## What It Flags
 
-LC026 reports EF Core async calls that can accept a `CancellationToken` but omit it, pass `default`, or pass `CancellationToken.None` while a usable token is available at the call site.
+LC026 reports EF Core async calls that can accept a `CancellationToken` but omit it or pass `default` while a usable token is available at the call site.
 
 ```csharp
 public async Task<List<User>> GetUsers(CancellationToken ct)
@@ -27,7 +27,7 @@ public async Task<List<User>> GetUsers(CancellationToken ct)
 ```csharp
 public async Task Save(CancellationToken cancellationToken)
 {
-    await db.SaveChangesAsync(CancellationToken.None); // LC026
+    await db.SaveChangesAsync(default); // LC026
 }
 ```
 
@@ -90,7 +90,6 @@ These shapes report when a usable token is in scope:
 await db.Users.ToListAsync();
 await db.Users.ToListAsync(default);
 await db.Users.ToListAsync(cancellationToken: default);
-await db.Users.ToListAsync(CancellationToken.None);
 await db.SaveChangesAsync();
 ```
 
@@ -100,7 +99,16 @@ These shapes stay quiet:
 await db.Users.ToListAsync(cancellationToken);
 await db.Users.ToListAsync(ct);
 await db.Users.ToListAsync(); // no CancellationToken is available in scope
+await db.AuditLog.AddAsync(entry, CancellationToken.None); // deliberately not cancellable
 ```
+
+`CancellationToken.None` is the explicit way to say an operation must finish even when the caller gives up, for example an audit write or a compensating save in `finally` or `catch (OperationCanceledException)`. LC026 treats it as intentional. To report it anyway, set:
+
+```ini
+dotnet_code_quality.LC026.report_explicit_none = true
+```
+
+A token only counts as usable when the call could actually pass it. A local declared later in the method (CS0841) and an instance field or property seen from a `static` method (CS0120) do not count, so neither the diagnostic nor the fix relies on them.
 
 ## Boundaries
 
@@ -110,7 +118,7 @@ It also only targets EF Core async methods that expose a `CancellationToken` par
 
 ## Fix Strategy
 
-The code fix appends the selected token when the token argument is omitted. When the call already supplies `default`, `cancellationToken: default`, or `CancellationToken.None`, the fixer replaces that argument instead of appending a duplicate.
+The code fix appends the selected token when the token argument is omitted. When the call already supplies `default`, `cancellationToken: default`, or (with `report_explicit_none` on) `CancellationToken.None`, the fixer replaces that argument instead of appending a duplicate.
 
 For query chains, the fixer updates the EF async terminal that owns the diagnostic rather than inner LINQ operators:
 

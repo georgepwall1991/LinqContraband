@@ -1,3 +1,4 @@
+using LinqContraband.Extensions;
 using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -28,7 +29,9 @@ public sealed partial class AvoidDateTimeNowAnalyzer
         var method = invocation.TargetMethod;
         return TargetLinqMethods.Contains(method.Name) &&
                method.ContainingType.Name == "Queryable" &&
-               method.ContainingNamespace?.ToString() == "System.Linq";
+               method.ContainingNamespace?.ToString() == "System.Linq" &&
+               // list.AsQueryable() runs on LINQ to Objects, where the clock is read per call anyway.
+               !invocation.GetInvocationReceiver().IsProvablyInMemoryQueryable();
     }
 
     private static IAnonymousFunctionOperation? FindEnclosingLambda(IOperation operation)

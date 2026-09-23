@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC017_WholeEntityProjection;
 
-public class WholeEntityProjectionTests
+public partial class WholeEntityProjectionTests
 {
     private const string Usings = @"
 using System;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using LinqContraband.Catalog;
 using LinqContraband.Extensions;
@@ -80,16 +81,30 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (HasWriteOperations(context.Operation, writeOperationCache))
             return;
 
-        // A property mutation of the materialized entity marks this as a write path even
-        // when the SaveChanges lives in a helper the analyzer cannot see — suggesting
-        // AsNoTracking would break that cross-method save.
-        if (MaterializedEntityIsMutated(invocation, context.CancellationToken))
+        var root = invocation.FindOwningExecutableRoot();
+        var entityLocals = root == null
+            ? new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default)
+            : CollectEntityLocals(invocation, root, context.CancellationToken);
+
+        // A mutation of the materialized entity marks this as a write path even when the
+        // SaveChanges lives in a helper the analyzer cannot see — suggesting AsNoTracking
+        // would break that cross-method save.
+        if (root != null && MaterializedEntityIsMutated(invocation, root, entityLocals, context.CancellationToken))
             return;
+
+        // Entities that leave the method may be changed and saved by code this analysis does
+        // not see, so the rule reports without offering the one-click fix.
+        var properties = root == null || MaterializedEntitiesEscape(invocation, root, entityLocals, context.CancellationToken)
+            ? EscapeProperties
+            : ImmutableDictionary<string, string?>.Empty;
 
         var containingMethodName = GetContainingMethodName(context.Operation);
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), containingMethodName));
+            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), properties, containingMethodName));
     }
+
+    private static readonly ImmutableDictionary<string, string?> EscapeProperties =
+        ImmutableDictionary<string, string?>.Empty.Add(EntitiesEscapeProperty, "true");
 
     private static string GetContainingMethodName(IOperation operation)
     {

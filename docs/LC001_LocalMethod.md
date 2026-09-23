@@ -111,7 +111,32 @@ It also stays quiet for methods marked as explicitly translatable:
 public static bool IsAdult(DateTime dateOfBirth) => throw new NotSupportedException();
 ```
 
-and for `EntityFrameworkCore.Projectables.ProjectableAttribute` methods. Lookalike attributes from other namespaces do not suppress the diagnostic.
+and for methods that a query-expansion library rewrites before EF Core sees the query: `EntityFrameworkCore.Projectables.ProjectableAttribute`, LINQKit's `[Expandable]`, NeinLinq's `[InjectLambda]` and DelegateDecompiler's `[Computed]`. Lookalike attributes from other namespaces do not suppress the diagnostic.
+
+A method mapped in the model with `HasDbFunction` is trusted the same way as one marked `[DbFunction]`:
+
+```csharp
+modelBuilder.HasDbFunction(typeof(Rules).GetMethod(nameof(Rules.IsAdult)));
+modelBuilder.HasDbFunction(() => Rules.IsAdult(default));
+```
+
+LC001 reads these mappings from this project's source. `GetMethod` with a constant name trusts every overload of that name on the type; a name only known at run time, or a mapping in another project, is not seen.
+
+If your project has its own translation attribute, list it in `.editorconfig` (full names, separated by commas; the `Attribute` suffix is optional):
+
+```ini
+[*.cs]
+dotnet_code_quality.LC001.trusted_attributes = MyCompany.Data.SqlTranslatable
+```
+
+Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...) or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
+
+```csharp
+var users = new List<User> { ... }.AsQueryable().BuildMock();
+var adults = users.Where(u => IsAdult(u)); // no LC001: LINQ to Objects
+```
+
+A source the analyzer cannot prove in-memory still reports: an `IQueryable` parameter, field or property, a `DbSet`, `AsQueryable()` over an `IEnumerable<T>` (which may be a `DbSet` at runtime), or a local that is assigned more than once.
 
 ## Scope
 

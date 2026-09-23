@@ -30,7 +30,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => {|LC020:x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)|}).ToList();
         }
     }
@@ -49,7 +49,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => {|LC020:x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)|}).ToList();
         }
     }
@@ -62,7 +62,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => x.Contains(""abc"")).ToList();
         }
     }
@@ -81,7 +81,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.FirstOrDefault(x => {|LC020:x.StartsWith(""abc"", StringComparison.CurrentCulture)|});
         }
     }
@@ -100,7 +100,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Any(x => {|LC020:x.EndsWith("".org"", StringComparison.OrdinalIgnoreCase)|});
         }
     }
@@ -129,7 +129,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => u.Orders.Any(o => {|LC020:o.Number.Contains(""rush"", StringComparison.OrdinalIgnoreCase)|})).ToList();
         }
     }
@@ -154,7 +154,7 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var tags = new List<string> { ""admin"" };
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => tags.Any(tag => tag.Contains(""a"", StringComparison.OrdinalIgnoreCase))).ToList();
         }
     }
@@ -173,7 +173,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => x.Contains(""abc"")).ToList();
         }
     }
@@ -193,7 +193,7 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var needle = ""abc"";
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => needle.Contains(""a"", StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
@@ -212,7 +212,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => ""abc"".Contains(""a"", StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
@@ -255,7 +255,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.WhereCustom(x => x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
@@ -293,7 +293,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => {|LC020:x.StartsWith(""abc"", StringComparison.OrdinalIgnoreCase)|}).ToList();
         }
     }
@@ -306,7 +306,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query.Where(x => x.StartsWith(""abc"")).ToList();
         }
     }
@@ -333,7 +333,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => {|LC020:""admin"".Contains(u.Name, StringComparison.OrdinalIgnoreCase)|}).ToList();
         }
     }
@@ -360,7 +360,7 @@ namespace LinqContraband.Test
         public void TestMethod()
         {
             var needle = ""x"";
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => ""admin"".Contains(needle, StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
@@ -384,7 +384,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => {|LC020:""admin"".Contains(u.Name, StringComparison.OrdinalIgnoreCase)|}).ToList();
         }
     }
@@ -402,7 +402,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<User>().AsQueryable();
+            var query = default(IQueryable<User>);
             var result = query.Where(u => ""admin"".Contains(u.Name)).ToList();
         }
     }
@@ -420,7 +420,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query
                 .Where(x => {|#0:x.Contains(""abc"", StringComparison.OrdinalIgnoreCase)|})
                 .Where(y => {|#1:y.StartsWith(""xyz"", StringComparison.CurrentCulture)|})
@@ -436,7 +436,7 @@ namespace LinqContraband.Test
     {
         public void TestMethod()
         {
-            var query = new List<string>().AsQueryable();
+            var query = default(IQueryable<string>);
             var result = query
                 .Where(x => x.Contains(""abc""))
                 .Where(y => y.StartsWith(""xyz""))

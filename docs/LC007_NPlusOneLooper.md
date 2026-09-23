@@ -46,9 +46,9 @@ foreach (var user in db.Users.ToList())
     var orderCount = db.Entry(user).Collection(u => u.Orders).Query().Count();
 }
 
-while (hasWork)
+while (queue.TryDequeue(out var userId))
 {
-    db.Users.Where(u => u.Inactive).ExecuteDelete();
+    db.Users.Where(u => u.Id == userId).ExecuteDelete();
 }
 ```
 
@@ -65,6 +65,38 @@ When a query materializer is used as the source of an inner `foreach`, LC007 sti
 - `Reference(...)` and `Collection(...)` access without `Load`, `LoadAsync`, or `Query()` execution
 - Invocations nested inside lambdas or local functions declared in the loop body
 - Loop-source materialization that happens once before iteration, such as the `db.Users.ToList()` part of a `foreach`
+- `while`, `do` and `for` loops that run until the database says they are done, as long as the loop condition does not walk an item source of its own (see below)
+
+### Batch, polling and retry loops
+
+A loop that queries until the data runs out issues one query per batch, not one per item, so LC007 stays quiet on it. This covers keyset and paged batching, batched deletes, drain loops, `BackgroundService` polling and catch-guarded retries:
+
+```csharp
+var lastId = 0;
+while (true)
+{
+    var batch = await db.Orders.Where(o => o.Id > lastId).OrderBy(o => o.Id).Take(500).ToListAsync(ct);
+    if (batch.Count == 0) break;           // the batch decides when the loop ends
+    lastId = batch[^1].Id;
+    Process(batch);
+}
+
+while (await db.Outbox.Take(1000).ExecuteDeleteAsync(ct) > 0) { }
+
+while (!ct.IsCancellationRequested)
+{
+    Dispatch(await db.Outbox.Where(m => m.SentAt == null).ToListAsync(ct));
+    await Task.Delay(TimeSpan.FromSeconds(5), ct);
+}
+```
+
+A `while`, `do` or `for` loop counts as one of these when:
+- the query result decides when the loop stops: the execution sits in the loop condition, or its result (or a local computed from it, such as `hasMore = batch.Count == size`) is read by the condition or by an `if` that breaks out of the loop or returns;
+- the loop condition itself queries the database (`while (await db.Jobs.AnyAsync(...))`);
+- the loop body waits with `Task.Delay` or `Thread.Sleep`, or the condition waits on `PeriodicTimer.WaitForNextTickAsync`; or
+- the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds.
+
+The exemption only applies when the loop condition reads nothing but constants, integer counters, `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` always report, and so does a query inside a batch loop that sits in an outer per-item loop.
 
 ## Fixer Behavior
 LC007 offers a fixer only for conservative, analyzer-proven explicit-loading cases.
