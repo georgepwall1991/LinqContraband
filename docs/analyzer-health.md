@@ -2,7 +2,7 @@
 
 Reviewed: 2026-09-23 (LC042 scores query shape and gains a TagWith fixer; LC001 trusts LINQKit, NeinLinq, DelegateDecompiler and `HasDbFunction` mappings, plus a `trusted_attributes` option; LC045 follows `ApplyConfigurationsFromAssembly` into the project's own configurations and its False Positives row is corrected to the 4 recorded on 2026-08-08; LC031 stops at project query helpers and treats key lookups as bounded; LC026 treats `CancellationToken.None` as intentional and only counts usable tokens; LC017 treats writes and stores as escapes; LC007 stays quiet on batch, drain, polling and retry loops; LC009 withholds its fix when entities leave the method; LC001/LC004/LC016/LC020/LC022 stay quiet on in-memory `AsQueryable()`; scores unchanged). Earlier on 2026-09-22 (LC018/LC034 defer to EF Core's EF1002/EF1003 and the LC018 fixer targets `FromSql`, checked against real EF Core 8/9/10; 3,751 local net10.0 tests; full re-audit not performed, scores unchanged). Previous: 2026-09-10 (helper-identity hardening across LC044–LC048 plus LC007 fix-all composition, LC044 async-completion and entry-state modeling, LC047 entry-linked dominance, repeated Codex review closure, 3,460 local net10.0 tests).
 
-This is a deliberately harsh health audit for the **52 analyzers** in `RuleCatalog`. The catalog currently declares 35 rules with code fixes and 17 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
+This is a deliberately harsh health audit for the **53 analyzers** in `RuleCatalog`. The catalog currently declares 36 rules with code fixes and 17 manual-only rules with explicit rationale. Scores are 1-5, where `5` means reference-quality and hard to improve, `3` means usable but meaningfully incomplete, and `1` means unreliable or underbuilt.
 
 Release metadata:
 
@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-23 LC053 new-rule pass adds overwritten global query filter detection with an `&&` merge fixer, raising the full local net10.0 suite to **3,975 tests**.
+>
 > The 2026-09-23 LC052 new-rule pass adds non-deterministic HasData / HasDefaultValue detection (manual-only), raising the full local net10.0 suite to **3,954 tests**.
 >
 > The 2026-09-23 LC051 new-rule pass adds ToAsyncEnumerable-on-EF-query detection with an AsAsyncEnumerable fixer, raising the full local net10.0 suite to **3,940 tests**.
@@ -112,6 +114,7 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 | LC050 | OrderBy before Distinct is discarded | Query Shape & Translation | Warning | 3 | 4 | 4 | 3 | 4 | 3 | Low | **New in 5.9.0.** Reports parameterless `Queryable.Distinct()` when walking back through `ThenBy`, `Where`, `Select`, and EF pass-through operators reaches `OrderBy`/`OrderByDescending`, including query syntax and static calls. `Skip`/`Take` and other operators stop the walk, and `AsQueryable()` over in-memory data stays quiet. The fixer moves a sort chain directly before `Distinct()` after it, or sorts the projected value when the single sort key equals the projection; it declines for query syntax, intervening operators, and `var` locals that are later reassigned (the fixed type becomes `IOrderedQueryable<T>`). 27 tests (15 analyzer, 12 fixer). Analyzer stays 3 because sorted locals are not followed. |
 | LC051 | ToAsyncEnumerable() runs an EF Core query synchronously | Execution & Async | Warning | 4 | 4 | 4 | 3 | 4 | 3 | Low | **New in 5.10.0.** Reports `System.Linq.AsyncEnumerable.ToAsyncEnumerable(IEnumerable<T>)` when its source walks back through `Queryable` and EF Core query operators to a `DbSet` or `DbContext.Set<T>()`; locals, in-memory `AsQueryable()`, and helpers stay quiet because `AsAsyncEnumerable()` throws on queryables EF Core does not back. The rule registers nothing when EF Core 11+ is referenced (EF Core 11 ships EF1004). The fixer renames the fluent call to `AsAsyncEnumerable()` and adds the EF Core using only when the method is not already in scope; the static form is diagnostic-only. 17 tests (12 analyzer, 5 fixer). Tests stay 3 because queries stored in locals are not followed. |
 | LC052 | Model data uses a value that changes on every run | Schema & Modeling | Warning | 4 | 4 | 4 | 3 | 4 | 4 | Low | **New in 5.10.0.** Reports clock and new-GUID values (`DateTime.Now`/`UtcNow`/`Today`, `DateTimeOffset.Now`/`UtcNow`, `Guid.NewGuid()`, `Guid.CreateVersion7()`) anywhere inside the arguments of EF Core `HasData` (entity and owned-type builders) and `HasDefaultValue`, including object initializers, anonymous objects and arrays, and through up to three single-assignment locals or `static readonly` fields. EF Core 9+ `Migrate()` throws `PendingModelChangesWarning` on these models. Manual-only: the fix is a literal only the author can choose or provider-specific default SQL. 13 tests. Tests stay 3 because values returned from helper methods are not followed. |
+| LC053 | Global query filter silently replaced by another HasQueryFilter | Schema & Modeling | Warning | 4 | 4 | 3 | 4 | 4 | 4 | Low | **New in 5.10.0.** Groups EF Core generic `EntityTypeBuilder<T>.HasQueryFilter` calls by entity type and reports unnamed filters that another non-exclusive unnamed filter would replace (if/else, `?:` and switch branches are exclusive), plus unnamed filters mixed with named ones (EF Core 10 throws). Same-member conflicts use a live descriptor; cross-member and cross-class conflicts use a `CompilationEnd` descriptor with the same ID. Both behaviors were confirmed on real EF Core 10 (the earlier filter is dropped; mixing throws `InvalidOperationException`). The fixer merges exactly two same-block, statement-level filters with `&&`, renaming the earlier lambda parameter and parenthesizing looser operands; it declines on name collisions, receivers with side effects, chained calls, and three or more filters. 20 tests (11 analyzer, 9 fixer). Fix Strategy stays 3 because naming filters and cross-class merges are manual. |
 
 ## Importance Ranking — what matters most to catch
 
@@ -129,7 +132,7 @@ This ranks rules by what a user most needs the package to catch (frequency × se
 | 6 | LC013 / LC036 | Context-lifetime correctness: querying a disposed context (guaranteed runtime crash) and DbContext captured across threads (corruption/crash under load, brutal to diagnose). |
 | 7 | LC015 | Non-deterministic pagination (no `OrderBy` before `Skip`/`Take`/`ElementAt`/`Last*`) — silently wrong pages, duplicate/missing rows across requests. |
 
-**Tier 2 — high value (Imp 4).** Real correctness/perf wins, slightly lower frequency or severity: LC002, LC004, LC006 (Cartesian explosion), LC008, LC011, LC012, LC014, LC019 (always-throws Include), LC021 (tenant/soft-delete filter bypass), LC024, LC025, LC030, LC035 (unfiltered bulk delete/update), LC039, LC052 (EF Core 9 `Migrate()` throws on non-deterministic seed data).
+**Tier 2 — high value (Imp 4).** Real correctness/perf wins, slightly lower frequency or severity: LC002, LC004, LC006 (Cartesian explosion), LC008, LC011, LC012, LC014, LC019 (always-throws Include), LC021 (tenant/soft-delete filter bypass), LC024, LC025, LC030, LC035 (unfiltered bulk delete/update), LC039, LC052 (EF Core 9 `Migrate()` throws on non-deterministic seed data), LC053 (tenant/soft-delete filter silently replaced).
 
 **Tier 3 — useful (Imp 3).** Hygiene and perf advisories: LC001, LC003, LC005, LC009, LC017, LC020, LC023, LC026, LC027, LC028, LC031, LC032, LC040, LC049, LC050, LC051.
 
@@ -1162,6 +1165,12 @@ Two sample expectations lost LC042 because their chains were only tracking optio
 | --- | --- | --- |
 | LC052 | **New rule, Warning, manual-only.** | Clock and new-GUID values in `HasData` seed objects (entity, anonymous, owned type, `IEntityTypeConfiguration`) and `HasDefaultValue`, directly and through locals and `static readonly` fields, with every value reported and the message naming the value, method and advice. Quiet boundaries cover fixed values, reassigned locals, instance and mutable static fields, clock values outside model building, and lookalike `HasData` methods. The sample verifier runs against real EF Core 8, 9 and 10. |
 
+## 2026-09-23 LC053 new-rule pass
+
+| Rule | Status | Coverage |
+| --- | --- | --- |
+| LC053 | **New rule, Warning, code fix.** | Two unnamed filters in one method, in separate configuration classes, and after sequential `if`s; mixed named and unnamed filters in one method and across classes; conflicts inside and across members at once. Quiet boundaries cover one filter per entity, named-only filters, exclusive branches, `HasQueryFilter(null)`, and lookalike builders. The fixer covers adjacent and separated statements, parameter renaming, parenthesizing, a comment above the removed filter, Fix All across two entities, and its no-fix cases. |
+
 ## Verification Baseline
 
 Package version: **5.9.0**
@@ -1317,5 +1326,7 @@ Final verification (2026-09-23, LC042 rescue and fixer): 36 focused LC042 tests 
 Final verification (2026-09-23, LC051 new rule): 17 focused LC051 tests pass, and the full local net10.0 suite passes 3,940 tests.
 
 Final verification (2026-09-23, LC052 new rule): 13 focused LC052 tests pass, and the full local net10.0 suite passes 3,954 tests.
+
+Final verification (2026-09-23, LC053 new rule): 20 focused LC053 tests pass, and the full local net10.0 suite passes 3,975 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

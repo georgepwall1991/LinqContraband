@@ -129,7 +129,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**52 rules**, 35 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**53 rules**, 36 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -185,6 +185,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC050](https://georgepwall1991.github.io/LinqContraband/LC050_OrderByBeforeDistinct.html) | OrderBy before Distinct is discarded | Warning | Yes |
 | [LC051](https://georgepwall1991.github.io/LinqContraband/LC051_ToAsyncEnumerableOnQuery.html) | ToAsyncEnumerable() runs an EF Core query synchronously | Warning | Yes |
 | [LC052](https://georgepwall1991.github.io/LinqContraband/LC052_NonDeterministicModelData.html) | Model data uses a value that changes on every run | Warning | Manual |
+| [LC053](https://georgepwall1991.github.io/LinqContraband/LC053_OverwrittenQueryFilter.html) | Global query filter silently replaced by another HasQueryFilter | Warning | Yes |
 
 <!-- rule-table:end -->
 

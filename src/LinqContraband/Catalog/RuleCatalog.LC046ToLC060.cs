@@ -112,6 +112,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC052_NonDeterministicModelData",
                 hasCodeFix: false,
                 noCodeFixRationale: "No safe automated rewrite: a seed value needs a fixed literal only the author can choose, and a database-side default needs provider-specific SQL (GETUTCDATE(), now(), CURRENT_TIMESTAMP)."
+            ),
+            new RuleCatalogEntry(
+                id: "LC053",
+                slug: "LC053_OverwrittenQueryFilter",
+                title: "Global query filter silently replaced by another HasQueryFilter",
+                category: "Security",
+                domain: "Schema & Modeling",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "OverwrittenQueryFilterAnalyzer",
+                fixerTypeName: "OverwrittenQueryFilterFixer",
+                documentationPath: "docs/LC053_OverwrittenQueryFilter.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC053_OverwrittenQueryFilter/OverwrittenQueryFilterSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC053_OverwrittenQueryFilter",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

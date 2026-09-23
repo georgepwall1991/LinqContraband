@@ -39,6 +39,7 @@ families and the difference between raw SQL and parameterized interpolation.
 | [LC034: interpolated ExecuteSqlRaw](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html) | Interpolated or concatenated SQL passed to raw command APIs. | Prefer `ExecuteSql`/interpolated APIs or explicit `DbParameter` values. |
 | [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html) | SQL strings built from interpolation, concatenation, `string.Format`, or similar construction before `FromSqlRaw`. | Keep SQL constant and parameterize values. |
 | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) | Query filter bypasses that can skip multi-tenant, soft-delete, or security filters. | Keep bypasses explicit, reviewed, and documented. |
+| [LC053: overwritten query filter](/LinqContraband/LC053_OverwrittenQueryFilter.html) | A second unnamed `HasQueryFilter` on the same entity, which replaces the first instead of adding to it. | Combine the conditions with `&&`, or name each filter (EF Core 10+). |
 
 ## Working Alongside EF Core's EF1002 and EF1003
 
