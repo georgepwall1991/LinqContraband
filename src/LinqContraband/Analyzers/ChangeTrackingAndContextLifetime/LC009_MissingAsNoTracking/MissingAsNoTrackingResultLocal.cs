@@ -74,6 +74,33 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         return anchor;
     }
 
+    /// <summary>
+    /// Whether the deferred <c>AsEnumerable()</c> query runs at a later materializer that LC009 reports itself:
+    /// the first query-executing call the entities reach through LINQ to Objects, such as the <c>ToList()</c> in
+    /// <c>db.Orders.AsEnumerable().Where(...).ToList()</c>.
+    /// </summary>
+    private static bool QueryRunsAtReportedMaterializer(IInvocationOperation asEnumerable)
+    {
+        var entityType = asEnumerable.TargetMethod.TypeArguments.Length > 0
+            ? asEnumerable.TargetMethod.TypeArguments[0]
+            : null;
+        if (entityType == null)
+            return false;
+
+        IOperation current = asEnumerable;
+        while (WalkUpThroughWrappers(current.Parent) is IArgumentOperation { Parent: IInvocationOperation linq } argument &&
+               IsLinqToObjectsSource(linq, argument) &&
+               ContainsType(linq.Type, entityType))
+        {
+            if (linq.IsQueryExecutingMaterializer())
+                return IsEntityMaterializer(linq.TargetMethod) && AnalyzeQueryChain(linq).IsTrackedEfRead;
+
+            current = linq;
+        }
+
+        return false;
+    }
+
     private static IOperation? WalkUpThroughWrappers(IOperation? operation)
     {
         while (operation is IConversionOperation or IParenthesizedOperation or IAwaitOperation)

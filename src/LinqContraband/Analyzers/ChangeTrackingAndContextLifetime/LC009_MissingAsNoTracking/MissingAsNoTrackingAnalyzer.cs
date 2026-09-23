@@ -72,10 +72,12 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (enclosingSymbol is IMethodSymbol enclosingMethod && enclosingMethod.ReturnType.IsIQueryable())
             return;
 
-        var analysis = AnalyzeQueryChain(invocation);
-        if (!analysis.IsEfQuery || analysis.IsAmbiguousSource)
+        if (!AnalyzeQueryChain(invocation).IsTrackedEfRead)
             return;
-        if (analysis.HasAsNoTracking || analysis.HasAsTracking || analysis.HasSelect)
+
+        // db.Orders.AsEnumerable().Where(...).ToList(): AsEnumerable() defers, so the query runs
+        // at the outer ToList(), which reports it. AsEnumerable() reports only when nothing does.
+        if (method.Name == "AsEnumerable" && QueryRunsAtReportedMaterializer(invocation))
             return;
 
         if (HasWriteOperations(context.Operation, writeOperationCache))
@@ -143,5 +145,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         public bool HasAsNoTracking { get; set; }
         public bool HasAsTracking { get; set; }
         public bool HasSelect { get; set; }
+
+        public bool IsTrackedEfRead =>
+            IsEfQuery && !IsAmbiguousSource && !HasAsNoTracking && !HasAsTracking && !HasSelect;
     }
 }
