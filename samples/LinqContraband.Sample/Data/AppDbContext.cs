@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace LinqContraband.Sample.Data;
@@ -14,9 +15,20 @@ public class AppDbContext : DbContext
     /// </summary>
     public DbSet<User> Users { get; set; } = null!;
 
+    // An in-memory SQLite database lives as long as its connection stays open, and, unlike the
+    // EF Core InMemory provider, it translates queries to SQL the way a production provider does.
+    private static readonly SqliteConnection Connection = OpenConnection();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseInMemoryDatabase("SampleDb");
+        optionsBuilder.UseSqlite(Connection);
+    }
+
+    private static SqliteConnection OpenConnection()
+    {
+        var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        return connection;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -55,12 +67,6 @@ public class AppDbContext : DbContext
     #region LC011 - Entity Missing Primary Key Test Cases
 
     /// <summary>
-    ///     VIOLATION: This entity has no defined Primary Key.
-    ///     Should trigger LC011.
-    /// </summary>
-    public DbSet<Product> Products { get; set; } = null!;
-
-    /// <summary>
     ///     VALID: Primary Key defined by 'Id' convention.
     /// </summary>
     public DbSet<ValidIdEntity> ValidIds { get; set; } = null!;
@@ -86,6 +92,20 @@ public class AppDbContext : DbContext
     public DbSet<ConfigurationEntity> ConfigurationEntities { get; set; } = null!;
 
     #endregion
+}
+
+/// <summary>
+///     Holds the LC011 violation: <see cref="Product" /> has no primary key, so EF Core rejects this model.
+///     It lives in its own context, which the sample app never instantiates, so <see cref="AppDbContext" />
+///     still builds a valid model at runtime.
+/// </summary>
+public class KeylessModelDbContext : DbContext
+{
+    /// <summary>
+    ///     VIOLATION: This entity has no defined Primary Key.
+    ///     Should trigger LC011.
+    /// </summary>
+    public DbSet<Product> Products { get; set; } = null!;
 }
 
 #region Entity Definitions

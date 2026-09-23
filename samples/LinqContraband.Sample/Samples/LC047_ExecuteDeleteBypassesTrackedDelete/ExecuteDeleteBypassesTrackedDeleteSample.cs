@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace LinqContraband.Sample.Samples.LC047_ExecuteDeleteBypassesTrackedDelete;
@@ -8,6 +9,7 @@ public static class ExecuteDeleteBypassesTrackedDeleteSample
     {
         Console.WriteLine("Testing LC047...");
         using var db = new SoftDeleteDbContext();
+        db.Database.EnsureCreated();
         var cutoff = DateTime.UtcNow.AddYears(-1);
 
         // VIOLATION: ExecuteDelete issues a SQL DELETE and skips SaveChanges soft-delete conversion.
@@ -35,9 +37,19 @@ public sealed class SoftDeleteDbContext : DbContext
 {
     public DbSet<SoftDeleteUser> Users { get; set; } = null!;
 
+    // ExecuteDelete and ExecuteUpdate need a relational provider, so this uses in-memory SQLite.
+    private static readonly SqliteConnection Connection = OpenConnection();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseInMemoryDatabase("LC047");
+        optionsBuilder.UseSqlite(Connection);
+    }
+
+    private static SqliteConnection OpenConnection()
+    {
+        var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        return connection;
     }
 
     public override int SaveChanges()

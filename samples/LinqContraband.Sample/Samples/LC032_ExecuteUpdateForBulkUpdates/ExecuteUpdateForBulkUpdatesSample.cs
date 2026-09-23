@@ -43,5 +43,10 @@ namespace LinqContraband.Sample.Samples.LC032_ExecuteUpdateForBulkUpdates
     internal sealed class BulkAppDbContext : DbContext
     {
         public DbSet<BulkUser> Users { get; set; } = null!;
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseInMemoryDatabase("LC032");
+        }
     }
 }

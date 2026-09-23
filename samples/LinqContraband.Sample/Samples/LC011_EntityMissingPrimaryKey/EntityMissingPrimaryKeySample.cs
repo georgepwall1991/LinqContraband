@@ -29,6 +29,7 @@ public class EntityMissingPrimaryKeySample
     public static void Run()
     {
         Console.WriteLine("Testing LC011 (Design-time check, see AppDbContext.cs)...");
-        // The violation is located in AppDbContext.cs on the 'Products' DbSet.
+        // The violation is located in AppDbContext.cs on KeylessModelDbContext.Products. That context is never
+        // instantiated here, because EF Core would reject its model at startup.
     }
 }
