@@ -142,6 +142,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC054_MigrateInsideTransaction",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC055",
+                slug: "LC055_MissingBaseOnModelCreating",
+                title: "OnModelCreating override skips the base configuration",
+                category: "Correctness",
+                domain: "Schema & Modeling",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "MissingBaseOnModelCreatingAnalyzer",
+                fixerTypeName: "MissingBaseOnModelCreatingFixer",
+                documentationPath: "docs/LC055_MissingBaseOnModelCreating.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC055_MissingBaseOnModelCreating/MissingBaseOnModelCreatingSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC055_MissingBaseOnModelCreating",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

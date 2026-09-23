@@ -237,3 +237,6 @@ indent_size = 2
 
 # LC054: Migrate Inside Transaction - EF Core 9+ throws when Migrate runs in a user transaction
 # dotnet_diagnostic.LC054.severity = warning
+
+# LC055: Missing Base OnModelCreating - The override skips the base context's model configuration
+# dotnet_diagnostic.LC055.severity = warning

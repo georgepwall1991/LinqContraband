@@ -592,5 +592,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC054_MigrateInsideTransaction/MigrateInsideTransactionSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/SchemaAndModeling/LC054_MigrateInsideTransaction"
+  },
+  {
+    "id": "LC055",
+    "title": "OnModelCreating override skips the base configuration",
+    "category": "Correctness",
+    "domain": "Schema & Modeling",
+    "domain_anchor": "schema-modeling",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC055_MissingBaseOnModelCreating/MissingBaseOnModelCreatingSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/SchemaAndModeling/LC055_MissingBaseOnModelCreating"
   }
 ]
