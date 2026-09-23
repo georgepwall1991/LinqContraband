@@ -32,8 +32,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
             var receiverType = inv.Instance?.Type ?? (inv.Arguments.Length > 0 ? inv.Arguments[0].Value.Type : null);
 
             if ((name == "Add" || name == "AddAsync" ||
-                 name == "Update" || name == "Remove" || name == "RemoveRange" || name == "AddRange" ||
-                 name == "AddRangeAsync") &&
+                 name == "Update" || name == "UpdateRange" || name == "Remove" || name == "RemoveRange" ||
+                 name == "AddRange" || name == "AddRangeAsync") &&
                 (receiverType?.IsDbSet() == true || receiverType?.IsDbContext() == true))
             {
                 return true;
