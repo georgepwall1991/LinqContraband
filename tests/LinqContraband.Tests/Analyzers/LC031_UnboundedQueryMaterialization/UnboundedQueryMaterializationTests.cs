@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC031_UnboundedQueryMaterialization;
 
-public class UnboundedQueryMaterializationTests
+public partial class UnboundedQueryMaterializationTests
 {
     private const string Usings = @"
 using System;
@@ -392,12 +392,16 @@ namespace TestApp
     public async Task ToList_WithTransparentQueryOption_ShouldTriggerLC031()
     {
         var test = Usings + EFCoreMock + Entities + @"
-namespace TestApp
+namespace Microsoft.EntityFrameworkCore
 {
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
     }
+}
+
+namespace TestApp
+{
 
     public class TestClass
     {

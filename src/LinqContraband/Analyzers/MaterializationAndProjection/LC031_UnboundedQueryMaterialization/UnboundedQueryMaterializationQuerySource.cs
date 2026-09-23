@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -27,12 +28,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
             else if (current is IInvocationOperation prevInvocation)
             {
                 var prevMethod = prevInvocation.TargetMethod;
-
-                if (IsBoundingMethod(prevMethod.Name) || IsAggregateMethod(prevMethod.Name))
-                {
-                    foundBounding = true;
-                    break;
-                }
+                var receiver = prevInvocation.GetInvocationReceiver();
 
                 if (IsDbContextSetInvocation(prevInvocation))
                 {
@@ -41,7 +37,19 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                     break;
                 }
 
-                current = prevInvocation.GetInvocationReceiver();
+                if (IsAggregateMethod(prevMethod.Name) ||
+                    IsBoundingMethod(prevMethod.Name) && IsServerSide(receiver) ||
+                    IsKeyLookup(prevInvocation))
+                {
+                    foundBounding = true;
+                    break;
+                }
+
+                // A project's own IQueryable helper (paging, specifications) may apply the bound itself.
+                if (!IsLinqOrEfCoreOperator(prevMethod) && prevInvocation.Type.IsIQueryable())
+                    break;
+
+                current = receiver;
             }
             else if (current is ILocalReferenceOperation localReference)
             {
@@ -91,6 +99,109 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
         }
 
         return new QuerySourceResolution(foundDbSet, foundBounding, dbSetName);
+    }
+
+    /// <summary>
+    /// A bound only limits the database query while the source is still a query. After <c>AsEnumerable()</c>,
+    /// <c>Take</c> trims rows that were already loaded.
+    /// </summary>
+    private static bool IsServerSide(IOperation? receiver)
+    {
+        return receiver?.UnwrapConversions().Type.IsIQueryable() == true;
+    }
+
+    private static bool IsLinqOrEfCoreOperator(IMethodSymbol method)
+    {
+        var ns = (method.ReducedFrom ?? method).ContainingType?.ContainingNamespace?.ToDisplayString();
+        return ns != null &&
+               (ns == "System.Linq" || ns.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// <c>Where(x =&gt; x.Id == id)</c> or <c>Where(x =&gt; ids.Contains(x.Id))</c> on the entity's primary key:
+    /// the rows are bounded by the keys supplied.
+    /// </summary>
+    private static bool IsKeyLookup(IInvocationOperation invocation)
+    {
+        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        if (method.Name != "Where" ||
+            method.ContainingType?.Name != "Queryable" ||
+            method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Linq")
+        {
+            return false;
+        }
+
+        var predicate = invocation.Arguments.Length == 2 ? invocation.Arguments[1].Value.UnwrapConversions() : null;
+        if (predicate is IDelegateCreationOperation delegateCreation)
+            predicate = delegateCreation.Target;
+
+        if (predicate is not IAnonymousFunctionOperation { Symbol.Parameters.Length: 1 } lambda)
+            return false;
+
+        var body = lambda.Body.Operations.Length == 1 && lambda.Body.Operations[0] is IReturnOperation { ReturnedValue: { } returned }
+            ? returned
+            : null;
+
+        return body != null && ConstrainsKey(body, lambda.Symbol.Parameters[0]);
+    }
+
+    private static bool ConstrainsKey(IOperation condition, IParameterSymbol row)
+    {
+        condition = condition.UnwrapConversions();
+
+        switch (condition)
+        {
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } and:
+                return ConstrainsKey(and.LeftOperand, row) || ConstrainsKey(and.RightOperand, row);
+
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals } equals:
+                return IsKeyOf(equals.LeftOperand, row) && !ReferencesParameter(equals.RightOperand, row) ||
+                       IsKeyOf(equals.RightOperand, row) && !ReferencesParameter(equals.LeftOperand, row);
+
+            case IInvocationOperation { TargetMethod.Name: "Contains" } contains:
+            {
+                var instance = contains.Instance;
+                var arguments = contains.Arguments;
+                IOperation? keys = instance;
+                IOperation? value = arguments.Length == 1 ? arguments[0].Value : null;
+                if (instance == null && arguments.Length == 2)
+                {
+                    keys = arguments[0].Value;
+                    value = arguments[1].Value;
+                }
+
+                return keys != null && value != null && IsKeyOf(value, row) && !ReferencesParameter(keys, row);
+            }
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsKeyOf(IOperation operation, IParameterSymbol row)
+    {
+        if (operation.UnwrapConversions() is not IPropertyReferenceOperation
+            {
+                Instance: IParameterReferenceOperation parameterReference
+            } propertyReference ||
+            !SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, row))
+        {
+            return false;
+        }
+
+        var property = propertyReference.Property;
+        return property.Name == "Id" ||
+               property.Name == row.Type.Name + "Id" ||
+               property.GetAttributes().Any(attribute =>
+                   attribute.AttributeClass is { Name: "KeyAttribute" } keyAttribute &&
+                   keyAttribute.ContainingNamespace?.ToDisplayString() == "System.ComponentModel.DataAnnotations");
+    }
+
+    private static bool ReferencesParameter(IOperation operation, IParameterSymbol parameter)
+    {
+        return operation.DescendantsAndSelf().Any(descendant =>
+            descendant is IParameterReferenceOperation reference &&
+            SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter));
     }
 
     private static bool IsDbContextSetInvocation(IInvocationOperation invocation)
