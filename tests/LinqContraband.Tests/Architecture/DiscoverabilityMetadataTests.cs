@@ -184,6 +184,35 @@ public sealed class DiscoverabilityMetadataTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
+    [Fact]
+    public void Docs_pages_take_the_rule_count_from_site_data()
+    {
+        // New rules land often, so a typed-in count ("47 rules") goes stale on the next release.
+        // Pages use {{ site.data.rules | size }} instead; front matter cannot, so it names no count.
+        var countPattern = new Regex(
+            @"\b[1-9][0-9] (?:[A-Za-z]+ ){0,3}(?:rules|diagnostics|analy[sz]ers)\b",
+            RegexOptions.IgnoreCase);
+        var docsRoot = Path.Combine(RepositoryRoot, "docs");
+        var failures = new List<string>();
+
+        foreach (var path in Directory.EnumerateFiles(docsRoot, "*.md").Concat(Directory.EnumerateFiles(docsRoot, "*.html")))
+        {
+            // The health doc is an audit log; its counts describe past releases on purpose.
+            if (Path.GetFileName(path) == "analyzer-health.md")
+                continue;
+
+            var lines = File.ReadAllLines(path);
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var match = countPattern.Match(lines[index]);
+                if (match.Success)
+                    failures.Add($"docs/{Path.GetFileName(path)}:{index + 1}: \"{match.Value}\" should use {{{{ site.data.rules | size }}}} or drop the number.");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
     private static string? ReadFrontMatterValue(IEnumerable<string> frontMatter, string key)
     {
         var line = frontMatter.FirstOrDefault(candidate => candidate.StartsWith(key + ":", StringComparison.Ordinal));
