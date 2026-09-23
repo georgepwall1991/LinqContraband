@@ -24,6 +24,7 @@ namespace Microsoft.EntityFrameworkCore
     public class DbContext
     {
         public int SaveChanges() => 0;
+        public DbSet<T> Set<T>() where T : class => null;
     }
 
     public class DbSet<T> : IQueryable<T> where T : class
@@ -108,4 +109,33 @@ class Program
         VerifyCS.VerifyCodeFixAsync(
             Program("var totals = (await {|LC009:db.Orders.ToListAsync()|}).Where(o => o.Total > 1).ToList(); return totals.Count;"),
             Program("var totals = (await db.Orders.AsNoTracking().ToListAsync()).Where(o => o.Total > 1).ToList(); return totals.Count;"));
+    [Theory]
+    // AsEnumerable() defers: the query runs when the outer materializer enumerates it, so that call reports.
+    [InlineData("return {|LC009:db.Orders.AsEnumerable().Where(o => o.Total > 1).ToList()|};")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable().ToList()|};")]
+    [InlineData("return {|LC009:db.Orders.Where(o => o.Id > 0).AsEnumerable().OrderBy(o => o.Id).ToArray()|};")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable().Where(o => o.Total > 1).First()|};")]
+    [InlineData("return {|LC009:db.Set<Order>().AsEnumerable().Where(o => o.Total > 1).ToList()|};")]
+    // No outer materializer that reports (none at all, one LC009 does not cover, or a projection it skips):
+    // AsEnumerable() stays the reported call.
+    [InlineData("foreach (var o in {|LC009:db.Orders.AsEnumerable()|}.Where(o => o.Total > 1)) { Console.WriteLine(o.Id); } return null;")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable()|}.Where(o => o.Total > 1);")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable()|}.ToLookup(o => o.Id);")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable()|}.Select(o => o.Total).ToList();")]
+    [InlineData("return {|LC009:db.Orders.AsEnumerable()|}.Select(o => o).ToList();")]
+    public Task AsEnumerableThenMaterializer_ReportsOnce(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    [Theory]
+    [InlineData("return db.Orders.AsNoTracking().AsEnumerable().Where(o => o.Total > 1).ToList();")]
+    [InlineData("var big = db.Orders.AsEnumerable().Where(o => o.Total > 1).ToList(); foreach (var o in big) { o.Total = 0; } return null;")]
+    [InlineData("foreach (var o in db.Orders.AsEnumerable().Where(o => o.Total > 1).ToList()) { o.Total = 0; } db.SaveChanges(); return null;")]
+    public Task AsEnumerableThenMaterializer_NoTrackingOrWritePath_StaysQuiet(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    [Fact]
+    public Task Fix_AsEnumerableThenMaterializer_AddsAsNoTrackingToTheEfSource() =>
+        VerifyCS.VerifyCodeFixAsync(
+            Program("var totals = {|LC009:db.Orders.AsEnumerable().Where(o => o.Total > 1).ToList()|}; return totals.Count;"),
+            Program("var totals = db.Orders.AsNoTracking().AsEnumerable().Where(o => o.Total > 1).ToList(); return totals.Count;"));
 }
