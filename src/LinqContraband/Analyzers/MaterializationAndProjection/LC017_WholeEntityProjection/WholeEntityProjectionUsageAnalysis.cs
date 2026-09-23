@@ -53,7 +53,9 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     break;
             }
 
-            if (descendant is IReturnOperation or IInvocationOperation or IAnonymousFunctionOperation or IPropertyReferenceOperation)
+            if (descendant is IReturnOperation or IInvocationOperation or IAnonymousFunctionOperation or IPropertyReferenceOperation
+                or IAssignmentOperation or IIncrementOrDecrementOperation or IArrayInitializerOperation or ITupleOperation
+                or IVariableDeclaratorOperation)
                 usageCandidates.Add(descendant);
         }
 
@@ -79,6 +81,40 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     result.HasEscapingUsage = true;
                     break;
 
+                // Loading tracked entities to change them is an update, not a read a projection could serve.
+                case IAssignmentOperation { Target: IPropertyReferenceOperation or IFieldReferenceOperation } write when
+                    IsTrackedEntityReference(((IMemberReferenceOperation)write.Target).Instance, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IIncrementOrDecrementOperation { Target: IPropertyReferenceOperation or IFieldReferenceOperation } increment when
+                    IsTrackedEntityReference(((IMemberReferenceOperation)increment.Target).Instance, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                // Stored in a field, property, another local or an initializer, the entities are used where this
+                // method cannot see.
+                case IAssignmentOperation assignment when
+                    IsDirectVariableEscape(assignment.Value, variable, foreachLocals, manualIterationLocals) &&
+                    !IsIterationLocalAssignment(assignment, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IVariableDeclaratorOperation { Initializer: { } initializer } when
+                    IsDirectVariableEscape(initializer.Value, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case IArrayInitializerOperation arrayInitializer when
+                    arrayInitializer.ElementValues.Any(element => IsDirectVariableEscape(element, variable, foreachLocals, manualIterationLocals)):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                case ITupleOperation tuple when
+                    tuple.Elements.Any(element => IsDirectVariableEscape(element, variable, foreachLocals, manualIterationLocals)):
+                    result.HasEscapingUsage = true;
+                    break;
+
                 case IPropertyReferenceOperation propertyReference when
                     IsPropertyOfType(propertyReference.Property, entityType) &&
                     IsTrackedEntityReference(propertyReference.Instance, variable, foreachLocals, manualIterationLocals):
@@ -98,5 +134,11 @@ public sealed partial class WholeEntityProjectionAnalyzer
             result.AccessedProperties,
             cancellationToken);
         return result;
+    }
+
+    private static bool IsIterationLocalAssignment(IAssignmentOperation assignment, HashSet<ILocalSymbol> manualIterationLocals)
+    {
+        // `current = entities[i];` is how a manual loop reads an item, not an escape.
+        return assignment.Target is ILocalReferenceOperation target && manualIterationLocals.Contains(target.Local);
     }
 }
