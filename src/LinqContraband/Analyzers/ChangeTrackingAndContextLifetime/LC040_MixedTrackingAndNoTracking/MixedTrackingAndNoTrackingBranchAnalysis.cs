@@ -62,7 +62,55 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                 }
             }
 
+            return EarlierBranchAlwaysExits(left, right);
+        }
+
+        // `if (track) return await query.ToListAsync(); return await query.AsNoTracking().ToListAsync();`
+        // The later materializer after the `if` only runs when the branch holding the earlier one
+        // did not, because that branch always ends in `return` or `throw`.
+        private static bool EarlierBranchAlwaysExits(SyntaxNode earlier, SyntaxNode later)
+        {
+            var function = GetEnclosingFunction(earlier);
+            if (function == null || GetEnclosingFunction(later) != function)
+                return false;
+
+            foreach (var ancestor in earlier.Ancestors())
+            {
+                if (ancestor == function)
+                    break;
+
+                if (ancestor.Parent is not (IfStatementSyntax or ElseClauseSyntax) ||
+                    ancestor is not StatementSyntax branch)
+                {
+                    continue;
+                }
+
+                var ifStatement = ancestor.Parent as IfStatementSyntax ?? ((ElseClauseSyntax)ancestor.Parent).Parent as IfStatementSyntax;
+                if (ifStatement == null || later.SpanStart < ifStatement.Span.End)
+                    continue;
+
+                if (AlwaysExits(branch))
+                    return true;
+            }
+
             return false;
+        }
+
+        private static bool AlwaysExits(StatementSyntax statement)
+        {
+            return statement switch
+            {
+                ReturnStatementSyntax or ThrowStatementSyntax => true,
+                BlockSyntax block => block.Statements.Count > 0 && AlwaysExits(block.Statements[block.Statements.Count - 1]),
+                _ => false
+            };
+        }
+
+        private static SyntaxNode? GetEnclosingFunction(SyntaxNode node)
+        {
+            return node.Ancestors().FirstOrDefault(ancestor =>
+                ancestor is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax or
+                    LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax);
         }
 
         private static ExpressionSyntax? GetContainingTernaryArm(ConditionalExpressionSyntax ternary, SyntaxNode node)
