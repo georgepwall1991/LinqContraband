@@ -35,6 +35,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         {
             if (member is not IPropertySymbol prop) continue;
             if (prop.DeclaredAccessibility != Accessibility.Public) continue;
+            if (!IsMappedProperty(entityType, prop)) continue;
             if (prop.Type is not INamedTypeSymbol propType) continue;
             if (IsCollectionType(propType)) continue;
             if (!allEntityTypes.Contains(propType)) continue;
@@ -49,6 +50,42 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         }
     }
 
+    /// <summary>
+    /// EF Core skips <c>[NotMapped]</c> properties and computed ones such as <c>PlanData NextPlan =&gt; NewPlan ?? Plan</c>:
+    /// a property without a setter is mapped only through a backing field it can find by convention.
+    /// </summary>
+    private static bool IsMappedProperty(INamedTypeSymbol entityType, IPropertySymbol property)
+    {
+        if (property.IsStatic || property.IsIndexer)
+            return false;
+
+        foreach (var attribute in property.GetAttributes())
+        {
+            if (attribute.AttributeClass?.Name is "NotMappedAttribute" or "NotMapped")
+                return false;
+        }
+
+        if (property.SetMethod != null)
+            return true;
+
+        var camelName = char.ToLowerInvariant(property.Name[0]) + property.Name.Substring(1);
+        for (var type = entityType; type != null; type = type.BaseType)
+        {
+            foreach (var field in type.GetMembers().OfType<IFieldSymbol>())
+            {
+                if (SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property) ||
+                    field.Name == "_" + camelName || field.Name == "_" + property.Name ||
+                    field.Name == "m_" + camelName || field.Name == "m_" + property.Name ||
+                    field.Name == camelName)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static bool HasMatchingForeignKey(
         INamedTypeSymbol entityType,
         IPropertySymbol navProperty,
@@ -59,6 +96,7 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
         if (ownedEntities.Contains(navType)) return true;
         if (configuredForeignKeys.Contains(GetNavigationConfigurationKey(entityType, navProperty.Name))) return true;
         if (HasForeignKeyAttribute(navProperty)) return true;
+        if (IsPrincipalOfOneToOne(entityType, navType)) return true;
 
         var current = entityType;
         while (current != null && current.SpecialType != SpecialType.System_Object)
@@ -84,6 +122,26 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             }
 
             current = current.BaseType;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Jellyfin's <c>User.ProfileImage</c> with <c>ImageInfo.UserId</c>: when the related type carries a
+    /// <c>{Entity}Id</c> key back to this entity, EF Core makes it the dependent of a one-to-one, and this side
+    /// is the principal, which has no foreign key to add.
+    /// </summary>
+    private static bool IsPrincipalOfOneToOne(INamedTypeSymbol entityType, INamedTypeSymbol navType)
+    {
+        var inverseKeyName = entityType.Name + "Id";
+        for (var current = navType; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers(inverseKeyName))
+            {
+                if (member is IPropertySymbol)
+                    return true;
+            }
         }
 
         return false;
