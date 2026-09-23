@@ -499,6 +499,15 @@
       "ruleIds": [
         "LC051"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC052_NonDeterministicModelData/NonDeterministicModelDataSample.cs",
+      "samplePaths": [
+        "Samples/LC052_NonDeterministicModelData/NonDeterministicModelDataSample.cs"
+      ],
+      "ruleIds": [
+        "LC052"
+      ]
     }
   ]
 }
