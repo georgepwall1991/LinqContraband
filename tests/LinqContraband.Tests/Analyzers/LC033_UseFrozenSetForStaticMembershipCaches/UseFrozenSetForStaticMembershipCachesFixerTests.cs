@@ -437,6 +437,113 @@ class Program
         Assert.Empty(actions);
     }
 
+    [Fact]
+    public async Task RealBcl_CollectionInitializerWithComparer_FixCompiles()
+    {
+        // No source shim: ToFrozenSet and FrozenSet<T> come from the .NET 8 reference assemblies,
+        // and the fixed code must compile against them.
+        var test = Usings + @"
+class Program
+{
+    {|#0:private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ""admin"",
+        ""ops""
+    };|}
+
+    static bool IsElevated(string role) => ElevatedRoles.Contains(role);
+}";
+
+        var fixedCode = Usings + @"using System.Collections.Frozen;
+
+class Program
+{
+    private static readonly FrozenSet<string> ElevatedRoles = new string[] {
+        ""admin"",
+        ""ops""
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    static bool IsElevated(string role) => ElevatedRoles.Contains(role);
+}";
+
+        await VerifyRealBclCodeFixAsync(
+            test,
+            VerifyFix.Diagnostic("LC033").WithLocation(0).WithArguments("ElevatedRoles"),
+            fixedCode);
+    }
+
+    [Fact]
+    public async Task RealBcl_SourceConstructor_FixCompiles()
+    {
+        var test = Usings + @"
+class Program
+{
+    private static readonly int[] SeedValues = { 1, 2, 3 };
+    {|#0:private static readonly HashSet<int> ReservedIds = new HashSet<int>(SeedValues);|}
+
+    static bool IsReserved(int value) => ReservedIds.Contains(value);
+}";
+
+        var fixedCode = Usings + @"using System.Collections.Frozen;
+
+class Program
+{
+    private static readonly int[] SeedValues = { 1, 2, 3 };
+    private static readonly FrozenSet<int> ReservedIds = SeedValues.ToFrozenSet();
+
+    static bool IsReserved(int value) => ReservedIds.Contains(value);
+}";
+
+        await VerifyRealBclCodeFixAsync(
+            test,
+            VerifyFix.Diagnostic("LC033").WithLocation(0).WithArguments("ReservedIds"),
+            fixedCode);
+    }
+
+    [Fact]
+    public async Task RealBcl_ToHashSetWithComparer_FixCompiles()
+    {
+        var test = Usings + @"
+class Program
+{
+    private static readonly string[] SeedValues = { ""admin"", ""ops"" };
+    {|#0:private static readonly HashSet<string> ElevatedRoles = SeedValues.ToHashSet(StringComparer.OrdinalIgnoreCase);|}
+
+    static bool IsElevated(string role) => ElevatedRoles.Contains(role);
+}";
+
+        var fixedCode = Usings + @"using System.Collections.Frozen;
+
+class Program
+{
+    private static readonly string[] SeedValues = { ""admin"", ""ops"" };
+    private static readonly FrozenSet<string> ElevatedRoles = SeedValues.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    static bool IsElevated(string role) => ElevatedRoles.Contains(role);
+}";
+
+        await VerifyRealBclCodeFixAsync(
+            test,
+            VerifyFix.Diagnostic("LC033").WithLocation(0).WithArguments("ElevatedRoles"),
+            fixedCode);
+    }
+
+    private static async Task VerifyRealBclCodeFixAsync(string test, DiagnosticResult expected, string fixedCode)
+    {
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+            // LC033 reports from a compilation-end action. Compiler errors stay checked, so the
+            // fixed code must compile against the real FrozenSet API.
+            CodeFixTestBehaviors = CodeFixTestBehaviors.SkipLocalDiagnosticCheck
+        };
+
+        testObj.ExpectedDiagnostics.Add(expected);
+        await testObj.RunAsync();
+    }
+
     private static async Task VerifyCodeFixAsync(string test, DiagnosticResult expected, string fixedCode)
     {
         var testObj = new CodeFixTest

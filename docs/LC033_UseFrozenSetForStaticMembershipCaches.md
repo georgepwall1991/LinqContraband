@@ -47,7 +47,7 @@ private static readonly FrozenSet<string> ElevatedRoles = new string[]
 
 ### Algorithm
 1. Require a source-declared `private static readonly HashSet<T>` field with a single declarator and an inline initializer.
-2. Require `System.Collections.Frozen.FrozenSet<T>` and `ToFrozenSet(...)` to be available in the compilation.
+2. Require `System.Collections.Frozen.FrozenSet<T>` and the `ToFrozenSet(...)` extension to be available in the compilation: from the framework's `System.Collections.Frozen.FrozenSet` class on .NET 8+ (or the `System.Collections.Immutable` 8.0+ package), or from a source-declared polyfill in the `System.Collections.Frozen` namespace. On frameworks without them (.NET 7 and older, .NET Standard without the package) the rule stays silent.
 3. Accept only fixer-safe initializer shapes:
    - collection initializer forms (`new HashSet<T>() { ... }`, optionally with a comparer),
    - `new HashSet<T>(source[, comparer])`,

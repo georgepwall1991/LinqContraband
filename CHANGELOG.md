@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - LC029 no longer reports `Select(v => v!)` over nullable elements, such as `names.Where(n => n != null).Select(n => n!)` on an `IEnumerable<string?>`. The projection turns the sequence into `IEnumerable<string>` for nullable analysis, so removing it, as the code fix did, produced nullable warnings (build errors under `TreatWarningsAsErrors`). `Select(v => v!)` over elements that are already non-nullable is still reported.
+- LC033 now reports on real .NET 8, 9 and 10 projects. It looked for `ToFrozenSet` only among the compilation's own source declarations, so it found the framework's `System.Collections.Frozen.FrozenSet.ToFrozenSet` only when a project declared a copy of it, as the tests and the sample did, and stayed silent everywhere else. It now reads `ToFrozenSet` from the referenced framework assemblies, keeps accepting a source-declared polyfill, and still stays quiet on frameworks without `FrozenSet<T>`. The code fix's output is now tested against the real .NET 8 `FrozenSet` API.
 
 ## [5.10.0] - 2026-09-23
 
