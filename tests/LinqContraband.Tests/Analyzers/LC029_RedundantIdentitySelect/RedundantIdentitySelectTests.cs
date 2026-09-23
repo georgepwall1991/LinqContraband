@@ -231,4 +231,81 @@ namespace LinqContraband.Test
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task Select_NullForgivingOverNullableElements_ShouldNotTriggerLC029()
+    {
+        // Select(v => v!) turns IEnumerable<string?> into IEnumerable<string>; removing it breaks nullable flow.
+        var test = Usings + @"
+#nullable enable
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public string[] TestMethod(IEnumerable<string?> values)
+        {
+            return values.Where(v => v != null).Select(v => v!).ToArray();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Select_NullForgivingOverNullableQueryable_ShouldNotTriggerLC029()
+    {
+        var test = Usings + @"
+#nullable enable
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public IQueryable<string> TestMethod(IQueryable<string?> query)
+        {
+            return query.Where(v => v != null).Select(v => v!);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Select_NullForgivingOverNonNullableElements_ShouldTriggerLC029()
+    {
+        var test = Usings + @"
+#nullable enable
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public string[] TestMethod(IEnumerable<string> values)
+        {
+            return {|LC029:values.Select(v => v!)|}.ToArray();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Select_IdentityOverNullableElements_ShouldTriggerLC029()
+    {
+        var test = Usings + @"
+#nullable enable
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public string?[] TestMethod(IEnumerable<string?> values)
+        {
+            return {|LC029:values.Select(v => v)|}.ToArray();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

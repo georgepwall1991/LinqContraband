@@ -33,11 +33,15 @@ public sealed partial class RedundantIdentitySelectAnalyzer
                namedType.TypeArguments.Length == 1;
     }
 
+    /// <summary>
+    /// The selector returns exactly its parameter's type, nullability included: <c>Select(v =&gt; v!)</c> over
+    /// <c>string?</c> elements yields <c>string</c> elements, so removing it would change the sequence's type.
+    /// </summary>
     private static bool IsTypePreservingSelector(IAnonymousFunctionOperation lambda)
     {
         var parameter = lambda.Symbol.Parameters.FirstOrDefault();
         return parameter != null &&
-               SymbolEqualityComparer.Default.Equals(parameter.Type, lambda.Symbol.ReturnType);
+               SymbolEqualityComparer.IncludeNullability.Equals(parameter.Type, lambda.Symbol.ReturnType);
     }
 
     private static bool IsIdentityLambda(IAnonymousFunctionOperation lambda)

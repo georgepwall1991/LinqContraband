@@ -59,7 +59,7 @@ var users = db.Users.AsEnumerable().ToList();
 1.  **Target Method**: Intercept invocations of `Select`.
 2.  **Receiver Check**: Require a fluent `IQueryable<T>` or `IEnumerable<T>` receiver that the fixer can preserve directly.
 3.  **Lambda Check**: Inspect the lambda argument, including delegate-created statement lambdas.
-4.  **Type Check**: Require the selector return type to match the source parameter type, so casts such as `x => (object)x` are not treated as redundant.
+4.  **Type Check**: Require the selector return type to match the source parameter type, nullability included, so casts such as `x => (object)x` and null-forgiving projections such as `x => x!` over `string?` elements are not treated as redundant.
 5.  **Identity Check**: If the lambda is an identity function (for example `x => x` or `{ return x; }`), report a violation.
 
 ## Test Cases
@@ -73,6 +73,9 @@ items.Select(x => { return x; });
 ### Valid
 ```csharp
 query.Select(x => x.Name);
+
+// Turns IEnumerable<string?> into IEnumerable<string> for nullable analysis.
+names.Where(n => n != null).Select(n => n!);
 ```
 
 ### Intentional boundaries
@@ -83,6 +86,6 @@ Use APIs that state the boundary directly: `AsEnumerable()`, `AsAsyncEnumerable(
 
 LC029 reports identity projections such as `Select(x => x)` on queryable chains and `Select(x => { return x; })` on interface-shaped enumerable chains. The fixer removes the redundant projection while preserving the rest of the fluent query.
 
-Static extension calls such as `Enumerable.Select(items, x => x)`, concrete enumerable receivers such as `List<T>`, awaited-task projections such as `items.Select(async x => await x)`, explicit-cast projections such as `items.Select<Base, Base>(x => (Derived)x)`, and type-changing projections such as `items.Select(x => (object)x)` are not reported because removing the call would either require a different rewrite shape or change the projected type/surface.
+Static extension calls such as `Enumerable.Select(items, x => x)`, concrete enumerable receivers such as `List<T>`, awaited-task projections such as `items.Select(async x => await x)`, explicit-cast projections such as `items.Select<Base, Base>(x => (Derived)x)`, type-changing projections such as `items.Select(x => (object)x)`, and null-forgiving projections that change element nullability such as `names.Select(n => n!)` over `IEnumerable<string?>` are not reported because removing the call would either require a different rewrite shape or change the projected type/surface.
 
 Fluent receivers remain supported when they are parenthesized, explicitly cast, or null-forgiven, so `(query).Select(x => x)`, `((IQueryable<User>)query).Select(x => x)`, and `query!.Select(x => x)` are still treated as redundant identity projections.
