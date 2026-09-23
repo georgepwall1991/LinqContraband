@@ -40,6 +40,14 @@ families and the difference between raw SQL and parameterized interpolation.
 | [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html) | SQL strings built from interpolation, concatenation, `string.Format`, or similar construction before `FromSqlRaw`. | Keep SQL constant and parameterize values. |
 | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) | Query filter bypasses that can skip multi-tenant, soft-delete, or security filters. | Keep bypasses explicit, reviewed, and documented. |
 
+## Working Alongside EF Core's EF1002 and EF1003
+
+EF Core 8 and later ship their own raw SQL warnings: EF1002 for an interpolated string passed straight to a raw API,
+and (from EF Core 10) EF1003 for a concatenated one. LC018 and LC034 stay quiet on exactly those calls so a line never
+carries two warnings for one injection. LinqContraband still covers what EF's analyzers do not see: SQL built in a
+local, with `string.Format`, `string.Concat` or a `StringBuilder` (LC037), concatenation on EF Core 8 and 9, reordered
+named `sql:` arguments, and EF Core 7 and older.
+
 ## Safer EF Core Patterns
 
 Prefer EF Core's parameterized interpolation APIs where possible:

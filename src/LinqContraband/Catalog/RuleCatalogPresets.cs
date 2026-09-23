@@ -60,6 +60,13 @@ public static class RuleCatalogPresets
     public static ImmutableArray<string> SecurityRuleIds { get; } = ImmutableArray.Create("LC018", "LC034", "LC037");
 
     /// <summary>
+    /// EF Core's own raw-SQL injection analyzers (shipped with the Microsoft.EntityFrameworkCore package): EF1002
+    /// for interpolated and EF1003 for concatenated SQL passed straight to a raw API. LC018 and LC034 stay quiet on
+    /// the calls these report, so presets that make SQL injection a build error raise them too.
+    /// </summary>
+    public static ImmutableArray<string> EfCoreSqlInjectionRuleIds { get; } = ImmutableArray.Create("EF1002", "EF1003");
+
+    /// <summary>
     /// Security plus the rules whose findings are runtime failures or silent data loss rather than slow queries:
     /// disposed-context queries, always-throwing conditional includes, contexts shared across threads or
     /// concurrent operations, lost AsNoTracking writes, ExecuteDelete skipping soft-delete/cascade, and lost updates.
@@ -72,18 +79,18 @@ public static class RuleCatalogPresets
             "security",
             -10,
             "SQL injection rules are build errors.",
-            SecurityRuleIds.Select(id => (id, "error")).ToImmutableArray()),
+            EfCoreSqlInjectionRuleIds.AddRange(SecurityRuleIds).Select(id => (id, "error")).ToImmutableArray()),
         new RuleCatalogPreset(
             "critical",
             -20,
             "SQL injection, runtime-failure, and silent data-loss rules are build errors.",
-            CriticalRuleIds.OrderBy(id => id, StringComparer.Ordinal).Select(id => (id, "error")).ToImmutableArray()),
+            EfCoreSqlInjectionRuleIds.AddRange(CriticalRuleIds.OrderBy(id => id, StringComparer.Ordinal)).Select(id => (id, "error")).ToImmutableArray()),
         new RuleCatalogPreset(
             "strict",
             -30,
             "every warning rule is a build error and every advisory (Info) rule is a warning.",
-            RuleCatalog.All
-                .Select(rule => (rule.Id, rule.Severity == DiagnosticSeverity.Warning ? "error" : "warning"))
+            EfCoreSqlInjectionRuleIds.Select(id => (id, "error"))
+                .Concat(RuleCatalog.All.Select(rule => (rule.Id, rule.Severity == DiagnosticSeverity.Warning ? "error" : "warning")))
                 .ToImmutableArray()),
         new RuleCatalogPreset(
             "essentials",

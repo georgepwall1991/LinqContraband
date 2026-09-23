@@ -4,6 +4,8 @@
 is_global = true
 global_level = -20
 
+dotnet_diagnostic.EF1002.severity = error
+dotnet_diagnostic.EF1003.severity = error
 dotnet_diagnostic.LC013.severity = error
 dotnet_diagnostic.LC018.severity = error
 dotnet_diagnostic.LC019.severity = error
