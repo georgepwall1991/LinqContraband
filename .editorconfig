@@ -240,3 +240,6 @@ indent_size = 2
 
 # LC055: Missing Base OnModelCreating - The override skips the base context's model configuration
 # dotnet_diagnostic.LC055.severity = warning
+
+# LC056: Stored Procedure Composed - EF Core cannot compose LINQ over EXEC and throws
+# dotnet_diagnostic.LC056.severity = warning

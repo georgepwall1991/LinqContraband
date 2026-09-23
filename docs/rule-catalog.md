@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>55</strong><span>rules</span></div>
-    <div class="metric"><strong>36</strong><span>warnings</span></div>
-    <div class="metric"><strong>38</strong><span>code fixes</span></div>
+    <div class="metric"><strong>56</strong><span>rules</span></div>
+    <div class="metric"><strong>37</strong><span>warnings</span></div>
+    <div class="metric"><strong>39</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -726,6 +726,19 @@ body_class: page-rule-catalog
         <span class="pill pill--manual">Manual only</span>
       </span>
       <span class="rule-card__sample">Samples/LC037_RawSqlStringConstruction/</span>
+    </a>
+    <a class="rule-card" href="./LC056_StoredProcedureComposed.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC056</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>LINQ composed over a stored procedure call</h3>
+      <p class="rule-card__summary">Flags EF Core FromSql, FromSqlRaw and SqlQuery calls that run a stored procedure (EXEC) and are then composed with LINQ, which throws at run time.</p>
+      <span class="rule-card__meta">
+        <span>Correctness</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC056_StoredProcedureComposed/</span>
     </a>
   </div>
 </section>

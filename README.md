@@ -129,7 +129,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**55 rules**, 38 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**56 rules**, 39 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -188,6 +188,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC053](https://georgepwall1991.github.io/LinqContraband/LC053_OverwrittenQueryFilter.html) | Global query filter silently replaced by another HasQueryFilter | Warning | Yes |
 | [LC054](https://georgepwall1991.github.io/LinqContraband/LC054_MigrateInsideTransaction.html) | Migrate called inside a user transaction | Warning | Yes |
 | [LC055](https://georgepwall1991.github.io/LinqContraband/LC055_MissingBaseOnModelCreating.html) | OnModelCreating override skips the base configuration | Warning | Yes |
+| [LC056](https://georgepwall1991.github.io/LinqContraband/LC056_StoredProcedureComposed.html) | LINQ composed over a stored procedure call | Warning | Yes |
 
 <!-- rule-table:end -->
 
@@ -214,7 +215,7 @@ Pick a preset with one line in your project file (or `Directory.Build.props`):
 | Preset | What it does |
 | --- | --- |
 | `security` | SQL injection rules (LC018, LC034, LC037, plus EF Core's own EF1002 and EF1003, which LC018 and LC034 defer to) fail the build. |
-| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055) fail the build. |
+| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055, LC056) fail the build. |
 | `strict` | Every warning rule fails the build and every advisory rule becomes a warning. |
 | `essentials` | Advisory (Info) rules are turned off; warning rules keep their defaults. |
 

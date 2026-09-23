@@ -535,6 +535,15 @@
       "ruleIds": [
         "LC055"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC056_StoredProcedureComposed/StoredProcedureComposedSample.cs",
+      "samplePaths": [
+        "Samples/LC056_StoredProcedureComposed/StoredProcedureComposedSample.cs"
+      ],
+      "ruleIds": [
+        "LC056"
+      ]
     }
   ]
 }
