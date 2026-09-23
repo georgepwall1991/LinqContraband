@@ -490,6 +490,15 @@
       "ruleIds": [
         "LC050"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC051_ToAsyncEnumerableOnQuery/ToAsyncEnumerableOnQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC051_ToAsyncEnumerableOnQuery/ToAsyncEnumerableOnQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC051"
+      ]
     }
   ]
 }

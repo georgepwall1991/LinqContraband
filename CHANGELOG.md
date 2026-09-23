@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - LC042 code fix: tag the query with `TagWith("Type.Member")`, named after the enclosing member, or with `TagWithCallSite()` when the referenced EF Core version has it.
+- LC051 (Warning, code fix) reports `ToAsyncEnumerable()` on an EF Core query. The `System.Linq.AsyncEnumerable` overload (built into .NET 10, and the `System.Linq.Async` package before it) treats the query as a plain `IEnumerable<T>`, so EF Core runs it synchronously and blocks a thread for every row. The fixer switches to EF Core's `AsAsyncEnumerable()` and adds `using Microsoft.EntityFrameworkCore;` when needed. Sources that are not EF Core queries (locals, in-memory `AsQueryable()`, helpers) stay quiet, and the rule turns itself off when EF Core 11 or later is referenced, since EF Core 11 ships its own check.
 
 ## [5.9.0] - 2026-09-22
 

@@ -548,5 +548,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC050_OrderByBeforeDistinct/OrderByBeforeDistinctSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC050_OrderByBeforeDistinct"
+  },
+  {
+    "id": "LC051",
+    "title": "ToAsyncEnumerable() runs an EF Core query synchronously",
+    "category": "Performance",
+    "domain": "Execution & Async",
+    "domain_anchor": "execution-async",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC051_ToAsyncEnumerableOnQuery/ToAsyncEnumerableOnQuerySample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/ExecutionAndAsync/LC051_ToAsyncEnumerableOnQuery"
   }
 ]

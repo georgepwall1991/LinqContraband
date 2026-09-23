@@ -225,3 +225,6 @@ indent_size = 2
 
 # LC050: OrderBy Before Distinct - SQL DISTINCT discards the earlier ORDER BY
 # dotnet_diagnostic.LC050.severity = warning
+
+# LC051: ToAsyncEnumerable On Query - System.Linq ToAsyncEnumerable() enumerates the EF Core query synchronously
+# dotnet_diagnostic.LC051.severity = warning

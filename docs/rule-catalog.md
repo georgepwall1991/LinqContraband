@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>50</strong><span>rules</span></div>
-    <div class="metric"><strong>31</strong><span>warnings</span></div>
-    <div class="metric"><strong>34</strong><span>code fixes</span></div>
+    <div class="metric"><strong>51</strong><span>rules</span></div>
+    <div class="metric"><strong>32</strong><span>warnings</span></div>
+    <div class="metric"><strong>35</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -300,6 +300,19 @@ body_class: page-rule-catalog
         <span class="pill pill--manual">Manual only</span>
       </span>
       <span class="rule-card__sample">Samples/LC046_ConcurrentDbContextOperations/</span>
+    </a>
+    <a class="rule-card" href="./LC051_ToAsyncEnumerableOnQuery.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC051</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>ToAsyncEnumerable() runs an EF Core query synchronously</h3>
+      <p class="rule-card__summary">Flags ToAsyncEnumerable() on EF Core queries, which enumerates them synchronously and blocks a thread per row, and switches to AsAsyncEnumerable().</p>
+      <span class="rule-card__meta">
+        <span>Performance</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC051_ToAsyncEnumerableOnQuery/</span>
     </a>
   </div>
 </section>
