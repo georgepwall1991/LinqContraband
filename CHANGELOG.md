@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - LC042 scores query shape instead of counting method names. Joins, `GroupBy` and `SelectMany` count twice, tracking, filter and split-query options (`AsNoTracking`, `IgnoreQueryFilters`, `AsSplitQuery`, ...) no longer count, and a predicate passed to the terminal (`Count(o => ...)`) counts once. Only real `Queryable` and EF Core operators are scored; a chain through an unknown helper stays quiet. Query syntax is now analyzed, subqueries inside an outer query's lambda are no longer reported separately, `Sum`/`Min`/`Max`/`Average` count as terminals, and the diagnostic sits on the terminal method name.
+- The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
+- The README (also the NuGet readme) shows the OpenSSF Scorecard badge, and the documentation site's link previews use a new 1280x640 social card (source in `tools/SocialCard/`) instead of the old diagnostics screenshot, which still said 45 rules.
 
 ### Added
 - LC042 code fix: tag the query with `TagWith("Type.Member")`, named after the enclosing member, or with `TagWithCallSite()` when the referenced EF Core version has it.
@@ -24,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every rule page on the documentation site now has its own search description, a consistent `LCxxx: Name` title, a Home / Rule catalog breadcrumb (also in its structured data), and previous/next rule links. A test keeps descriptions present, unique and sized for search results.
 - The documentation site has a 404 page (kept out of search indexes and the sitemap) that points back to the rule catalog and setup guide. The sitemap no longer stamps every page with the build date as its last-modified time.
 - Each rule page on the documentation site opens with a box showing the rule's default severity, whether a code fix exists, its category and domain, the `.editorconfig` line to change its severity, and links to its sample and analyzer source. The data comes from the rule catalog through a generated `docs/_data/rules.json`, which CI checks for staleness.
-- The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
 
 ## [5.8.1] - 2026-09-22
 
