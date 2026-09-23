@@ -79,6 +79,16 @@ db.Set<User>().Where(...).ToList()  ->  db.Set<User>().AsNoTracking().Where(...)
 
 (A purely syntactic walk could not tell the `Set<T>()` source invocation apart from a `.Where(...)` operator and would mis-place `AsNoTracking()` onto the `DbContext`.)
 
+Some operators only accept a `DbSet<T>`: `FromSqlRaw`, `FromSql`, `FromSqlInterpolated`, the SQL Server `TemporalAll`/`TemporalAsOf`/... operators, and project helpers declared on `DbSet<T>`. `AsNoTracking()` returns an `IQueryable<T>`, so the fixer places it after the last of those operators in the chain instead of on the `DbSet` itself:
+
+```csharp
+db.Users.FromSqlRaw(sql, id).ToList()  ->  db.Users.FromSqlRaw(sql, id).AsNoTracking().ToList()
+```
+
+If such an operator does not return a query (a helper on `DbSet<T>` that returns a `List<T>`, say), `AsNoTracking()` has nowhere to go, so the rule reports without a fix.
+
+The message names the method the query sits in. For a query inside a lambda (`Task.Run(() => db.Users.ToList())`) that is the method containing the lambda; inside a property getter it is the property, inside a constructor the type, and in a top-level program it reads `<top-level statements>`.
+
 ### When AsNoTracking is *not* safe
 `AsNoTracking()` is a behaviour change, not just a perf tweak — apply the fix only on genuinely read-only paths:
 

@@ -42,6 +42,13 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         // AsNoTracking() would silently drop that save. Leave the decision to a person.
         if (diagnostic.Properties.ContainsKey(MissingAsNoTrackingAnalyzer.EntitiesEscapeProperty)) return;
 
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel == null) return;
+
+        // No place in the chain where AsNoTracking() compiles: report without a fix.
+        var sourceExpression = FindInsertionPoint(invocation, semanticModel, context.CancellationToken);
+        if (sourceExpression == null || IsInvocationOf(sourceExpression, "AsNoTracking")) return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 "Add AsNoTracking()",
@@ -57,13 +64,14 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         var semanticModel = editor.SemanticModel;
         if (semanticModel == null) return document;
 
-        var sourceExpression = FindEfSourceExpression(invocation, semanticModel, cancellationToken);
+        var sourceExpression = FindInsertionPoint(invocation, semanticModel, cancellationToken);
 
         if (sourceExpression == null) return document;
 
         if (IsInvocationOf(sourceExpression, "AsNoTracking")) return document;
 
-        // sourceExpression is the DbSet source ("db.Users" or "db.Set<User>()").
+        // sourceExpression is the DbSet source ("db.Users" or "db.Set<User>()"), or the last
+        // DbSet-only operator in the chain ("db.Users.FromSqlRaw(...)").
         // We want to replace it with "<source>.AsNoTracking()".
 
         var asNoTracking = SyntaxFactory.MemberAccessExpression(
@@ -82,25 +90,49 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         return editor.GetChangedDocument();
     }
 
-    // Walk the syntactic receiver chain of the materializer and return the innermost
-    // expression whose type is a DbSet — that is the EF source to wrap with AsNoTracking().
-    // A purely syntactic walk cannot distinguish the DbSet source "db.Set<T>()" (an invocation)
-    // from an intermediate operator like ".Where(...)", so the semantic type is required.
-    private static ExpressionSyntax? FindEfSourceExpression(
-        ExpressionSyntax node,
+    // Walk the syntactic receiver chain of the materializer and return the expression to wrap
+    // with AsNoTracking(). AsNoTracking() turns a DbSet<T> into an IQueryable<T>, so it must go
+    // after the last operator that only accepts a DbSet<T> (FromSqlRaw, FromSql,
+    // FromSqlInterpolated, the SQL Server Temporal* operators, project helpers taking a DbSet):
+    // "db.Users.AsNoTracking().FromSqlRaw(...)" does not compile. When the chain has no such
+    // operator, wrap the innermost DbSet-typed expression, the EF source itself. A purely
+    // syntactic walk cannot tell the DbSet source "db.Set<T>()" (an invocation) from an
+    // intermediate operator like ".Where(...)", so the semantic model is required.
+    private static ExpressionSyntax? FindInsertionPoint(
+        InvocationExpressionSyntax materializer,
         SemanticModel semanticModel,
         CancellationToken cancellationToken)
     {
         ExpressionSyntax? source = null;
 
-        for (ExpressionSyntax? current = node; current != null; current = GetReceiverExpression(current))
+        for (var current = GetReceiverExpression(materializer); current != null; current = GetReceiverExpression(current))
         {
+            if (current is InvocationExpressionSyntax call &&
+                semanticModel.GetSymbolInfo(call, cancellationToken).Symbol is IMethodSymbol method &&
+                GetRequiredReceiverType(method).IsDbSet())
+            {
+                // The outermost DbSet-only operator wins. If it does not hand back a query,
+                // there is nowhere AsNoTracking() can go.
+                return semanticModel.GetTypeInfo(call, cancellationToken).Type.IsIQueryable() ? call : null;
+            }
+
             var type = semanticModel.GetTypeInfo(current, cancellationToken).Type;
             if (type.IsDbSet())
                 source = current;
         }
 
         return source;
+    }
+
+    // The type the call's receiver must have: the "this" parameter of an extension method
+    // (called either way), or the declaring type of an instance method.
+    private static ITypeSymbol? GetRequiredReceiverType(IMethodSymbol method)
+    {
+        if (method.ReducedFrom != null)
+            return method.ReceiverType;
+        if (method.IsExtensionMethod)
+            return method.Parameters.Length > 0 ? method.Parameters[0].Type : null;
+        return method.IsStatic ? null : method.ContainingType;
     }
 
     private static ExpressionSyntax? GetReceiverExpression(ExpressionSyntax expression)
