@@ -157,6 +157,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC055_MissingBaseOnModelCreating",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC056",
+                slug: "LC056_StoredProcedureComposed",
+                title: "LINQ composed over a stored procedure call",
+                category: "Correctness",
+                domain: "Raw SQL & Security",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "StoredProcedureComposedAnalyzer",
+                fixerTypeName: "StoredProcedureComposedFixer",
+                documentationPath: "docs/LC056_StoredProcedureComposed.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC056_StoredProcedureComposed/StoredProcedureComposedSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC056_StoredProcedureComposed",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

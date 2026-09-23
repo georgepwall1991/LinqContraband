@@ -603,5 +603,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC055_MissingBaseOnModelCreating/MissingBaseOnModelCreatingSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/SchemaAndModeling/LC055_MissingBaseOnModelCreating"
+  },
+  {
+    "id": "LC056",
+    "title": "LINQ composed over a stored procedure call",
+    "category": "Correctness",
+    "domain": "Raw SQL & Security",
+    "domain_anchor": "raw-sql-security",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC056_StoredProcedureComposed/StoredProcedureComposedSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/RawSqlAndSecurity/LC056_StoredProcedureComposed"
   }
 ]
