@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **56 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.9.0
-- Base audited commit: ed4c14d2fc2d01e8441e6009d0aab25bca006b5b
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.9.0-final`
+- Package version: 5.10.0
+- Base audited commit: 9af60ca304cee21c009ccc7b37c7273e0d6794c8
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.10.0-final`
 
 ## Rubric
 
@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-23 5.10.0 release ships LC051 through LC056, the LC042 rescue and fixer, the EF query culture-warning suppressor, and the research-scan false-positive fixes, bringing the full local net10.0 suite to **4,099 tests**.
+>
 > The 2026-09-23 EF query culture-warning suppressor pass adds a diagnostic suppressor for CA1862-style warnings inside EF Core query lambdas, raising the full local net10.0 suite to **4,099 tests**.
 >
 > The 2026-09-23 LC053 new-rule pass adds overwritten global query filter detection with an `&&` merge fixer, raising the full local net10.0 suite to **3,975 tests**.
@@ -1206,9 +1208,9 @@ Not a rule: `EfQueryStringComparisonSuppressor` is a `DiagnosticSuppressor` with
 
 ## Verification Baseline
 
-Package version: **5.9.0**
+Package version: **5.10.0**
 
-Base audited commit: master at `ed4c14d2fc2d01e8441e6009d0aab25bca006b5b` (5.9.0 release-preparation base). 5.9.0 adds LC049 and LC050 with code fixes and the opt-in severity presets on top of the 5.8.1 baseline. 5.8.1 was audited at `1166a0705b5b43de1f5a5540e141fe9608638935`. 5.8.1 adds the cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (which also restores LC012's tracked-delete gate in multi-project IDE workspaces), LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and 31 coverage pins on top of the 5.8.0 baseline. The 5.8.0 baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
+Base audited commit: master at `9af60ca304cee21c009ccc7b37c7273e0d6794c8` (5.10.0 release-preparation base). 5.10.0 adds LC051 through LC056 (five with code fixes), the LC042 rescue and fixer, the EF query culture-warning suppressor, and the 2026-09-22 research-scan false-positive fixes on top of the 5.9.0 baseline. 5.9.0 was audited at `ed4c14d2fc2d01e8441e6009d0aab25bca006b5b` and adds LC049 and LC050 with code fixes and the opt-in severity presets on top of the 5.8.1 baseline. 5.8.1 was audited at `1166a0705b5b43de1f5a5540e141fe9608638935`. 5.8.1 adds the cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (which also restores LC012's tracked-delete gate in multi-project IDE workspaces), LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and 31 coverage pins on top of the 5.8.0 baseline. The 5.8.0 baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -1287,7 +1289,12 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-09-22, LC049/LC050 new rules and LC013/LC018/LC019/LC034/LC036/LC037/LC044/LC046/LC047/LC048 severity presets for 5.9.0, with 3,743 full net10.0 tests):
+Current verification (2026-09-23, 5.10.0: new rules LC051/LC052/LC053/LC054/LC055/LC056, LC042 rescue, the CA-warning suppressor, false-positive and fixer-safety fixes for LC001/LC004/LC007/LC009/LC016/LC017/LC018/LC020/LC022/LC026/LC031/LC034/LC045, LC037 left unchanged, and guide coverage for LC048/LC049/LC050, with 4,099 full net10.0 tests):
+
+- Each new rule and fix landed in its own PR with focused tests, the sample verifier on net8.0, net9.0 and net10.0, the doc generator check and the link check; the per-pass sections above record the evidence.
+- The release branch was re-verified on the merged master: full suite, doc generator check, sample verifier and link check.
+
+Previous verification (2026-09-22, LC049/LC050 new rules and LC013/LC018/LC019/LC034/LC036/LC037/LC044/LC046/LC047/LC048 severity presets for 5.9.0, with 3,743 full net10.0 tests):
 
 - 53 LC049/LC050 tests cover the ignored-Include and discarded-sort shapes, their quiet cases, and both fixers including Fix All. The sample verifier confirms both rules against real EF Core 9 and 10.
 - 16 preset tests pin the generated global configs to the catalog and resolve each preset through Roslyn's `AnalyzerConfigSet`, including combined presets and a user `.globalconfig` override. A packed nupkg was checked in a throwaway EF Core project with each preset, a combination, an unknown name, and an `.editorconfig` override.
@@ -1363,5 +1370,7 @@ Final verification (2026-09-23, LC052 new rule): 13 focused LC052 tests pass, an
 Final verification (2026-09-23, LC053 new rule): 20 focused LC053 tests pass, and the full local net10.0 suite passes 3,975 tests.
 
 Final verification (2026-09-23, EF query culture-warning suppressor): 12 focused suppressor tests and the cross-project crash guard (which now runs the suppressor too) pass, and the full local net10.0 suite passes 4,099 tests after LC054, LC055 and LC056.
+
+Final verification (2026-09-23, 5.10.0: LC051-LC056, LC042 rescue, CA-warning suppressor, research-scan false-positive fixes): the full local net10.0 suite passes 4,099 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
