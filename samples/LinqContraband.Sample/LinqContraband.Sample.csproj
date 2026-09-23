@@ -12,16 +12,23 @@
         <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- EF Core's SQLite provider pulls SQLitePCLRaw 2.1.11, which has a known vulnerability (GHSA-2m69-gcr7-jv3q). -->
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13"/>
+    </ItemGroup>
+
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0"/>
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.20"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.20"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.20"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.20"/>
         <PackageReference Include="System.Linq.AsyncEnumerable" Version="10.0.0"/>
     </ItemGroup>
 
@@ -29,6 +36,7 @@
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.20"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.20"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.20"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.20"/>
         <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.20"/>
         <PackageReference Include="System.Linq.AsyncEnumerable" Version="10.0.0"/>
     </ItemGroup>
