@@ -127,6 +127,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC053_OverwrittenQueryFilter",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC054",
+                slug: "LC054_MigrateInsideTransaction",
+                title: "Migrate called inside a user transaction",
+                category: "Reliability",
+                domain: "Schema & Modeling",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "MigrateInsideTransactionAnalyzer",
+                fixerTypeName: "MigrateInsideTransactionFixer",
+                documentationPath: "docs/LC054_MigrateInsideTransaction.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC054_MigrateInsideTransaction/MigrateInsideTransactionSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/SchemaAndModeling/LC054_MigrateInsideTransaction",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

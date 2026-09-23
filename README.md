@@ -129,7 +129,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**53 rules**, 36 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**54 rules**, 37 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -186,6 +186,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC051](https://georgepwall1991.github.io/LinqContraband/LC051_ToAsyncEnumerableOnQuery.html) | ToAsyncEnumerable() runs an EF Core query synchronously | Warning | Yes |
 | [LC052](https://georgepwall1991.github.io/LinqContraband/LC052_NonDeterministicModelData.html) | Model data uses a value that changes on every run | Warning | Manual |
 | [LC053](https://georgepwall1991.github.io/LinqContraband/LC053_OverwrittenQueryFilter.html) | Global query filter silently replaced by another HasQueryFilter | Warning | Yes |
+| [LC054](https://georgepwall1991.github.io/LinqContraband/LC054_MigrateInsideTransaction.html) | Migrate called inside a user transaction | Warning | Yes |
 
 <!-- rule-table:end -->
 
@@ -212,7 +213,7 @@ Pick a preset with one line in your project file (or `Directory.Build.props`):
 | Preset | What it does |
 | --- | --- |
 | `security` | SQL injection rules (LC018, LC034, LC037, plus EF Core's own EF1002 and EF1003, which LC018 and LC034 defer to) fail the build. |
-| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048) fail the build. |
+| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054) fail the build. |
 | `strict` | Every warning rule fails the build and every advisory rule becomes a warning. |
 | `essentials` | Advisory (Info) rules are turned off; warning rules keep their defaults. |
 
