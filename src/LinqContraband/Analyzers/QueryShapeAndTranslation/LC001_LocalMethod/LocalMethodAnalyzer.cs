@@ -21,8 +21,6 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC001";
     private const string Category = "Performance";
-    private const string DbFunctionAttributeMetadataName = "Microsoft.EntityFrameworkCore.DbFunctionAttribute";
-    private const string ProjectableAttributeMetadataName = "EntityFrameworkCore.Projectables.ProjectableAttribute";
     private static readonly LocalizableString Title = "Client-side evaluation risk: Local method usage in IQueryable";
 
     private static readonly LocalizableString MessageFormat =
@@ -81,18 +79,16 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
 
     private static void InitializeCompilation(CompilationStartAnalysisContext context)
     {
-        var dbFunctionAttribute = context.Compilation.GetTypeByMetadataName(DbFunctionAttributeMetadataName);
-        var projectableAttribute = context.Compilation.GetTypeByMetadataName(ProjectableAttributeMetadataName);
+        var mappedDbFunctions = new MappedDbFunctions(context.Compilation, context.CancellationToken);
 
         context.RegisterOperationAction(
-            operationContext => AnalyzeInvocation(operationContext, dbFunctionAttribute, projectableAttribute),
+            operationContext => AnalyzeInvocation(operationContext, mappedDbFunctions),
             OperationKind.Invocation);
     }
 
     private static void AnalyzeInvocation(
         OperationAnalysisContext context,
-        INamedTypeSymbol? dbFunctionAttribute,
-        INamedTypeSymbol? projectableAttribute)
+        MappedDbFunctions mappedDbFunctions)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var methodSymbol = invocation.TargetMethod;
@@ -103,7 +99,7 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
             return;
 
         // Trust methods from specific namespaces known to be translatable
-        if (IsTrustedTranslatableMethod(methodSymbol, dbFunctionAttribute, projectableAttribute))
+        if (IsTrustedTranslatableMethod(methodSymbol))
             return;
 
         var parent = invocation.Parent;
@@ -121,6 +117,9 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
                 lambdas.Count > 0 &&
                 InvocationDependsOnLambdaParameter(invocation, lambdas[lambdas.Count - 1]))
             {
+                if (IsConfiguredTranslatableMethod(methodSymbol, context, mappedDbFunctions))
+                    return;
+
                 context.ReportDiagnostic(
                     Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), methodSymbol.Name));
                 return;
