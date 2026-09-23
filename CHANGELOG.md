@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.11.0] - 2026-09-23
+
 ### Added
 - `LinqContraband.Scan`, a .NET tool that scans a solution without adding the package to it. `dnx LinqContraband.Scan` (.NET 10 SDK) or `linqcontraband-scan` (after `dotnet tool install -g LinqContraband.Scan`) builds the solution, project or directory with the analyzers injected, then prints the rules that fired ranked by severity and count, the most affected files, and a link to each rule's page. It also writes a SARIF 2.1.0 report with paths relative to the git repository, ready for GitHub code scanning's `upload-sarif`. The tool ships the analyzer it was released with, replaces any LinqContraband version the project already references, forces analyzers on, and does not treat warnings as errors during the scan. Findings reported once per target framework are counted once, and suppressed ones are left out. The new [scanner guide](https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/) includes a code scanning workflow.
 
