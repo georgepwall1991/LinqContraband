@@ -5931,13 +5931,13 @@ public sealed class AnalyzerModularizationTests
         Assert.True(File.Exists(methodSetsPath), "LC042 query method lookup tables should live in a focused partial file.");
 
         var analyzerSource = File.ReadAllText(analyzerPath);
-        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> TargetMethods", analyzerSource);
-        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> QuerySteps", analyzerSource);
+        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> TerminalMethods", analyzerSource);
+        Assert.DoesNotContain("private static readonly ImmutableHashSet<string> HeavyQueryableOperators", analyzerSource);
 
         var methodSetsSource = File.ReadAllText(methodSetsPath);
-        Assert.Contains("private static readonly ImmutableHashSet<string> TargetMethods", methodSetsSource);
-        Assert.Contains("private static readonly ImmutableHashSet<string> QuerySteps", methodSetsSource);
-        Assert.Contains("\"TagWithCallSite\"", methodSetsSource);
+        Assert.Contains("private static readonly ImmutableHashSet<string> TerminalMethods", methodSetsSource);
+        Assert.Contains("private static readonly ImmutableHashSet<string> HeavyQueryableOperators", methodSetsSource);
+        Assert.Contains("private static readonly ImmutableHashSet<string> QueryOptionOperators", methodSetsSource);
         Assert.Contains("\"ToHashSetAsync\"", methodSetsSource);
     }
 

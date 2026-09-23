@@ -13,7 +13,7 @@ body_class: page-rule-catalog
   <div class="metric-strip" aria-label="Rule catalog summary">
     <div class="metric"><strong>50</strong><span>rules</span></div>
     <div class="metric"><strong>31</strong><span>warnings</span></div>
-    <div class="metric"><strong>33</strong><span>code fixes</span></div>
+    <div class="metric"><strong>34</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -336,7 +336,7 @@ body_class: page-rule-catalog
       <h3>Complex query should be tagged</h3>
       <span class="rule-card__meta">
         <span>Performance</span>
-        <span class="pill pill--manual">Manual only</span>
+        <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC042_MissingQueryTags/</span>
     </a>

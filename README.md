@@ -128,7 +128,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**50 rules**, 33 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**50 rules**, 34 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -173,7 +173,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC039](https://georgepwall1991.github.io/LinqContraband/LC039_NestedSaveChanges.html) | Avoid repeated SaveChanges on the same context | Info | Manual |
 | [LC040](https://georgepwall1991.github.io/LinqContraband/LC040_MixedTrackingAndNoTracking.html) | Avoid mixing tracking modes on the same context | Info | Manual |
 | [LC041](https://georgepwall1991.github.io/LinqContraband/LC041_SingleEntityScalarProjection.html) | Single entity query over-fetches one consumed property | Info | Yes |
-| [LC042](https://georgepwall1991.github.io/LinqContraband/LC042_MissingQueryTags.html) | Complex query should be tagged | Info | Manual |
+| [LC042](https://georgepwall1991.github.io/LinqContraband/LC042_MissingQueryTags.html) | Complex query should be tagged | Info | Yes |
 | [LC043](https://georgepwall1991.github.io/LinqContraband/LC043_AsyncEnumerableBuffering.html) | Prefer await foreach over buffering async streams | Info | Yes |
 | [LC044](https://georgepwall1991.github.io/LinqContraband/LC044_AsNoTrackingThenModifySilentWrite.html) | AsNoTracking query mutated then SaveChanges — silent data loss | Warning | Manual |
 | [LC045](https://georgepwall1991.github.io/LinqContraband/LC045_MissingInclude.html) | Missing Include: navigation accessed on materialized entity | Warning | Yes |

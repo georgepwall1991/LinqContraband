@@ -5,7 +5,8 @@ namespace LinqContraband.Analyzers.LC042_MissingQueryTags;
 
 public sealed partial class MissingQueryTagsAnalyzer
 {
-    private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
+    /// <summary>Operators that run the query. Sync forms come from Queryable/Enumerable, async forms from EF Core.</summary>
+    private static readonly ImmutableHashSet<string> TerminalMethods = ImmutableHashSet.Create(
         StringComparer.Ordinal,
         "Any",
         "AnyAsync",
@@ -27,6 +28,14 @@ public sealed partial class MissingQueryTagsAnalyzer
         "LastAsync",
         "LastOrDefault",
         "LastOrDefaultAsync",
+        "Sum",
+        "SumAsync",
+        "Min",
+        "MinAsync",
+        "Max",
+        "MaxAsync",
+        "Average",
+        "AverageAsync",
         "ToList",
         "ToListAsync",
         "ToArray",
@@ -36,30 +45,34 @@ public sealed partial class MissingQueryTagsAnalyzer
         "ToHashSet",
         "ToHashSetAsync");
 
-    private static readonly ImmutableHashSet<string> QuerySteps = ImmutableHashSet.Create(
+    /// <summary>Queryable operators that turn into joins, grouping, or APPLY in SQL; they count twice.</summary>
+    private static readonly ImmutableHashSet<string> HeavyQueryableOperators = ImmutableHashSet.Create(
         StringComparer.Ordinal,
-        "Where",
-        "Select",
-        "SelectMany",
-        "OrderBy",
-        "OrderByDescending",
-        "ThenBy",
-        "ThenByDescending",
-        "Skip",
-        "Take",
-        "Distinct",
-        "GroupBy",
         "Join",
+        "GroupJoin",
+        "LeftJoin",
+        "RightJoin",
+        "GroupBy",
+        "SelectMany");
+
+    /// <summary>Queryable operators that do not change the SQL shape.</summary>
+    private static readonly ImmutableHashSet<string> ZeroWeightQueryableOperators = ImmutableHashSet.Create(
+        StringComparer.Ordinal,
+        "AsQueryable");
+
+    private static readonly ImmutableHashSet<string> IncludeOperators = ImmutableHashSet.Create(
+        StringComparer.Ordinal,
         "Include",
-        "ThenInclude",
+        "ThenInclude");
+
+    /// <summary>EF Core query options: they change tracking, filters, or query splitting, not the query's shape.</summary>
+    private static readonly ImmutableHashSet<string> QueryOptionOperators = ImmutableHashSet.Create(
+        StringComparer.Ordinal,
         "AsNoTracking",
         "AsNoTrackingWithIdentityResolution",
         "AsTracking",
         "AsSplitQuery",
         "AsSingleQuery",
         "IgnoreQueryFilters",
-        "IgnoreAutoIncludes",
-        "OfType",
-        "TagWith",
-        "TagWithCallSite");
+        "IgnoreAutoIncludes");
 }

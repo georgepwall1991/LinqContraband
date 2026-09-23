@@ -84,8 +84,7 @@
       ],
       "ruleIds": [
         "LC009",
-        "LC015",
-        "LC042"
+        "LC015"
       ]
     },
     {
@@ -203,8 +202,7 @@
         "Samples/LC021_AvoidIgnoreQueryFilters/AvoidIgnoreQueryFiltersSample.cs"
       ],
       "ruleIds": [
-        "LC021",
-        "LC042"
+        "LC021"
       ]
     },
     {
