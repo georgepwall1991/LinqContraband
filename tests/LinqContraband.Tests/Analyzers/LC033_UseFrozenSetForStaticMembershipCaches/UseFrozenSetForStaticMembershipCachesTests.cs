@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC033_UseFrozenSetForStaticMembershipCaches.UseFrozenSetForStaticMembershipCachesAnalyzer>;
 
@@ -218,5 +219,91 @@ class Program
 }";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RealBclFrozenSet_WithoutSourceShim_Triggers()
+    {
+        // .NET 8+ ships ToFrozenSet in metadata (System.Collections.Frozen.FrozenSet), not in source.
+        var test = Usings + @"
+class Program
+{
+    {|LC033:private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ""admin"",
+        ""ops""
+    };|}
+
+    static bool IsElevated(string role) => ElevatedRoles.Contains(role);
+}";
+
+        await VerifyAsync(test, ReferenceAssemblies.Net.Net80);
+    }
+
+    [Fact]
+    public async Task RealBclFrozenSet_ToHashSetInitializer_Triggers()
+    {
+        var test = Usings + @"
+class Program
+{
+    private static readonly int[] SeedValues = { 1, 2, 3 };
+    {|LC033:private static readonly HashSet<int> ReservedIds = SeedValues.ToHashSet();|}
+
+    static bool IsReserved(int value) => ReservedIds.Contains(value);
+}";
+
+        await VerifyAsync(test, ReferenceAssemblies.Net.Net80);
+    }
+
+    [Fact]
+    public async Task RealBclFrozenSet_MutatedCache_DoesNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    private static readonly HashSet<int> ReservedIds = new() { 1, 2, 3 };
+
+    static bool IsReserved(int value) => ReservedIds.Contains(value);
+
+    static void Reserve(int value) => ReservedIds.Add(value);
+}";
+
+        await VerifyAsync(test, ReferenceAssemblies.Net.Net80);
+    }
+
+    [Fact]
+    public async Task RealFrameworkWithoutFrozenSet_WithLookalikeToFrozenSet_DoesNotTrigger()
+    {
+        // netcoreapp3.1 has no FrozenSet<T>; a same-named extension elsewhere must not enable the rule.
+        var test = Usings + @"
+namespace Lookalikes
+{
+    public static class FrozenSetExtensions
+    {
+        public static HashSet<T> ToFrozenSet<T>(this IEnumerable<T> source) => new HashSet<T>(source);
+    }
+}
+
+class Program
+{
+    private static readonly HashSet<int> ReservedIds = new() { 1, 2, 3 };
+
+    static bool IsReserved(int value) => ReservedIds.Contains(value);
+}";
+
+        await VerifyAsync(test, ReferenceAssemblies.NetCore.NetCoreApp31);
+    }
+
+    private static async Task VerifyAsync(string source, ReferenceAssemblies referenceAssemblies)
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC033_UseFrozenSetForStaticMembershipCaches.UseFrozenSetForStaticMembershipCachesAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestCode = source,
+            ReferenceAssemblies = referenceAssemblies
+        };
+
+        await test.RunAsync();
     }
 }
