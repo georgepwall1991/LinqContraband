@@ -54,6 +54,10 @@ namespace Microsoft.EntityFrameworkCore
 
         public void ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration)
             where TEntity : class { }
+
+        public ModelBuilder ApplyConfigurationsFromAssembly(
+            System.Reflection.Assembly assembly,
+            Func<Type, bool> predicate = null) => this;
     }
 
     public interface IEntityTypeConfiguration<TEntity> where TEntity : class

@@ -90,13 +90,20 @@ public sealed partial class MissingIncludeAnalyzer
                         if (
                             isTopLevel
                             && isUnconditional
-                            && TryApplyConfigurationAutoIncludes(
-                                configurationInvocation,
-                                method.Parameters[0],
-                                compilation,
-                                prefixesByEntity,
-                                cancellationToken
-                            )
+                            && (TryApplyConfigurationAutoIncludes(
+                                    configurationInvocation,
+                                    method.Parameters[0],
+                                    compilation,
+                                    prefixesByEntity,
+                                    cancellationToken
+                                )
+                                || TryApplyAssemblyConfigurationAutoIncludes(
+                                    configurationInvocation,
+                                    method.Parameters[0],
+                                    compilation,
+                                    prefixesByEntity,
+                                    cancellationToken
+                                ))
                         )
                         {
                             continue;
