@@ -21,6 +21,11 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                 if (assignment.SpanStart >= localReference.Syntax.SpanStart)
                     continue;
 
+                // In `query = query.Where(...)` the read sits inside the assignment's own value;
+                // the value it reads is the assignment before that one.
+                if (assignment.Value.Syntax.Span.Contains(localReference.Syntax.SpanStart))
+                    continue;
+
                 if (latest == null || assignment.SpanStart > latest.Value.SpanStart)
                     latest = assignment;
             }
