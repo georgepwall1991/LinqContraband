@@ -508,6 +508,15 @@
       "ruleIds": [
         "LC052"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC053_OverwrittenQueryFilter/OverwrittenQueryFilterSample.cs",
+      "samplePaths": [
+        "Samples/LC053_OverwrittenQueryFilter/OverwrittenQueryFilterSample.cs"
+      ],
+      "ruleIds": [
+        "LC053"
+      ]
     }
   ]
 }

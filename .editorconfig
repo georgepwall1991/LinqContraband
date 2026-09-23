@@ -231,3 +231,6 @@ indent_size = 2
 
 # LC052: Non-Deterministic Model Data - HasData/HasDefaultValue with DateTime.Now or Guid.NewGuid() changes the model on every run
 # dotnet_diagnostic.LC052.severity = warning
+
+# LC053: Overwritten Query Filter - a second unnamed HasQueryFilter replaces the first, silently dropping a tenant or soft-delete filter
+# dotnet_diagnostic.LC053.severity = warning

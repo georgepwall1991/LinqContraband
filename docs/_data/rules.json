@@ -570,5 +570,16 @@
     "code_fix": false,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC052_NonDeterministicModelData/NonDeterministicModelDataSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/SchemaAndModeling/LC052_NonDeterministicModelData"
+  },
+  {
+    "id": "LC053",
+    "title": "Global query filter silently replaced by another HasQueryFilter",
+    "category": "Security",
+    "domain": "Schema & Modeling",
+    "domain_anchor": "schema-modeling",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC053_OverwrittenQueryFilter/OverwrittenQueryFilterSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/SchemaAndModeling/LC053_OverwrittenQueryFilter"
   }
 ]
