@@ -19,13 +19,24 @@ body_class: page-rule-catalog
 
 <p class="eyebrow">8 diagnostic domains</p>
 
+<form class="catalog-filter" role="search" aria-label="Filter rules" hidden>
+  <label class="catalog-filter__label" for="rule-filter">Find a rule</label>
+  <input id="rule-filter" type="search" placeholder="Search by ID or keyword: LC007, Include, raw SQL" autocomplete="off" spellcheck="false">
+  <div class="catalog-filter__toggles">
+    <label><input type="checkbox" data-filter="fix"> Has a code fix</label>
+    <label><input type="checkbox" data-filter="warning"> Warnings only</label>
+  </div>
+  <p class="catalog-filter__status" aria-live="polite"></p>
+</form>
+<script src="./assets/js/rule-catalog.js" defer></script>
+
 <section class="rule-domain" aria-labelledby="bulk-operations-set-based-writes">
   <div class="rule-domain__heading">
     <h2 id="bulk-operations-set-based-writes">Bulk Operations &amp; Set-Based Writes</h2>
     <p>Keep destructive and high-volume writes set-based while making the risky cases explicit.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC012_OptimizeRemoveRange.html">
+    <a class="rule-card" href="./LC012_OptimizeRemoveRange.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC012</span>
         <span class="pill pill--warning">Warning</span>
@@ -38,7 +49,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC012_OptimizeRemoveRange/</span>
     </a>
-    <a class="rule-card" href="./LC032_ExecuteUpdateForBulkUpdates.html">
+    <a class="rule-card" href="./LC032_ExecuteUpdateForBulkUpdates.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC032</span>
         <span class="pill pill--info">Info</span>
@@ -51,7 +62,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC032_ExecuteUpdateForBulkUpdates/</span>
     </a>
-    <a class="rule-card" href="./LC035_MissingWhereBeforeExecuteDeleteUpdate.html">
+    <a class="rule-card" href="./LC035_MissingWhereBeforeExecuteDeleteUpdate.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC035</span>
         <span class="pill pill--info">Info</span>
@@ -64,7 +75,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC035_MissingWhereBeforeExecuteDeleteUpdate/</span>
     </a>
-    <a class="rule-card" href="./LC047_ExecuteDeleteBypassesTrackedDelete.html">
+    <a class="rule-card" href="./LC047_ExecuteDeleteBypassesTrackedDelete.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC047</span>
         <span class="pill pill--warning">Warning</span>
@@ -86,7 +97,7 @@ body_class: page-rule-catalog
     <p>Spot DbContext lifetime leaks, tracking-mode surprises, and writes that silently do nothing.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC009_MissingAsNoTracking.html">
+    <a class="rule-card" href="./LC009_MissingAsNoTracking.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC009</span>
         <span class="pill pill--info">Info</span>
@@ -99,7 +110,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC009_MissingAsNoTracking/</span>
     </a>
-    <a class="rule-card" href="./LC010_SaveChangesInLoop.html">
+    <a class="rule-card" href="./LC010_SaveChangesInLoop.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC010</span>
         <span class="pill pill--warning">Warning</span>
@@ -112,7 +123,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC010_SaveChangesInLoop/</span>
     </a>
-    <a class="rule-card" href="./LC013_DisposedContextQuery.html">
+    <a class="rule-card" href="./LC013_DisposedContextQuery.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC013</span>
         <span class="pill pill--warning">Warning</span>
@@ -125,7 +136,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC013_DisposedContextQuery/</span>
     </a>
-    <a class="rule-card" href="./LC025_AsNoTrackingWithUpdate.html">
+    <a class="rule-card" href="./LC025_AsNoTrackingWithUpdate.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC025</span>
         <span class="pill pill--warning">Warning</span>
@@ -138,7 +149,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC025_AsNoTrackingWithUpdate/</span>
     </a>
-    <a class="rule-card" href="./LC030_DbContextInSingleton.html">
+    <a class="rule-card" href="./LC030_DbContextInSingleton.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC030</span>
         <span class="pill pill--info">Info</span>
@@ -151,7 +162,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC030_DbContextInSingleton/</span>
     </a>
-    <a class="rule-card" href="./LC039_NestedSaveChanges.html">
+    <a class="rule-card" href="./LC039_NestedSaveChanges.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC039</span>
         <span class="pill pill--info">Info</span>
@@ -164,7 +175,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC039_NestedSaveChanges/</span>
     </a>
-    <a class="rule-card" href="./LC040_MixedTrackingAndNoTracking.html">
+    <a class="rule-card" href="./LC040_MixedTrackingAndNoTracking.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC040</span>
         <span class="pill pill--info">Info</span>
@@ -177,7 +188,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC040_MixedTrackingAndNoTracking/</span>
     </a>
-    <a class="rule-card" href="./LC044_AsNoTrackingThenModifySilentWrite.html">
+    <a class="rule-card" href="./LC044_AsNoTrackingThenModifySilentWrite.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC044</span>
         <span class="pill pill--warning">Warning</span>
@@ -190,7 +201,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC044_AsNoTrackingThenModify/</span>
     </a>
-    <a class="rule-card" href="./LC048_LostUpdateRisk.html">
+    <a class="rule-card" href="./LC048_LostUpdateRisk.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC048</span>
         <span class="pill pill--warning">Warning</span>
@@ -212,7 +223,7 @@ body_class: page-rule-catalog
     <p>Find synchronous calls, repeated database execution, and async paths that drop cancellation or buffer too early.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC007_NPlusOneLooper.html">
+    <a class="rule-card" href="./LC007_NPlusOneLooper.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC007</span>
         <span class="pill pill--warning">Warning</span>
@@ -225,7 +236,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC007_NPlusOneLooper/</span>
     </a>
-    <a class="rule-card" href="./LC008_SyncBlocker.html">
+    <a class="rule-card" href="./LC008_SyncBlocker.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC008</span>
         <span class="pill pill--warning">Warning</span>
@@ -238,7 +249,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC008_SyncBlocker/</span>
     </a>
-    <a class="rule-card" href="./LC026_MissingCancellationToken.html">
+    <a class="rule-card" href="./LC026_MissingCancellationToken.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC026</span>
         <span class="pill pill--info">Info</span>
@@ -251,7 +262,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC026_MissingCancellationToken/</span>
     </a>
-    <a class="rule-card" href="./LC036_DbContextCapturedAcrossThreads.html">
+    <a class="rule-card" href="./LC036_DbContextCapturedAcrossThreads.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC036</span>
         <span class="pill pill--warning">Warning</span>
@@ -264,7 +275,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC036_DbContextCapturedAcrossThreads/</span>
     </a>
-    <a class="rule-card" href="./LC043_AsyncEnumerableBuffering.html">
+    <a class="rule-card" href="./LC043_AsyncEnumerableBuffering.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC043</span>
         <span class="pill pill--info">Info</span>
@@ -277,7 +288,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC043_AsyncEnumerableBuffering/</span>
     </a>
-    <a class="rule-card" href="./LC046_ConcurrentDbContextOperations.html">
+    <a class="rule-card" href="./LC046_ConcurrentDbContextOperations.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC046</span>
         <span class="pill pill--warning">Warning</span>
@@ -299,7 +310,7 @@ body_class: page-rule-catalog
     <p>Make relationship loading deliberate before N+1 round trips or over-eager include graphs reach production.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC006_CartesianExplosion.html">
+    <a class="rule-card" href="./LC006_CartesianExplosion.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC006</span>
         <span class="pill pill--warning">Warning</span>
@@ -312,7 +323,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC006_CartesianExplosion/</span>
     </a>
-    <a class="rule-card" href="./LC019_ConditionalInclude.html">
+    <a class="rule-card" href="./LC019_ConditionalInclude.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC019</span>
         <span class="pill pill--warning">Warning</span>
@@ -325,7 +336,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC019_ConditionalInclude/</span>
     </a>
-    <a class="rule-card" href="./LC028_DeepThenInclude.html">
+    <a class="rule-card" href="./LC028_DeepThenInclude.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC028</span>
         <span class="pill pill--warning">Warning</span>
@@ -338,7 +349,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC028_DeepThenInclude/</span>
     </a>
-    <a class="rule-card" href="./LC038_ExcessiveEagerLoading.html">
+    <a class="rule-card" href="./LC038_ExcessiveEagerLoading.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC038</span>
         <span class="pill pill--info">Info</span>
@@ -351,7 +362,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC038_ExcessiveEagerLoading/</span>
     </a>
-    <a class="rule-card" href="./LC042_MissingQueryTags.html">
+    <a class="rule-card" href="./LC042_MissingQueryTags.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC042</span>
         <span class="pill pill--info">Info</span>
@@ -364,7 +375,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC042_MissingQueryTags/</span>
     </a>
-    <a class="rule-card" href="./LC045_MissingInclude.html">
+    <a class="rule-card" href="./LC045_MissingInclude.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC045</span>
         <span class="pill pill--warning">Warning</span>
@@ -377,7 +388,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC045_MissingInclude/</span>
     </a>
-    <a class="rule-card" href="./LC049_IncludeIgnoredByProjection.html">
+    <a class="rule-card" href="./LC049_IncludeIgnoredByProjection.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC049</span>
         <span class="pill pill--info">Info</span>
@@ -399,7 +410,7 @@ body_class: page-rule-catalog
     <p>Keep work in SQL where it belongs and avoid loading whole entities or unbounded result sets by accident.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC002_PrematureMaterialization.html">
+    <a class="rule-card" href="./LC002_PrematureMaterialization.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC002</span>
         <span class="pill pill--warning">Warning</span>
@@ -412,7 +423,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC002_PrematureMaterialization/</span>
     </a>
-    <a class="rule-card" href="./LC003_AnyOverCount.html">
+    <a class="rule-card" href="./LC003_AnyOverCount.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC003</span>
         <span class="pill pill--warning">Warning</span>
@@ -425,7 +436,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC003_AnyOverCount/</span>
     </a>
-    <a class="rule-card" href="./LC017_WholeEntityProjection.html">
+    <a class="rule-card" href="./LC017_WholeEntityProjection.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC017</span>
         <span class="pill pill--info">Info</span>
@@ -438,7 +449,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC017_WholeEntityProjection/</span>
     </a>
-    <a class="rule-card" href="./LC022_ToListInSelectProjection.html">
+    <a class="rule-card" href="./LC022_ToListInSelectProjection.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC022</span>
         <span class="pill pill--info">Info</span>
@@ -451,7 +462,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC022_ToListInSelectProjection/</span>
     </a>
-    <a class="rule-card" href="./LC023_FindInsteadOfFirstOrDefault.html">
+    <a class="rule-card" href="./LC023_FindInsteadOfFirstOrDefault.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC023</span>
         <span class="pill pill--info">Info</span>
@@ -464,7 +475,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC023_FindInsteadOfFirstOrDefault/</span>
     </a>
-    <a class="rule-card" href="./LC029_RedundantIdentitySelect.html">
+    <a class="rule-card" href="./LC029_RedundantIdentitySelect.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC029</span>
         <span class="pill pill--info">Info</span>
@@ -477,7 +488,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC029_RedundantIdentitySelect/</span>
     </a>
-    <a class="rule-card" href="./LC031_UnboundedQueryMaterialization.html">
+    <a class="rule-card" href="./LC031_UnboundedQueryMaterialization.html" data-severity="info" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC031</span>
         <span class="pill pill--info">Info</span>
@@ -490,7 +501,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC031_UnboundedQueryMaterialization/</span>
     </a>
-    <a class="rule-card" href="./LC033_UseFrozenSetForStaticMembershipCaches.html">
+    <a class="rule-card" href="./LC033_UseFrozenSetForStaticMembershipCaches.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC033</span>
         <span class="pill pill--info">Info</span>
@@ -503,7 +514,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC033_UseFrozenSetForStaticMembershipCaches/</span>
     </a>
-    <a class="rule-card" href="./LC041_SingleEntityScalarProjection.html">
+    <a class="rule-card" href="./LC041_SingleEntityScalarProjection.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC041</span>
         <span class="pill pill--info">Info</span>
@@ -525,7 +536,7 @@ body_class: page-rule-catalog
     <p>Catch LINQ patterns that EF Core cannot translate reliably or cannot page deterministically.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC001_LocalMethod.html">
+    <a class="rule-card" href="./LC001_LocalMethod.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC001</span>
         <span class="pill pill--warning">Warning</span>
@@ -538,7 +549,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC001_LocalMethod/</span>
     </a>
-    <a class="rule-card" href="./LC004_IQueryableLeak.html">
+    <a class="rule-card" href="./LC004_IQueryableLeak.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC004</span>
         <span class="pill pill--warning">Warning</span>
@@ -551,7 +562,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC004_IQueryableLeak/</span>
     </a>
-    <a class="rule-card" href="./LC005_MultipleOrderBy.html">
+    <a class="rule-card" href="./LC005_MultipleOrderBy.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC005</span>
         <span class="pill pill--warning">Warning</span>
@@ -564,7 +575,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC005_MultipleOrderBy/</span>
     </a>
-    <a class="rule-card" href="./LC014_AvoidStringCaseConversion.html">
+    <a class="rule-card" href="./LC014_AvoidStringCaseConversion.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC014</span>
         <span class="pill pill--warning">Warning</span>
@@ -577,7 +588,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC014_AvoidStringCaseConversion/</span>
     </a>
-    <a class="rule-card" href="./LC015_MissingOrderBy.html">
+    <a class="rule-card" href="./LC015_MissingOrderBy.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC015</span>
         <span class="pill pill--warning">Warning</span>
@@ -590,7 +601,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC015_MissingOrderBy/</span>
     </a>
-    <a class="rule-card" href="./LC016_AvoidDateTimeNow.html">
+    <a class="rule-card" href="./LC016_AvoidDateTimeNow.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC016</span>
         <span class="pill pill--warning">Warning</span>
@@ -603,7 +614,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC016_AvoidDateTimeNow/</span>
     </a>
-    <a class="rule-card" href="./LC020_StringContainsWithComparison.html">
+    <a class="rule-card" href="./LC020_StringContainsWithComparison.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC020</span>
         <span class="pill pill--warning">Warning</span>
@@ -616,7 +627,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC020_StringContainsWithComparison/</span>
     </a>
-    <a class="rule-card" href="./LC024_GroupByNonTranslatable.html">
+    <a class="rule-card" href="./LC024_GroupByNonTranslatable.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC024</span>
         <span class="pill pill--warning">Warning</span>
@@ -629,7 +640,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC024_GroupByNonTranslatable/</span>
     </a>
-    <a class="rule-card" href="./LC050_OrderByBeforeDistinct.html">
+    <a class="rule-card" href="./LC050_OrderByBeforeDistinct.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC050</span>
         <span class="pill pill--warning">Warning</span>
@@ -651,7 +662,7 @@ body_class: page-rule-catalog
     <p>Flag SQL construction patterns that can bypass parameterization, tenant filters, or review expectations.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC018_AvoidFromSqlRawWithInterpolation.html">
+    <a class="rule-card" href="./LC018_AvoidFromSqlRawWithInterpolation.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC018</span>
         <span class="pill pill--warning">Warning</span>
@@ -664,7 +675,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC018_AvoidFromSqlRawWithInterpolation/</span>
     </a>
-    <a class="rule-card" href="./LC021_AvoidIgnoreQueryFilters.html">
+    <a class="rule-card" href="./LC021_AvoidIgnoreQueryFilters.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC021</span>
         <span class="pill pill--warning">Warning</span>
@@ -677,7 +688,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC021_AvoidIgnoreQueryFilters/</span>
     </a>
-    <a class="rule-card" href="./LC034_AvoidExecuteSqlRawWithInterpolation.html">
+    <a class="rule-card" href="./LC034_AvoidExecuteSqlRawWithInterpolation.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC034</span>
         <span class="pill pill--warning">Warning</span>
@@ -690,7 +701,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC034_AvoidExecuteSqlRawWithInterpolation/</span>
     </a>
-    <a class="rule-card" href="./LC037_RawSqlStringConstruction.html">
+    <a class="rule-card" href="./LC037_RawSqlStringConstruction.html" data-severity="warning" data-fix="false">
       <span class="rule-card__top">
         <span class="rule-card__id">LC037</span>
         <span class="pill pill--warning">Warning</span>
@@ -712,7 +723,7 @@ body_class: page-rule-catalog
     <p>Guard model shape choices that produce fragile entity mappings and unclear relationships.</p>
   </div>
   <div class="rule-grid">
-    <a class="rule-card" href="./LC011_EntityMissingPrimaryKey.html">
+    <a class="rule-card" href="./LC011_EntityMissingPrimaryKey.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC011</span>
         <span class="pill pill--warning">Warning</span>
@@ -725,7 +736,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC011_EntityMissingPrimaryKey/</span>
     </a>
-    <a class="rule-card" href="./LC027_MissingExplicitForeignKey.html">
+    <a class="rule-card" href="./LC027_MissingExplicitForeignKey.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC027</span>
         <span class="pill pill--info">Info</span>

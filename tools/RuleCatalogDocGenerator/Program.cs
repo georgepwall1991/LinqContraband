@@ -174,6 +174,17 @@ static string GenerateMarkdown(IReadOnlyDictionary<string, string> ruleSummaries
     builder.AppendLine();
     builder.AppendLine($"<p class=\"eyebrow\">{domainCount} diagnostic domains</p>");
     builder.AppendLine();
+    builder.AppendLine("<form class=\"catalog-filter\" role=\"search\" aria-label=\"Filter rules\" hidden>");
+    builder.AppendLine("  <label class=\"catalog-filter__label\" for=\"rule-filter\">Find a rule</label>");
+    builder.AppendLine("  <input id=\"rule-filter\" type=\"search\" placeholder=\"Search by ID or keyword: LC007, Include, raw SQL\" autocomplete=\"off\" spellcheck=\"false\">");
+    builder.AppendLine("  <div class=\"catalog-filter__toggles\">");
+    builder.AppendLine("    <label><input type=\"checkbox\" data-filter=\"fix\"> Has a code fix</label>");
+    builder.AppendLine("    <label><input type=\"checkbox\" data-filter=\"warning\"> Warnings only</label>");
+    builder.AppendLine("  </div>");
+    builder.AppendLine("  <p class=\"catalog-filter__status\" aria-live=\"polite\"></p>");
+    builder.AppendLine("</form>");
+    builder.AppendLine("<script src=\"./assets/js/rule-catalog.js\" defer></script>");
+    builder.AppendLine();
 
     var groups = rules
         .GroupBy(rule => rule.Domain, StringComparer.Ordinal);
@@ -199,7 +210,7 @@ static string GenerateMarkdown(IReadOnlyDictionary<string, string> ruleSummaries
                 ? rule.SamplePath.Replace('\\', '/')
                 : sampleDirectory.Replace("samples/LinqContraband.Sample/", string.Empty, StringComparison.Ordinal);
 
-            builder.AppendLine($"    <a class=\"rule-card\" href=\"./{EncodeAttribute(docsFileName)}\">");
+            builder.AppendLine($"    <a class=\"rule-card\" href=\"./{EncodeAttribute(docsFileName)}\" data-severity=\"{ToToken(rule.Severity.ToString())}\" data-fix=\"{(rule.HasCodeFix ? "true" : "false")}\">");
             builder.AppendLine("      <span class=\"rule-card__top\">");
             builder.AppendLine($"        <span class=\"rule-card__id\">{Encode(rule.Id)}</span>");
             builder.AppendLine($"        <span class=\"pill pill--{ToToken(rule.Severity.ToString())}\">{Encode(rule.Severity.ToString())}</span>");
