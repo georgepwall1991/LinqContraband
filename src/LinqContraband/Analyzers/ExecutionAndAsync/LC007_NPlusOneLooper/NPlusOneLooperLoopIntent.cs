@@ -42,6 +42,7 @@ internal static partial class NPlusOneLooperAnalysis
         var conditionQueriesDatabase = condition != null && ConditionExecutesDatabaseWork(condition, cancellationToken);
 
         var resultLocals = GetResultDerivedLocals(invocation, loop);
+        AddLevelFrontiers(invocation, loop, resultLocals);
         var invocationInCondition = condition != null && condition.Syntax.Span.Contains(invocation.Syntax.Span);
 
         if (!IsConditionFreeOfItemSources(condition, resultLocals, cancellationToken))
@@ -101,6 +102,98 @@ internal static partial class NPlusOneLooperAnalysis
         }
 
         return locals;
+    }
+
+    /// <summary>
+    /// A hierarchy walked one level per query: <c>while (frontier.Count &gt; 0)</c>, where the query reads the whole
+    /// frontier (<c>frontier.Contains(x.ParentId)</c>, or the frontier passed as an argument) and the frontier is
+    /// refilled from the result (<c>foreach (var id in next) frontier.Add(id);</c>). Such a frontier counts as a
+    /// result-derived local. A worklist the query takes one item from (<c>Dequeue()</c>, <c>Pop()</c>,
+    /// <c>frontier[0]</c>) is still one query per item and does not.
+    /// </summary>
+    private static void AddLevelFrontiers(IInvocationOperation invocation, ILoopOperation loop, HashSet<ILocalSymbol> resultLocals)
+    {
+        if (resultLocals.Count == 0)
+            return;
+
+        // Elements of the result: foreach variables over it (or over LINQ on it).
+        var resultValues = new HashSet<ILocalSymbol>(resultLocals, SymbolEqualityComparer.Default);
+        foreach (var operation in DescendantsInSameBody(loop.Body))
+        {
+            if (operation is IForEachLoopOperation forEach && ReferencesAnyLocal(forEach.Collection, resultValues))
+            {
+                foreach (var local in forEach.Locals)
+                    resultValues.Add(local);
+            }
+        }
+
+        var writes = CollectLocalWrites(loop.Body);
+        foreach (var operation in DescendantsInSameBody(loop.Body))
+        {
+            if (operation is IInvocationOperation
+                {
+                    TargetMethod.Name: "Add" or "AddRange" or "Enqueue" or "Push" or "UnionWith",
+                    Instance: ILocalReferenceOperation { Local: var frontier }
+                } refill &&
+                !resultLocals.Contains(frontier) &&
+                refill.Arguments.Any(argument => ReferencesAnyLocal(argument.Value, resultValues)) &&
+                QueryReadsWholeFrontier(invocation, frontier, writes))
+            {
+                resultLocals.Add(frontier);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The query depends on the frontier only as a whole set: every reference to it, in the query or in the loop
+    /// locals the query is built from, is an argument or the receiver of <c>Contains</c>.
+    /// </summary>
+    private static bool QueryReadsWholeFrontier(
+        IInvocationOperation invocation,
+        ILocalSymbol frontier,
+        List<(ILocalSymbol Local, IOperation Value)> loopWrites)
+    {
+        var readsWhole = false;
+        var visited = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<IOperation>();
+        pending.Push(invocation);
+
+        while (pending.Count > 0)
+        {
+            foreach (var operation in pending.Pop().DescendantsAndSelf())
+            {
+                if (operation is not ILocalReferenceOperation localReference)
+                    continue;
+
+                if (SymbolEqualityComparer.Default.Equals(localReference.Local, frontier))
+                {
+                    if (!IsWholeSetUse(localReference))
+                        return false;
+
+                    readsWhole = true;
+                }
+                else if (visited.Add(localReference.Local))
+                {
+                    foreach (var (local, value) in loopWrites)
+                    {
+                        if (SymbolEqualityComparer.Default.Equals(local, localReference.Local))
+                            pending.Push(value);
+                    }
+                }
+            }
+        }
+
+        return readsWhole;
+    }
+
+    private static bool IsWholeSetUse(ILocalReferenceOperation reference)
+    {
+        var parent = reference.Parent;
+        while (parent is IConversionOperation)
+            parent = parent.Parent;
+
+        return parent is IArgumentOperation ||
+               parent is IInvocationOperation { TargetMethod.Name: "Contains" } contains && contains.Instance?.Syntax == reference.Syntax;
     }
 
     private static List<(ILocalSymbol Local, IOperation Value)> CollectLocalWrites(IOperation body)
