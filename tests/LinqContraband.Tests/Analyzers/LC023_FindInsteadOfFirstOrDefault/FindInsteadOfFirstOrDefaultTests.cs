@@ -384,4 +384,59 @@ namespace LinqContraband.Test
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task Fixer_ChainedDbSetReceiver_ShouldReplaceFirstOrDefaultWithFind()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Set() => null;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = {|LC023:db.Set().FirstOrDefault(x => x.Id == 123)|};
+            var other = {|LC023:db.Set().FirstOrDefault(x => x.Id == 456)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Set() => null;
+    }
+
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var result = db.Set().Find(123);
+            var other = db.Set().Find(456);
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseFind"
+        };
+
+        await testObj.RunAsync();
+    }
 }

@@ -3,6 +3,7 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -33,10 +34,7 @@ public sealed class StringContainsWithComparisonFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var token = root.FindToken(diagnosticSpan.Start);
-        if (token.Parent is null) return;
-
-        var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+        var invocation = root.FindReportedInvocation(diagnosticSpan);
         if (invocation == null) return;
 
         context.RegisterCodeFix(

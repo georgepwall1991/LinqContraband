@@ -463,4 +463,47 @@ namespace LinqContraband.Test
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task FixAll_ChainedReceivers_ShouldRemoveStringComparisonFromReportedCall()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = default(IQueryable<string>);
+            var trimmed = query.Where(x => {|LC020:x.Trim().Contains(""abc"", StringComparison.OrdinalIgnoreCase)|}).ToList();
+            var upper = query.Where(x => {|LC020:x.Substring(1).ToUpper().StartsWith(""A"", StringComparison.Ordinal)|}).ToList();
+        }
+    }
+}";
+
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = default(IQueryable<string>);
+            var trimmed = query.Where(x => x.Trim().Contains(""abc"")).ToList();
+            var upper = query.Where(x => x.Substring(1).ToUpper().StartsWith(""A"")).ToList();
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "RemoveStringComparison"
+        };
+
+        await testObj.RunAsync();
+    }
 }

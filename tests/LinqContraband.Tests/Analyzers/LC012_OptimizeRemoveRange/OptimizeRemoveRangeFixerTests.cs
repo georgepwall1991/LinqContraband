@@ -349,4 +349,49 @@ namespace LinqContraband.Test
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task Fixer_ChainedDbSetReceiver_ShouldReplaceRemoveRangeWithExecuteDelete()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users() => new DbSet<User>();
+    }
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Users().Where(x => x.Id > 0);
+            {|LC012:db.Users().RemoveRange(query)|};
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users() => new DbSet<User>();
+    }
+    public class TestClass
+    {
+        public void TestMethod(AppDbContext db)
+        {
+            var query = db.Users().Where(x => x.Id > 0);
+            // Warning: ExecuteDelete bypasses change tracking and cascades.
+            query.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyFix.VerifyCodeFixAsync(test, fixedCode);
+    }
 }

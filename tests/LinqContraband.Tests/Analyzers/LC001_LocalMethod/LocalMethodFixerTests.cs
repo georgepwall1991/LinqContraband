@@ -269,4 +269,55 @@ class Program
         await testObj.RunAsync();
     }
 
+    [Fact]
+    public async Task FixCrime_ChainedReceiverLocalMethod_SwitchesToClientSideEvaluation()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.Where(u => {|#0:GetRules().Allows(u.Age)|});
+    }
+
+    Rules GetRules() => new Rules();
+}
+
+class Rules
+{
+    public bool Allows(int age) => age > 18;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsEnumerable().Where(u => GetRules().Allows(u.Age));
+    }
+
+    Rules GetRules() => new Rules();
+}
+
+class Rules
+{
+    public bool Allows(int age) => age > 18;
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        };
+
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Allows"));
+
+        await testObj.RunAsync();
+    }
 }

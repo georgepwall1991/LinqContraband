@@ -30,12 +30,9 @@ public sealed partial class AsyncEnumerableBufferingFixer : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
-        var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?
-            .AncestorsAndSelf()
-            .OfType<InvocationExpressionSyntax>()
-            .FirstOrDefault();
-
+        // The diagnostic spans the whole buffer call; for a chained receiver such as
+        // db.Users.AsAsyncEnumerable().ToListAsync() its first token belongs to the inner call.
+        var invocation = root.FindReportedInvocation(diagnostic.Location.SourceSpan);
         if (invocation == null)
             return;
 
