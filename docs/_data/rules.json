@@ -457,7 +457,7 @@
     "domain": "Loading & Includes",
     "domain_anchor": "loading-includes",
     "severity": "Info",
-    "code_fix": false,
+    "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC042_MissingQueryTags/MissingQueryTagsSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/LoadingAndIncludes/LC042_MissingQueryTags"
   },

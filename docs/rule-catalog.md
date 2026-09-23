@@ -13,7 +13,7 @@ body_class: page-rule-catalog
   <div class="metric-strip" aria-label="Rule catalog summary">
     <div class="metric"><strong>50</strong><span>rules</span></div>
     <div class="metric"><strong>31</strong><span>warnings</span></div>
-    <div class="metric"><strong>33</strong><span>code fixes</span></div>
+    <div class="metric"><strong>34</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -362,7 +362,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC038_ExcessiveEagerLoading/</span>
     </a>
-    <a class="rule-card" href="./LC042_MissingQueryTags.html" data-severity="info" data-fix="false">
+    <a class="rule-card" href="./LC042_MissingQueryTags.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC042</span>
         <span class="pill pill--info">Info</span>
@@ -371,7 +371,7 @@ body_class: page-rule-catalog
       <p class="rule-card__summary">Flags complex EF Core queries without TagWith() or TagWithCallSite(), so the SQL they produce is hard to trace back to code in logs.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
-        <span class="pill pill--manual">Manual only</span>
+        <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC042_MissingQueryTags/</span>
     </a>

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- LC042 scores query shape instead of counting method names. Joins, `GroupBy` and `SelectMany` count twice, tracking, filter and split-query options (`AsNoTracking`, `IgnoreQueryFilters`, `AsSplitQuery`, ...) no longer count, and a predicate passed to the terminal (`Count(o => ...)`) counts once. Only real `Queryable` and EF Core operators are scored; a chain through an unknown helper stays quiet. Query syntax is now analyzed, subqueries inside an outer query's lambda are no longer reported separately, `Sum`/`Min`/`Max`/`Average` count as terminals, and the diagnostic sits on the terminal method name.
 - The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
 - The README (also the NuGet readme) shows the OpenSSF Scorecard badge, and the documentation site's link previews use a new 1280x640 social card (source in `tools/SocialCard/`) instead of the old diagnostics screenshot, which still said 45 rules.
 - The rule catalog page has a search box that filters rules by ID or keyword as you type, with toggles for rules that have a code fix and for warnings. `?q=` links open it pre-filtered. Without JavaScript the page stays a plain list.
@@ -26,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The LC009 code fix no longer offers `AsNoTracking()` when the queried entities leave the method (returned, passed to another method, stored in a field or another variable, or handed to a delegate). Code the analyzer cannot see may change and save them, and the fix, or Fix All across a solution, would silently turn that save into a no-op. The rule still reports those queries. LC009 also now recognises more write paths and stays quiet on them: a method of the entity's own type (`order.Ship()`), a change to a navigation collection (`order.Lines.Add(line)`), a field write, a mapper writing into the entity (`mapper.Map(dto, order)`, `patch.ApplyTo(order)`), and `UpdateRange`.
 - LC001, LC004, LC016, LC020 and LC022 no longer report queries that provably run on LINQ to Objects: a chain that starts at `AsQueryable()` over an array or concrete collection (`list.AsQueryable().Where(...)`, including through a `BuildMock()`-style `IQueryable` helper or a single-assignment local), or at `new EnumerableQuery<T>(...)`. Unit tests, in-memory repositories and MockQueryable-style fakes build queries this way, and none of these EF translation concerns apply to them. `AsQueryable()` over an `IEnumerable<T>` (which may be a `DbSet` at runtime), `IQueryable` parameters, fields, properties, `DbSet`s and reassigned locals still report.
 - The LC018 code fix now rewrites `FromSqlRaw($"...")` to `FromSql($"...")` instead of `FromSqlInterpolated`, which EF Core 11 marks obsolete (CS0618, a build error under `TreatWarningsAsErrors`) and Cosmos never had. It checks what the rewritten call binds to, falls back to `FromSqlInterpolated` only on EF Core 6 and older, and offers no fix when the only candidate is obsolete or missing. The diagnostic message names the same API.
+
+### Added
+- LC042 code fix: tag the query with `TagWith("Type.Member")`, named after the enclosing member, or with `TagWithCallSite()` when the referenced EF Core version has it.
 
 ## [5.9.0] - 2026-09-22
 
