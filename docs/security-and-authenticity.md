@@ -11,10 +11,11 @@ Use these links when installing, reviewing, or linking to LinqContraband:
 
 - Canonical source repository: [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)
 - Official NuGet package: [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
+- Official scanner tool: [nuget.org/packages/LinqContraband.Scan](https://www.nuget.org/packages/LinqContraband.Scan)
 - Maintainer: [George Wall](https://www.georgewall.uk/)
 
-LinqContraband is a NuGet analyzer package for .NET. It is not distributed as a standalone ZIP installer, executable, or
-binary download. If another page offers a ZIP or installer and claims it is LinqContraband, treat that download as
+LinqContraband is a NuGet analyzer package for .NET, plus the `LinqContraband.Scan` .NET tool, which is also published
+only on NuGet. It is not distributed as a standalone ZIP installer, executable, or binary download. If another page offers a ZIP or installer and claims it is LinqContraband, treat that download as
 untrusted.
 
 ## Safe Install
