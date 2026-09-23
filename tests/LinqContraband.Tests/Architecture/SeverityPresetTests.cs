@@ -43,7 +43,9 @@ public sealed class SeverityPresetTests
     [Fact]
     public void Presets_OnlyNameCatalogRules()
     {
-        var ids = RuleCatalog.All.Select(rule => rule.Id).ToHashSet(StringComparer.Ordinal);
+        var ids = RuleCatalog.All.Select(rule => rule.Id)
+            .Concat(RuleCatalogPresets.EfCoreSqlInjectionRuleIds)
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var preset in RuleCatalogPresets.All)
         {
             Assert.NotEmpty(preset.Severities);
@@ -57,7 +59,7 @@ public sealed class SeverityPresetTests
     {
         var strict = RuleCatalogPresets.All.Single(preset => preset.Name == "strict");
         Assert.Equal(
-            RuleCatalog.All.Select(rule => rule.Id).OrderBy(id => id, StringComparer.Ordinal),
+            RuleCatalog.All.Select(rule => rule.Id).Concat(RuleCatalogPresets.EfCoreSqlInjectionRuleIds).OrderBy(id => id, StringComparer.Ordinal),
             strict.Severities.Select(entry => entry.RuleId).OrderBy(id => id, StringComparer.Ordinal));
     }
 
@@ -152,5 +154,18 @@ public sealed class SeverityPresetTests
     {
         // Severities from global configs apply to every file, so the compiler keeps them in GlobalConfigOptions.
         return AnalyzerConfigSet.Create(configs).GlobalConfigOptions;
+    }
+
+    [Fact]
+    public void SqlInjectionPresets_AlsoRaiseEfCoresOwnRawSqlAnalyzers()
+    {
+        // LC018 and LC034 defer to EF1002/EF1003 on the calls those report, so a preset that makes SQL
+        // injection a build error must raise them too or it would stop failing the build on those lines.
+        foreach (var name in new[] { "security", "critical", "strict" })
+        {
+            var preset = RuleCatalogPresets.All.Single(candidate => candidate.Name == name);
+            Assert.Contains(("EF1002", "error"), preset.Severities);
+            Assert.Contains(("EF1003", "error"), preset.Severities);
+        }
     }
 }

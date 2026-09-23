@@ -3,6 +3,7 @@ using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -41,10 +42,6 @@ public sealed partial class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvi
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
             return;
 
-        var replacementName = GetReplacementName(memberAccess.Name.Identifier.Text);
-        if (replacementName is null)
-            return;
-
         var sqlArgument = GetSqlArgument(invocation);
         if (sqlArgument?.Expression is not InterpolatedStringExpressionSyntax interpolatedSql)
             return;
@@ -54,6 +51,14 @@ public sealed partial class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvi
             return;
 
         if (invocation.ArgumentList.Arguments.Count != 1)
+            return;
+
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel is null)
+            return;
+
+        var replacementName = GetReplacementName(invocation, memberAccess, semanticModel, context.CancellationToken);
+        if (replacementName is null)
             return;
 
         context.RegisterCodeFix(
@@ -78,14 +83,54 @@ public sealed partial class AvoidFromSqlRawWithInterpolationFixer : CodeFixProvi
             : SyntaxFactory.IdentifierName(replacementName);
     }
 
-    private static string? GetReplacementName(string methodName)
+    /// <summary>
+    /// Picks the parameterizing API the rewritten call actually binds to: <c>FromSql</c> first (EF Core 7+,
+    /// and the only interpolated overload on Cosmos), then <c>FromSqlInterpolated</c> for older EF Core.
+    /// A name is used only when the rewritten call binds to a non-obsolete overload taking a
+    /// <c>FormattableString</c>, so the fix never emits a call that fails to compile or trips CS0618
+    /// (EF Core 11 marks <c>FromSqlInterpolated</c> obsolete).
+    /// </summary>
+    private static string? GetReplacementName(
+        InvocationExpressionSyntax invocation,
+        MemberAccessExpressionSyntax memberAccess,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
     {
-        return methodName switch
+        var candidates = memberAccess.Name.Identifier.Text switch
         {
-            "FromSqlRaw" => "FromSqlInterpolated",
-            "SqlQueryRaw" => "SqlQuery",
+            "FromSqlRaw" => new[] { "FromSql", "FromSqlInterpolated" },
+            "SqlQueryRaw" => new[] { "SqlQuery" },
             _ => null
         };
+
+        if (candidates is null)
+            return null;
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var rewritten = invocation.WithExpression(memberAccess.WithName(WithReplacementName(memberAccess.Name, candidate)));
+            var symbol = semanticModel.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression).Symbol;
+            if (symbol is IMethodSymbol method &&
+                method.Name == candidate &&
+                TakesFormattableSql(method) &&
+                !(method.ReducedFrom ?? method).IsObsolete())
+                return candidate;
+        }
+
+        return null;
+    }
+
+    private static bool TakesFormattableSql(IMethodSymbol method)
+    {
+        foreach (var parameter in method.Parameters)
+        {
+            if (parameter.Type.Name == "FormattableString" &&
+                parameter.Type.ContainingNamespace?.ToDisplayString() == "System")
+                return true;
+        }
+
+        return false;
     }
 
     private static string GetEquivalenceKey(string methodName)

@@ -58,6 +58,12 @@ public sealed partial class AvoidExecuteSqlRawWithInterpolationAnalyzer : Diagno
         if (!IsPotentiallyUnsafeSql(sqlArgument.Value))
             return;
 
+        // EF Core 8+ reports the same call as EF1002 (and EF Core 10+ the concatenation as EF1003),
+        // with its own ExecuteSql fix, so a second warning on the same line adds only noise.
+        if (EfCoreRawSqlAnalyzerOverlap.IsReportedByEfCoreAnalyzer(invocation, sqlArgument) &&
+            EfCoreRawSqlAnalyzerOverlap.DefersToEfCoreAnalyzers(context.Options, invocation.Syntax.SyntaxTree, DiagnosticId))
+            return;
+
         context.ReportDiagnostic(Diagnostic.Create(
             Rule,
             sqlArgument.Value.Syntax.GetLocation(),
