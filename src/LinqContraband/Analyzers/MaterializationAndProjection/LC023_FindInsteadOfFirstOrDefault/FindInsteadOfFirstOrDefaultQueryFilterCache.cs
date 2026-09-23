@@ -43,18 +43,11 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
         /// True when the entity type - or a base type, since EF declares filters on the
         /// hierarchy root and propagates them down - has a visible global query filter.
         /// Find's change-tracker hit bypasses query filters, so the FirstOrDefault-to-Find
-        /// advice is wrong there. Without full-scan permission an unseen filter cannot be
-        /// ruled out, but the rule keeps reporting - the same trade-off the convention-key
-        /// fallback already makes.
+        /// advice is wrong there. Every tree of the compilation is scanned, whatever its size;
+        /// only a filter configured in another assembly stays invisible.
         /// </summary>
         public bool HasQueryFilter(ITypeSymbol entityType, CancellationToken cancellationToken)
         {
-            if (HasRegisteredQueryFilter(entityType))
-                return true;
-
-            if (!allowFullScan)
-                return false;
-
             EnsureFullyScanned(cancellationToken);
             return HasRegisteredQueryFilter(entityType);
         }

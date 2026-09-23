@@ -42,7 +42,11 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnal
 
     private static void InitializeCompilation(CompilationStartAnalysisContext context)
     {
-        var primaryKeyCache = FindInsteadOfFirstOrDefaultKeyAnalysis.CreateAnalyzerCache(context.Compilation);
+        // One key/query-filter scan per compilation, run lazily by the first candidate lookup.
+        // It covers every tree however large the project is: the scan only binds trees whose
+        // text mentions HasKey/HasNoKey/HasQueryFilter, so its cost follows the size of the
+        // model configuration, not the compilation.
+        var primaryKeyCache = FindInsteadOfFirstOrDefaultKeyAnalysis.CreateCache(context.Compilation);
         context.RegisterOperationAction(
             operationContext => AnalyzeInvocation(operationContext, primaryKeyCache),
             OperationKind.Invocation);
@@ -54,12 +58,6 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnal
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
-
-        if (method.Name == "HasKey")
-            primaryKeyCache.RegisterConfiguredPrimaryKey(invocation);
-
-        if (method.Name == "HasQueryFilter")
-            primaryKeyCache.RegisterQueryFilter(invocation);
 
         if (!TargetMethods.Contains(method.Name)) return;
 
@@ -77,14 +75,6 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnal
         // Analyze predicate body for x.Id == id
         if (TryGetPrimaryKeyEqualityProperty(lambda, out var property))
         {
-            if (context.Operation.SemanticModel != null)
-            {
-                primaryKeyCache.EnsureSyntaxTreeScanned(
-                    invocation.Syntax.SyntaxTree,
-                    context.Operation.SemanticModel,
-                    context.CancellationToken);
-            }
-
             var primaryKey = primaryKeyCache.TryFindSafePrimaryKey(
                 property.ContainingType,
                 context.CancellationToken);
