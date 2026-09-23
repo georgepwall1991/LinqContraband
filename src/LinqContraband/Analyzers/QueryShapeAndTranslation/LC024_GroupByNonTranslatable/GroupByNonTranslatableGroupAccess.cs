@@ -52,6 +52,9 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     {
         foreach (var descendant in GetAllOperations(terminal).OfType<IInvocationOperation>())
         {
+            if (IsTranslatableScalarConversion(descendant.TargetMethod))
+                continue;
+
             if (!IsGroupChainMethod(descendant.TargetMethod) ||
                 !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam))
             {
@@ -60,6 +63,38 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         }
 
         return false;
+    }
+
+    // `Convert.ToInt32(c.ReadOnly)` inside an aggregate selector, as in Bitwarden's
+    // `Convert.ToBoolean(g.Min(c => Convert.ToInt32(c.ReadOnly)))`. EF Core's relational providers
+    // translate the single-argument System.Convert conversions to SQL casts.
+    private static bool IsTranslatableScalarConversion(IMethodSymbol method)
+    {
+        return method.ContainingType?.ToDisplayString() == "System.Convert" &&
+               method.Parameters.Length == 1 &&
+               method.Name is "ToBoolean" or "ToByte" or "ToDecimal" or "ToDouble" or "ToInt16" or "ToInt32" or "ToInt64" or "ToString";
+    }
+
+    // An invocation that only sees the group through translatable aggregates, such as
+    // `Convert.ToBoolean(g.Min(...))` or `Math.Round(g.Average(...))`, works on the aggregate's
+    // scalar result, not on the group's elements.
+    private static bool ReferencesGroupOnlyThroughAggregates(IInvocationOperation invocation, IParameterSymbol groupParam)
+    {
+        var aggregates = GetAllOperations(invocation)
+            .OfType<IInvocationOperation>()
+            .Where(candidate => !ReferenceEquals(candidate, invocation) && IsTranslatableGroupAccess(candidate, groupParam))
+            .ToList();
+
+        foreach (var reference in GetAllOperations(invocation).OfType<IParameterReferenceOperation>())
+        {
+            if (!SymbolEqualityComparer.Default.Equals(reference.Parameter, groupParam))
+                continue;
+
+            if (!aggregates.Any(aggregate => aggregate.Syntax.Span.Contains(reference.Syntax.Span)))
+                return false;
+        }
+
+        return true;
     }
 
     private static bool RootsAtGroupParam(IOperation? receiver, IParameterSymbol groupParam)
