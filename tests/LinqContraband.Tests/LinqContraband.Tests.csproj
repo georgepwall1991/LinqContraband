@@ -40,6 +40,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj"/>
+        <ProjectReference Include="..\..\src\LinqContraband.Scan\LinqContraband.Scan.csproj"/>
     </ItemGroup>
 
     <!-- Real EF Core metadata for CrossProjectAnalysisTests, which compile a data library and an app

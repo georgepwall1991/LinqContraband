@@ -40,6 +40,16 @@ LinqContraband reports proven EF Core LINQ and DbContext pitfalls early:
 
 When the analyzer cannot prove an EF-backed query shape statically, it **stays quiet**. High-signal feedback, not noisy guesses.
 
+## Try it on your code first
+
+Scan a solution without changing it (.NET 10 SDK):
+
+```bash
+dnx LinqContraband.Scan
+```
+
+The [scanner](https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/) builds the solution in the current directory with the analyzers injected. It then prints which rules fired, how often, and in which files, and writes a SARIF file you can upload to GitHub code scanning. On .NET 8 or 9, install it once with `dotnet tool install -g LinqContraband.Scan` and run `linqcontraband-scan`.
+
 ## Install
 
 ```bash
@@ -54,7 +64,7 @@ That adds the latest release. To edit the project file by hand instead, use the 
 
 **No runtime dependency** is added to your app. LinqContraband runs as a Roslyn analyzer during build and in supported IDEs (Visual Studio, Rider, VS Code / C# Dev Kit) and CI.
 
-Install only from NuGet or from this repository. LinqContraband is not distributed as a standalone ZIP installer or executable; treat third-party ZIP downloads as untrusted.
+Install only from NuGet or from this repository. LinqContraband ships as the `LinqContraband` analyzer package and the `LinqContraband.Scan` .NET tool, both on NuGet. It is not distributed as a standalone ZIP installer or executable; treat third-party ZIP downloads as untrusted.
 
 - **Official package:** [nuget.org/packages/LinqContraband](https://www.nuget.org/packages/LinqContraband)
 - **Canonical source:** [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)

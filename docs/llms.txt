@@ -27,6 +27,8 @@ Official links:
 - EF Core N+1 query detector: https://georgepwall1991.github.io/LinqContraband/ef-core-n-plus-one-query-detector/
 - EF Core raw SQL injection analyzer: https://georgepwall1991.github.io/LinqContraband/ef-core-raw-sql-injection-analyzer/
 - EF Core query analyzer for CI: https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/
+- EF Core query scanner (`dnx LinqContraband.Scan`, no install): https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/
+- Scanner tool package: https://www.nuget.org/packages/LinqContraband.Scan
 - Authenticity: https://georgepwall1991.github.io/LinqContraband/security-and-authenticity/
 - Link kit: https://georgepwall1991.github.io/LinqContraband/backlink-kit/
 

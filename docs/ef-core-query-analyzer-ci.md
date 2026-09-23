@@ -121,6 +121,12 @@ For deeper rule detail, browse the [full rule catalog](/LinqContraband/rule-cata
 [EF Core projection analyzer guide](/LinqContraband/ef-core-projection-analyzer/), and the
 [EF Core raw SQL injection analyzer guide](/LinqContraband/ef-core-raw-sql-injection-analyzer/).
 
+## Upload Findings to GitHub Code Scanning
+
+To see findings as pull request annotations and in the repository's Security tab, run the
+[LinqContraband scanner](/LinqContraband/ef-core-query-scanner/) and upload its SARIF report. The scanner page has the
+workflow.
+
 ## Official Links
 
 - Canonical repository: [github.com/georgepwall1991/LinqContraband](https://github.com/georgepwall1991/LinqContraband)

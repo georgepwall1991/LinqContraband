@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The analyzer package's version is the single source of truth (scripts/release_info.py reads it),
+         so the scanner ships under the same version without a second number to bump. -->
+    <PropertyGroup>
+        <_LinqContrabandAnalyzerProject>$(MSBuildThisFileDirectory)..\LinqContraband\LinqContraband.csproj</_LinqContrabandAnalyzerProject>
+        <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_LinqContrabandAnalyzerProject)')), '(?&lt;=&lt;Version&gt;)[^&lt;]+').Value)</Version>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <InvariantGlobalization>true</InvariantGlobalization>
+
+        <!-- dotnet tool: `dnx LinqContraband.Scan` or `dotnet tool install -g LinqContraband.Scan` -->
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>linqcontraband-scan</ToolCommandName>
+        <PackageId>LinqContraband.Scan</PackageId>
+        <Title>LinqContraband.Scan — scan a .NET solution for EF Core query problems</Title>
+        <Authors>George Wall</Authors>
+        <Description>Scan any .NET solution for EF Core LINQ problems without adding a package: `dnx LinqContraband.Scan` builds it with the LinqContraband analyzers injected and prints a ranked report of N+1 queries, client-side evaluation, sync-over-async, missing AsNoTracking, raw SQL injection risks and more, plus a SARIF file for GitHub code scanning.</Description>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/</PackageProjectUrl>
+        <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;NPlusOne;dotnet-tool;sarif;code-scanning;static-analysis;roslyn;query-performance</PackageTags>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <DebugType>embedded</DebugType>
+        <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="..\..\icon.png" Pack="true" PackagePath="\" Visible="false" />
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <InternalsVisibleTo Include="LinqContraband.Tests" />
+    </ItemGroup>
+
+    <!-- Build the analyzer first and ship its assembly inside the tool, so a scan needs no package restore
+         and always runs the analyzers this tool version was released with. OutputItemType hands the analyzer's
+         output to the target below through the normal reference protocol, so the solution build and this
+         reference share one analyzer build instead of compiling (and packing) it twice in parallel. -->
+    <ItemGroup>
+        <ProjectReference Include="$(_LinqContrabandAnalyzerProject)" ReferenceOutputAssembly="false" OutputItemType="_LinqContrabandAnalyzerAssembly" />
+    </ItemGroup>
+
+    <Target Name="_IncludeLinqContrabandAnalyzer" AfterTargets="ResolveProjectReferences" BeforeTargets="AssignTargetPaths">
+        <ItemGroup>
+            <None Include="@(_LinqContrabandAnalyzerAssembly)" Link="analyzer\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+        </ItemGroup>
+    </Target>
+
+</Project>
