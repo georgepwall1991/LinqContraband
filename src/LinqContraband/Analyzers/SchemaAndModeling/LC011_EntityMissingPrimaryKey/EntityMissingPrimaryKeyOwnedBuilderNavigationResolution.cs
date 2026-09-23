@@ -23,7 +23,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
             if (typeArg != null)
             {
-                var resolvedOwnedType = compilationModel.FindTypeByName(typeArg.ToString(), cancellationToken);
+                var resolvedOwnedType = compilationModel.FindType(typeArg, cancellationToken);
                 if (resolvedOwnedType != null)
                 {
                     ownedEntity = resolvedOwnedType;

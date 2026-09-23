@@ -83,7 +83,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         CompilationModel compilationModel,
         CancellationToken cancellationToken)
     {
-        var assemblyMarkerType = compilationModel.FindTypeByName(typeOfExpression.Type.ToString(), cancellationToken);
+        var assemblyMarkerType = compilationModel.FindType(typeOfExpression.Type, cancellationToken);
         return assemblyMarkerType != null &&
                SymbolEqualityComparer.Default.Equals(assemblyMarkerType.ContainingAssembly, compilationModel.Compilation.Assembly);
     }

@@ -16,7 +16,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         cancellationToken.ThrowIfCancellationRequested();
 
         if (expression is ObjectCreationExpressionSyntax objectCreation)
-            return compilationModel.FindTypeByName(objectCreation.Type.ToString(), cancellationToken);
+            return compilationModel.FindType(objectCreation.Type, cancellationToken);
 
         if (expression is ImplicitObjectCreationExpressionSyntax implicitObjectCreation)
             return ResolveImplicitObjectCreationType(implicitObjectCreation, dbContextType, compilationModel, cancellationToken);
@@ -53,15 +53,15 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         var variable = implicitObjectCreation.Ancestors().OfType<VariableDeclaratorSyntax>().FirstOrDefault();
         var localDeclaration = variable?.Parent?.Parent as LocalDeclarationStatementSyntax;
         if (localDeclaration != null)
-            return compilationModel.FindTypeByName(localDeclaration.Declaration.Type.ToString(), cancellationToken);
+            return compilationModel.FindType(localDeclaration.Declaration.Type, cancellationToken);
 
         var fieldDeclaration = variable?.Parent?.Parent as FieldDeclarationSyntax;
         if (fieldDeclaration != null)
-            return compilationModel.FindTypeByName(fieldDeclaration.Declaration.Type.ToString(), cancellationToken);
+            return compilationModel.FindType(fieldDeclaration.Declaration.Type, cancellationToken);
 
         var propertyDeclaration = implicitObjectCreation.Ancestors().OfType<PropertyDeclarationSyntax>().FirstOrDefault();
         if (propertyDeclaration != null)
-            return compilationModel.FindTypeByName(propertyDeclaration.Type.ToString(), cancellationToken);
+            return compilationModel.FindType(propertyDeclaration.Type, cancellationToken);
 
         return null;
     }
@@ -98,7 +98,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
                     var resolvedConfigType = ResolveConfigurationType(variable.Initializer.Value, dbContextType, compilationModel, cancellationToken);
                     if (resolvedConfigType == null && variable.Initializer.Value is ImplicitObjectCreationExpressionSyntax)
-                        resolvedConfigType = compilationModel.FindTypeByName(localDeclaration.Declaration.Type.ToString(), cancellationToken);
+                        resolvedConfigType = compilationModel.FindType(localDeclaration.Declaration.Type, cancellationToken);
 
                     if (resolvedConfigType != null)
                     {

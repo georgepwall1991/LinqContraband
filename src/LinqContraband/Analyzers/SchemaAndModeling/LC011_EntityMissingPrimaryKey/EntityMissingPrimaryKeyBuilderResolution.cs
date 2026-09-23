@@ -49,9 +49,9 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         if (!visitedExpressions.Add(expression))
             return false;
 
-        if (ExtractEntityTypeNameFromChain(expression) is { } entityTypeName)
+        if (ExtractEntityTypeFromChain(expression) is { } entityTypeSyntax)
         {
-            var resolvedEntityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
+            var resolvedEntityType = compilationModel.FindType(entityTypeSyntax, cancellationToken);
             if (resolvedEntityType != null)
             {
                 entityType = resolvedEntityType;
@@ -87,6 +87,56 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 entityType = parameterEntityType;
                 return true;
             }
+
+            if (TryResolveEntityLambdaBuilder(identifier, compilationModel, cancellationToken, out var lambdaEntityType))
+            {
+                entityType = lambdaEntityType;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // modelBuilder.Entity<Order>(b => { b.HasKey(o => o.Code); })
+    private static bool TryResolveEntityLambdaBuilder(
+        IdentifierNameSyntax identifier,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
+        out INamedTypeSymbol entityType)
+    {
+        entityType = null!;
+        var name = identifier.Identifier.ValueText;
+
+        foreach (var ancestor in identifier.Ancestors())
+        {
+            ParameterSyntax? parameter = ancestor switch
+            {
+                SimpleLambdaExpressionSyntax simple => simple.Parameter,
+                ParenthesizedLambdaExpressionSyntax { ParameterList.Parameters.Count: 1 } parenthesized =>
+                    parenthesized.ParameterList.Parameters[0],
+                _ => null
+            };
+
+            if (ancestor is not AnonymousFunctionExpressionSyntax)
+                continue;
+
+            if (parameter?.Identifier.ValueText != name)
+                continue;
+
+            if (ancestor.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax invocation } } ||
+                invocation.Expression is not MemberAccessExpressionSyntax { Name: GenericNameSyntax { Identifier.Text: "Entity" } genericName } ||
+                genericName.TypeArgumentList.Arguments.Count != 1)
+            {
+                return false;
+            }
+
+            var resolved = compilationModel.FindType(genericName.TypeArgumentList.Arguments[0], cancellationToken);
+            if (resolved == null)
+                return false;
+
+            entityType = resolved;
+            return true;
         }
 
         return false;
