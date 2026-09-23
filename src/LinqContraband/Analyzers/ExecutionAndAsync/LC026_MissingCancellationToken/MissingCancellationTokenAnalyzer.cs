@@ -47,7 +47,10 @@ public sealed partial class MissingCancellationTokenAnalyzer : DiagnosticAnalyze
             return;
 
         var ctArgument = FindCancellationTokenArgument(invocation, ctParameter!);
-        if (ctArgument == null || ctArgument.IsImplicit || IsUsingDefault(ctArgument.Value))
+        if (ctArgument == null ||
+            ctArgument.IsImplicit ||
+            IsUsingDefault(ctArgument.Value) ||
+            IsUsingCancellationTokenNone(ctArgument.Value) && ReportsExplicitNone(context.Options, invocation.Syntax.SyntaxTree))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
         }
