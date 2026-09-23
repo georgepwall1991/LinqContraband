@@ -108,7 +108,9 @@ internal static class Scanner
         // at the parent's MSBuild and SDK instead of the one the scanned solution selects.
         foreach (var variable in new[] { "MSBUILD_EXE_PATH", "MSBuildExtensionsPath", "MSBuildSDKsPath", "MSBuildLoadMicrosoftTargetsReadOnly" })
             startInfo.Environment.Remove(variable);
-        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] ??= "1";
+        // The indexer throws for a missing key, so a plain ??= would crash wherever the variable is unset.
+        if (!startInfo.Environment.ContainsKey("DOTNET_CLI_TELEMETRY_OPTOUT"))
+            startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
 
         using var process = new Process { StartInfo = startInfo };
         var output = new System.Text.StringBuilder();
