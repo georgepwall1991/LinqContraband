@@ -129,6 +129,13 @@ If your project has its own translation attribute, list it in `.editorconfig` (f
 dotnet_code_quality.LC001.trusted_attributes = MyCompany.Data.SqlTranslatable
 ```
 
+Methods from EF Core, its providers and the provider plugins it knows are trusted too: the `Microsoft.EntityFrameworkCore`, `Npgsql` and `NetTopologySuite` namespaces, and pgvector's `Pgvector.EntityFrameworkCore` distance functions, so a vector search such as `db.Items.OrderBy(c => c.Embedding.CosineDistance(vector))` stays quiet. When a plugin or your own `IMethodCallTranslator` translates methods from another namespace, list that namespace (its child namespaces are included; `MyCompany.Translators` does not cover `MyCompany.TranslatorsExtra`):
+
+```ini
+[*.cs]
+dotnet_code_quality.LC001.trusted_namespaces = MyCompany.Translators, NodaTime
+```
+
 Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...) or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
 
 ```csharp
