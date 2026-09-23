@@ -1,0 +1,129 @@
+<!doctype html>
+<!--
+  Source for docs/assets/img/linqcontraband-diagnostics.png (1600x900): the backdrop of the docs
+  home page hero, shown under a dark shade with the page title on top.
+  Regenerate with: node tools/SocialCard/render.mjs  (needs the playwright package and a Chromium).
+  Keep counts and version numbers out of the image so it never goes stale.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #202624;
+    --chrome: #141816;
+    --editor: #121614;
+    --gutter: #1a1f1c;
+    --text: #edf6ef;
+    --muted: #7d8c84;
+    --teal: #2dd4bf;
+    --red: #b42318;
+    --blue: #1d4ed8;
+    --paper: #f5f7f5;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1600px; height: 900px; }
+  body {
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 15% 0%, rgb(45 212 191 / 10%), transparent 45%),
+      var(--bg);
+    font-family: "DejaVu Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .window {
+    width: 1344px; border-radius: 28px; overflow: hidden;
+    background: var(--paper); box-shadow: 0 40px 100px rgb(0 0 0 / 45%);
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 12px; height: 68px; padding: 0 32px;
+    background: var(--chrome); color: var(--text);
+  }
+  .dot { width: 18px; height: 18px; border-radius: 50%; }
+  .title { margin-left: 22px; font-size: 24px; font-weight: 700; }
+  .status { margin-left: auto; color: var(--teal); font-size: 18px; }
+  .body { display: grid; grid-template-columns: 690px 1fr; gap: 30px; padding: 32px 34px 44px; }
+  .editor {
+    display: grid; grid-template-columns: 56px 1fr; border-radius: 18px; overflow: hidden;
+    background: var(--editor); color: var(--text);
+    font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 21px; line-height: 34px;
+  }
+  .gutter { padding: 16px 0; background: var(--gutter); color: var(--muted); font-size: 15px; text-align: center; }
+  .code { padding: 16px 22px 20px 10px; }
+  .line { padding-left: 12px; border-radius: 6px; white-space: pre; }
+  .warn { background: rgb(253 176 34 / 14%); color: #fcd34d; }
+  .err { background: rgb(249 112 102 / 16%); color: #fca5a5; }
+  .k { color: #7cb4ff; }
+  .flow {
+    display: flex; align-items: center; gap: 14px; margin-top: 20px; padding: 16px 20px;
+    border: 1px solid #2c3530; border-radius: 14px; font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 16px;
+  }
+  .chip { padding: 4px 18px; border-radius: 999px; color: #111; }
+  .arrow { color: var(--muted); font-size: 20px; }
+  .panel {
+    display: flex; flex-direction: column; gap: 14px; padding: 28px 34px;
+    border: 2px solid #dfe5e1; border-radius: 22px; background: #fff;
+  }
+  h2 { font-size: 42px; color: #151a17; }
+  .panel p { margin: -8px 0 8px; color: #56625b; font-size: 17px; }
+  .diag {
+    display: grid; grid-template-columns: 76px 1fr auto; align-items: center; gap: 14px;
+    padding: 14px 18px; border-radius: 12px; background: #fdf0ee; border: 1px solid #f6d3cd;
+    font-size: 15px; color: #1d2320;
+  }
+  .diag.info { background: #eef3fd; border-color: #d4dff6; }
+  .diag code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 18px; }
+  .sev { padding: 3px 12px; border-radius: 999px; background: var(--red); color: #fff; font-size: 14px; }
+  .info .sev { background: var(--blue); }
+  .ci {
+    margin-top: 4px; padding: 8px 18px; border-radius: 999px;
+    background: #0f766e; color: #ecfdf5; font-size: 15px;
+  }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <span class="dot" style="background:#f97066"></span>
+      <span class="dot" style="background:#fdb022"></span>
+      <span class="dot" style="background:#4ade80"></span>
+      <span class="title">LinqContraband analyzer run</span>
+      <span class="status">EF Core · Roslyn analyzer</span>
+    </div>
+    <div class="body">
+      <div class="editor">
+        <div class="gutter">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14</div>
+        <div class="code">
+          <div class="line"><span class="k">var</span> orders = db.Orders</div>
+          <div class="line warn">    .Where(o =&gt; IsHighValue(o))</div>
+          <div class="line">    .ToList();</div>
+          <div class="line"> </div>
+          <div class="line"><span class="k">foreach</span> (<span class="k">var</span> order <span class="k">in</span> orders)</div>
+          <div class="line">{</div>
+          <div class="line">    <span class="k">var</span> items = db.Items</div>
+          <div class="line">        .Where(i =&gt; i.OrderId == order.Id)</div>
+          <div class="line err">        .ToList();</div>
+          <div class="line"> </div>
+          <div class="line">    audit.Write(order.Customer.Name);</div>
+          <div class="line">}</div>
+          <div class="flow">
+            <span class="chip" style="background:#99f6e4">IQueryable</span><span class="arrow">→</span>
+            <span class="chip" style="background:#fcd34d">Client eval</span><span class="arrow">→</span>
+            <span class="chip" style="background:#fca5a5">N+1 loop</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Diagnostics</h2>
+        <p>Build feedback before the endpoint ships slow.</p>
+        <div class="diag"><code>LC001</code><span>Local method in IQueryable</span><span class="sev">Warning</span></div>
+        <div class="diag"><code>LC007</code><span>Database execution inside loop</span><span class="sev">Warning</span></div>
+        <div class="diag"><code>LC045</code><span>Missing Include navigation</span><span class="sev">Warning</span></div>
+        <div class="diag"><code>LC018</code><span>Interpolated raw SQL</span><span class="sev">Warning</span></div>
+        <div class="diag info"><code>LC026</code><span>Missing cancellation token</span><span class="sev">Info</span></div>
+        <div class="ci">dotnet build: analyzer diagnostics surfaced in CI</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

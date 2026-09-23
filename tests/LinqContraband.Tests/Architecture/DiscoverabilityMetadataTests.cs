@@ -190,15 +190,16 @@ public sealed class DiscoverabilityMetadataTests
         // New rules land often, so a typed-in count ("47 rules") goes stale on the next release.
         // Pages use {{ site.data.rules | size }} instead; front matter cannot, so it names no count.
         var countPattern = new Regex(
-            @"\b[1-9][0-9] (?:[A-Za-z]+ ){0,3}(?:rules|diagnostics|analy[sz]ers)\b",
+            @"\b[1-9][0-9](?:\s|</?[a-z]+>)+(?:[A-Za-z-]+ ){0,3}(?:rules|diagnostics|analy[sz]ers)\b",
             RegexOptions.IgnoreCase);
         var docsRoot = Path.Combine(RepositoryRoot, "docs");
         var failures = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(docsRoot, "*.md").Concat(Directory.EnumerateFiles(docsRoot, "*.html")))
         {
-            // The health doc is an audit log; its counts describe past releases on purpose.
-            if (Path.GetFileName(path) == "analyzer-health.md")
+            // The health doc is an audit log whose counts describe past releases on purpose, and
+            // RuleCatalogDocGenerator writes the catalog's counts (CI's --check keeps them current).
+            if (Path.GetFileName(path) is "analyzer-health.md" or "rule-catalog.md")
                 continue;
 
             var lines = File.ReadAllLines(path);

@@ -952,7 +952,7 @@ a:hover {
   }
 
   .home-hero h1 {
-    font-size: 3.4rem;
+    font-size: clamp(2rem, 9.5vw, 3.4rem);
   }
 
   .hero-stats,
