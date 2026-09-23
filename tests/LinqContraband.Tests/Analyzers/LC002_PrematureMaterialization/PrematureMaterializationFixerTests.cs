@@ -496,4 +496,43 @@ public class PrematureMaterializationFixerTests
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task Fixes_InlineWhereUsedAsMethodArgument()
+    {
+        // The reported Where call is the whole argument, so it shares its span with the ArgumentSyntax.
+        var test = CommonUsings + """
+
+            class Program
+            {
+                int Main()
+                {
+                    var db = new DbContext();
+                    return Count({|#0:db.Users.ToList().Where(x => x.Age > 18)|});
+                }
+
+                static int Count(IEnumerable<User> users) => users.Count();
+            }
+            """ + MockTypes;
+
+        var fixedCode = CommonUsings + """
+
+            class Program
+            {
+                int Main()
+                {
+                    var db = new DbContext();
+                    return Count(db.Users.Where(x => x.Age > 18).ToList());
+                }
+
+                static int Count(IEnumerable<User> users) => users.Count();
+            }
+            """ + MockTypes;
+
+        var expected = VerifyCS.Diagnostic(PrematureMaterializationAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Where");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

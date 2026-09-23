@@ -279,6 +279,84 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    [Fact]
+    public async Task IgnoreQueryFilters_AsMethodArgument_RemovesOnlyTheReportedCall()
+    {
+        // The reported call is the whole argument, so it shares its span with the ArgumentSyntax.
+        // The fix must rewrite the reported call, not the Consume(...) call that receives it.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class Sink
+    {
+        public int Consume(IQueryable<int> source) => source.Count();
+    }
+
+    public class TestClass
+    {
+        public int TestMethod(Sink sink)
+        {
+            var query = new int[0].AsQueryable();
+            return sink.Consume({|LC021:query.IgnoreQueryFilters()|});
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class Sink
+    {
+        public int Consume(IQueryable<int> source) => source.Count();
+    }
+
+    public class TestClass
+    {
+        public int TestMethod(Sink sink)
+        {
+            var query = new int[0].AsQueryable();
+            return sink.Consume(query);
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task IgnoreQueryFilters_AsLocalFunctionArgument_RemovesTheReportedCall()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public int TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            return Consume({|LC021:query.IgnoreQueryFilters()|});
+
+            static int Consume(IQueryable<int> source) => source.Count();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public int TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            return Consume(query);
+
+            static int Consume(IQueryable<int> source) => source.Count();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest

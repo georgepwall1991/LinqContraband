@@ -426,4 +426,41 @@ class Program
 
         await testObj.RunAsync();
     }
+
+    [Fact]
+    public async Task FixCrime_ToListAsMethodArgument_AwaitsTheReportedCall()
+    {
+        // The reported call is the whole argument, so it shares its span with the ArgumentSyntax.
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main()
+    {
+        var db = new MyDbContext();
+        return Count({|LC008:db.Users.ToList()|});
+    }
+
+    static int Count(List<User> users) => users.Count;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    async Task<int> Main()
+    {
+        var db = new MyDbContext();
+        return Count(await db.Users.ToListAsync());
+    }
+
+    static int Count(List<User> users) => users.Count;
+}
+" + MockNamespace;
+
+        await new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode
+        }.RunAsync();
+    }
 }

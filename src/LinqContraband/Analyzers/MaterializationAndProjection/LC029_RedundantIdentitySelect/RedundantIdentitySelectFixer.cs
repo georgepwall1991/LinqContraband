@@ -31,7 +31,7 @@ public sealed class RedundantIdentitySelectFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var node = root.FindNode(diagnosticSpan);
+        var node = root.FindNode(diagnosticSpan, getInnermostNodeForTie: true);
         var invocation = node as InvocationExpressionSyntax
                          ?? node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 

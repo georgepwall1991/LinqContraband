@@ -36,7 +36,7 @@ public sealed partial class SyncBlockerFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var invocation = root?.FindNode(diagnosticSpan) as InvocationExpressionSyntax;
+        var invocation = root?.FindNode(diagnosticSpan, getInnermostNodeForTie: true) as InvocationExpressionSyntax;
         if (invocation == null) return;
 
         if (IsInvalidAwaitContext(invocation)) return;

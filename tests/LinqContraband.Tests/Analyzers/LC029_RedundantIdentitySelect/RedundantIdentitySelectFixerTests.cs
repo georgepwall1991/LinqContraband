@@ -110,6 +110,96 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    [Fact]
+    public async Task SelectIdentity_AsMethodArgument_RemovesOnlyTheReportedSelect()
+    {
+        // The reported Select is the whole argument, so it shares its span with the ArgumentSyntax.
+        // The fix must rewrite the Select, not the sink.Consume(...) call that receives it.
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class Sink
+    {
+        public int Consume(IQueryable<int> source) => source.Count();
+    }
+
+    public class TestClass
+    {
+        public int TestMethod(Sink sink)
+        {
+            var query = new List<int>().AsQueryable();
+            return sink.Consume({|LC029:query.Select(x => x)|});
+        }
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class Sink
+    {
+        public int Consume(IQueryable<int> source) => source.Count();
+    }
+
+    public class TestClass
+    {
+        public int TestMethod(Sink sink)
+        {
+            var query = new List<int>().AsQueryable();
+            return sink.Consume(query);
+        }
+    }
+}";
+
+        await VerifyCompilingFix(test, fixedCode);
+    }
+
+    [Fact]
+    public async Task SelectIdentity_AsStaticMethodArgument_RemovesTheReportedSelect()
+    {
+        var test = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public int TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            return Consume({|LC029:query.Select(x => x)|});
+        }
+
+        private static int Consume(IQueryable<int> source) => source.Count();
+    }
+}";
+        var fixedCode = Usings + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public int TestMethod()
+        {
+            var query = new List<int>().AsQueryable();
+            return Consume(query);
+        }
+
+        private static int Consume(IQueryable<int> source) => source.Count();
+    }
+}";
+
+        await VerifyCompilingFix(test, fixedCode);
+    }
+
+    private static async Task VerifyCompilingFix(string test, string fixedCode)
+    {
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            CompilerDiagnostics = CompilerDiagnostics.Errors
+        };
+
+        await testObj.RunAsync();
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest
