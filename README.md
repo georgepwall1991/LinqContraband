@@ -112,7 +112,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 1. Reference the package with `PrivateAssets="all"`.
 2. Keep writing EF Core LINQ as usual (`DbSet`, `IQueryable`, `Include`, `SaveChanges`).
-3. Build in the IDE or with `ContinuousIntegrationBuild=true` on the command line so analyzers run.
+3. Build as usual, in the IDE or with `dotnet build`. The analyzers run as part of the compiler.
 4. Fix any `LC00x` warnings (many have code fixes).
 5. Optionally promote critical rules to error in `.editorconfig` (see Configuration below).
 
@@ -239,12 +239,12 @@ dotnet_diagnostic.LC001.severity = error
 dotnet_diagnostic.LC002.severity = error
 dotnet_diagnostic.LC003.severity = warning
 
-# Optional rule-specific thresholds
-dotnet_code_quality.LC038.include_threshold = 4
-dotnet_code_quality.LC042.query_operator_threshold = 3
+# Optional rule-specific thresholds (defaults: 4 and 3)
+dotnet_code_quality.LC038.include_threshold = 6
+dotnet_code_quality.LC042.query_operator_threshold = 5
 ```
 
-Advisory rules default to `Info`, so they show up as hints without drowning out the higher-confidence warnings.
+Advisory rules default to `Info`, so they show up as IDE hints without drowning out the higher-confidence warnings. `dotnet build` does not print `Info` diagnostics; to see them on the command line, use the `strict` preset (it raises them to warnings) or write a SARIF log with `-p:ErrorLog=linqcontraband.sarif`.
 
 LinqContraband also hides the .NET SDK's culture and string-comparison warnings (CA1862, CA1304, CA1305, CA1307, CA1309, CA1310, CA1311) inside EF Core query lambdas, where their suggested `StringComparison` or `CultureInfo` overloads cannot be translated to SQL and would make the query throw. In-memory LINQ keeps them. To keep one inside queries as well, add its suppression id (`LCS` plus the CA number, such as `LCS1862`) to `<NoWarn>`; see [LC014](https://georgepwall1991.github.io/LinqContraband/LC014_AvoidStringCaseConversion.html).
 
