@@ -362,7 +362,7 @@ body_class: page-rule-catalog
       </span>
       <span class="rule-card__sample">Samples/LC038_ExcessiveEagerLoading/</span>
     </a>
-    <a class="rule-card" href="./LC042_MissingQueryTags.html" data-severity="info" data-fix="false">
+    <a class="rule-card" href="./LC042_MissingQueryTags.html" data-severity="info" data-fix="true">
       <span class="rule-card__top">
         <span class="rule-card__id">LC042</span>
         <span class="pill pill--info">Info</span>
