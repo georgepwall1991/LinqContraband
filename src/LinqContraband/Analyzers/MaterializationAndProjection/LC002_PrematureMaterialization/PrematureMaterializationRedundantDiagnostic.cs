@@ -39,6 +39,14 @@ public sealed partial class PrematureMaterializationAnalyzer
             return false;
         }
 
+        // `(await query.ToListAsync()).ToLookup(...)`: EF Core has no ToLookupAsync or
+        // ToImmutable*Async, so an async query has to be buffered before building one.
+        if (previousMaterialization.MaterializerName.EndsWith("Async", System.StringComparison.Ordinal) &&
+            !HasEfAsyncCounterpart(invocation.TargetMethod.Name))
+        {
+            return false;
+        }
+
         var properties = CreateProperties(
             RedundantDiagnosticKind,
             previousMaterialization.OriginKind,
@@ -57,5 +65,10 @@ public sealed partial class PrematureMaterializationAnalyzer
             invocation.TargetMethod.Name,
             previousMaterialization.MaterializerName);
         return true;
+    }
+
+    private static bool HasEfAsyncCounterpart(string materializerName)
+    {
+        return materializerName is "ToList" or "ToArray" or "ToDictionary" or "ToHashSet";
     }
 }
