@@ -236,6 +236,8 @@ dotnet_code_quality.LC042.query_operator_threshold = 3
 
 Advisory rules default to `Info`, so they show up as hints without drowning out the higher-confidence warnings.
 
+LinqContraband also hides the .NET SDK's culture and string-comparison warnings (CA1862, CA1304, CA1305, CA1307, CA1309, CA1310, CA1311) inside EF Core query lambdas, where their suggested `StringComparison` or `CultureInfo` overloads cannot be translated to SQL and would make the query throw. In-memory LINQ keeps them. To keep one inside queries as well, add its suppression id (`LCS` plus the CA number, such as `LCS1862`) to `<NoWarn>`; see [LC014](https://georgepwall1991.github.io/LinqContraband/LC014_AvoidStringCaseConversion.html).
+
 ## Run it in CI
 
 LinqContraband runs inside the normal `dotnet build`, so a CI job needs no database, service container, or extra tool:

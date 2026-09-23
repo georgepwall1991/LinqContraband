@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-23 EF query culture-warning suppressor pass adds a diagnostic suppressor for CA1862-style warnings inside EF Core query lambdas, raising the full local net10.0 suite to **4,099 tests**.
+>
 > The 2026-09-23 LC053 new-rule pass adds overwritten global query filter detection with an `&&` merge fixer, raising the full local net10.0 suite to **3,975 tests**.
 >
 > The 2026-09-23 LC052 new-rule pass adds non-deterministic HasData / HasDefaultValue detection (manual-only), raising the full local net10.0 suite to **3,954 tests**.
@@ -1198,6 +1200,10 @@ The 2026-09-22 competitor and pitfall scans both listed LINQ composed over `From
 | --- | --- | --- |
 | LC056 | **New rule, Warning, code fix, in the `critical` preset.** | The decompiled EF Core 9.0 `QuerySqlGenerator.CheckComposableSql` skips whitespace, `--` and `/* */` comments, then throws `FromSqlNonComposable` unless the SQL starts with `SELECT` or `WITH`; LC056's prefix check skips the same trivia and matches only `EXEC`/`EXECUTE`. `StoredProcedureComposedTests` has 30 cases: 14 reporting (all five raw SQL sources, sync and async element, aggregate and `Include` composers, pass-through chains, leading comments and a verbatim newline, and a static `Queryable.Where` call) and 16 quiet (`ToList`, `ToListAsync`, `foreach`, `AsAsyncEnumerable`, composition after `AsEnumerable` or `ToList`, an identity `Select`, `SELECT` and table-valued-function SQL, `EXECUTIONS_VIEW`, a commented-out `EXEC`, SQL from a variable or a leading hole, a local, a project helper, and `Cast`). `StoredProcedureComposedFixerTests` has 4 fix cases (one Fix All) and 3 no-fix cases (`Include`, an `IQueryable<T>` target, and a later `ToListAsync`). |
 
+## 2026-09-23 EF query culture-warning suppressor
+
+Not a rule: `EfQueryStringComparisonSuppressor` is a `DiagnosticSuppressor` with no catalog entry, score row, or LC id. It hides CA1862, CA1304, CA1305, CA1307, CA1309, CA1310 and CA1311 (suppression ids `LCS` plus the CA number) when the flagged call reads a parameter of a lambda converted to `Expression<T>` and passed to a `Queryable` or EF Core query operator, `HasQueryFilter` or an `ExecuteUpdate` `SetProperty`, or of a delegate lambda nested inside one. Other EF Core expression lambdas, such as `HasConversion`, are compiled and run in .NET, so they keep their warnings. EF Core 10 on SQLite throws for every overload those rules suggest (`ToLowerInvariant()`, `ToLower(CultureInfo)`, `string.Equals`/`Compare`/`Contains`/`StartsWith`/`Replace` with a `StringComparison`, `ToString(IFormatProvider)`), while the plain forms translate. 12 tests run a stand-in CA analyzer over real EF Core metadata: DbSet lambdas, query syntax, nested `Any`, `IQueryable<T>` parameters with `Select`, `HasQueryFilter`, `FirstOrDefaultAsync`, an `ExecuteUpdate` setter, a `HasConversion` value converter, in-memory `Where` and `AsQueryable()` chains, a standalone `Expression<T>`, unrelated ids, and a compilation without EF Core. A scratch app with the real .NET 10 SDK analyzers (`AnalysisMode` All) gave the same result: every query-side CA1862, CA1304, CA1311, CA1305 and CA1309 disappears, the captured `name.ToLower()` and in-memory warnings stay, and CA1847/CA1866 (char overloads, which translate) are untouched. `<NoWarn>` with the suppression id switches it off; `.editorconfig` severities do not.
+
 ## Verification Baseline
 
 Package version: **5.9.0**
@@ -1355,5 +1361,7 @@ Final verification (2026-09-23, LC051 new rule): 17 focused LC051 tests pass, an
 Final verification (2026-09-23, LC052 new rule): 13 focused LC052 tests pass, and the full local net10.0 suite passes 3,954 tests.
 
 Final verification (2026-09-23, LC053 new rule): 20 focused LC053 tests pass, and the full local net10.0 suite passes 3,975 tests.
+
+Final verification (2026-09-23, EF query culture-warning suppressor): 12 focused suppressor tests and the cross-project crash guard (which now runs the suppressor too) pass, and the full local net10.0 suite passes 4,099 tests after LC054, LC055 and LC056.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
