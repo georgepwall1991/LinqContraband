@@ -77,6 +77,35 @@ public sealed class ScanCommandTests
     }
 
     [Fact]
+    public void RuleErrorHint_NamesTheRulesThatFailedTheBuild()
+    {
+        var output = string.Join(
+            "\n",
+            "/src/A.cs(3,1): error LC018: Avoid FromSqlRaw with interpolated strings [/src/A.csproj]",
+            "/src/B.cs(9,5): error EF1002: Method 'FromSqlRaw' inserts interpolated strings [/src/A.csproj]",
+            "/src/C.cs(1,1): error LC018: Avoid FromSqlRaw with interpolated strings [/src/A.csproj]",
+            "/src/D.cs(1,1): warning LC007: N+1 [/src/A.csproj]");
+
+        var hint = ScanCommand.RuleErrorHint(output);
+
+        Assert.NotNull(hint);
+        Assert.StartsWith("The build failed because EF1002, LC018 are set to error severity", hint);
+        Assert.Contains("Set them to warning in .editorconfig", hint);
+        Assert.Contains("because LC003 is set", ScanCommand.RuleErrorHint("x.cs(1,1): error LC003: Any [p]"));
+        Assert.Null(ScanCommand.RuleErrorHint("x.cs(1,1): error CS1002: ; expected [p]"));
+    }
+
+    [Fact]
+    public void DisplayPath_IsRelativeInsideTheCurrentDirectoryAndFullOutsideIt()
+    {
+        var inside = Path.Combine(Environment.CurrentDirectory, "out", "report.sarif");
+        var outside = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "report.sarif"));
+
+        Assert.Equal(Path.Combine("out", "report.sarif"), ScanCommand.DisplayPath(inside));
+        Assert.Equal(outside, ScanCommand.DisplayPath(outside));
+    }
+
+    [Fact]
     public void Targets_SwapInTheScannerAnalyzerAndLogEachCompilationSeparately()
     {
         var analyzer = Path.Combine(Path.GetTempPath(), "tool & co", "LinqContraband.dll");
@@ -110,6 +139,7 @@ public sealed class ScanCommandTests
         Assert.Contains("-p:TreatWarningsAsErrors=false", arguments);
         Assert.Contains("-p:WarningsAsErrors=", arguments);
         Assert.Contains("-p:EnableNETAnalyzers=false", arguments);
+        Assert.Contains("-p:LinqContrabandPreset=", arguments);
         Assert.Equal(["-c", "Release"], arguments.SkipWhile(argument => argument != "-c").Take(2));
         Assert.Equal(["-f", "net9.0"], arguments.SkipWhile(argument => argument != "-f").Take(2));
         Assert.Contains("--no-restore", arguments);

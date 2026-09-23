@@ -25,7 +25,7 @@ public sealed class ScanEndToEndTests
 
     /// <summary>
     /// Builds a real project with the scanner: the injected analyzer reports, a pragma-suppressed finding stays out,
-    /// and the SARIF report points at the source file.
+    /// a severity preset does not turn the finding into a build error, and the SARIF report points at the source file.
     /// </summary>
     [Fact]
     public void Scan_BuildsAProjectAndReportsWhatTheAnalyzersFind()
@@ -39,8 +39,18 @@ public sealed class ScanEndToEndTests
                     <TargetFramework>net10.0</TargetFramework>
                     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
                     <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+                    <LinqContrabandPreset>strict</LinqContrabandPreset>
                   </PropertyGroup>
+                  <!-- The same wiring as the package's build/LinqContraband.targets. -->
+                  <ItemGroup Condition="'$(LinqContrabandPreset)' != ''">
+                    <EditorConfigFiles Include="strict.globalconfig" />
+                  </ItemGroup>
                 </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "strict.globalconfig"), """
+                is_global = true
+                global_level = -10
+                dotnet_diagnostic.LC003.severity = error
                 """);
             File.WriteAllText(Path.Combine(directory, "Queries.cs"), """
                 using System.Linq;

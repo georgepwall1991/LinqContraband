@@ -61,6 +61,10 @@ Warnings come first, then advisory (Info) findings, each sorted by count. A mult
 once per target framework, so the report counts a finding once however many frameworks report it. Code suppressed
 with `#pragma warning disable` or `[SuppressMessage]` is left out, as it is in a normal build.
 
+The report also includes EF Core's own EF1002 and EF1003 warnings about SQL injection through raw SQL methods. On EF
+Core 8 and later, LC018 and LC034 leave those calls to EF Core instead of reporting them twice, so the scan shows EF
+Core's diagnostic for them.
+
 ## Options
 
 | Option | Meaning |
@@ -72,6 +76,8 @@ with `#pragma warning disable` or `[SuppressMessage]` is left out, as it is in a
 | `--no-restore` | Skip the implicit restore. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
+| `--version` | Show the version. The analyzer the tool runs has the same version. |
+| `-h`, `--help` | Show usage. |
 
 Put the scanner's arguments after `--` when using `dnx`, so that `dnx` does not read options such as `-v` or
 `--version` as its own.
@@ -126,14 +132,15 @@ For the scan it also:
   build;
 - rebuilds every project, because a project that is already up to date is not compiled, and its analyzers would not
   run;
-- stops treating warnings as errors, so one project's findings cannot keep the projects that depend on it from being
-  built and scanned.
+- stops treating warnings as errors and ignores `LinqContrabandPreset`, whose presets make some findings build errors,
+  so one project's findings cannot keep the projects that depend on it from being built and scanned.
 
 The build writes to the usual `bin/` and `obj/` folders. No package is restored from NuGet for the analyzer, and the
 injected file is deleted when the scan ends.
 
-Your repository's rule settings still apply: `.editorconfig` severities, and a `LinqContrabandPreset` if the project
-already references the package. A rule you have turned off stays off.
+Your repository's `.editorconfig` rule settings still apply, so a rule you have turned off stays off. A rule set to
+`error` there still fails that project's build, and the projects that depend on it are then not scanned. The scanner
+names those rules when it happens; set them to `warning` to scan everything.
 
 ## Keep the Checks
 

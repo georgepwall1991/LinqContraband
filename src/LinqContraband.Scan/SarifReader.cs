@@ -10,13 +10,20 @@ internal sealed record Finding(string RuleId, string Severity, string Message, s
 /// <summary>Reads LinqContraband results out of the SARIF 2.1 error logs the C# compiler writes.</summary>
 internal static partial class SarifReader
 {
-    [GeneratedRegex(@"^LC\d{3}$")]
+    /// <summary>
+    /// LinqContraband's rules, plus EF Core's EF1002 and EF1003: LC018 and LC034 stay quiet on the raw SQL calls
+    /// those report, so leaving them out would drop SQL injection findings from the scan on EF Core 8 and later.
+    /// </summary>
+    [GeneratedRegex(@"^(LC\d{3}|EF100[23])$")]
     private static partial Regex RuleIdPattern();
 
-    public static bool IsLinqContrabandRule(string? ruleId) => ruleId is not null && RuleIdPattern().IsMatch(ruleId);
+    /// <summary>EF Core's analyzers publish no help link; this page covers both of its raw SQL diagnostics.</summary>
+    public const string EfCoreSqlQueriesUri = "https://learn.microsoft.com/ef/core/querying/sql-queries";
+
+    public static bool IsReportedRule(string? ruleId) => ruleId is not null && RuleIdPattern().IsMatch(ruleId);
 
     /// <summary>
-    /// Adds the unsuppressed LCxxx results in <paramref name="json"/> to <paramref name="findings"/> and their rule
+    /// Adds the unsuppressed LCxxx, EF1002 and EF1003 results in <paramref name="json"/> to <paramref name="findings"/> and their rule
     /// metadata to <paramref name="rules"/>. Results the code suppressed with <c>#pragma</c> or
     /// <c>[SuppressMessage]</c> are skipped, matching what the build reports.
     /// </summary>
@@ -36,7 +43,7 @@ internal static partial class SarifReader
             foreach (var result in results.EnumerateArray())
             {
                 var ruleId = GetString(result, "ruleId");
-                if (!IsLinqContrabandRule(ruleId) || IsSuppressed(result))
+                if (!IsReportedRule(ruleId) || IsSuppressed(result))
                     continue;
 
                 if (!TryGetLocation(result, out var path, out var line, out var column))
@@ -62,12 +69,13 @@ internal static partial class SarifReader
         foreach (var rule in ruleArray.EnumerateArray())
         {
             var id = GetString(rule, "id");
-            if (!IsLinqContrabandRule(id) || rules.ContainsKey(id!))
+            if (!IsReportedRule(id) || rules.ContainsKey(id!))
                 continue;
 
             var title = rule.TryGetProperty("shortDescription", out var shortDescription) ? GetString(shortDescription, "text") : null;
             var level = rule.TryGetProperty("defaultConfiguration", out var configuration) ? GetString(configuration, "level") : null;
-            rules[id!] = new RuleInfo(id!, title ?? id!, ToSeverity(level), GetString(rule, "helpUri"));
+            var helpUri = GetString(rule, "helpUri") ?? (id!.StartsWith("EF", StringComparison.Ordinal) ? EfCoreSqlQueriesUri : null);
+            rules[id!] = new RuleInfo(id!, title ?? id!, ToSeverity(level), helpUri);
         }
     }
 
