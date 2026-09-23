@@ -81,20 +81,24 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (HasWriteOperations(context.Operation, writeOperationCache))
             return;
 
+        // db.Orders.ToList().Where(...).ToList(): the entities live on in the outer, in-memory
+        // materializer, so that is where they are followed.
+        var resultAnchor = FindInMemoryResultAnchor(invocation);
+
         var root = invocation.FindOwningExecutableRoot();
         var entityLocals = root == null
             ? new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default)
-            : CollectEntityLocals(invocation, root, context.CancellationToken);
+            : CollectEntityLocals(resultAnchor, root, context.CancellationToken);
 
         // A mutation of the materialized entity marks this as a write path even when the
         // SaveChanges lives in a helper the analyzer cannot see — suggesting AsNoTracking
         // would break that cross-method save.
-        if (root != null && MaterializedEntityIsMutated(invocation, root, entityLocals, context.CancellationToken))
+        if (root != null && MaterializedEntityIsMutated(resultAnchor, root, entityLocals, context.CancellationToken))
             return;
 
         // Entities that leave the method may be changed and saved by code this analysis does
         // not see, so the rule reports without offering the one-click fix.
-        var properties = root == null || MaterializedEntitiesEscape(invocation, root, entityLocals, context.CancellationToken)
+        var properties = root == null || MaterializedEntitiesEscape(resultAnchor, root, entityLocals, context.CancellationToken)
             ? EscapeProperties
             : ImmutableDictionary<string, string?>.Empty;
 

@@ -1,3 +1,4 @@
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -40,6 +41,37 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Where the entities of this EF materializer end up once in-memory LINQ is done with them.
+    /// In <c>var orders = db.Orders.ToList().Where(...).ToList();</c> the EF query runs at the inner
+    /// <c>ToList()</c>, but the entities are held, changed or handed on through the outer one, so
+    /// that outer LINQ-to-Objects materializer is where result locals, mutations and escapes are
+    /// looked for. It is the last query-executing materializer reached through LINQ-to-Objects
+    /// operators that still carry the entity; without one, the EF materializer itself.
+    /// </summary>
+    private static IInvocationOperation FindInMemoryResultAnchor(IInvocationOperation materializer)
+    {
+        var entityType = materializer.TargetMethod.TypeArguments.Length > 0
+            ? materializer.TargetMethod.TypeArguments[0]
+            : null;
+        if (entityType == null)
+            return materializer;
+
+        var anchor = materializer;
+        IOperation current = materializer;
+
+        while (WalkUpThroughWrappers(current.Parent) is IArgumentOperation { Parent: IInvocationOperation linq } argument &&
+               IsLinqToObjectsSource(linq, argument) &&
+               ContainsType(linq.Type, entityType))
+        {
+            current = linq;
+            if (linq.IsQueryExecutingMaterializer())
+                anchor = linq;
+        }
+
+        return anchor;
     }
 
     private static IOperation? WalkUpThroughWrappers(IOperation? operation)

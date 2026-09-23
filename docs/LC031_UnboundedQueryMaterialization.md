@@ -18,6 +18,8 @@ Flags materialization of an apparently unbounded query because loading an entire
 
 Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToHashSet()`, `ToLookup()`, and the async EF variants where EF provides one.
 
+The rule reports the materializer that runs the query. In `db.Orders.ToList().Where(o => o.Total > 1).ToList()` or `(await db.Orders.ToListAsync()).Where(...).ToList()` the table is loaded once, at the inner `ToList()`/`ToListAsync()`, and only that call is reported. The outer materializer copies a list that is already in memory, so it is not reported again, and neither is a later `ToList()` on a local that holds the loaded list.
+
 ## Why it matters
 
 LinqContraband reports this rule when the query shape suggests a risky or non-translatable pattern that is better made explicit before it reaches production.

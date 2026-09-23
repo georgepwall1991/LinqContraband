@@ -20,6 +20,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                 case IInvocationOperation prevInvocation:
                     var method = prevInvocation.TargetMethod;
 
+                    // "db.Orders.ToList().Where(...).ToList()": the inner ToList() runs the EF query and
+                    // is reported itself. Everything after it works on a loaded list, not on EF.
+                    if (prevInvocation.IsQueryExecutingMaterializer())
+                        return result;
+
                     if (method.Name == "AsNoTracking" || method.Name == "AsNoTrackingWithIdentityResolution")
                         result.HasAsNoTracking = true;
                     if (method.Name == "AsTracking")

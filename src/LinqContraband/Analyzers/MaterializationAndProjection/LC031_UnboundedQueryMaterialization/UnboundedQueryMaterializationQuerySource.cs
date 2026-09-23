@@ -37,6 +37,11 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                     break;
                 }
 
+                // "db.Users.ToList().Where(...).ToList()" loads the table at the inner ToList(), which
+                // is reported itself. The outer call copies a list that is already in memory.
+                if (prevInvocation.IsQueryExecutingMaterializer())
+                    break;
+
                 if (IsAggregateMethod(prevMethod.Name) ||
                     IsBoundingMethod(prevMethod.Name) && IsServerSide(receiver) ||
                     IsKeyLookup(prevInvocation))
