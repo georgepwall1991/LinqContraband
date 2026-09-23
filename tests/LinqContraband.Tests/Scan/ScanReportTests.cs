@@ -21,6 +21,7 @@ public sealed class ScanReportTests
             "results": [{{string.Join(",", results)}}],
             "tool": { "driver": { "name": "Microsoft (R) Visual C# Compiler", "rules": [
               { "id": "CA1822", "shortDescription": { "text": "Mark members as static" } },
+              { "id": "EF1002", "shortDescription": { "text": "Risk of vulnerability to SQL injection." } },
               { "id": "LC007", "shortDescription": { "text": "N+1 Problem: Database execution inside loop" },
                 "helpUri": "https://georgepwall1991.github.io/LinqContraband/LC007_NPlusOneLooper.html" },
               { "id": "LC031", "shortDescription": { "text": "Unbounded Query Materialization" },
@@ -63,10 +64,24 @@ public sealed class ScanReportTests
 
         var finding = Assert.Single(report.Findings);
         Assert.Equal(new Finding("LC007", "Warning", "LC007 message", "src/Orders.cs", 12, 9), finding);
-        Assert.Equal(["LC007", "LC031"], report.Rules.Keys.Order());
+        Assert.Equal(["EF1002", "LC007", "LC031"], report.Rules.Keys.Order());
         Assert.Equal("N+1 Problem: Database execution inside loop", report.GetRule("LC007").Title);
         Assert.Equal("Info", report.GetRule("LC031").Severity);
         Assert.Equal("Warning", report.GetRule("LC007").Severity);
+    }
+
+    [Fact]
+    public void Reader_KeepsEfCoreSqlInjectionFindings_ThatLC018AndLC034DeferTo()
+    {
+        var report = ReadReport(CompilerLog(
+            Result("EF1002", "warning", InRoot("Orders.cs"), 7, 60),
+            Result("EF1001", "warning", InRoot("Orders.cs"), 9, 1)));
+
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal("EF1002", finding.RuleId);
+        Assert.Equal("Risk of vulnerability to SQL injection.", report.GetRule("EF1002").Title);
+        Assert.Equal(SarifReader.EfCoreSqlQueriesUri, report.GetRule("EF1002").HelpUri);
+        Assert.Contains("  EF1002  " + SarifReader.EfCoreSqlQueriesUri, report.RenderText(topFiles: 0, sarifPath: null));
     }
 
     [Fact]

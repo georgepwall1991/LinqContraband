@@ -74,6 +74,8 @@ internal static class Scanner
             "-p:MSBuildTreatWarningsAsErrors=false",
             "-p:CodeAnalysisTreatWarningsAsErrors=false",
             "-p:WarningsAsErrors=",
+            // Presets make findings build errors, and an error stops the projects that depend on it from being built.
+            "-p:LinqContrabandPreset=",
             "-p:GeneratePackageOnBuild=false",
             "-p:GenerateFullPaths=true",
         };

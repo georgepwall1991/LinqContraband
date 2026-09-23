@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-23 scanner hardening pass stops `LinqContrabandPreset` from failing the scan build and adds EF Core's EF1002/EF1003 to the scan report, raising the full local net10.0 suite to **4,148 tests**.
+>
 > The 2026-09-23 LC033 metadata pass makes the rule report on real .NET 8+ projects (it had only ever fired against a source `ToFrozenSet` shim) and adds 7 tests against real .NET 8 and .NET Core 3.1 reference assemblies, raising the full local net10.0 suite to **4,145 tests**.
 
 > The 2026-09-23 LC029 pass stops reporting null-forgiving identity projections (`Select(v => v!)`) over nullable elements and adds the `LinqContraband.Scan` tool tests, raising the full local net10.0 suite to **4,138 tests**.
@@ -1388,5 +1390,7 @@ Final verification (2026-09-23, 5.10.0: LC051-LC056, LC042 rescue, CA-warning su
 Final verification (2026-09-23, LC029 null-forgiving projections and the `LinqContraband.Scan` tool): 21 focused LC029 tests and 35 scanner tests pass, and the full local net10.0 suite passes 4,138 tests.
 
 Final verification (2026-09-23, LC033 metadata `ToFrozenSet` lookup): 25 focused LC033 tests pass, the sample verifier passes on net8.0, net9.0 and net10.0 without the sample shim, and the full local net10.0 suite passes 4,145 tests.
+
+Final verification (2026-09-23, scanner presets and EF1002/EF1003): 38 scanner tests, including an end-to-end scan of a project with a preset, pass, and the full local net10.0 suite passes 4,148 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.

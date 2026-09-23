@@ -42,7 +42,7 @@ internal sealed record ScanOptions
               --no-restore           Skip the implicit restore.
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
-              --version              Show the scanner and analyzer version.
+              --version              Show the version (the analyzer the tool runs has the same version).
           -h, --help                 Show this help.
         """;
 
