@@ -5,7 +5,7 @@
   {% assign is_rule_page = true %}
 {% endif %}
 {% assign page_description = page.description | default: site.description %}
-{% assign share_image = '/assets/img/linqcontraband-diagnostics.png' | absolute_url %}
+{% assign share_image = '/assets/img/social-card.png' | absolute_url %}
 <html lang="{{ page.lang | default: 'en' }}">
 <head>
   <meta charset="utf-8">
@@ -24,7 +24,9 @@
   <meta property="og:url" content="{{ page.url | absolute_url }}">
   <meta property="og:site_name" content="{{ site.title | escape }}">
   <meta property="og:image" content="{{ share_image }}">
-  <meta property="og:image:alt" content="LinqContraband analyzer diagnostics shown beside EF Core query code">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="LinqContraband: stop smuggling bad queries into production. An LC007 N+1 diagnostic on EF Core code inside a loop.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="{{ share_image }}">
   <link rel="icon" type="image/png" href="{{ '/assets/img/favicon.png' | relative_url }}">

@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  Source for docs/assets/img/social-card.png (1280x640): the Open Graph / Twitter image for the
+  docs site and the image to upload as the GitHub repository's social preview.
+  Regenerate with: node tools/SocialCard/render.mjs  (needs the playwright package and a Chromium).
+  Keep counts and version numbers out of the card so it never goes stale.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #121614;
+    --panel: #1b211e;
+    --line: #2c3530;
+    --text: #edf6ef;
+    --muted: #9fb0a6;
+    --teal: #2dd4bf;
+    --red: #f97066;
+    --amber: #fdb022;
+    --blue: #7cb4ff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 640px; }
+  body {
+    display: grid;
+    grid-template-columns: 1fr 560px;
+    gap: 56px;
+    align-items: center;
+    padding: 72px 80px;
+    background:
+      radial-gradient(circle at 12% 0%, rgb(45 212 191 / 16%), transparent 42%),
+      var(--bg);
+    color: var(--text);
+    font-family: "DejaVu Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .brand { display: flex; align-items: center; gap: 18px; margin-bottom: 40px; }
+  .mark {
+    display: grid; place-items: center;
+    width: 64px; height: 64px; border-radius: 14px;
+    background: var(--text); color: var(--bg);
+    font-weight: 800; font-size: 26px;
+  }
+  .name { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; }
+  h1 { font-size: 54px; line-height: 1.08; font-weight: 800; letter-spacing: -1px; }
+  .sub { margin-top: 22px; color: var(--muted); font-size: 24px; line-height: 1.4; }
+  .install {
+    display: inline-block; margin-top: 36px; padding: 12px 18px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 20px; color: var(--teal);
+  }
+  .code {
+    border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    padding: 28px 30px; font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 20px; line-height: 1.75;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 45%);
+  }
+  .k { color: var(--blue); }
+  .m { color: var(--amber); }
+  .bad { text-decoration: underline wavy var(--red); text-decoration-thickness: 2px; text-underline-offset: 6px; }
+  .diag {
+    margin-top: 22px; padding: 14px 16px; border-radius: 10px;
+    background: rgb(249 112 102 / 12%); border: 1px solid rgb(249 112 102 / 40%);
+    font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 18px; line-height: 1.4;
+  }
+  .diag b { color: var(--red); font-family: "DejaVu Sans Mono", Consolas, monospace; }
+  .fix { margin-top: 10px; color: var(--teal); font-size: 16px; font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; }
+</style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">LC</span><span class="name">LinqContraband</span></div>
+    <h1>Stop smuggling bad queries into production.</h1>
+    <p class="sub">A compile-time EF Core LINQ analyzer for .NET: N+1 queries, client-side evaluation, raw SQL risks and tracking mistakes, flagged in the editor and CI.</p>
+    <span class="install">dotnet add package LinqContraband</span>
+  </main>
+  <section class="code" aria-label="Example diagnostic">
+    <div><span class="k">foreach</span> (<span class="k">var</span> order <span class="k">in</span> orders)</div>
+    <div>{</div>
+    <div>&nbsp;&nbsp;<span class="k">var</span> items = <span class="bad">db.Items</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="m">Where</span>(i =&gt; i.OrderId == order.Id)</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;.<span class="m">ToList</span>();</div>
+    <div>}</div>
+    <div class="diag"><b>LC007</b> Database execution inside loop (N+1). Load the items once, outside the loop.</div>
+    <div class="fix">Code fix available</div>
+  </section>
+</body>
+</html>
