@@ -113,6 +113,15 @@ public static bool IsAdult(DateTime dateOfBirth) => throw new NotSupportedExcept
 
 and for `EntityFrameworkCore.Projectables.ProjectableAttribute` methods. Lookalike attributes from other namespaces do not suppress the diagnostic.
 
+Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...) or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
+
+```csharp
+var users = new List<User> { ... }.AsQueryable().BuildMock();
+var adults = users.Where(u => IsAdult(u)); // no LC001: LINQ to Objects
+```
+
+A source the analyzer cannot prove in-memory still reports: an `IQueryable` parameter, field or property, a `DbSet`, `AsQueryable()` over an `IEnumerable<T>` (which may be a `DbSet` at runtime), or a local that is assigned more than once.
+
 ## Scope
 
 LC001 is local to the current lambda and query invocation. It does not prove whole-program SQL translation, inspect provider model configuration in another assembly, or decide whether client evaluation is acceptable for a small table. When client evaluation is intentional, keep the `AsEnumerable()` boundary obvious and document the reason in the calling code.

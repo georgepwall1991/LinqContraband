@@ -25,6 +25,8 @@ LinqContraband reports this rule as an advisory performance signal. Modern EF Co
 
 Keep the projection provider-friendly, flatten the shape, use split queries where appropriate, or keep the nested materializer when a DTO contract requires a concrete collection.
 
+LC022 does not report a projection over an `IQueryable` that provably wraps an in-memory collection (`list.AsQueryable()` or `new EnumerableQuery<T>(...)`), because nothing is sent to a database there. `AsQueryable()` over an `IEnumerable<T>` or an `IQueryable` parameter still reports.
+
 The code fix is intentionally conservative. It only removes `ToList()` when the receiver type already matches the materialized type, such as a `List<T>` navigation projected as `navigation.ToList()`. It does not rewrite `ToArray()`, dictionary/set materializers, anonymous/object initializer members, or type-changing shapes such as `stringValue.ToList()`.
 
 ## Samples
