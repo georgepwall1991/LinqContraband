@@ -83,6 +83,7 @@ dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.cspro
 ```
 The same command regenerates the severity presets (`src/LinqContraband/build/presets/*.globalconfig` and `src/LinqContraband/build/LinqContraband.targets`) from `RuleCatalogPresets`, so a new rule joins `strict` (and `essentials`, if it is an Info rule) automatically.
 CI runs the same tool with `--check` and fails if any of them is stale.
+Docs pages never type the number of rules: use `{{ site.data.rules | size }}`, or leave the number out of front matter and copy-paste snippets. `DiscoverabilityMetadataTests` fails on a hard-coded count.
 
 Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `RuleCatalog.DocumentationSiteUri` plus the docs page name, for example `RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html"`. The README is also the NuGet package readme, so keep rule write-ups in `docs/LCxxx_Name.md` rather than in the README.
 

@@ -150,13 +150,13 @@ LinqContraband is maintained by [George Wall](https://www.georgewall.uk/) and pu
 ## Documentation Link
 
 ```markdown
-[LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents 45 EF Core analyzer rules covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+[LinqContraband rule catalog](https://georgepwall1991.github.io/LinqContraband/rule-catalog.html) documents every LinqContraband EF Core analyzer rule, covering query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
 ```
 
 ## Rule Guide Link
 
 ```markdown
-[EF Core analyzer rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/) groups LinqContraband's 45 diagnostics by query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
+[EF Core analyzer rules](https://georgepwall1991.github.io/LinqContraband/ef-core-analyzer-rules/) groups LinqContraband's diagnostics by query shape, materialization, loading, async execution, tracking, bulk operations, modeling, and raw SQL safety.
 ```
 
 ## Async Query Guide Link

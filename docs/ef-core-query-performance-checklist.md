@@ -26,14 +26,17 @@ dotnet add package LinqContraband
 | Batch `SaveChanges` outside loops unless each item needs its own commit boundary. | Repeated saves can turn one unit of work into many transactions and partial-progress states. | [LC010: SaveChanges inside loop](/LinqContraband/LC010_SaveChangesInLoop.html) |
 | Keep query logic translatable to SQL. | Local helpers, provider-sensitive string overloads, and complex grouping can fail translation or push work into memory. | [LC001: local method](/LinqContraband/LC001_LocalMethod.html), [EF Core client-side evaluation analyzer](/LinqContraband/ef-core-client-side-evaluation-analyzer/) |
 | Order before pagination or positional access. | Unordered `Skip`, `Take`, `Last`, `ElementAt`, or `Chunk` queries can return unstable rows. | [LC015: missing OrderBy](/LinqContraband/LC015_MissingOrderBy.html), [EF Core pagination OrderBy analyzer](/LinqContraband/ef-core-pagination-orderby-analyzer/) |
+| Sort after `Distinct`, not before it. | SQL `DISTINCT` drops an earlier `ORDER BY`, so the rows come back in no guaranteed order. | [LC050: OrderBy before Distinct](/LinqContraband/LC050_OrderByBeforeDistinct.html) |
 | Materialize only after filtering, ordering, and projection. | Early `ToList`, `AsEnumerable`, or `ToArray` can move work from SQL into memory. | [LC002: premature materialization](/LinqContraband/LC002_PrematureMaterialization.html), [EF Core premature materialization analyzer](/LinqContraband/ef-core-premature-materialization-analyzer/) |
 | Use projection when only a few fields are needed. | Loading whole entities increases network, memory, and tracking cost. | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html), [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html), [EF Core projection analyzer](/LinqContraband/ef-core-projection-analyzer/) |
 | Make related data loading explicit. | Missing includes can produce null navigation data, lazy-loading churn, or hidden N+1 behaviour. | [LC045: missing include](/LinqContraband/LC045_MissingInclude.html) |
 | Keep eager loading bounded. | Overusing `Include` can create cartesian explosion or very wide result graphs. | [LC006: cartesian explosion](/LinqContraband/LC006_CartesianExplosion.html), [LC038: excessive eager loading](/LinqContraband/LC038_ExcessiveEagerLoading.html) |
+| Drop `Include` calls that a projection makes pointless. | EF Core ignores `Include` when a later `Select` projects to scalars, DTOs, or anonymous types, so the call only misleads readers. | [LC049: Include ignored by a projection](/LinqContraband/LC049_IncludeIgnoredByProjection.html) |
 | Prefer async EF Core APIs in async methods. | Synchronous EF Core calls in async paths block request threads. | [LC008: sync-over-async](/LinqContraband/LC008_SyncBlocker.html), [EF Core async query analyzer](/LinqContraband/ef-core-async-query-analyzer/) |
 | Pass cancellation tokens through async query APIs. | Long-running queries should respect request cancellation and shutdown paths. | [LC026: missing cancellation token](/LinqContraband/LC026_MissingCancellationToken.html), [EF Core CancellationToken analyzer](/LinqContraband/ef-core-cancellation-token-analyzer/) |
 | Keep DbContext lifetimes scoped and single-threaded. | Long-lived, cross-thread, or overlapping same-context operations can leak tracked state, cross request boundaries, or throw at runtime. | [LC030: DbContext lifetime mismatch](/LinqContraband/LC030_DbContextInSingleton.html), [LC036: DbContext captured across threads](/LinqContraband/LC036_DbContextCapturedAcrossThreads.html), [LC046: concurrent DbContext operations](/LinqContraband/LC046_ConcurrentDbContextOperations.html) |
 | Use read-only tracking intentionally. | Tracking every read increases memory and can create confusing mixed-mode behaviour. | [LC009: missing AsNoTracking](/LinqContraband/LC009_MissingAsNoTracking.html), [LC040: mixed tracking modes](/LinqContraband/LC040_MixedTrackingAndNoTracking.html) |
+| Guard read-modify-write updates with a concurrency token. | Two requests that read the same row, change it, and save can silently overwrite each other's update. | [LC048: lost update risk](/LinqContraband/LC048_LostUpdateRisk.html) |
 | Keep raw SQL parameterized. | Interpolation and string construction can turn EF Core raw SQL into injection risk. | [LC018: interpolated raw SQL](/LinqContraband/LC018_AvoidFromSqlRawWithInterpolation.html), [LC034: interpolated command SQL](/LinqContraband/LC034_AvoidExecuteSqlRawWithInterpolation.html), [LC037: constructed raw SQL strings](/LinqContraband/LC037_RawSqlStringConstruction.html) |
 | Review global filter bypasses. | `IgnoreQueryFilters` can skip tenant, soft-delete, or security boundaries. | [LC021: IgnoreQueryFilters](/LinqContraband/LC021_AvoidIgnoreQueryFilters.html) |
 | Bound destructive set-based writes. | Bulk delete/update without a filter can affect more rows than intended. | [LC035: missing Where before bulk execute](/LinqContraband/LC035_MissingWhereBeforeExecuteDeleteUpdate.html) |
@@ -55,6 +58,7 @@ dotnet_diagnostic.LC014.severity = warning
 dotnet_diagnostic.LC015.severity = warning
 dotnet_diagnostic.LC020.severity = warning
 dotnet_diagnostic.LC024.severity = warning
+dotnet_diagnostic.LC050.severity = warning
 dotnet_diagnostic.LC007.severity = error
 dotnet_diagnostic.LC045.severity = warning
 dotnet_diagnostic.LC036.severity = warning
@@ -65,6 +69,7 @@ dotnet_diagnostic.LC026.severity = suggestion
 dotnet_diagnostic.LC043.severity = suggestion
 dotnet_diagnostic.LC046.severity = warning
 dotnet_diagnostic.LC047.severity = warning
+dotnet_diagnostic.LC048.severity = warning
 
 # Raw SQL and security-sensitive paths
 dotnet_diagnostic.LC018.severity = error

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
 - The README (also the NuGet readme) shows the OpenSSF Scorecard badge, and the documentation site's link previews use a new 1280x640 social card (source in `tools/SocialCard/`) instead of the old diagnostics screenshot, which still said 45 rules.
 - The rule catalog page has a search box that filters rules by ID or keyword as you type, with toggles for rules that have a code fix and for warnings. `?q=` links open it pre-filtered. Without JavaScript the page stays a plain list.
+- The documentation site takes its rule count from the generated rule data instead of hard-coded numbers, several of which still said 45 or 47. The rule guide and the query performance checklist now cover LC048, LC049 and LC050.
 
 ## [5.9.0] - 2026-09-22
 
