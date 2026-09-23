@@ -6,12 +6,22 @@ using LinqContraband.Catalog;
 
 const string ReadmeTableStartMarker = "<!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->";
 const string ReadmeTableEndMarker = "<!-- rule-table:end -->";
+const string LlmsRulesStartMarker = "<!-- rule-list:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->";
+const string LlmsRulesEndMarker = "<!-- rule-list:end -->";
 const string WriteCommand = "dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write";
 
 var repoRoot = FindRepoRoot();
 var catalogPath = Path.Combine(repoRoot, "docs", "rule-catalog.md");
 var readmePath = Path.Combine(repoRoot, "README.md");
 var rulesDataPath = Path.Combine(repoRoot, "docs", "_data", "rules.json");
+var llmsPath = Path.Combine(repoRoot, "docs", "llms.txt");
+
+// Each rule page's front-matter description is the one-line summary used for search results,
+// so the catalog cards and llms.txt reuse it instead of keeping a second copy.
+var ruleSummaries = RuleCatalog.All.ToDictionary(
+    rule => rule.Id,
+    rule => ReadFrontMatterDescription(Path.Combine(repoRoot, rule.DocumentationPath)),
+    StringComparer.Ordinal);
 
 var checkOnly = args.Contains("--check", StringComparer.Ordinal);
 var writeOnly = args.Contains("--write", StringComparer.Ordinal);
@@ -26,7 +36,7 @@ if (checkOnly && writeOnly)
 // Windows (autocrlf) checkout stores the files with CRLF, so a raw byte comparison would
 // report a spurious "out of date" on Windows even when the content is identical.
 var currentCatalog = File.Exists(catalogPath) ? NormalizeNewlines(File.ReadAllText(catalogPath)) : string.Empty;
-var generatedCatalog = GenerateMarkdown();
+var generatedCatalog = GenerateMarkdown(ruleSummaries);
 
 var currentReadme = NormalizeNewlines(File.ReadAllText(readmePath));
 if (!TryReplaceReadmeRuleTable(currentReadme, GenerateReadmeRuleTable(), out var generatedReadme))
@@ -41,6 +51,13 @@ var presetOutputs = RuleCatalogPresets.All
     .Append((Path: Path.Combine(buildDirectory, "LinqContraband.targets"), Name: "src/LinqContraband/build/LinqContraband.targets", Generated: GeneratePresetTargets()))
     .Select(output => (output.Path, output.Name, Current: File.Exists(output.Path) ? NormalizeNewlines(File.ReadAllText(output.Path)) : string.Empty, output.Generated));
 
+var currentLlms = NormalizeNewlines(File.ReadAllText(llmsPath));
+if (!TryReplaceBlock(currentLlms, LlmsRulesStartMarker, LlmsRulesEndMarker, GenerateLlmsRuleList(ruleSummaries), out var generatedLlms))
+{
+    Console.Error.WriteLine($"{llmsPath} must contain a single '{LlmsRulesStartMarker}' ... '{LlmsRulesEndMarker}' block.");
+    return 1;
+}
+
 var currentRulesData = File.Exists(rulesDataPath) ? NormalizeNewlines(File.ReadAllText(rulesDataPath)) : string.Empty;
 var generatedRulesData = GenerateRulesData();
 
@@ -49,6 +66,7 @@ var outputs = new[]
     (Path: catalogPath, Name: "docs/rule-catalog.md", Current: currentCatalog, Generated: generatedCatalog),
     (Path: readmePath, Name: "README.md rule table", Current: currentReadme, Generated: generatedReadme),
     (Path: rulesDataPath, Name: "docs/_data/rules.json", Current: currentRulesData, Generated: generatedRulesData),
+    (Path: llmsPath, Name: "docs/llms.txt rule list", Current: currentLlms, Generated: generatedLlms),
 }.Concat(presetOutputs).ToArray();
 
 if (checkOnly)
@@ -60,7 +78,7 @@ if (checkOnly)
     if (stale.Length > 0)
         return 1;
 
-    Console.WriteLine("docs/rule-catalog.md, docs/_data/rules.json, the README.md rule table, and the severity presets are up to date.");
+    Console.WriteLine("docs/rule-catalog.md, docs/_data/rules.json, the docs/llms.txt rule list, the README.md rule table, and the severity presets are up to date.");
     return 0;
 }
 
@@ -123,7 +141,7 @@ static string FindRepoRoot()
     throw new InvalidOperationException("Could not locate LinqContraband.sln from the current working directory.");
 }
 
-static string GenerateMarkdown()
+static string GenerateMarkdown(IReadOnlyDictionary<string, string> ruleSummaries)
 {
     var builder = new StringBuilder();
     builder.AppendLine("---");
@@ -187,6 +205,7 @@ static string GenerateMarkdown()
             builder.AppendLine($"        <span class=\"pill pill--{ToToken(rule.Severity.ToString())}\">{Encode(rule.Severity.ToString())}</span>");
             builder.AppendLine("      </span>");
             builder.AppendLine($"      <h3>{Encode(rule.Title)}</h3>");
+            builder.AppendLine($"      <p class=\"rule-card__summary\">{Encode(WithoutLeadingRuleId(rule.Id, ruleSummaries[rule.Id]))}</p>");
             builder.AppendLine("      <span class=\"rule-card__meta\">");
             builder.AppendLine($"        <span>{Encode(rule.Category)}</span>");
             builder.AppendLine($"        <span class=\"pill pill--{fixClass}\">{Encode(fixText)}</span>");
@@ -258,6 +277,64 @@ static string GenerateRulesData()
     };
 
     return NormalizeNewlines(JsonSerializer.Serialize(rules, options)) + "\n";
+}
+
+static string GenerateLlmsRuleList(IReadOnlyDictionary<string, string> ruleSummaries)
+{
+    var builder = new StringBuilder();
+    builder.AppendLine("## Rules");
+    builder.AppendLine();
+
+    foreach (var rule in RuleCatalog.All.OrderBy(rule => rule.Id, StringComparer.Ordinal))
+    {
+        var fixText = rule.HasCodeFix ? "code fix" : "manual fix";
+        builder.AppendLine($"- [{rule.Id}: {rule.Title}]({rule.HelpLinkUri}) ({rule.Severity}, {fixText}): {ruleSummaries[rule.Id]}");
+    }
+
+    return NormalizeNewlines(builder.ToString());
+}
+
+static string WithoutLeadingRuleId(string ruleId, string summary)
+{
+    // The card already shows the id, so "LC012 suggests ExecuteDelete()..." becomes "Suggests ExecuteDelete()...".
+    if (!summary.StartsWith(ruleId + " ", StringComparison.Ordinal))
+        return summary;
+
+    var rest = summary.Substring(ruleId.Length + 1);
+    return char.ToUpperInvariant(rest[0]) + rest.Substring(1);
+}
+
+static string ReadFrontMatterDescription(string documentationPath)
+{
+    var lines = File.ReadLines(documentationPath).ToArray();
+    if (lines.Length == 0 || lines[0].Trim() != "---")
+        throw new InvalidOperationException($"{documentationPath} has no front matter.");
+
+    var description = lines
+        .Skip(1)
+        .TakeWhile(line => line.Trim() != "---")
+        .FirstOrDefault(line => line.StartsWith("description:", StringComparison.Ordinal));
+    if (description is null)
+        throw new InvalidOperationException($"{documentationPath} needs a description in its front matter.");
+
+    return description.Substring("description:".Length).Trim().Trim('"');
+}
+
+static bool TryReplaceBlock(string text, string startMarker, string endMarker, string block, out string updated)
+{
+    updated = text;
+    var start = text.IndexOf(startMarker, StringComparison.Ordinal);
+    var end = text.IndexOf(endMarker, StringComparison.Ordinal);
+    if (start < 0 || end < start ||
+        text.IndexOf(startMarker, start + 1, StringComparison.Ordinal) >= 0 ||
+        text.IndexOf(endMarker, end + 1, StringComparison.Ordinal) >= 0)
+    {
+        return false;
+    }
+
+    var contentStart = start + startMarker.Length;
+    updated = text.Substring(0, contentStart) + "\n" + block + text.Substring(end);
+    return true;
 }
 
 static bool TryReplaceReadmeRuleTable(string readme, string table, out string updated)

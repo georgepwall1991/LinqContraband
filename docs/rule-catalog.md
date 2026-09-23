@@ -31,6 +31,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Optimize: Use ExecuteDelete() instead of RemoveRange()</h3>
+      <p class="rule-card__summary">Suggests ExecuteDelete() instead of RemoveRange() for EF Core bulk deletes, removing rows in one SQL DELETE without loading them first.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -43,6 +44,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Use ExecuteUpdate for provable bulk scalar updates</h3>
+      <p class="rule-card__summary">Detects loops that load EF Core entities only to set scalar properties and save, and suggests one set-based ExecuteUpdate() call instead.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -55,6 +57,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Missing Where before bulk execute</h3>
+      <p class="rule-card__summary">Flags EF Core ExecuteDelete and ExecuteUpdate calls with no proven Where filter, which delete or rewrite every row in the table.</p>
       <span class="rule-card__meta">
         <span>Safety</span>
         <span class="pill pill--manual">Manual only</span>
@@ -67,6 +70,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>ExecuteDelete bypasses the tracked delete pipeline</h3>
+      <p class="rule-card__summary">Flags ExecuteDelete when SaveChanges logic such as soft delete or client cascades must run, since SQL DELETE skips that tracked pipeline.</p>
       <span class="rule-card__meta">
         <span>Safety</span>
         <span class="pill pill--fix">Code fix</span>
@@ -88,6 +92,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Performance: Missing AsNoTracking() in Read-Only path</h3>
+      <p class="rule-card__summary">Suggests AsNoTracking() for read-only EF Core queries, so the change tracker does not snapshot entities the code never modifies.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -100,6 +105,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>N+1 Write Problem: SaveChanges inside loop</h3>
+      <p class="rule-card__summary">Flags SaveChanges or SaveChangesAsync inside a loop, which costs one database round trip per item instead of one batched save.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -112,6 +118,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Disposed Context Query</h3>
+      <p class="rule-card__summary">Detects an IQueryable or IAsyncEnumerable returned after its DbContext is disposed, which throws when the caller finally enumerates it.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--manual">Manual only</span>
@@ -124,6 +131,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid AsNoTracking with Update/Remove</h3>
+      <p class="rule-card__summary">Detects entities loaded with AsNoTracking() and then passed to Update or Remove, which can overwrite every column or fail on identity conflicts.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--fix">Code fix</span>
@@ -136,6 +144,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Potential DbContext lifetime mismatch</h3>
+      <p class="rule-card__summary">Flags singletons and hosted services that store a DbContext, a lifetime mismatch that leads to threading errors and stale data. Use a factory.</p>
       <span class="rule-card__meta">
         <span>Architecture</span>
         <span class="pill pill--manual">Manual only</span>
@@ -148,6 +157,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Avoid repeated SaveChanges on the same context</h3>
+      <p class="rule-card__summary">Flags repeated SaveChanges calls on the same DbContext in one method, which add round trips and can leave partial writes. Save once.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--manual">Manual only</span>
@@ -160,6 +170,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Avoid mixing tracking modes on the same context</h3>
+      <p class="rule-card__summary">Flags methods that mix tracked and AsNoTracking() queries on the same DbContext, which makes later update behavior hard to predict.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--manual">Manual only</span>
@@ -172,6 +183,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>AsNoTracking query mutated then SaveChanges — silent data loss</h3>
+      <p class="rule-card__summary">Detects entities loaded with AsNoTracking(), modified, then followed by SaveChanges, which silently saves nothing: data loss with no error.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--manual">Manual only</span>
@@ -184,6 +196,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Tracked update can overwrite a concurrent change</h3>
+      <p class="rule-card__summary">Detects tracked EF Core read-modify-write updates, such as counters, saved without a concurrency token, so concurrent requests overwrite each other.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--manual">Manual only</span>
@@ -205,6 +218,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>N+1 Problem: Database execution inside loop</h3>
+      <p class="rule-card__summary">Finds EF Core N+1 queries: Find, ToList, Count and other database calls that provably run once per loop iteration instead of once.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -217,6 +231,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Sync-over-Async: Synchronous EF Core method in Async context</h3>
+      <p class="rule-card__summary">Flags synchronous EF Core calls such as ToList or SaveChanges inside async methods, where they block threads. Use the Async counterpart.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -229,6 +244,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Missing CancellationToken in async call</h3>
+      <p class="rule-card__summary">Flags EF Core async calls that omit an available CancellationToken, so cancelled requests keep running queries against the database.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--fix">Code fix</span>
@@ -241,6 +257,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>DbContext captured by thread work item</h3>
+      <p class="rule-card__summary">Detects one DbContext captured by Task.Run, Parallel.ForEach, threads or timers. DbContext is not thread-safe, so use one context per task.</p>
       <span class="rule-card__meta">
         <span>Safety</span>
         <span class="pill pill--manual">Manual only</span>
@@ -253,6 +270,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Prefer await foreach over buffering async streams</h3>
+      <p class="rule-card__summary">Flags an IAsyncEnumerable buffered with ToListAsync or ToArrayAsync only to loop over it once. Use await foreach to stream instead.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -265,6 +283,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Concurrent EF Core operations on the same DbContext</h3>
+      <p class="rule-card__summary">Detects overlapping async operations on the same DbContext instance, which EF Core rejects at runtime. Await each call or use separate contexts.</p>
       <span class="rule-card__meta">
         <span>Safety</span>
         <span class="pill pill--manual">Manual only</span>
@@ -286,6 +305,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Cartesian Explosion Risk: Multiple Collection Includes</h3>
+      <p class="rule-card__summary">Detects sibling collection Include paths without AsSplitQuery(), where EF Core joins them into a Cartesian product that multiplies the rows returned.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -298,6 +318,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Conditional Include Expression</h3>
+      <p class="rule-card__summary">Flags ternary and null-coalescing expressions inside EF Core Include paths, which cannot translate. Apply the Include conditionally instead.</p>
       <span class="rule-card__meta">
         <span>Correctness</span>
         <span class="pill pill--manual">Manual only</span>
@@ -310,6 +331,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Deep ThenInclude Chain</h3>
+      <p class="rule-card__summary">Flags EF Core ThenInclude chains deeper than the configured limit, which load large object graphs. Project or split the query instead.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--manual">Manual only</span>
@@ -322,6 +344,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Avoid excessive eager loading</h3>
+      <p class="rule-card__summary">Flags EF Core queries with more Include and ThenInclude steps than the configured threshold, which load oversized graphs in one query.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--manual">Manual only</span>
@@ -334,6 +357,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Complex query should be tagged</h3>
+      <p class="rule-card__summary">Flags complex EF Core queries without TagWith() or TagWithCallSite(), so the SQL they produce is hard to trace back to code in logs.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -346,6 +370,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Missing Include: navigation accessed on materialized entity</h3>
+      <p class="rule-card__summary">Detects navigation properties read after an EF Core query without a matching Include, causing N+1 lazy loads or null and empty data.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--fix">Code fix</span>
@@ -358,6 +383,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Include is ignored by a Select projection</h3>
+      <p class="rule-card__summary">Flags EF Core Include calls that a later Select projection makes EF Core ignore, and removes them.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -379,6 +405,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Premature query continuation after materialization</h3>
+      <p class="rule-card__summary">Catches ToList, ToArray or AsEnumerable before Where, Select or OrderBy, which moves EF Core query work out of SQL and into memory.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -391,6 +418,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Prefer Any() over Count() existence checks</h3>
+      <p class="rule-card__summary">Flags Count() &gt; 0 style existence checks on EF Core queries and suggests Any() or AnyAsync(), which can stop at the first matching row.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -403,6 +431,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Performance: Consider using Select() projection</h3>
+      <p class="rule-card__summary">Flags EF Core queries that load whole entities when only a few properties are used. Project with Select to fetch just the needed columns.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -415,6 +444,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Nested collection materialization inside projection</h3>
+      <p class="rule-card__summary">Flags ToList or ToArray on nested collections inside EF Core Select projections, which can be expensive or translate differently per provider.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -427,6 +457,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Use Find/FindAsync for primary key lookups</h3>
+      <p class="rule-card__summary">Suggests Find or FindAsync when FirstOrDefault or SingleOrDefault looks up an EF Core entity by primary key, so tracked entities skip the database.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -439,6 +470,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Redundant identity Select</h3>
+      <p class="rule-card__summary">Flags Select(x =&gt; x) in LINQ and EF Core query chains. The identity projection does nothing and only adds noise to the expression tree.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -451,6 +483,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Unbounded Query Materialization</h3>
+      <p class="rule-card__summary">Flags EF Core queries materialized with no filter or Take limit, which can load an entire table into memory as the data grows.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--manual">Manual only</span>
@@ -463,6 +496,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Use FrozenSet for provably read-only membership caches</h3>
+      <p class="rule-card__summary">Flags private static readonly HashSet lookup caches that are never mutated and suggests FrozenSet on .NET 8+ for faster membership checks.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -475,6 +509,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Single entity query over-fetches one consumed property</h3>
+      <p class="rule-card__summary">Flags First or Single queries that load a whole EF Core entity when only one property is read. Select that property to fetch one column.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -496,6 +531,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Client-side evaluation risk: Local method usage in IQueryable</h3>
+      <p class="rule-card__summary">Flags your own helper methods inside EF Core IQueryable lambdas that SQL cannot translate, which forces client-side evaluation or a runtime error.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -508,6 +544,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Deferred Execution Leak: IQueryable passed as IEnumerable</h3>
+      <p class="rule-card__summary">Detects an EF Core IQueryable passed as IEnumerable to a method that enumerates it, so filtering runs in memory instead of in SQL.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -520,6 +557,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Multiple OrderBy calls</h3>
+      <p class="rule-card__summary">Flags a second OrderBy or OrderByDescending in one LINQ chain, which silently discards the first sort. Use ThenBy or ThenByDescending.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -532,6 +570,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid String.ToLower() or ToUpper() in LINQ queries</h3>
+      <p class="rule-card__summary">Flags ToLower() and ToUpper() on entity properties in EF Core queries, which can stop the database using an index. Use a collation instead.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--manual">Manual only</span>
@@ -544,6 +583,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Deterministic Pagination: OrderBy required before Skip/Take</h3>
+      <p class="rule-card__summary">Flags Skip, Take, Last, ElementAt and Chunk on unordered EF Core queries, where the database may return rows in a different order each run.</p>
       <span class="rule-card__meta">
         <span>Reliability</span>
         <span class="pill pill--fix">Code fix</span>
@@ -556,6 +596,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid DateTime.Now/UtcNow in LINQ queries</h3>
+      <p class="rule-card__summary">Flags DateTime.Now, UtcNow and DateTimeOffset.Now inside EF Core LINQ queries. Hoist the value into a local for cacheable, testable queries.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -568,6 +609,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid untranslatable string comparison overloads</h3>
+      <p class="rule-card__summary">Flags Contains, StartsWith and EndsWith with a StringComparison argument in EF Core queries, which providers often cannot translate to SQL.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>
@@ -580,6 +622,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>GroupBy with Non-Translatable Projection</h3>
+      <p class="rule-card__summary">Flags EF Core GroupBy queries that project values SQL cannot translate, which causes runtime errors or accidental client-side grouping.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--manual">Manual only</span>
@@ -592,6 +635,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>OrderBy before Distinct is discarded</h3>
+      <p class="rule-card__summary">Flags EF Core queries that sort before Distinct(), where SQL DISTINCT silently drops the ORDER BY, and moves the sort after Distinct().</p>
       <span class="rule-card__meta">
         <span>Correctness</span>
         <span class="pill pill--fix">Code fix</span>
@@ -613,6 +657,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid FromSqlRaw with interpolated strings</h3>
+      <p class="rule-card__summary">Flags FromSqlRaw and SqlQueryRaw called with interpolated or concatenated SQL, an injection risk. Use FromSql or SQL parameters instead.</p>
       <span class="rule-card__meta">
         <span>Security</span>
         <span class="pill pill--fix">Code fix</span>
@@ -625,6 +670,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid IgnoreQueryFilters</h3>
+      <p class="rule-card__summary">Flags IgnoreQueryFilters() in EF Core queries, which bypasses global filters for soft delete, multi-tenancy or security and can leak data.</p>
       <span class="rule-card__meta">
         <span>Security</span>
         <span class="pill pill--fix">Code fix</span>
@@ -637,6 +683,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid ExecuteSqlRaw with interpolated strings</h3>
+      <p class="rule-card__summary">Flags ExecuteSqlRaw and ExecuteSqlRawAsync called with interpolated or concatenated SQL, an injection risk. Use ExecuteSql or parameters.</p>
       <span class="rule-card__meta">
         <span>Security</span>
         <span class="pill pill--fix">Code fix</span>
@@ -649,6 +696,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Avoid constructed raw SQL strings</h3>
+      <p class="rule-card__summary">Flags SQL built with concatenation, string.Format or StringBuilder before it reaches FromSqlRaw, ExecuteSqlRaw or SqlQueryRaw: an injection risk.</p>
       <span class="rule-card__meta">
         <span>Security</span>
         <span class="pill pill--manual">Manual only</span>
@@ -670,6 +718,7 @@ body_class: page-rule-catalog
         <span class="pill pill--warning">Warning</span>
       </span>
       <h3>Design: Entity missing Primary Key</h3>
+      <p class="rule-card__summary">Detects EF Core entity types exposed through a DbSet that have no primary key from convention, a [Key] attribute or fluent configuration.</p>
       <span class="rule-card__meta">
         <span>Design</span>
         <span class="pill pill--fix">Code fix</span>
@@ -682,6 +731,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Missing Explicit Foreign Key Property</h3>
+      <p class="rule-card__summary">Flags EF Core reference navigations whose dependent entity has no matching foreign key property, leaving EF Core to create a shadow key.</p>
       <span class="rule-card__meta">
         <span>Design</span>
         <span class="pill pill--fix">Code fix</span>
