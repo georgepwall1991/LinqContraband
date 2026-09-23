@@ -98,6 +98,35 @@ A `while`, `do` or `for` loop counts as one of these when:
 
 The exemption only applies when the loop condition reads nothing but constants, integer counters, `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` always report, and so does a query inside a batch loop that sits in an outer per-item loop.
 
+### Level-by-level hierarchy walks
+
+Walking a tree one level per query is the usual way to avoid a query per node, so LC007 stays quiet on it too:
+
+```csharp
+var frontier = new List<Guid> { rootId };
+while (frontier.Count > 0)
+{
+    var next = await db.Folders
+        .Where(f => frontier.Contains(f.ParentId))   // the whole level in one query
+        .Select(f => f.Id)
+        .ToListAsync(ct);
+    frontier = new List<Guid>();
+    foreach (var id in next)
+        if (visited.Add(id)) frontier.Add(id);      // the next level comes from the result
+}
+```
+
+This applies when the loop condition reads a collection that the loop refills from the query result (`Add`, `AddRange`, `Enqueue`, `Push` or `UnionWith` with values from it, or an assignment), and the query uses that collection only as a whole: `frontier.Contains(...)`, or `frontier` passed as an argument, directly or through locals the query is built from. A worklist that takes one item at a time still reports, because it runs one query per node:
+
+```csharp
+while (pending.Count > 0)
+{
+    var id = pending.Dequeue();
+    var children = db.Folders.Where(f => f.ParentId == id).Select(f => f.Id).ToList(); // LC007
+    foreach (var child in children) pending.Enqueue(child);
+}
+```
+
 ## Fixer Behavior
 LC007 offers a fixer only for conservative, analyzer-proven explicit-loading cases.
 

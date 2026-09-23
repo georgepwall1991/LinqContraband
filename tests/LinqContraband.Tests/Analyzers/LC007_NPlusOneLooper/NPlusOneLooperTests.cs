@@ -109,6 +109,7 @@ namespace TestNamespace
         public int Id { get; set; }
         public List<Order> Orders { get; set; }
         public Profile Profile { get; set; }
+        public int ParentId { get; set; }
     }
 
     public class Order
