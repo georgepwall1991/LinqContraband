@@ -526,6 +526,15 @@
       "ruleIds": [
         "LC054"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC055_MissingBaseOnModelCreating/MissingBaseOnModelCreatingSample.cs",
+      "samplePaths": [
+        "Samples/LC055_MissingBaseOnModelCreating/MissingBaseOnModelCreatingSample.cs"
+      ],
+      "ruleIds": [
+        "LC055"
+      ]
     }
   ]
 }

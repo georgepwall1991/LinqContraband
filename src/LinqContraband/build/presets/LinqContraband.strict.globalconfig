@@ -60,3 +60,4 @@ dotnet_diagnostic.LC051.severity = error
 dotnet_diagnostic.LC052.severity = error
 dotnet_diagnostic.LC053.severity = error
 dotnet_diagnostic.LC054.severity = error
+dotnet_diagnostic.LC055.severity = error
