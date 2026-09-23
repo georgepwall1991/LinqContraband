@@ -31,7 +31,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
             if (current is IInvocationOperation invocation)
             {
-                if (IsKnownLinqWhere(invocation.TargetMethod))
+                if (IsKnownLinqWhere(invocation.TargetMethod) || IsPredicateWhere(invocation))
                     return true;
 
                 current = invocation.GetInvocationReceiver();
@@ -80,6 +80,40 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         return method.Name == "Where" &&
                method.ContainingNamespace?.ToString() == "System.Linq" &&
                method.ContainingType?.Name is "Queryable" or "Enumerable";
+    }
+
+    // A project's own `Where` overload that takes a predicate, such as BTCPay Server's
+    // `Where<T>(this DbSet<T>, Expression<Func<T, bool>>)`, filters when the call passes a lambda.
+    // A `Where` taking anything else, such as a string reason, is not a proven filter.
+    private static bool IsPredicateWhere(IInvocationOperation invocation)
+    {
+        if (invocation.TargetMethod.Name != "Where")
+            return false;
+
+        foreach (var argument in invocation.Arguments)
+        {
+            var value = argument.Value.UnwrapConversions();
+            if (value is IDelegateCreationOperation delegateCreation)
+                value = delegateCreation.Target;
+
+            if (value is IAnonymousFunctionOperation &&
+                IsPredicateExpressionType(argument.Parameter?.Type))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPredicateExpressionType(ITypeSymbol? type)
+    {
+        return type is INamedTypeSymbol { Name: "Expression" } expression &&
+               expression.ContainingNamespace?.ToString() == "System.Linq.Expressions" &&
+               expression.TypeArguments.Length == 1 &&
+               expression.TypeArguments[0] is INamedTypeSymbol { Name: "Func" } func &&
+               func.TypeArguments.Length == 2 &&
+               func.TypeArguments[1].SpecialType == SpecialType.System_Boolean;
     }
 
     private static bool HasQuerySyntaxWhere(SyntaxNode syntax)

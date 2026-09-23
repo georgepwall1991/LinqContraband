@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- LC035 accepts a project's own `Where` overload that takes a predicate expression, when the call passes a lambda. BTCPay Server declares `Where<T>(this DbSet<T>, Expression<Func<T, bool>>)`, which forwards to `Queryable.Where`, so `context.ApiKeyPermissionUsages.Where(u => u.ApiKeyId == id).ExecuteDeleteAsync()` bound to it and LC035 said no `Where()` filter was present. A `Where` that takes anything else, such as a string reason, still does not count as a filter.
 - LC011 reads keys from more of the model configuration. It reported an entity whose key is set inside the `Entity<T>(b => b.HasKey(...))` lambda, a common way to configure several things on one entity; one whose `HasKey` or `HasNoKey` is in a helper that `OnModelCreating` passes its `ModelBuilder` or an `EntityTypeBuilder<T>` to, such as a static `OnModelCreating(ModelBuilder)` on each entity or a `modelBuilder.ConfigureUsers()` extension; and any entity declared in another project, such as a separate models or domain project, however its key was configured. A scan of BTCPay Server, Kavita and Bitwarden reported 17 entities this way, and none after the fix. An entity whose helper is never called from `OnModelCreating` still reports.
 
 ## [5.11.0] - 2026-09-23

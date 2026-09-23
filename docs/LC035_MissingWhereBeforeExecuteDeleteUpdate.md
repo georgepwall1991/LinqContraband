@@ -102,7 +102,7 @@ LC035 recognises:
 - Optional filtered narrowings after a filtered base local.
 - Complete filtered `if`/`else` assignments and all-filtered ternary or switch-expression receivers.
 
-Project-local methods merely named `Where` do not count as proven filters.
+A project's own `Where` overload counts when it takes a predicate expression (`Expression<Func<TEntity, bool>>`) and the call passes a lambda, such as a `Where<T>(this DbSet<T>, Expression<Func<T, bool>>)` that forwards to `Queryable.Where`. Other methods merely named `Where`, such as one taking a string reason, do not count as proven filters.
 
 ## What it does not flag
 
