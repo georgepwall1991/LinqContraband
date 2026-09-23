@@ -1375,4 +1375,6 @@ Final verification (2026-09-23, EF query culture-warning suppressor): 12 focused
 
 Final verification (2026-09-23, 5.10.0: LC051-LC056, LC042 rescue, CA-warning suppressor, research-scan false-positive fixes): the full local net10.0 suite passes 4,099 tests.
 
+Final verification (2026-09-23, LC029 null-forgiving projections and the `LinqContraband.Scan` tool): 21 focused LC029 tests and 35 scanner tests pass, and the full local net10.0 suite passes 4,138 tests.
+
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
