@@ -77,7 +77,7 @@ Every rule is now governed by the central catalog in `src/LinqContraband/Catalog
 
 If a rule intentionally has no fixer, record the rationale in the catalog. `tests/LinqContraband.Tests/Architecture/RuleCatalogIntegrityTests.cs` enforces this contract in CI.
 
-`docs/rule-catalog.md`, the rule table in `README.md`, and `docs/_data/rules.json` (the severity, code-fix and config box on each rule page) are generated from `RuleCatalog`. Regenerate them locally with:
+`docs/rule-catalog.md`, the rule table in `README.md`, `docs/_data/rules.json` (the severity, code-fix and config box on each rule page), and the rule list at the end of `docs/llms.txt` are generated from `RuleCatalog` and each rule page's `description`. Regenerate them locally with:
 ```bash
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --write
 ```

@@ -723,6 +723,14 @@ a:hover {
   justify-content: space-between;
 }
 
+.rule-card__summary {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
 .rule-card__id {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.94rem;
@@ -730,7 +738,7 @@ a:hover {
 }
 
 .rule-card h3 {
-  margin: 20px 0 16px;
+  margin: 20px 0 10px;
   font-size: 1.1rem;
   line-height: 1.3;
 }

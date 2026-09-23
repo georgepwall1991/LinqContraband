@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- LC018 and LC034 no longer double-report lines that EF Core's own analyzers already flag. EF Core 8+ reports interpolated SQL passed straight to `FromSqlRaw`, `SqlQueryRaw`, `ExecuteSqlRaw` and `ExecuteSqlRawAsync` as EF1002, and EF Core 10+ reports concatenated SQL there as EF1003, each with its own fix. LC018 and LC034 now stay quiet on exactly those calls and keep reporting what EF misses: concatenation on EF Core 8 and 9, reordered named `sql:` arguments, EF Core 7 and older, and non-relational providers such as Cosmos. Set `dotnet_code_quality.LC018.defer_to_ef_analyzers = false` (or `LC034`) if your build excludes EF Core's analyzers. The `security`, `critical` and `strict` presets now also make EF1002 and EF1003 build errors, so they keep failing the build on those lines. LC037 does not overlap EF's analyzers and is unchanged.
+
+### Fixed
+- The LC018 code fix now rewrites `FromSqlRaw($"...")` to `FromSql($"...")` instead of `FromSqlInterpolated`, which EF Core 11 marks obsolete (CS0618, a build error under `TreatWarningsAsErrors`) and Cosmos never had. It checks what the rewritten call binds to, falls back to `FromSqlInterpolated` only on EF Core 6 and older, and offers no fix when the only candidate is obsolete or missing. The diagnostic message names the same API.
+
+## [5.9.0] - 2026-09-22
+
 ### Added
 - One-line severity presets. Set `<LinqContrabandPreset>` in a project file or `Directory.Build.props` to `security` (SQL injection rules LC018, LC034, and LC037 fail the build), `critical` (security plus the runtime-failure and data-loss rules LC013, LC019, LC036, LC044, LC046, LC047, and LC048), `strict` (warnings become errors, advisories become warnings), or `essentials` (advisory rules off). Presets combine with `;`, ship as global analyzer configs generated from the rule catalog, and yield to `.editorconfig` and user `.globalconfig` entries. An unknown preset name raises an `LCPRESET` build warning.
 - LC049 (Info, code fix) reports an EF Core `Include` / `ThenInclude` on a query whose `Select` projects the entity into scalars, DTOs, or anonymous types. EF Core ignores those includes, so they load nothing and mislead readers. The rule stays quiet when the projection can still return an entity (`o => o`, `new { Order = o }`, `o => o.Customer`, `new { o.Lines }`, `o.Lines.Select(l => l.Product)`, or an entity passed to a helper), after `AsEnumerable()`, and across shape-changing operators. The fixer removes the ignored `Include` together with its `ThenInclude` calls; Fix All clears every ignored include in a chain at once.
@@ -16,10 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every rule page on the documentation site now has its own search description, a consistent `LCxxx: Name` title, a Home / Rule catalog breadcrumb (also in its structured data), and previous/next rule links. A test keeps descriptions present, unique and sized for search results.
 - The documentation site has a 404 page (kept out of search indexes and the sitemap) that points back to the rule catalog and setup guide. The sitemap no longer stamps every page with the build date as its last-modified time.
 - Each rule page on the documentation site opens with a box showing the rule's default severity, whether a code fix exists, its category and domain, the `.editorconfig` line to change its severity, and links to its sample and analyzer source. The data comes from the rule catalog through a generated `docs/_data/rules.json`, which CI checks for staleness.
-- LC018 and LC034 no longer double-report lines that EF Core's own analyzers already flag. EF Core 8+ reports interpolated SQL passed straight to `FromSqlRaw`, `SqlQueryRaw`, `ExecuteSqlRaw` and `ExecuteSqlRawAsync` as EF1002, and EF Core 10+ reports concatenated SQL there as EF1003, each with its own fix. LC018 and LC034 now stay quiet on exactly those calls and keep reporting what EF misses: concatenation on EF Core 8 and 9, reordered named `sql:` arguments, EF Core 7 and older, and non-relational providers such as Cosmos. Set `dotnet_code_quality.LC018.defer_to_ef_analyzers = false` (or `LC034`) if your build excludes EF Core's analyzers. The `security`, `critical` and `strict` presets now also make EF1002 and EF1003 build errors, so they keep failing the build on those lines. LC037 does not overlap EF's analyzers and is unchanged.
-
-### Fixed
-- The LC018 code fix now rewrites `FromSqlRaw($"...")` to `FromSql($"...")` instead of `FromSqlInterpolated`, which EF Core 11 marks obsolete (CS0618, a build error under `TreatWarningsAsErrors`) and Cosmos never had. It checks what the rewritten call binds to, falls back to `FromSqlInterpolated` only on EF Core 6 and older, and offers no fix when the only candidate is obsolete or missing. The diagnostic message names the same API.
+- The rule catalog cards on the documentation site show each rule's one-line summary, and `llms.txt` ends with a generated list of every rule with its severity, code-fix availability, page link and summary. Both come from each rule page's description through `RuleCatalogDocGenerator`.
 
 ## [5.8.1] - 2026-09-22
 
