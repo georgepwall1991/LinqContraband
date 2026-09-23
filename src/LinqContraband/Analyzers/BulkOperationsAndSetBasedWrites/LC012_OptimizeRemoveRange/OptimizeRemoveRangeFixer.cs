@@ -33,10 +33,7 @@ public sealed partial class OptimizeRemoveRangeFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var token = root.FindToken(diagnosticSpan.Start);
-        if (token.Parent is null) return;
-
-        var invocation = token.Parent.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+        var invocation = root.FindReportedInvocation(diagnosticSpan);
         if (invocation == null) return;
 
         if (!await CanSafelyRewriteAsync(context.Document, invocation, context.CancellationToken).ConfigureAwait(false))

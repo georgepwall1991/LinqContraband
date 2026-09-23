@@ -34,8 +34,7 @@ public sealed partial class LocalMethodFixer : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        var invocation = root?.FindToken(diagnosticSpan.Start).Parent?.AncestorsAndSelf()
-            .OfType<InvocationExpressionSyntax>().FirstOrDefault();
+        var invocation = root?.FindReportedInvocation(diagnosticSpan);
 
         if (invocation == null) return;
 

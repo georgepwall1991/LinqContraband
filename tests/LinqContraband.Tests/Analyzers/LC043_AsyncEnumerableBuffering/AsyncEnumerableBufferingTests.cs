@@ -378,4 +378,133 @@ namespace TestApp
 
         await testObj.RunAsync();
     }
+
+    private const string ChainedSourceTypes = @"
+    public class User { public string Name { get; set; } public bool IsActive { get; set; } }
+
+    public class AppDb { public IQueryable<User> Users => null!; }
+
+    public static class StreamingExtensions
+    {
+        public static IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IQueryable<T> source) => null!;
+    }";
+
+    [Fact]
+    public async Task Fixer_ChainedReceiver_ShouldConvertToAwaitForeach()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{" + ChainedSourceTypes + @"
+
+    public class TestClass
+    {
+        public async Task Run(AppDb db)
+        {
+            var users = await {|#0:db.Users.AsAsyncEnumerable().ToListAsync()|};
+            foreach (var user in users)
+            {
+                System.Console.WriteLine(user.Name);
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{" + ChainedSourceTypes + @"
+
+    public class TestClass
+    {
+        public async Task Run(AppDb db)
+        {
+            await foreach (var user in db.Users.AsAsyncEnumerable())
+            {
+                System.Console.WriteLine(user.Name);
+            }
+        }
+    }
+}";
+
+        var expected = VerifyFix.Diagnostic("LC043").WithLocation(0).WithArguments("ToListAsync");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task FixAll_ChainedReceivers_ConvertsEachToAwaitForeach()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{" + ChainedSourceTypes + @"
+
+    public class TestClass
+    {
+        public async Task Run(AppDb db)
+        {
+            var users = await {|#0:db.Users.AsAsyncEnumerable().ToListAsync()|};
+            foreach (var user in users)
+            {
+                System.Console.WriteLine(user.Name);
+            }
+
+            var active = await {|#1:db.Users.Where(u => u.IsActive).AsAsyncEnumerable().ToArrayAsync()|};
+            foreach (var user in active)
+            {
+                System.Console.WriteLine(user.Name);
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{" + ChainedSourceTypes + @"
+
+    public class TestClass
+    {
+        public async Task Run(AppDb db)
+        {
+            await foreach (var user in db.Users.AsAsyncEnumerable())
+            {
+                System.Console.WriteLine(user.Name);
+            }
+            await foreach (var user in db.Users.Where(u => u.IsActive).AsAsyncEnumerable())
+            {
+                System.Console.WriteLine(user.Name);
+            }
+        }
+    }
+}";
+
+        var testObj = new CodeFixTest
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            BatchFixedCode = fixedCode,
+            NumberOfIncrementalIterations = 2,
+            CodeFixEquivalenceKey = "UseAwaitForeach"
+        };
+
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC043")
+                .WithLocation(0)
+                .WithArguments("ToListAsync"));
+        testObj.ExpectedDiagnostics.Add(
+            VerifyFix.Diagnostic("LC043")
+                .WithLocation(1)
+                .WithArguments("ToArrayAsync"));
+
+        await testObj.RunAsync();
+    }
 }
