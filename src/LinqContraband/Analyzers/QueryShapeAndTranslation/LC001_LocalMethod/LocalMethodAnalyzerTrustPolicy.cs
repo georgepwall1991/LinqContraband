@@ -54,10 +54,8 @@ public sealed partial class LocalMethodAnalyzer
         if (options.TryGetValue(TrustedAttributesOption, out var value))
         {
             var trusted = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
-            foreach (var entry in value.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (var name in AnalyzerConfigListOption.Split(value))
             {
-                var name = entry.Trim();
-                if (name.Length == 0) continue;
                 trusted.Add(name);
                 if (!name.EndsWith("Attribute", StringComparison.Ordinal))
                     trusted.Add(name + "Attribute");
