@@ -96,6 +96,8 @@ LC017 uses conservative detection to minimize false positives:
 - **Only flags clear waste**: Must access only 1-2 properties of the entity
 - **Only flags local usage**: Skips when entities are returned from methods
 - **Skips external method calls**: If entity is passed to another method, can't track usage
+- **Skips updates**: If a property of the entity is written (`e.Status = ...`, `e.Count++`, `e.Total += x`), the query loads tracked entities to change and save them, which a projection cannot do
+- **Skips stored results**: If the list or an entity is assigned to a field, property, another local, an object initializer, an array or a tuple, its later use is out of sight
 - **Skips lambdas**: If entity is used in a lambda/delegate, can't reliably track
 - **Collection queries only**: Flags `ToList()`/`ToArray()`, not single-entity `First()`/`Single()`
 
@@ -126,7 +128,24 @@ LC017 uses conservative detection to minimize false positives:
    ProcessProducts(products);
    ```
 
-5. **Most properties accessed**:
+5. **Entities are updated**:
+   ```csharp
+   // OK: A projection has read-only members and nothing to save.
+   // For a bulk change like this, consider ExecuteUpdate (LC032).
+   var products = context.Products.Where(p => p.Discontinued).ToList();
+   foreach (var p in products)
+       p.UpdatedAt = now;
+   context.SaveChanges();
+   ```
+
+6. **Result is stored**:
+   ```csharp
+   // OK: The view model is used elsewhere
+   var products = context.Products.ToList();
+   var vm = new CatalogViewModel { Products = products };
+   ```
+
+7. **Most properties accessed**:
    ```csharp
    // OK: Accessing 7+ of 12 properties justifies full load
    foreach (var p in context.Products.ToList())
