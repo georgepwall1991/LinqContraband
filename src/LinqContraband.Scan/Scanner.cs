@@ -103,6 +103,11 @@ internal static class Scanner
 
         // Keep the build from leaving MSBuild node processes behind once the scan is done.
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+
+        // When the scanner itself runs under MSBuild (a build task, `dotnet test`), these point the child build
+        // at the parent's MSBuild and SDK instead of the one the scanned solution selects.
+        foreach (var variable in new[] { "MSBUILD_EXE_PATH", "MSBuildExtensionsPath", "MSBuildSDKsPath", "MSBuildLoadMicrosoftTargetsReadOnly" })
+            startInfo.Environment.Remove(variable);
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] ??= "1";
 
         using var process = new Process { StartInfo = startInfo };

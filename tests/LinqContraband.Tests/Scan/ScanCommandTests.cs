@@ -176,14 +176,14 @@ public sealed class ScanCommandTests
                 """);
 
             var sarif = Path.Combine(directory, "out", "report.sarif");
-            var analyzer = typeof(RuleCatalog).Assembly.Location;
 
-            var (exitCode, output, error) = Run([directory, "--sarif", sarif], analyzer);
+            var (exitCode, output, error) = Run([directory, "--sarif", sarif, "--verbose"], BuiltAnalyzerPath());
+            var transcript = output + Environment.NewLine + error;
 
-            Assert.True(exitCode == ScanCommand.Success, output + error);
-            Assert.Contains("LinqContraband found 1 problem (1 rule, 1 file).", output);
-            Assert.Contains("  LC003  Warning      1  ", output);
-            Assert.Contains("      1  Queries.cs", output);
+            Assert.True(exitCode == ScanCommand.Success, transcript);
+            Assert.True(output.Contains("LinqContraband found 1 problem (1 rule, 1 file).", StringComparison.Ordinal), transcript);
+            Assert.True(output.Contains("  LC003  Warning      1  ", StringComparison.Ordinal), transcript);
+            Assert.True(output.Contains("      1  Queries.cs", StringComparison.Ordinal), transcript);
 
             using var document = JsonDocument.Parse(File.ReadAllText(sarif));
             var result = Assert.Single(document.RootElement.GetProperty("runs")[0].GetProperty("results").EnumerateArray());
@@ -196,6 +196,19 @@ public sealed class ScanCommandTests
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// The analyzer as the analyzer project built it, which is what the tool package ships. The copy next to the
+    /// test assembly can be instrumented by the coverage collector, and shares a folder with a newer Roslyn.
+    /// </summary>
+    private static string BuiltAnalyzerPath()
+    {
+        var testOutput = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        var configuration = testOutput.Parent!.Name;
+        var built = Path.Combine(
+            Architecture.RepositoryLayout.GetRepositoryRoot(), "src", "LinqContraband", "bin", configuration, "netstandard2.0", "LinqContraband.dll");
+        return File.Exists(built) ? built : typeof(RuleCatalog).Assembly.Location;
     }
 #endif
 }
