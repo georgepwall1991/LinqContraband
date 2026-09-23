@@ -55,6 +55,10 @@ internal static partial class LocalAssignmentCache
 
         if (matchCount != 1 || latest == null) return false;
 
+        // `q = q.Where(...)` starts before the `q` it reads, so a read on its own right-hand side
+        // would resolve to the assignment it sits in; callers walking the chain would loop forever.
+        if (latest.Syntax.Span.Contains(beforePosition)) return false;
+
         value = latest.UnwrapConversions();
         return true;
     }

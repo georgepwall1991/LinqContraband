@@ -456,4 +456,93 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SelfReassignedLocalQuery_ResolvesThroughEachStepAndTriggers()
+    {
+        // `query = query.Where(...)` reads the local inside its own assignment; resolving that read
+        // to the assignment itself used to loop forever and hang the build.
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var query = db.Users.Where(u => u.Id > 0);
+        query = query.Where(u => u.Name != null);
+        query = query.OrderBy(u => u.Id);
+        var first = query.ToList();
+        var second = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SelfReassignedLocalQuery_KeepsEarlierAsNoTracking()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        IQueryable<TestApp.User> query = db.Users;
+        query = query.AsNoTracking();
+        query = query.Where(u => u.Id > 0);
+        var first = query.ToList();
+        var second = db.Users.AsNoTracking().FirstOrDefault();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SelfReassignedNoTrackingQueryThenTrackedRead_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        IQueryable<TestApp.User> query = db.Users;
+        query = query.AsNoTracking();
+        query = query.Where(u => u.Id > 0);
+        var first = query.ToList();
+        var second = {|LC040:db.Users.First()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SelfReassignedQueryFromOutVariable_StaysQuiet()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        if (!TryGetQuery(db, out var query))
+            return;
+
+        query = query.Where(u => u.Id > 0);
+        var first = query.ToList();
+        var second = db.Users.AsNoTracking().ToList();
+    }
+
+    static bool TryGetQuery(TestApp.AppDbContext db, out IQueryable<TestApp.User> query)
+    {
+        query = db.Users;
+        return true;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
