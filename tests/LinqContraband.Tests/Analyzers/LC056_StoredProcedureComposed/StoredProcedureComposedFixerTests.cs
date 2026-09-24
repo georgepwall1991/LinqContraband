@@ -51,6 +51,14 @@ public class StoredProcedureComposedFixerTests
             @"var blog = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlog"").AsEnumerable().FirstOrDefault();");
     }
 
+    [Fact]
+    public async Task ExecuteDelete_RewriteWouldNotCompile_NoFix()
+    {
+        // ExecuteDelete exists only on IQueryable. AsEnumerable() would not compile.
+        await VerifyNoFixAsync(
+            @"var deleted = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:ExecuteDelete|}();");
+    }
+
     [Theory]
     // Include needs the queryable.
     [InlineData(@"var rows = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:Include|}(b => b.Posts).ToList();")]
