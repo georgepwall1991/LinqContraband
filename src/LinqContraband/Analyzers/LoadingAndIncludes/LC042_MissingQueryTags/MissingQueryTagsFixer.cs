@@ -33,7 +33,7 @@ public sealed class MissingQueryTagsFixer : CodeFixProvider
     public override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingQueryTagsAnalyzer.DiagnosticId);
 
-    public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
