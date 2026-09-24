@@ -95,12 +95,29 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
             if (!TryGetTrackingMode(invocation, root, out var trackingMode))
                 return;
 
-            if (!TryGetContextSymbol(invocation, root, out var contextSymbol))
+            if (!TryGetContextSymbol(invocation, root, out var contextSymbol, out var rootEntityType))
+                return;
+
+            // Tracking only applies to entities. A query reshaped by a helper, such as AutoMapper's
+            // ProjectTo<Dto>() or a method that selects IDs, materializes something else.
+            if (!MaterializesRootEntity(invocation, rootEntityType))
                 return;
 
             _records.Add(new MaterializationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, trackingMode));
         }
 
+    }
+
+    private static bool MaterializesRootEntity(IInvocationOperation invocation, ITypeSymbol? rootEntityType)
+    {
+        if (rootEntityType == null)
+            return true;
+
+        var source = invocation.GetInvocationReceiver()?.UnwrapConversions();
+        if (source?.Type == null || !IncludePathParser.TryGetCollectionElementType(source.Type, out var elementType))
+            return true;
+
+        return SymbolEqualityComparer.Default.Equals(elementType, rootEntityType);
     }
 
     private sealed class MaterializationRecord

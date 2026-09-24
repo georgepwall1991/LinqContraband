@@ -545,4 +545,153 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task EarlyReturnTrackedBranch_DoesNotTrigger()
+    {
+        // Kavita's `GetAllUsersAsync(bool track)`: the no-tracking read only runs when the
+        // tracked branch did not, because that branch returns.
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    System.Collections.Generic.List<TestApp.User> Run(TestApp.AppDbContext db, bool track)
+    {
+        var query = db.Users.Where(u => u.Id > 0);
+
+        if (track)
+        {
+            return query.ToList();
+        }
+
+        return query.AsNoTracking().ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EarlyThrowAfterTrackedRead_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    System.Collections.Generic.List<TestApp.User> Run(TestApp.AppDbContext db, bool strict)
+    {
+        if (strict)
+        {
+            var tracked = db.Users.ToList();
+            throw new System.InvalidOperationException(tracked.Count.ToString());
+        }
+
+        return db.Users.AsNoTracking().ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task BranchWithoutExitBeforeLaterRead_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool track)
+    {
+        if (track)
+        {
+            var tracked = db.Users.ToList();
+        }
+
+        var detached = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReturnInsideLambdaBranch_DoesNotHideLaterRead()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(TestApp.AppDbContext db, bool track)
+    {
+        var tracked = db.Users.ToList();
+        System.Func<int> count = () =>
+        {
+            if (track)
+                return 1;
+
+            return 0;
+        };
+
+        var detached = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task HelperProjectingToDto_DoesNotTrigger()
+    {
+        // Kavita projects with AutoMapper's ProjectTo<Dto>(); EF Core does not track DTOs.
+        var test = EFCoreMock + Types + @"
+
+class UserDto
+{
+    public int Id { get; set; }
+}
+
+static class Projections
+{
+    public static IQueryable<UserDto> ToDtos(this IQueryable<TestApp.User> users) =>
+        users.Select(u => new UserDto { Id = u.Id });
+
+    public static IQueryable<int> SelectIds(this IQueryable<TestApp.User> users) =>
+        users.Select(u => u.Id);
+}
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var dtos = db.Users.ToDtos().ToList();
+        var ids = db.Users.SelectIds().ToList();
+        var detached = db.Users.AsNoTracking().ToList();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EntityPreservingHelper_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+static class Filters
+{
+    public static IQueryable<TestApp.User> Named(this IQueryable<TestApp.User> users) =>
+        users.Where(u => u.Name != null);
+}
+
+class Program
+{
+    void Run(TestApp.AppDbContext db)
+    {
+        var tracked = db.Users.Named().ToList();
+        var detached = {|LC040:db.Users.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

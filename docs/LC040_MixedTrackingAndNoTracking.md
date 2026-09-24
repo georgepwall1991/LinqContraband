@@ -30,13 +30,13 @@ var noTrackingUsers = db.Users.AsNoTracking().ToList();
 ### Severity: `Info`
 
 ### Notes
-This advisory reports only when the query provenance and materialization mode are both provable.
+This advisory reports only when the query provenance and materialization mode are both provable. It only counts reads that materialize the entity type of the `DbSet` they start from; a query a helper reshapes into DTOs or scalars, such as AutoMapper's `ProjectTo<Dto>()`, is not tracked either way.
 
 Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWithIdentityResolution`, and `AsTracking` calls are treated as tracking-mode markers. Custom extension methods with the same names are followed as ordinary query-chain calls and do not create mixed-mode evidence by themselves.
 
 Straight-line local query aliases are resolved at the materialization point. A local reassigned from tracked to no-tracking queries on the same context can report, while a reassignment from a different context or inside conditional control flow stays quiet. A query composed in place (`query = query.Where(...)`, `query = query.AsNoTracking()`) resolves through each step back to its source, and takes its tracking mode from the last `AsNoTracking()` or `AsTracking()` applied to it.
 
-Mutually exclusive `if`/`else` branches, `switch` sections, and ternary (`cond ? a : b`) arms are not treated as mixed tracking evidence by themselves. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.
+Mutually exclusive `if`/`else` branches, `switch` sections, and ternary (`cond ? a : b`) arms are not treated as mixed tracking evidence by themselves. Neither is a read in an `if` branch that always ends in `return` or `throw` together with a read after that `if`, as in `if (track) return query.ToList(); return query.AsNoTracking().ToList();`. Later materialization still compares against every reachable earlier tracking mode so split branches followed by shared work can be reported when one path really mixes modes.
 
 Transparent EF query options such as `AsSplitQuery()` and `TagWith(...)` do not change the tracking mode. LC040 follows through those calls and still reports when the same context materializes one tracked result and one no-tracking result.
 
