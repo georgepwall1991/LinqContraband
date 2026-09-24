@@ -9,7 +9,7 @@ public sealed class ScanCommandTests
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
-        var exitCode = ScanCommand.Run(args, output, error, analyzerPath);
+        var exitCode = ScanCommand.Run(args, output, error, analyzerPath, environment: _ => null);
         return (exitCode, output.ToString(), error.ToString());
     }
 

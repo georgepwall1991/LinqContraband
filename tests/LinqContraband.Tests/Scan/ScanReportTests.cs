@@ -23,6 +23,8 @@ public sealed class ScanReportTests
               { "id": "CA1822", "shortDescription": { "text": "Mark members as static" } },
               { "id": "EF1002", "shortDescription": { "text": "Risk of vulnerability to SQL injection." } },
               { "id": "LC007", "shortDescription": { "text": "N+1 Problem: Database execution inside loop" },
+                "fullDescription": { "text": "Queries inside loops run once per item." },
+                "properties": { "category": "Performance" },
                 "helpUri": "https://georgepwall1991.github.io/LinqContraband/LC007_NPlusOneLooper.html" },
               { "id": "LC031", "shortDescription": { "text": "Unbounded Query Materialization" },
                 "defaultConfiguration": { "level": "note" },
@@ -347,6 +349,81 @@ public sealed class ScanReportTests
         var result = document.RootElement.GetProperty("runs")[0].GetProperty("results")[0];
         Assert.True(result.GetProperty("partialFingerprints").TryGetProperty(ScanReport.FingerprintKey, out _));
         Assert.False(result.TryGetProperty("baselineState", out _));
+    }
+
+    [Fact]
+    public void Sarif_RulesCarryDescriptionHelpAndTags()
+    {
+        using var document = JsonDocument.Parse(SarifText(ReadReport(CompilerLog(
+            Result("LC007", "warning", InRoot("A.cs"), 1, 1),
+            Result("EF1002", "warning", InRoot("A.cs"), 2, 1)))));
+        var rules = document.RootElement.GetProperty("runs")[0].GetProperty("tool").GetProperty("driver").GetProperty("rules").EnumerateArray().ToList();
+
+        var lc007 = rules.Single(rule => rule.GetProperty("id").GetString() == "LC007");
+        Assert.Equal("Queries inside loops run once per item.", lc007.GetProperty("fullDescription").GetProperty("text").GetString());
+        Assert.Equal(
+            "Queries inside loops run once per item.\n\n[LC007: what it catches and how to fix it](https://georgepwall1991.github.io/LinqContraband/LC007_NPlusOneLooper.html)",
+            lc007.GetProperty("help").GetProperty("markdown").GetString());
+        Assert.Equal(["efcore", "performance"], lc007.GetProperty("properties").GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+
+        var ef1002 = rules.Single(rule => rule.GetProperty("id").GetString() == "EF1002");
+        Assert.False(ef1002.TryGetProperty("fullDescription", out _));
+        Assert.StartsWith("How to fix it: https://learn.microsoft.com", ef1002.GetProperty("help").GetProperty("text").GetString());
+        Assert.Equal(["efcore"], ef1002.GetProperty("properties").GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+    }
+
+    [Fact]
+    public void Markdown_HasTheRuleTableAndLinkedFindings()
+    {
+        var report = ReadReport(CompilerLog(
+            Result("LC007", "warning", InRoot("src", "My Orders.cs"), 12, 9),
+            Result("LC007", "warning", InRoot("src", "Orders.cs"), 30, 9),
+            Result("LC031", "note", InRoot("src", "Orders.cs"), 40, 1)));
+
+        var markdown = GitHubOutput.Markdown(report, findingsPerRule: 1, blobUri: "https://github.com/o/r/blob/abc/");
+
+        Assert.StartsWith("## LinqContraband: 3 EF Core query problems (2 rules, 2 files)", markdown);
+        Assert.Contains("| [LC007](https://georgepwall1991.github.io/LinqContraband/LC007_NPlusOneLooper.html) | Warning | 2 | N+1 Problem: Database execution inside loop |", markdown);
+        Assert.Contains("<details><summary><b>LC007</b> N+1 Problem: Database execution inside loop (2)</summary>", markdown);
+        Assert.Contains("- [`src/My Orders.cs:12:9`](https://github.com/o/r/blob/abc/src/My%20Orders.cs#L12): LC007 message", markdown);
+        Assert.Contains("- ...and 1 more in the SARIF report.", markdown);
+        Assert.Contains("- `src/Orders.cs:40:1`", GitHubOutput.Markdown(report, findingsPerRule: 5, blobUri: null));
+        Assert.DoesNotContain("<details>", GitHubOutput.Markdown(report, findingsPerRule: 0, blobUri: null));
+        Assert.StartsWith("## LinqContraband: no EF Core query problems", GitHubOutput.Markdown(ReadReport(CompilerLog()), 3, null));
+    }
+
+    [Fact]
+    public void Annotations_PutTheMostSevereFirstAndEscapeCommandText()
+    {
+        var outside = Path.Combine(Path.GetTempPath(), "elsewhere", "Shared.cs");
+        var report = ReadReport(CompilerLog(
+            Result("LC031", "note", InRoot("src", "a,b.cs"), 40, 1),
+            Result("LC007", "error", InRoot("src", "Orders.cs"), 12, 9),
+            Result("LC007", "warning", outside, 1, 1)));
+
+        var annotations = GitHubOutput.Annotations(report).ToList();
+
+        Assert.Equal(
+            [
+                "::error file=src/Orders.cs,line=12,col=9,title=LC007 N+1 Problem%3A Database execution inside loop::LC007 message",
+                "::notice file=src/a%2Cb.cs,line=40,col=1,title=LC031 Unbounded Query Materialization::LC031 message",
+            ],
+            annotations);
+        Assert.Single(GitHubOutput.Annotations(report, max: 1));
+    }
+
+    [Fact]
+    public void BlobUri_NeedsServerRepositoryAndSha()
+    {
+        var variables = new Dictionary<string, string>
+        {
+            ["GITHUB_SERVER_URL"] = "https://github.com/",
+            ["GITHUB_REPOSITORY"] = "o/r",
+            ["GITHUB_SHA"] = "abc",
+        };
+        Assert.Equal("https://github.com/o/r/blob/abc/", GitHubOutput.BlobUri(name => variables.GetValueOrDefault(name)));
+        variables.Remove("GITHUB_SHA");
+        Assert.Null(GitHubOutput.BlobUri(name => variables.GetValueOrDefault(name)));
     }
 
     [Fact]

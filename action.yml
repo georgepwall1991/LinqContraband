@@ -1,0 +1,113 @@
+name: LinqContraband EF Core Scan
+description: Scan a .NET solution for EF Core query problems (N+1 queries, client-side evaluation, raw SQL injection) with LinqContraband, and report them in the pull request.
+author: George Wall
+branding:
+  icon: database
+  color: purple
+
+inputs:
+  path:
+    description: Solution, project or directory to scan.
+    default: .
+  fail-on:
+    description: Fail the step when a finding is at least this severe (error, warning, info or none).
+    default: none
+  baseline:
+    description: A SARIF report from an earlier scan, committed to the repository. Only findings it does not have are reported and fail the step.
+    default: ''
+  exclude:
+    description: Globs of files to leave out, one per line (for example tests/** or Migrations).
+    default: ''
+  args:
+    description: Other linqcontraband-scan options, such as "-c Release --skip-rules LC031".
+    default: ''
+  version:
+    description: LinqContraband.Scan version to run. Defaults to the version of this action's tag, or the latest release on a branch or SHA.
+    default: ''
+  sarif:
+    description: Where to write the SARIF report.
+    default: linqcontraband.sarif
+  upload-sarif:
+    description: Upload the SARIF report to GitHub code scanning (needs the security-events write permission).
+    default: 'false'
+  category:
+    description: The code scanning category for the upload.
+    default: linqcontraband
+
+outputs:
+  sarif:
+    description: Path of the SARIF report.
+    value: ${{ inputs.sarif }}
+  exit-code:
+    description: The scanner's exit code (0 clean or not failing, 1 findings at --fail-on severity, 2 usage error, 3 build failed).
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install LinqContraband.Scan
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        version="$INPUT_VERSION"
+        if [ -z "$version" ] && [[ "$ACTION_REF" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          version="${BASH_REMATCH[1]}"
+        fi
+        tool_path="$RUNNER_TEMP/linqcontraband-scan"
+        if [ -n "$version" ]; then
+          dotnet tool install LinqContraband.Scan --tool-path "$tool_path" --version "$version"
+        else
+          dotnet tool install LinqContraband.Scan --tool-path "$tool_path"
+        fi
+        echo "$tool_path" >> "$GITHUB_PATH"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_EXCLUDE: ${{ inputs.exclude }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_SARIF: ${{ inputs.sarif }}
+      run: |
+        set -uo pipefail
+        arguments=("$INPUT_PATH" --sarif "$INPUT_SARIF" --fail-on "$INPUT_FAIL_ON")
+        if [ -n "$INPUT_BASELINE" ]; then
+          arguments+=(--baseline "$INPUT_BASELINE")
+        fi
+        while IFS= read -r glob; do
+          glob="$(echo "$glob" | xargs)"
+          if [ -n "$glob" ]; then
+            arguments+=(--exclude "$glob")
+          fi
+        done <<< "$INPUT_EXCLUDE"
+        # Extra options are split on whitespace, like a command line without quotes.
+        read -r -a extra <<< "$INPUT_ARGS"
+        linqcontraband-scan "${arguments[@]}" "${extra[@]}"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        # Upload the report before failing the job on findings.
+        if [ "$code" -ne 1 ]; then
+          exit "$code"
+        fi
+
+    - name: Upload SARIF to code scanning
+      if: ${{ !cancelled() && inputs.upload-sarif == 'true' && hashFiles(inputs.sarif) != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif }}
+        category: ${{ inputs.category }}
+
+    - name: Fail on findings
+      if: ${{ steps.scan.outputs.exit-code == '1' }}
+      shell: bash
+      env:
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error title=LinqContraband::Findings at or above '$INPUT_FAIL_ON' severity. See the job summary for the list."
+        exit 1

@@ -93,6 +93,8 @@ Core's diagnostic for them.
 | `--exclude <glob>` | Leave out findings in files matching a glob, such as `tests/**` or `**/Migrations/**`. A glob without `/` matches a file or folder name anywhere, so `Migrations` and `*.Designer.cs` work alone. Repeatable. |
 | `--fail-on <level>` | Exit with code 1 when a reported finding is at least this severe: `error`, `warning` or `info`. Defaults to `none`. |
 | `--baseline <file>` | A SARIF report from an earlier scan. Only findings it does not have are listed and count for `--fail-on`. |
+| `--summary <file>` | Also write the report as Markdown. |
+| `--no-github` | In GitHub Actions, skip the job summary and pull request annotations. |
 | `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
@@ -139,13 +141,14 @@ finding still matches after code above it moves it to another line or it is re-i
 finding it drops out on its own; refresh the baseline file whenever you want the known list to shrink. The new SARIF
 report keeps every finding and marks each one `new` or `unchanged` in `baselineState`.
 
-## Upload the Report to GitHub Code Scanning
+## Run It in GitHub Actions
 
-The SARIF report lists file paths relative to the git repository, so GitHub can place each finding on its line. This
-workflow shows findings as pull request annotations and in the repository's Security tab:
+The repository is also a GitHub Action. It installs the scanner that matches the action's version, scans, and in the
+job summary lists every rule that fired with each finding linked to its line. The most severe findings are also
+annotated on the pull request's changed lines.
 
 ```yaml
-name: linqcontraband-scan
+name: linqcontraband
 
 on:
   pull_request:
@@ -154,7 +157,7 @@ on:
 
 permissions:
   contents: read
-  security-events: write
+  security-events: write   # only for upload-sarif
 
 jobs:
   scan:
@@ -164,15 +167,38 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dnx --yes LinqContraband.Scan -- --sarif linqcontraband.sarif
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: georgepwall1991/LinqContraband@v5.12.0
         with:
-          sarif_file: linqcontraband.sarif
-          category: linqcontraband
+          fail-on: warning
+          baseline: linqcontraband.baseline.sarif   # optional: fail only on new findings
+          exclude: |
+            tests/**
+            Migrations
+          upload-sarif: true
 ```
 
-`--yes` skips the prompt that asks before downloading the tool. Add a `dotnet-version` line for each SDK your
-solution needs. Code scanning is free on public repositories; private repositories need GitHub Code Security.
+| Input | Meaning |
+| --- | --- |
+| `path` | Solution, project or directory to scan. Defaults to the repository root. |
+| `fail-on` | Fail the job when a finding is at least this severe: `error`, `warning`, `info` or `none` (the default). |
+| `baseline` | A committed SARIF report from an earlier scan; only findings it does not have count. |
+| `exclude` | Globs of files to leave out, one per line. |
+| `args` | Any other scanner options, such as `-c Release --skip-rules LC031`. |
+| `upload-sarif` | `true` to upload the report to GitHub code scanning, which shows findings in the Security tab. Defaults to `false`. |
+| `category` | The code scanning category for the upload. Defaults to `linqcontraband`. |
+| `version` | The scanner version. Defaults to the version in the action's tag. |
+
+Add a `dotnet-version` line for each SDK your solution needs. The report is uploaded before a `fail-on` failure fails
+the job, so code scanning still gets it. Code scanning is free on public repositories; private repositories need GitHub
+Code Security.
+
+The scanner itself notices GitHub Actions, so a plain `dnx LinqContraband.Scan` step gets the same job summary and
+annotations; `--no-github` turns them off. `--summary report.md` writes the Markdown report to a file anywhere, for a
+pull request comment or a wiki page.
+
+The SARIF report lists file paths relative to the git repository, so GitHub can place each finding on its line. Each
+rule carries its description, a link to its page and `efcore` plus category tags, which code scanning shows on the
+alert.
 
 ## How It Works
 

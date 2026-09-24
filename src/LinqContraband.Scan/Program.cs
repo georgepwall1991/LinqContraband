@@ -14,8 +14,14 @@ namespace LinqContraband.Scan
         public const int UsageError = 2;
         public const int ScanFailed = 3;
 
-        public static int Run(IReadOnlyList<string> args, TextWriter output, TextWriter error, string? analyzerAssemblyPath = null)
+        public static int Run(
+            IReadOnlyList<string> args,
+            TextWriter output,
+            TextWriter error,
+            string? analyzerAssemblyPath = null,
+            Func<string, string?>? environment = null)
         {
+            environment ??= Environment.GetEnvironmentVariable;
             if (!ScanOptions.TryParse(args, out var options, out var parseError))
             {
                 error.WriteLine(parseError);
@@ -100,6 +106,8 @@ namespace LinqContraband.Scan
             output.WriteLine();
             output.Write(report.RenderText(options.Top, DisplayPath(sarifPath), options.FindingsPerRule));
 
+            WriteGitHubOutput(options, report, output, error, environment);
+
             if (result.BuildExitCode != 0)
                 return ScanFailed;
 
@@ -111,6 +119,47 @@ namespace LinqContraband.Scan
             }
 
             return Success;
+        }
+
+        /// <summary>
+        /// Writes the Markdown report to <c>--summary</c>, and in GitHub Actions also appends it to the job summary and
+        /// annotates the most severe findings, unless <c>--no-github</c> is set.
+        /// </summary>
+        private static void WriteGitHubOutput(ScanOptions options, ScanReport report, TextWriter output, TextWriter error, Func<string, string?> environment)
+        {
+            var inActions = !options.NoGitHub && string.Equals(environment("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
+            var stepSummary = inActions ? environment("GITHUB_STEP_SUMMARY") : null;
+            if (options.SummaryPath is null && string.IsNullOrEmpty(stepSummary) && !inActions)
+                return;
+
+            var blobUri = inActions ? GitHubOutput.BlobUri(environment) : null;
+            var markdown = GitHubOutput.Markdown(report, options.FindingsPerRule, blobUri);
+            // GitHub rejects a job summary over 1 MiB, which --findings all can reach on a large solution.
+            var jobSummary = markdown.Length > GitHubOutput.MaxJobSummaryLength
+                ? GitHubOutput.Markdown(report, Math.Min(options.FindingsPerRule, ScanOptions.DefaultFindingsPerRule), blobUri)
+                : markdown;
+            try
+            {
+                if (options.SummaryPath is not null)
+                {
+                    var summaryPath = Path.GetFullPath(options.SummaryPath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(summaryPath)!);
+                    File.WriteAllText(summaryPath, markdown);
+                    output.WriteLine($"Markdown report: {DisplayPath(summaryPath)}");
+                }
+                if (!string.IsNullOrEmpty(stepSummary))
+                    File.AppendAllText(stepSummary, jobSummary);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                error.WriteLine($"Could not write the Markdown report: {exception.Message}");
+            }
+
+            if (inActions)
+            {
+                foreach (var annotation in GitHubOutput.Annotations(report))
+                    output.WriteLine(annotation);
+            }
         }
 
         internal static string ToolVersion =>

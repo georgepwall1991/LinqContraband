@@ -15,11 +15,11 @@ public sealed class ScanEndToEndCollection;
 [Collection(nameof(ScanEndToEndTests))]
 public sealed class ScanEndToEndTests
 {
-    private static (int ExitCode, string Output, string Error) Run(string[] args, string? analyzerPath = null)
+    private static (int ExitCode, string Output, string Error) Run(string[] args, string? analyzerPath = null, Func<string, string?>? environment = null)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
-        var exitCode = ScanCommand.Run(args, output, error, analyzerPath);
+        var exitCode = ScanCommand.Run(args, output, error, analyzerPath, environment ?? (_ => null));
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -91,6 +91,19 @@ public sealed class ScanEndToEndTests
             Assert.True(excluded.ExitCode == ScanCommand.Success, excluded.Output + excluded.Error);
             Assert.Contains("LinqContraband found no EF Core query problems.", excluded.Output);
             Assert.Contains("1 finding left out by --rules, --skip-rules or --exclude.", excluded.Output);
+
+            // In GitHub Actions the scan annotates the finding and appends the Markdown report to the job summary.
+            var stepSummary = Path.Combine(directory, "out", "step-summary.md");
+            var summary = Path.Combine(directory, "out", "summary.md");
+            var actions = new Dictionary<string, string> { ["GITHUB_ACTIONS"] = "true", ["GITHUB_STEP_SUMMARY"] = stepSummary };
+            var inActions = Run([directory, "--sarif", sarif, "--no-restore", "--summary", summary], BuiltAnalyzerPath(), name => actions.GetValueOrDefault(name));
+            Assert.True(inActions.ExitCode == ScanCommand.Success, inActions.Output + inActions.Error);
+            Assert.Contains("::warning file=Queries.cs,line=5,", inActions.Output);
+            Assert.StartsWith("## LinqContraband: 1 EF Core query problem (1 rule, 1 file)", File.ReadAllText(stepSummary));
+            Assert.Equal(File.ReadAllText(stepSummary), File.ReadAllText(summary));
+
+            var optedOut = Run([directory, "--sarif", sarif, "--no-restore", "--no-github"], BuiltAnalyzerPath(), name => actions.GetValueOrDefault(name));
+            Assert.DoesNotContain("::warning", optedOut.Output);
         }
         finally
         {

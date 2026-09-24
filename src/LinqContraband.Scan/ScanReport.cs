@@ -225,14 +225,14 @@ internal sealed class ScanReport
             text.AppendLine(Invariant($"{Plural(BaselineFindings.Count, "finding")} already in the baseline {(BaselineFindings.Count == 1 ? "is" : "are")} not listed; the SARIF report keeps {(BaselineFindings.Count == 1 ? "it" : "them")}."));
     }
 
-    private static string Location(Finding finding) => finding.Line <= 0
+    internal static string Location(Finding finding) => finding.Line <= 0
         ? finding.Path
         : finding.Column <= 0
             ? Invariant($"{finding.Path}:{finding.Line}")
             : Invariant($"{finding.Path}:{finding.Line}:{finding.Column}");
 
     /// <summary>The finding's line of code, trimmed and shortened, or null when the file cannot be read.</summary>
-    private string? SourceLine(Finding finding)
+    internal string? SourceLine(Finding finding)
     {
         var code = _sources.Line(finding.Path, finding.Line)?.Trim();
         return string.IsNullOrEmpty(code) ? null : Truncate(code, MaxSourceLineLength);
@@ -293,10 +293,30 @@ internal sealed class ScanReport
             writer.WriteStartObject("shortDescription");
             writer.WriteString("text", rule.Title);
             writer.WriteEndObject();
+            if (rule.Description is not null)
+            {
+                writer.WriteStartObject("fullDescription");
+                writer.WriteString("text", rule.Description);
+                writer.WriteEndObject();
+            }
             if (rule.HelpUri is not null)
+            {
+                // GitHub code scanning shows help.markdown on each alert's page.
                 writer.WriteString("helpUri", rule.HelpUri);
+                writer.WriteStartObject("help");
+                writer.WriteString("text", (rule.Description is null ? "" : rule.Description + " ") + "How to fix it: " + rule.HelpUri);
+                writer.WriteString("markdown", (rule.Description is null ? "" : rule.Description + "\n\n") + Invariant($"[{rule.Id}: what it catches and how to fix it]({rule.HelpUri})"));
+                writer.WriteEndObject();
+            }
             writer.WriteStartObject("defaultConfiguration");
             writer.WriteString("level", ToSarifLevel(rule.Severity));
+            writer.WriteEndObject();
+            writer.WriteStartObject("properties");
+            writer.WriteStartArray("tags");
+            writer.WriteStringValue("efcore");
+            if (rule.Category is not null)
+                writer.WriteStringValue(rule.Category.ToLowerInvariant());
+            writer.WriteEndArray();
             writer.WriteEndObject();
             writer.WriteEndObject();
         }
