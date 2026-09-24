@@ -9,8 +9,8 @@ body_class: page-scanner-guide
 # Scan a .NET Solution for EF Core Query Problems
 
 `LinqContraband.Scan` shows what LinqContraband would report on your code before you add it to a project. One command
-builds your solution with the analyzers injected and prints a ranked report: which rules fired, how often, and in
-which files. Your project files are not changed.
+builds your solution with the analyzers injected and prints a ranked report: which rules fired, how often, and
+where, down to the line of code. Your project files are not changed.
 
 ```bash
 dnx LinqContraband.Scan
@@ -45,6 +45,18 @@ LinqContraband found 38 problems (9 rules, 14 files).
   LC009  Info         6  Performance: Missing AsNoTracking() in Read-Only path
   ...
 
+Findings:
+
+  LC015  Deterministic Pagination: OrderBy required before Skip/Take
+    src/Orders/OrderService.cs:88:14
+      The method 'Skip' is called on an unordered IQueryable. Call 'OrderBy' or 'OrderByDescending' first to ensure deterministic results.
+      88 | var page = await db.Orders.Skip(offset).Take(size).ToListAsync();
+    src/Reports/SalesReport.cs:41:22
+      The method 'Take' is called on an unordered IQueryable. Call 'OrderBy' or 'OrderByDescending' first to ensure deterministic results.
+      41 | return db.Sales.Where(s => s.Year == year).Take(50).ToList();
+    ...and 4 more in the SARIF report.
+  ...
+
 Most affected files:
       7  src/Orders/OrderService.cs
       5  src/Reports/SalesReport.cs
@@ -57,7 +69,9 @@ What each rule means and how to fix it:
 SARIF report: linqcontraband.sarif
 ```
 
-Warnings come first, then advisory (Info) findings, each sorted by count. A multi-targeted project compiles each file
+Warnings come first, then advisory (Info) findings, each sorted by count. Under "Findings", each rule lists its first
+three findings with the message and the line of code; `--findings all` lists every one, and `--findings 0` leaves the
+section out. A multi-targeted project compiles each file
 once per target framework, so the report counts a finding once however many frameworks report it. Code suppressed
 with `#pragma warning disable` or `[SuppressMessage]` is left out, as it is in a normal build.
 
@@ -74,6 +88,7 @@ Core's diagnostic for them.
 | `-c`, `--configuration <name>` | Build configuration, passed to `dotnet build`. |
 | `-f`, `--framework <tfm>` | Build one target framework only, which is faster for multi-targeted projects. |
 | `--no-restore` | Skip the implicit restore. |
+| `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
 | `--version` | Show the version. The analyzer the tool runs has the same version. |

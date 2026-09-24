@@ -16,13 +16,14 @@ public sealed class ScanOptionsTests
         Assert.False(options.NoRestore);
         Assert.False(options.Verbose);
         Assert.Equal(10, options.Top);
+        Assert.Equal(3, options.FindingsPerRule);
     }
 
     [Fact]
     public void EveryOption_IsParsed()
     {
         Assert.True(ScanOptions.TryParse(
-            ["src/App.sln", "--sarif", "out/x.sarif", "-c", "Release", "-f", "net9.0", "--no-restore", "--top", "3", "-v"],
+            ["src/App.sln", "--sarif", "out/x.sarif", "-c", "Release", "-f", "net9.0", "--no-restore", "--top", "3", "--findings", "7", "-v"],
             out var options,
             out _));
 
@@ -32,7 +33,18 @@ public sealed class ScanOptionsTests
         Assert.Equal("net9.0", options.Framework);
         Assert.True(options.NoRestore);
         Assert.Equal(3, options.Top);
+        Assert.Equal(7, options.FindingsPerRule);
         Assert.True(options.Verbose);
+    }
+
+    [Theory]
+    [InlineData("all", int.MaxValue)]
+    [InlineData("ALL", int.MaxValue)]
+    [InlineData("0", 0)]
+    public void Findings_TakesACountOrAll(string value, int expected)
+    {
+        Assert.True(ScanOptions.TryParse(["--findings", value], out var options, out _));
+        Assert.Equal(expected, options.FindingsPerRule);
     }
 
     [Theory]
@@ -51,6 +63,7 @@ public sealed class ScanOptionsTests
     [InlineData(new[] { "-o", "--verbose" }, "-o needs a value.")]
     [InlineData(new[] { "--top", "many" }, "--top expects a whole number, got 'many'.")]
     [InlineData(new[] { "--top", "-1" }, "--top needs a value.")]
+    [InlineData(new[] { "--findings", "some" }, "--findings expects a whole number or 'all', got 'some'.")]
     [InlineData(new[] { "a.sln", "b.sln" }, "Only one path can be scanned at a time; got 'a.sln' and 'b.sln'.")]
     public void BadArguments_ReportWhatIsWrong(string[] args, string expected)
     {

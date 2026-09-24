@@ -78,7 +78,7 @@ namespace LinqContraband.Scan
                 result.Report.WriteSarif(stream, version);
 
             output.WriteLine();
-            output.Write(result.Report.RenderText(options.Top, DisplayPath(sarifPath)));
+            output.Write(result.Report.RenderText(options.Top, DisplayPath(sarifPath), options.FindingsPerRule));
             return result.BuildExitCode == 0 ? Success : ScanFailed;
         }
 

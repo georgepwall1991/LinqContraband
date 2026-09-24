@@ -153,6 +153,58 @@ public sealed class ScanReportTests
     }
 
     [Fact]
+    public void Text_ListsEachRulesFindingsWithTheLineOfCode()
+    {
+        var root = Directory.CreateTempSubdirectory("scan-report-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "src"));
+            File.WriteAllLines(Path.Combine(root, "src", "Orders.cs"), [
+                "class Orders",
+                "{",
+                "    void Load() { foreach (var id in ids) db.Orders.Find(id); }",
+                "}",
+            ]);
+            var results = new[]
+            {
+                Result("LC007", "warning", Path.Combine(root, "src", "Orders.cs"), 3, 43),
+                Result("LC007", "warning", Path.Combine(root, "src", "Missing.cs"), 8, 5),
+                Result("LC007", "warning", Path.Combine(root, "src", "Orders.cs"), 40, 1),
+                Result("LC031", "note", Path.Combine(root, "src", "Orders.cs"), 1, 1),
+            };
+            var findings = new List<Finding>();
+            var rules = new Dictionary<string, RuleInfo>(StringComparer.Ordinal);
+            SarifReader.Read(CompilerLog(results), findings, rules);
+            var report = new ScanReport(root, findings, rules);
+
+            var text = report.RenderText(topFiles: 0, sarifPath: null, findingsPerRule: 2);
+
+            Assert.Contains("""
+                Findings:
+
+                  LC007  N+1 Problem: Database execution inside loop
+                    src/Missing.cs:8:5
+                      LC007 message
+                    src/Orders.cs:3:43
+                      LC007 message
+                      3 | void Load() { foreach (var id in ids) db.Orders.Find(id); }
+                    ...and 1 more in the SARIF report.
+
+                  LC031  Unbounded Query Materialization
+                    src/Orders.cs:1:1
+                      LC031 message
+                      1 | class Orders
+                """.ReplaceLineEndings(), text);
+            Assert.DoesNotContain("Findings:", report.RenderText(topFiles: 0, sarifPath: null, findingsPerRule: 0));
+            Assert.DoesNotContain("more in the SARIF report", report.RenderText(topFiles: 0, sarifPath: null, findingsPerRule: int.MaxValue));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Text_WithoutFindings_SaysSo()
     {
         var text = ReadReport(CompilerLog()).RenderText(topFiles: 10, sarifPath: null);
