@@ -147,7 +147,7 @@ Releases are driven by the version in `src/LinqContraband/LinqContraband.csproj`
 2. Merge it. When **Build and Test** passes on `master`, `.github/workflows/release.yml` creates the annotated `vX.Y.Z` tag and a GitHub Release whose notes are that CHANGELOG section, then dispatches `.github/workflows/publish.yml`.
 3. `publish.yml` refuses to publish if the tag is not `v<csproj Version>`, runs the full build and tests, and pushes the package to NuGet with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (no stored API key).
 
-Do not create tags or releases by hand. Green `master` builds whose version is already released are a no-op. To retry a failed publish, run **Publish to NuGet** manually with the tag; tick `force_publish` to skip the 12-hour cooldown between releases.
+Do not create tags or releases by hand. Green `master` builds whose version is already released are a no-op. To retry a failed publish, run **Publish to NuGet** manually with the tag. Every release pushes to NuGet as soon as it is published; there is no cooldown between releases, and `--skip-duplicate` makes a re-run for an already-pushed version a no-op.
 
 ## Code Style
 
