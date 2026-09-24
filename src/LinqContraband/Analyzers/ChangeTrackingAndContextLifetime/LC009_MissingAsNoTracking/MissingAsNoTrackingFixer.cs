@@ -74,9 +74,11 @@ public sealed class MissingAsNoTrackingFixer : CodeFixProvider
         // DbSet-only operator in the chain ("db.Users.FromSqlRaw(...)").
         // We want to replace it with "<source>.AsNoTracking()".
 
+        // The wrapped source gives its trivia to the new call: in a chain split over lines, the line break after
+        // "db.Users" is its trailing trivia, and keeping it inside too put AsNoTracking() on a line of its own.
         var asNoTracking = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
-            sourceExpression,
+            sourceExpression.WithoutTrivia(),
             SyntaxFactory.IdentifierName("AsNoTracking"));
 
         var asNoTrackingInvocation = SyntaxFactory.InvocationExpression(asNoTracking)
