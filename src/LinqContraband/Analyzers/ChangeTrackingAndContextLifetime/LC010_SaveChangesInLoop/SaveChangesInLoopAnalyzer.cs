@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using LinqContraband.Analyzers.LC007_NPlusOneLooper;
 using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -64,6 +65,12 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         // 3. Check if inside a loop in the same executable body.
         // A local function or lambda declared inside a loop is not necessarily executed per iteration.
         var loop = FindSaveExecutionLoop(invocation);
+
+        // One save per batch (a Chunk(...) loop, or a loop that pages, drains or polls the database) is how large
+        // jobs keep the change tracker small. It still reports when an outer per-item loop repeats the batches.
+        while (loop != null && NPlusOneLooperAnalysis.IsBatchLoop(loop, context.CancellationToken))
+            loop = FindEnclosingLoopOutsideSameRoot(invocation, loop);
+
         if (loop != null)
         {
             if (IsSaveReceiverFreshContextDeclaredInsideLoopBody(invocation, loop))

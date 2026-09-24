@@ -94,9 +94,21 @@ A `while`, `do` or `for` loop counts as one of these when:
 - the query result decides when the loop stops: the execution sits in the loop condition, or its result (or a local computed from it, such as `hasMore = batch.Count == size`) is read by the condition or by an `if` that breaks out of the loop or returns;
 - the loop condition itself queries the database (`while (await db.Jobs.AnyAsync(...))`);
 - the loop body waits with `Task.Delay` or `Thread.Sleep`, or the condition waits on `PeriodicTimer.WaitForNextTickAsync`; or
-- the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds.
+- the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds; or
+- the query pages by a counter the loop advances: its `Skip(...)` reads the counter (`Skip(page * size)`, or an `offset` the body increases) and its `Take(...)` reads more than one row.
 
-The exemption only applies when the loop condition reads nothing but constants, integer counters, `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` always report, and so does a query inside a batch loop that sits in an outer per-item loop.
+The exemption only applies when the loop condition reads nothing but constants, integer counters, `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` report, except over `Chunk(...)` as below, and so does a query inside a batch loop that sits in an outer per-item loop.
+
+A `foreach` over `ids.Chunk(n)` is the usual way to keep an `IN` list under the database's parameter limit, and it stays quiet when the query reads the whole chunk: `batch.Contains(...)`, the chunk passed as an argument, or a local built from it such as `batch.ToHashSet()`:
+
+```csharp
+foreach (var batch in seriesIds.Chunk(500))
+{
+    var series = await db.Series.Where(s => batch.Contains(s.Id)).ToListAsync(ct); // one query per chunk
+}
+```
+
+A query that reads one element of the chunk (`batch[0]`, `batch.First()`) or runs inside a nested `foreach (var id in batch)` still reports.
 
 ### Level-by-level hierarchy walks
 

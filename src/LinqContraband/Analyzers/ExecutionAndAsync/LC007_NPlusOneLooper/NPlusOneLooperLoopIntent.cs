@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -10,7 +11,8 @@ namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 /// A <c>while</c>, <c>do</c> or <c>for</c> loop that runs until the database says it is done issues one query per
 /// batch or attempt, not one per item: keyset and paged batches, batched deletes, drain loops, polling loops and
 /// catch-guarded retries. Those loops are exempt when their condition does not walk an item source of its own
-/// (a queue, a reader, an indexed collection). <c>foreach</c> loops always walk items and are never exempt.
+/// (a queue, a reader, an indexed collection). <c>foreach</c> loops walk items and are exempt only over
+/// <c>Chunk(...)</c> batches that the query reads as a whole.
 /// </summary>
 internal static partial class NPlusOneLooperAnalysis
 {
@@ -24,6 +26,8 @@ internal static partial class NPlusOneLooperAnalysis
         IOperation? condition;
         switch (loop)
         {
+            case IForEachLoopOperation forEach:
+                return IsChunkedBatch(invocation, forEach);
             case IWhileLoopOperation whileLoop:
                 condition = whileLoop.Condition;
                 break;
@@ -51,7 +55,103 @@ internal static partial class NPlusOneLooperAnalysis
         return invocationInCondition ||
                conditionQueriesDatabase ||
                ResultControlsLoopExit(loop, condition, resultLocals) ||
+               IsPagedByLoopCounter(invocation, loop) ||
                IsPollingLoop(loop, condition);
+    }
+
+    /// <summary>
+    /// The loop works through the data a batch at a time: a <c>foreach</c> over <c>Chunk(...)</c>, or a loop with
+    /// a query of its own that LC007 exempts as a batch, drain or polling query. LC010 uses this to accept one
+    /// <c>SaveChanges</c> per batch, which keeps the change tracker small on large jobs.
+    /// </summary>
+    internal static bool IsBatchLoop(ILoopOperation loop, CancellationToken cancellationToken)
+    {
+        if (loop is IForEachLoopOperation forEach)
+            return IsChunkLoop(forEach);
+
+        foreach (var operation in DescendantsInSameBody(loop))
+        {
+            if (operation is IInvocationOperation invocation &&
+                invocation.TargetMethod.Name is not ("SaveChanges" or "SaveChangesAsync") &&
+                invocation.FindEnclosingLoop() == loop &&
+                TryMatchDatabaseExecution(invocation, cancellationToken, out _) &&
+                !IsCatchGuardedRetryAttempt(invocation, loop) &&
+                IsBatchPollingOrRetryLoop(invocation, loop, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsChunkLoop(IForEachLoopOperation forEach)
+    {
+        var collection = forEach.Collection;
+        while (collection is IConversionOperation conversion)
+            collection = conversion.Operand;
+
+        return collection is IInvocationOperation chunk &&
+               IsMethod(chunk.TargetMethod.ReducedFrom ?? chunk.TargetMethod, "System.Linq", "Enumerable", "Chunk") &&
+               forEach.Locals.Length == 1;
+    }
+
+    /// <summary>
+    /// <c>foreach (var batch in ids.Chunk(500))</c> whose query reads the whole batch (<c>batch.Contains(x.Id)</c>,
+    /// the batch passed as an argument, or a loop local built from it such as <c>batch.ToHashSet()</c>) runs one
+    /// query per chunk, the usual way to keep an <c>IN</c> list under the provider's parameter limit.
+    /// </summary>
+    private static bool IsChunkedBatch(IInvocationOperation invocation, IForEachLoopOperation forEach)
+    {
+        return IsChunkLoop(forEach) &&
+               QueryReadsWholeFrontier(invocation, forEach.Locals[0], CollectLocalWrites(forEach.Body));
+    }
+
+    /// <summary>
+    /// A page per iteration: the query's <c>Skip</c> count reads a local the loop advances
+    /// (<c>Skip(batch * size).Take(size)</c>), and <c>Take</c> reads more than one row.
+    /// </summary>
+    private static bool IsPagedByLoopCounter(IInvocationOperation invocation, ILoopOperation loop)
+    {
+        var counters = new HashSet<ILocalSymbol>(loop.Locals, SymbolEqualityComparer.Default);
+        var advanced = loop is IForLoopOperation { AtLoopBottom: var atLoopBottom }
+            ? DescendantsInSameBody(loop.Body).Concat(atLoopBottom.SelectMany(DescendantsInSameBody))
+            : DescendantsInSameBody(loop.Body);
+        foreach (var operation in advanced)
+        {
+            switch (operation)
+            {
+                case IAssignmentOperation { Target: ILocalReferenceOperation target }:
+                    counters.Add(target.Local);
+                    break;
+                case IIncrementOrDecrementOperation { Target: ILocalReferenceOperation target }:
+                    counters.Add(target.Local);
+                    break;
+            }
+        }
+
+        var skipsByCounter = false;
+        var takesPage = false;
+        for (var current = invocation.GetInvocationReceiver()?.UnwrapConversions();
+             current is IInvocationOperation call;
+             current = call.GetInvocationReceiver()?.UnwrapConversions())
+        {
+            if (call.Arguments.Length == 0)
+                continue;
+
+            var count = call.Arguments[call.Arguments.Length - 1].Value;
+            switch (call.TargetMethod.Name)
+            {
+                case "Skip":
+                    skipsByCounter |= ReferencesAnyLocal(count, counters);
+                    break;
+                case "Take":
+                    takesPage |= count.ConstantValue is not { HasValue: true, Value: int rows } || rows > 1;
+                    break;
+            }
+        }
+
+        return skipsByCounter && takesPage;
     }
 
     /// <summary>
@@ -192,7 +292,7 @@ internal static partial class NPlusOneLooperAnalysis
         while (parent is IConversionOperation)
             parent = parent.Parent;
 
-        return parent is IArgumentOperation ||
+        return parent is IArgumentOperation { Parent: not IInvocationOperation { TargetMethod.Name: "First" or "FirstOrDefault" or "Single" or "SingleOrDefault" or "Last" or "LastOrDefault" or "ElementAt" or "ElementAtOrDefault" } } ||
                parent is IInvocationOperation { TargetMethod.Name: "Contains" } contains && contains.Instance?.Syntax == reference.Syntax;
     }
 
