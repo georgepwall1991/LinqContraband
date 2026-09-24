@@ -146,7 +146,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         public bool HasAsTracking { get; set; }
         public bool HasSelect { get; set; }
 
+        // Set when a helper reshapes the query into something that is not an entity, such as
+        // AutoMapper's ProjectTo<Dto>() or an extension that selects IDs. EF Core does not track it.
+        public bool MaterializesNonEntity { get; set; }
+
         public bool IsTrackedEfRead =>
-            IsEfQuery && !IsAmbiguousSource && !HasAsNoTracking && !HasAsTracking && !HasSelect;
+            IsEfQuery && !IsAmbiguousSource && !HasAsNoTracking && !HasAsTracking && !HasSelect && !MaterializesNonEntity;
     }
 }
