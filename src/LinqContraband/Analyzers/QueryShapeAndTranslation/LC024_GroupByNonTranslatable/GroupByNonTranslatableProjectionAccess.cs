@@ -21,6 +21,9 @@ public sealed partial class GroupByNonTranslatableAnalyzer
             if (!invocation.ReferencesParameter(groupParam))
                 continue;
 
+            if (ReferencesGroupOnlyThroughAggregates(invocation, groupParam))
+                continue;
+
             ReportNonTranslatableAccess(context, invocation.Syntax, invocation.TargetMethod.Name);
             return;
         }
