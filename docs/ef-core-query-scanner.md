@@ -10,7 +10,8 @@ body_class: page-scanner-guide
 
 `LinqContraband.Scan` shows what LinqContraband would report on your code before you add it to a project. One command
 builds your solution with the analyzers injected and prints a ranked report: which rules fired, how often, and
-where, down to the line of code. Your project files are not changed.
+where, down to the line of code. Your project files are not changed unless you pass `--fix`, which applies the
+rules' code fixes for you.
 
 ```bash
 dnx LinqContraband.Scan
@@ -93,6 +94,7 @@ Core's diagnostic for them.
 | `--exclude <glob>` | Leave out findings in files matching a glob, such as `tests/**` or `**/Migrations/**`. A glob without `/` matches a file or folder name anywhere, so `Migrations` and `*.Designer.cs` work alone. Repeatable. |
 | `--fail-on <level>` | Exit with code 1 when a reported finding is at least this severe: `error`, `warning` or `info`. Defaults to `none`. |
 | `--baseline <file>` | A SARIF report from an earlier scan. Only findings it does not have are listed and count for `--fail-on`. |
+| `--fix` | Apply the rules' code fixes to your source files first, then report what is left. `--rules`, `--skip-rules` and `--exclude` limit what is fixed. |
 | `--html <file>` | Also write the report as one self-contained HTML page. |
 | `--summary <file>` | Also write the report as Markdown. |
 | `--no-github` | In GitHub Actions, skip the job summary and pull request annotations. |
@@ -108,6 +110,36 @@ Put the scanner's arguments after `--` when using `dnx`, so that `dnx` does not 
 The exit code is 0 when the scan completes, whatever it finds, unless `--fail-on` is set: then it is 1 when a finding
 at that severity or higher is left after the filters. It is 2 for a usage error and 3 when the build fails (the report
 still covers the projects that compiled before the failure).
+
+## Apply the Fixes
+
+Most rules have a code fix, the same one the IDE offers from the light bulb. `--fix` applies them all in one go,
+then scans again and reports what is left for a person to decide:
+
+```bash
+dnx LinqContraband.Scan -- --fix
+```
+
+```text
+Fixing /src/Shop/Shop.sln with LinqContraband 5.12.0 (dotnet format)...
+Applied fixes to 4 files. Review them with 'git diff' before you commit:
+  src/Catalog.API/Apis/CatalogApi.cs
+  src/Catalog.API/Infrastructure/CatalogContextSeed.cs
+  ...
+```
+
+This edits your source files, so start from a clean working tree, read the diff, and run your tests before you commit.
+A fixer only rewrites the cases it can change safely: it adds `AsNoTracking()` only when the entities stay inside
+the method, for example. Those it leaves alone stay in the report. To fix one rule at a time, which keeps each diff
+easy to review, pass `--rules`:
+
+```bash
+dnx LinqContraband.Scan -- --fix --rules LC009
+```
+
+`--skip-rules` keeps a rule's fixes out, and `--exclude` keeps files as they were, such as `--exclude Migrations`.
+The fixes run through `dotnet format analyzers`, which comes with the .NET SDK, so rules turned off in `.editorconfig`
+are not fixed either.
 
 ## Share the Report
 
@@ -233,6 +265,10 @@ injected file is deleted when the scan ends.
 Your repository's `.editorconfig` rule settings still apply, so a rule you have turned off stays off. A rule set to
 `error` there still fails that project's build, and the projects that depend on it are then not scanned. The scanner
 names those rules when it happens; set them to `warning` to scan everything.
+
+`--fix` runs `dotnet format analyzers` with the same file injected through the `CustomAfterMicrosoftCommonTargets`
+environment variable, which MSBuild reads as a property, and limits it to the rules that have a fix. Then it runs the
+scan above.
 
 ## Keep the Checks
 

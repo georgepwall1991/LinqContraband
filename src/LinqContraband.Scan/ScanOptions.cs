@@ -51,6 +51,9 @@ internal sealed record ScanOptions
     /// <summary>Skip the job summary and annotations the scan adds when it runs in GitHub Actions.</summary>
     public bool NoGitHub { get; init; }
 
+    /// <summary>Apply the rules' code fixes with <c>dotnet format</c> before scanning.</summary>
+    public bool Fix { get; init; }
+
     public bool Verbose { get; init; }
 
     public bool ShowHelp { get; init; }
@@ -62,7 +65,8 @@ internal sealed record ScanOptions
         Usage: linqcontraband-scan [<path>] [options]
 
         Builds a solution or project with the LinqContraband EF Core analyzers injected and reports
-        what they find. Nothing in your repository is changed; the build writes its usual bin/ and obj/.
+        what they find. Nothing in your repository is changed (unless you pass --fix); the build writes
+        its usual bin/ and obj/.
 
         Arguments:
           <path>                     Solution (.sln/.slnx), project, or directory. Default: current directory.
@@ -80,6 +84,9 @@ internal sealed record ScanOptions
                                      Default: none (exit 0 whatever the scan finds).
               --baseline <file>      A SARIF report from an earlier scan. Only findings it does not have are listed
                                      and count for --fail-on; the new SARIF report marks each finding new or unchanged.
+              --fix                  Apply the code fixes first (with dotnet format), then report what is left.
+                                     Edits your source files: commit or stash first, and review the diff.
+                                     --rules, --skip-rules and --exclude limit what is fixed.
               --html <file>          Also write the report as one HTML page, with the code around each finding.
               --summary <file>       Also write the report as Markdown, for a pull request comment or a wiki.
               --no-github            In GitHub Actions, skip the job summary and the pull request annotations.
@@ -110,6 +117,9 @@ internal sealed record ScanOptions
                     break;
                 case "-v" or "--verbose":
                     options = options with { Verbose = true };
+                    break;
+                case "--fix":
+                    options = options with { Fix = true };
                     break;
                 case "--no-restore":
                     options = options with { NoRestore = true };
