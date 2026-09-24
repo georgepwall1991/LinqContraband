@@ -67,7 +67,7 @@ jobs:
 
       - name: Check coverage threshold
         run: |
-          COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/**/coverage.cobertura.xml | head -1)
+          COVERAGE=$(grep -ohP 'line-rate="\K[^"]+' coverage/**/coverage.cobertura.xml | head -1)
           COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
           echo "Coverage: ${COVERAGE_PCT}%"
           if (( $(echo "$COVERAGE < 0.75" | bc -l) )); then
