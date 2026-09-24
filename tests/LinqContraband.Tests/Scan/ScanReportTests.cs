@@ -254,6 +254,101 @@ public sealed class ScanReportTests
         Assert.Equal(3, report.CountAtLeast("Info"));
     }
 
+    private static ScanReport ReportIn(string root, params string[] results)
+    {
+        var findings = new List<Finding>();
+        var rules = new Dictionary<string, RuleInfo>(StringComparer.Ordinal);
+        SarifReader.Read(CompilerLog(results), findings, rules);
+        return new ScanReport(root, findings, rules);
+    }
+
+    private static string SarifText(ScanReport report)
+    {
+        using var stream = new MemoryStream();
+        report.WriteSarif(stream, "9.9.9");
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    [Fact]
+    public void Baseline_MatchesFindingsThatMovedAndReportsOnlyNewOnes()
+    {
+        var root = Directory.CreateTempSubdirectory("scan-baseline-").FullName;
+        try
+        {
+            var file = Path.Combine(root, "Orders.cs");
+            File.WriteAllLines(file, ["class Orders {", "  void A() => db.Orders.ToList();", "  void B() => db.Orders.ToList();", "}"]);
+            var before = ReportIn(root,
+                Result("LC031", "note", file, 2, 15),
+                Result("LC031", "note", file, 3, 15));
+            var baseline = ScanBaseline.Parse(SarifText(before));
+            Assert.Equal(2, baseline.Count);
+            Assert.NotEqual(before.Fingerprint(before.Findings[0]), before.Fingerprint(before.Findings[1]));
+
+            // Two lines inserted above, indentation changed, and a third identical call added.
+            File.WriteAllLines(file, ["using System.Linq;", "", "class Orders {", "    void A() => db.Orders.ToList();", "    void B() => db.Orders.ToList();", "    void C() => db.Orders.ToList();", "}"]);
+            var after = ReportIn(root,
+                Result("LC031", "note", file, 4, 17),
+                Result("LC031", "note", file, 5, 17),
+                Result("LC031", "note", file, 6, 17),
+                Result("LC007", "warning", file, 6, 17));
+
+            var report = after.ApplyBaseline(baseline);
+
+            Assert.Equal([("LC031", 6), ("LC007", 6)], report.Findings.Select(finding => (finding.RuleId, finding.Line)).OrderByDescending(pair => pair.RuleId));
+            Assert.Equal([4, 5], report.BaselineFindings.Select(finding => finding.Line));
+            Assert.Equal(1, report.CountAtLeast("Warning"));
+
+            var text = report.RenderText(topFiles: 0, sarifPath: null);
+            Assert.Contains("LinqContraband found 2 new problems (2 rules, 1 file).", text);
+            Assert.Contains("2 findings already in the baseline are not listed; the SARIF report keeps them.", text);
+
+            using var document = JsonDocument.Parse(SarifText(report));
+            var results = document.RootElement.GetProperty("runs")[0].GetProperty("results").EnumerateArray().ToList();
+            Assert.Equal(4, results.Count);
+            Assert.Equal(
+                ["unchanged", "unchanged", "new", "new"],
+                results.Select(result => result.GetProperty("baselineState").GetString()));
+            Assert.All(results, result => Assert.Equal(32, result.GetProperty("partialFingerprints").GetProperty(ScanReport.FingerprintKey).GetString()!.Length));
+
+            Assert.Contains("found no new EF Core query problems", before.ApplyBaseline(baseline).RenderText(topFiles: 0, sarifPath: null));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Baseline_WithoutFingerprints_MatchesOnRuleFileAndMessage()
+    {
+        var baseline = ScanBaseline.Parse("""
+            { "runs": [{ "results": [
+              { "ruleId": "LC007", "message": { "text": "LC007 message" },
+                "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/My%20Orders.cs", "uriBaseId": "%SRCROOT%" } } }] },
+              { "ruleId": "LC031", "baselineState": "absent", "message": { "text": "LC031 message" },
+                "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/My%20Orders.cs" } } }] }
+            ] }] }
+            """);
+
+        var report = ReadReport(CompilerLog(
+            Result("LC007", "warning", InRoot("src", "My Orders.cs"), 40, 1),
+            Result("LC031", "note", InRoot("src", "My Orders.cs"), 41, 1))).ApplyBaseline(baseline);
+
+        Assert.Equal(1, baseline.Count);
+        Assert.Equal("LC031", Assert.Single(report.Findings).RuleId);
+        Assert.Equal("LC007", Assert.Single(report.BaselineFindings).RuleId);
+        Assert.Throws<JsonException>(() => ScanBaseline.Parse("{}"));
+    }
+
+    [Fact]
+    public void Sarif_WithoutABaseline_HasFingerprintsButNoBaselineState()
+    {
+        using var document = JsonDocument.Parse(SarifText(ReadReport(CompilerLog(Result("LC007", "warning", InRoot("A.cs"), 1, 1)))));
+        var result = document.RootElement.GetProperty("runs")[0].GetProperty("results")[0];
+        Assert.True(result.GetProperty("partialFingerprints").TryGetProperty(ScanReport.FingerprintKey, out _));
+        Assert.False(result.TryGetProperty("baselineState", out _));
+    }
+
     [Fact]
     public void Text_WithoutFindings_SaysSo()
     {

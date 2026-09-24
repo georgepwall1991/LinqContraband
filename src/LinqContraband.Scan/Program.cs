@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using LinqContraband.Scan;
 
@@ -41,6 +42,20 @@ namespace LinqContraband.Scan
                 return UsageError;
             }
 
+            ScanBaseline? baseline = null;
+            if (options.BaselinePath is not null)
+            {
+                try
+                {
+                    baseline = ScanBaseline.Parse(File.ReadAllText(options.BaselinePath));
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    error.WriteLine($"Cannot read the baseline '{options.BaselinePath}': {exception.Message}");
+                    return UsageError;
+                }
+            }
+
             analyzerAssemblyPath ??= Path.Combine(AppContext.BaseDirectory, "analyzer", "LinqContraband.dll");
             if (!File.Exists(analyzerAssemblyPath))
             {
@@ -72,6 +87,8 @@ namespace LinqContraband.Scan
                 error.WriteLine($"{result.UnreadableLogCount} of {result.ErrorLogCount} compiler logs could not be read, so their projects are missing from the results.");
 
             var report = result.Report.Filter(new ScanFilter(options.Rules, options.SkippedRules, options.Excludes));
+            if (baseline is not null)
+                report = report.ApplyBaseline(baseline);
 
             var sarifPath = Path.GetFullPath(options.SarifPath);
             var sarifDirectory = Path.GetDirectoryName(sarifPath);

@@ -41,7 +41,7 @@ public sealed class ScanOptionsTests
     public void Filters_AccumulateAndNormalizeRuleIds()
     {
         Assert.True(ScanOptions.TryParse(
-            ["--rules", "lc007, LC009", "--rules", "EF1002", "--skip-rules", "LC031", "--exclude", "tests/**", "--exclude", "Migrations", "--fail-on", "Warning"],
+            ["--rules", "lc007, LC009", "--rules", "EF1002", "--skip-rules", "LC031", "--exclude", "tests/**", "--exclude", "Migrations", "--fail-on", "Warning", "--baseline", "base.sarif"],
             out var options,
             out var error), error);
 
@@ -49,6 +49,7 @@ public sealed class ScanOptionsTests
         Assert.Equal(["LC031"], options.SkippedRules);
         Assert.Equal(["tests/**", "Migrations"], options.Excludes);
         Assert.Equal("Warning", options.FailOn);
+        Assert.Equal("base.sarif", options.BaselinePath);
     }
 
     [Theory]

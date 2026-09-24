@@ -92,6 +92,7 @@ Core's diagnostic for them.
 | `--skip-rules <ids>` | Leave these rules out, comma-separated. Repeatable. |
 | `--exclude <glob>` | Leave out findings in files matching a glob, such as `tests/**` or `**/Migrations/**`. A glob without `/` matches a file or folder name anywhere, so `Migrations` and `*.Designer.cs` work alone. Repeatable. |
 | `--fail-on <level>` | Exit with code 1 when a reported finding is at least this severe: `error`, `warning` or `info`. Defaults to `none`. |
+| `--baseline <file>` | A SARIF report from an earlier scan. Only findings it does not have are listed and count for `--fail-on`. |
 | `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
@@ -115,6 +116,28 @@ dnx LinqContraband.Scan -- --fail-on warning --exclude 'tests/**' --exclude Migr
 ```
 
 Filtered findings are left out of the SARIF report too, and the summary says how many were left out.
+
+## Fail Only on New Findings
+
+An existing codebase usually has findings nobody will fix this week. A baseline lets the scan fail only on findings
+that are new, so the gate can go in today. Scan once and commit the report:
+
+```bash
+dnx LinqContraband.Scan -- --sarif linqcontraband.baseline.sarif
+git add linqcontraband.baseline.sarif
+```
+
+Then scan against it in CI:
+
+```bash
+dnx LinqContraband.Scan -- --baseline linqcontraband.baseline.sarif --fail-on warning
+```
+
+The report lists only findings the baseline does not have, and says how many known ones it left out. Each finding in
+the SARIF report carries a fingerprint built from its rule, its file and its line of code (ignoring whitespace), so a
+finding still matches after code above it moves it to another line or it is re-indented. When you fix a known
+finding it drops out on its own; refresh the baseline file whenever you want the known list to shrink. The new SARIF
+report keeps every finding and marks each one `new` or `unchanged` in `baselineState`.
 
 ## Upload the Report to GitHub Code Scanning
 

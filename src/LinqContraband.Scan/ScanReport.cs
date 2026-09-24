@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -25,11 +26,21 @@ internal sealed class ScanReport
 
     private static readonly string[] SeverityOrder = ["Error", "Warning", "Info", "Hidden"];
 
-    private ScanReport(string rootDirectory, IReadOnlyList<Finding> findings, IReadOnlyDictionary<string, RuleInfo> rules, int filteredOut)
+    /// <summary>The <c>partialFingerprints</c> key the scanner writes and reads baselines by.</summary>
+    public const string FingerprintKey = "linqContrabandFingerprint/v1";
+
+    private readonly SourceFiles _sources;
+    private readonly IReadOnlyDictionary<Finding, string> _fingerprints;
+
+    private ScanReport(ScanReport original, IReadOnlyList<Finding> findings, IReadOnlyList<Finding> baselineFindings, int filteredOut)
     {
-        RootDirectory = rootDirectory;
+        RootDirectory = original.RootDirectory;
+        Rules = original.Rules;
+        _sources = original._sources;
+        _fingerprints = original._fingerprints;
+        HasBaseline = original.HasBaseline;
         Findings = findings;
-        Rules = rules;
+        BaselineFindings = baselineFindings;
         FilteredOut = filteredOut;
     }
 
@@ -45,6 +56,8 @@ internal sealed class ScanReport
             .ThenBy(finding => finding.RuleId, StringComparer.Ordinal)
             .ToList();
         Rules = rules;
+        _sources = new SourceFiles(rootDirectory);
+        _fingerprints = ComputeFingerprints(Findings, _sources);
     }
 
     public string RootDirectory { get; }
@@ -56,6 +69,29 @@ internal sealed class ScanReport
     /// <summary>How many findings <c>--rules</c>, <c>--skip-rules</c> or <c>--exclude</c> left out.</summary>
     public int FilteredOut { get; }
 
+    /// <summary>Whether <see cref="ApplyBaseline"/> ran, so <see cref="Findings"/> holds only new findings.</summary>
+    public bool HasBaseline { get; private init; }
+
+    /// <summary>Findings the baseline already had. They stay in the SARIF report but not in the text or the exit code.</summary>
+    public IReadOnlyList<Finding> BaselineFindings { get; } = [];
+
+    /// <summary>
+    /// A fingerprint that survives the finding moving to another line: the rule, the file, the finding's line of code
+    /// without whitespace (or its message, when the file cannot be read), and which occurrence of that combination it is.
+    /// </summary>
+    public string Fingerprint(Finding finding) => _fingerprints[finding];
+
+    /// <summary>
+    /// Splits the findings into new ones (<see cref="Findings"/>) and the ones <paramref name="baseline"/> already had
+    /// (<see cref="BaselineFindings"/>).
+    /// </summary>
+    public ScanReport ApplyBaseline(ScanBaseline baseline)
+    {
+        var known = Findings.Where(finding => baseline.Contains(finding, Fingerprint(finding))).ToHashSet();
+        var fresh = Findings.Where(finding => !known.Contains(finding)).ToList();
+        return new ScanReport(this, fresh, [.. BaselineFindings, .. Findings.Where(known.Contains)], FilteredOut) { HasBaseline = true };
+    }
+
     /// <summary>The report without the findings <paramref name="filter"/> leaves out.</summary>
     public ScanReport Filter(ScanFilter filter)
     {
@@ -63,7 +99,9 @@ internal sealed class ScanReport
             return this;
 
         var kept = Findings.Where(filter.Includes).ToList();
-        return new ScanReport(RootDirectory, kept, Rules, FilteredOut + Findings.Count - kept.Count);
+        var keptBaseline = BaselineFindings.Where(filter.Includes).ToList();
+        var filteredOut = FilteredOut + Findings.Count - kept.Count + BaselineFindings.Count - keptBaseline.Count;
+        return new ScanReport(this, kept, keptBaseline, filteredOut);
     }
 
     /// <summary>How many findings are at least as severe as <paramref name="severity"/> ("Error", "Warning" or "Info").</summary>
@@ -101,16 +139,18 @@ internal sealed class ScanReport
 
         if (Findings.Count == 0)
         {
-            text.AppendLine("LinqContraband found no EF Core query problems.");
+            text.AppendLine(HasBaseline ? "LinqContraband found no new EF Core query problems." : "LinqContraband found no EF Core query problems.");
             if (FilteredOut > 0)
                 text.AppendLine(Invariant($"{Plural(FilteredOut, "finding")} left out by --rules, --skip-rules or --exclude."));
+            AppendBaselineNote(text);
         }
         else
         {
             var files = Findings.Select(finding => finding.Path).Distinct(StringComparer.Ordinal).Count();
-            text.AppendLine(Invariant($"LinqContraband found {Plural(Findings.Count, "problem")} ({Plural(summaries.Count, "rule")}, {Plural(files, "file")})."));
+            text.AppendLine(Invariant($"LinqContraband found {Plural(Findings.Count, HasBaseline ? "new problem" : "problem")} ({Plural(summaries.Count, "rule")}, {Plural(files, "file")})."));
             if (FilteredOut > 0)
                 text.AppendLine(Invariant($"{Plural(FilteredOut, "more finding")} left out by --rules, --skip-rules or --exclude."));
+            AppendBaselineNote(text);
             text.AppendLine();
 
             var titleWidth = Math.Min(60, summaries.Max(summary => summary.Rule.Title.Length));
@@ -157,7 +197,6 @@ internal sealed class ScanReport
     /// </summary>
     private void RenderFindings(StringBuilder text, IReadOnlyList<RuleSummary> summaries, int perRule)
     {
-        var sources = new Dictionary<string, string[]?>(StringComparer.Ordinal);
         text.AppendLine();
         text.AppendLine("Findings:");
         foreach (var summary in summaries)
@@ -170,7 +209,7 @@ internal sealed class ScanReport
                 text.AppendLine(Invariant($"    {Location(finding)}"));
                 if (finding.Message.Length > 0)
                     text.AppendLine(Invariant($"      {finding.Message}"));
-                var code = SourceLine(sources, finding);
+                var code = SourceLine(finding);
                 if (code is not null)
                     text.AppendLine(Invariant($"      {finding.Line} | {code}"));
             }
@@ -180,6 +219,12 @@ internal sealed class ScanReport
         }
     }
 
+    private void AppendBaselineNote(StringBuilder text)
+    {
+        if (BaselineFindings.Count > 0)
+            text.AppendLine(Invariant($"{Plural(BaselineFindings.Count, "finding")} already in the baseline {(BaselineFindings.Count == 1 ? "is" : "are")} not listed; the SARIF report keeps {(BaselineFindings.Count == 1 ? "it" : "them")}."));
+    }
+
     private static string Location(Finding finding) => finding.Line <= 0
         ? finding.Path
         : finding.Column <= 0
@@ -187,29 +232,27 @@ internal sealed class ScanReport
             : Invariant($"{finding.Path}:{finding.Line}:{finding.Column}");
 
     /// <summary>The finding's line of code, trimmed and shortened, or null when the file cannot be read.</summary>
-    private string? SourceLine(Dictionary<string, string[]?> sources, Finding finding)
+    private string? SourceLine(Finding finding)
     {
-        if (finding.Line <= 0)
-            return null;
+        var code = _sources.Line(finding.Path, finding.Line)?.Trim();
+        return string.IsNullOrEmpty(code) ? null : Truncate(code, MaxSourceLineLength);
+    }
 
-        if (!sources.TryGetValue(finding.Path, out var lines))
+    private static Dictionary<Finding, string> ComputeFingerprints(IReadOnlyList<Finding> findings, SourceFiles sources)
+    {
+        var fingerprints = new Dictionary<Finding, string>();
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var finding in findings)
         {
-            try
-            {
-                lines = File.ReadAllLines(Path.Combine(RootDirectory, finding.Path));
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-                lines = null;
-            }
-            sources[finding.Path] = lines;
+            var code = sources.Line(finding.Path, finding.Line);
+            var anchor = string.IsNullOrWhiteSpace(code) ? "message:" + finding.Message : "code:" + string.Concat(code.Where(c => !char.IsWhiteSpace(c)));
+            var key = finding.RuleId + "\n" + finding.Path + "\n" + anchor;
+            occurrences[key] = occurrences.TryGetValue(key, out var seen) ? seen + 1 : 1;
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key + "\n" + occurrences[key].ToString(CultureInfo.InvariantCulture)));
+            fingerprints[finding] = Convert.ToHexString(hash, 0, 16).ToLowerInvariant();
         }
 
-        if (lines is null || finding.Line > lines.Length)
-            return null;
-
-        var code = lines[finding.Line - 1].Trim();
-        return code.Length == 0 ? null : Truncate(code, MaxSourceLineLength);
+        return fingerprints;
     }
 
     /// <summary>
@@ -218,7 +261,14 @@ internal sealed class ScanReport
     /// </summary>
     public void WriteSarif(Stream stream, string toolVersion)
     {
-        var reportedRules = Findings.Select(finding => finding.RuleId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var results = Findings.Select(finding => (Finding: finding, State: "new"))
+            .Concat(BaselineFindings.Select(finding => (Finding: finding, State: "unchanged")))
+            .OrderBy(result => result.Finding.Path, StringComparer.Ordinal)
+            .ThenBy(result => result.Finding.Line)
+            .ThenBy(result => result.Finding.Column)
+            .ThenBy(result => result.Finding.RuleId, StringComparer.Ordinal)
+            .ToList();
+        var reportedRules = results.Select(result => result.Finding.RuleId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         var ruleIndex = reportedRules.Select((id, index) => (id, index)).ToDictionary(pair => pair.id, pair => pair.index, StringComparer.Ordinal);
 
         using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
@@ -261,7 +311,7 @@ internal sealed class ScanReport
         writer.WriteEndObject();
 
         writer.WriteStartArray("results");
-        foreach (var finding in Findings)
+        foreach (var (finding, state) in results)
         {
             writer.WriteStartObject();
             writer.WriteString("ruleId", finding.RuleId);
@@ -270,6 +320,11 @@ internal sealed class ScanReport
             writer.WriteStartObject("message");
             writer.WriteString("text", finding.Message);
             writer.WriteEndObject();
+            writer.WriteStartObject("partialFingerprints");
+            writer.WriteString(FingerprintKey, Fingerprint(finding));
+            writer.WriteEndObject();
+            if (HasBaseline)
+                writer.WriteString("baselineState", state);
             writer.WriteStartArray("locations");
             writer.WriteStartObject();
             writer.WriteStartObject("physicalLocation");

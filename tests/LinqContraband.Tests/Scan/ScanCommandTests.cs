@@ -50,6 +50,28 @@ public sealed class ScanCommandTests
     }
 
     [Fact]
+    public void UnreadableBaseline_IsAUsageErrorBeforeBuilding()
+    {
+        var baseline = Path.Combine(Path.GetTempPath(), "baseline-" + Guid.NewGuid().ToString("N") + ".sarif");
+        File.WriteAllText(baseline, "not json");
+        try
+        {
+            var (exitCode, output, error) = Run([Path.GetTempPath(), "--baseline", baseline]);
+            Assert.Equal(ScanCommand.UsageError, exitCode);
+            Assert.Contains($"Cannot read the baseline '{baseline}'", error);
+            Assert.DoesNotContain("Building", output);
+
+            (exitCode, _, error) = Run([Path.GetTempPath(), "--baseline", baseline + ".missing"]);
+            Assert.Equal(ScanCommand.UsageError, exitCode);
+            Assert.Contains("Cannot read the baseline", error);
+        }
+        finally
+        {
+            File.Delete(baseline);
+        }
+    }
+
+    [Fact]
     public void MissingAnalyzer_FailsBeforeBuilding()
     {
         var (exitCode, output, error) = Run([Path.GetTempPath()], analyzerPath: Path.Combine(Path.GetTempPath(), "missing", "LinqContraband.dll"));
