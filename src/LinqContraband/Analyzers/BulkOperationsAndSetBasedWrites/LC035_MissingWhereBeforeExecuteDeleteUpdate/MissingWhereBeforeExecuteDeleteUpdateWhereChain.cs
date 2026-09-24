@@ -15,13 +15,13 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         return HasWhereInChain(
             operation,
             cancellationToken,
-            new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default));
+            new LocalFlowState());
     }
 
     private static bool HasWhereInChain(
         IOperation? operation,
         CancellationToken cancellationToken,
-        ISet<ILocalSymbol> visitedLocals)
+        LocalFlowState visitedLocals)
     {
         var current = operation;
 
@@ -49,15 +49,15 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
             if (current is IConditionalOperation conditional)
             {
-                return HasWhereInChain(conditional.WhenTrue, cancellationToken, ForkVisitedLocals(visitedLocals)) &&
-                       HasWhereInChain(conditional.WhenFalse, cancellationToken, ForkVisitedLocals(visitedLocals));
+                return HasWhereInChain(conditional.WhenTrue, cancellationToken, visitedLocals) &&
+                       HasWhereInChain(conditional.WhenFalse, cancellationToken, visitedLocals);
             }
 
             if (current is ISwitchExpressionOperation switchExpression)
             {
                 return switchExpression.Arms.Length > 0 &&
                        switchExpression.Arms.All(arm =>
-                           HasWhereInChain(arm.Value, cancellationToken, ForkVisitedLocals(visitedLocals)));
+                           HasWhereInChain(arm.Value, cancellationToken, visitedLocals));
             }
 
             if (current is ILocalReferenceOperation localReference)

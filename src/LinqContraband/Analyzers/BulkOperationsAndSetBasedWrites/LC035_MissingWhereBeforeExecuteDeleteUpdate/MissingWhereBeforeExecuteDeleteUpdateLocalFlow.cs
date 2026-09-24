@@ -10,13 +10,38 @@ namespace LinqContraband.Analyzers.LC035_MissingWhereBeforeExecuteDeleteUpdate;
 
 public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 {
+    // One read of a local can be reached along many paths: each optional `q = q.TagWith(...)` or
+    // `var q2 = q1` doubles them. Remembering each read's answer keeps the walk linear, where
+    // exploring every path again took more than 15 minutes on Bitwarden.
+    private sealed class LocalFlowState
+    {
+        public HashSet<(ILocalSymbol Local, int Position)> InProgress { get; } = new();
+        public Dictionary<(ILocalSymbol Local, int Position), bool> Results { get; } = new();
+    }
+
     private static bool HasWhereInLocalInitializer(
         ILocalReferenceOperation localReference,
         CancellationToken cancellationToken,
-        ISet<ILocalSymbol> visitedLocals)
+        LocalFlowState visitedLocals)
     {
-        if (!visitedLocals.Add(localReference.Local))
+        var key = (localReference.Local, localReference.Syntax.SpanStart);
+        if (visitedLocals.Results.TryGetValue(key, out var known))
+            return known;
+
+        if (!visitedLocals.InProgress.Add(key))
             return false;
+
+        var result = HasWhereInLocalInitializerCore(localReference, cancellationToken, visitedLocals);
+        visitedLocals.InProgress.Remove(key);
+        visitedLocals.Results[key] = result;
+        return result;
+    }
+
+    private static bool HasWhereInLocalInitializerCore(
+        ILocalReferenceOperation localReference,
+        CancellationToken cancellationToken,
+        LocalFlowState visitedLocals)
+    {
 
         var executableRoot = localReference.FindOwningExecutableRoot();
         if (executableRoot == null)
@@ -30,7 +55,10 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
         foreach (var assignment in assignments)
         {
-            if (assignment.SpanStart >= localReference.Syntax.SpanStart)
+            // In `q = q.TagWith(...)` the read belongs to the assignment it sits in; it sees the
+            // value `q` held before that assignment.
+            if (assignment.SpanStart >= localReference.Syntax.SpanStart ||
+                assignment.Value.Syntax.Span.Contains(localReference.Syntax.SpanStart))
                 continue;
 
             if (IsControlFlowConditionalAssignment(assignment.Value.Syntax))
@@ -49,7 +77,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         if (!HasWhereInChain(
                 latestUnconditional.Value.Value.UnwrapConversions(),
                 cancellationToken,
-                ForkVisitedLocals(visitedLocals)))
+                visitedLocals))
             return false;
 
         foreach (var conditional in conditionalReassignments)
@@ -60,7 +88,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
             if (!HasWhereInChain(
                     conditional.Value.UnwrapConversions(),
                     cancellationToken,
-                    ForkVisitedLocals(visitedLocals)))
+                    visitedLocals))
                 return false;
         }
 
@@ -71,10 +99,11 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         IReadOnlyList<LocalAssignment> assignments,
         int beforePosition,
         CancellationToken cancellationToken,
-        ISet<ILocalSymbol> visitedLocals)
+        LocalFlowState visitedLocals)
     {
         var earlierAssignments = assignments
-            .Where(assignment => assignment.SpanStart < beforePosition)
+            .Where(assignment => assignment.SpanStart < beforePosition &&
+                                 !assignment.Value.Syntax.Span.Contains(beforePosition))
             .ToArray();
         if (earlierAssignments.Length == 0)
             return false;
@@ -108,28 +137,23 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
                     HasWhereInChain(
                         assignment.Value.UnwrapConversions(),
                         cancellationToken,
-                        ForkVisitedLocals(visitedLocals))) &&
+                        visitedLocals)) &&
                 elseAssignments.All(assignment =>
                     HasWhereInChain(
                         assignment.Value.UnwrapConversions(),
                         cancellationToken,
-                        ForkVisitedLocals(visitedLocals))) &&
+                        visitedLocals)) &&
                 laterAssignments.All(assignment =>
                     HasWhereInChain(
                         assignment.Value.UnwrapConversions(),
                         cancellationToken,
-                        ForkVisitedLocals(visitedLocals))))
+                        visitedLocals)))
             {
                 return true;
             }
         }
 
         return false;
-    }
-
-    private static HashSet<ILocalSymbol> ForkVisitedLocals(ISet<ILocalSymbol> visitedLocals)
-    {
-        return new HashSet<ILocalSymbol>(visitedLocals, SymbolEqualityComparer.Default);
     }
 
     private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax)
