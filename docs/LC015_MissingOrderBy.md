@@ -92,6 +92,8 @@ For shapes where ordering genuinely does not matter (a one-shot bulk export, a `
 ### Notes
 LC015 evaluates EF-backed `IQueryable<T>` chains where pagination or "last row" operators depend on a deterministic order, including simple local aliases assigned from `DbSet<T>` or `DbContext.Set<T>()` before pagination. It also follows aliases that already contain `OrderBy(...)`, `Skip(...)`, or `Take(...)`, so ordered locals do not warn and misplaced sorting after a paged local is still diagnosed. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()` because database row ordering is not involved.
 
+A project's own query helper counts as ordering when its body calls `OrderBy`, `OrderByDescending`, `ThenBy` or `ThenByDescending`, as in `query = ApplySort(query, sortBy, direction)` or `db.Users.SortBy(field)`, and so does any call that returns `IOrderedQueryable<T>`. A helper from another assembly counts when its name contains `Sort` or `Order` (`ApplySorting`, `ApplyOrdering`). Prepending `OrderBy(x => x.Id)` after such a helper would replace the sort the caller asked for, so LC015 stays quiet rather than offer that fix. A helper that sorts only on some paths still counts; add a final key inside the helper if the default path can page unordered.
+
 The order must be established upstream of the reported operator; an `OrderBy` after `Skip` or `Take` still leaves the page selection non-deterministic, and it does not suppress the missing-order warning when later pagination continues from that already-arbitrary page boundary, including through simple query or sorted-query aliases.
 
 ## Rule Boundary
