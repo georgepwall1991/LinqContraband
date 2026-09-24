@@ -8,7 +8,7 @@ namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 
 public sealed partial class EntityMissingPrimaryKeyAnalyzer
 {
-    private static string? ExtractEntityTypeNameFromChain(ExpressionSyntax expression)
+    private static TypeSyntax? ExtractEntityTypeFromChain(ExpressionSyntax expression)
     {
         var current = expression;
 
@@ -21,7 +21,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             {
                 var typeArg = genericName.TypeArgumentList.Arguments.FirstOrDefault();
                 if (typeArg != null)
-                    return typeArg.ToString();
+                    return typeArg;
             }
 
             current = current switch

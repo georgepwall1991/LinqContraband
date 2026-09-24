@@ -93,6 +93,7 @@ namespace Microsoft.EntityFrameworkCore
     public class ModelBuilder
     {
         public EntityTypeBuilder<T> Entity<T>() where T : class => new EntityTypeBuilder<T>();
+        public ModelBuilder Entity<T>(Action<EntityTypeBuilder<T>> buildAction) where T : class => this;
         public void ApplyConfiguration<T>(IEntityTypeConfiguration<T> configuration) where T : class {}
         public void ApplyConfigurationsFromAssembly(System.Reflection.Assembly assembly) {}
     }

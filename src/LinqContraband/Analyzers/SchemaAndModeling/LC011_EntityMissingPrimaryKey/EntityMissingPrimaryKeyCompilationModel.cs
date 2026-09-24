@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey;
 
@@ -12,6 +14,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         private readonly object syncRoot = new();
         private readonly Compilation compilation;
         private readonly Dictionary<string, INamedTypeSymbol?> typeLookupCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<SyntaxTree, SemanticModel?> semanticModels = new();
         private TypeIndex? typeIndex;
         private EntityTypeConfigurationScan? entityTypeConfigurationScan;
 
@@ -40,6 +43,35 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 }
 
                 return cachedType;
+            }
+        }
+
+        /// <summary>
+        /// Binds a type written in source, so entities declared in a referenced project resolve
+        /// too; falls back to the name lookup over this compilation's own types.
+        /// </summary>
+        public INamedTypeSymbol? FindType(TypeSyntax typeSyntax, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var semanticModel = GetSemanticModel(typeSyntax.SyntaxTree);
+            if (semanticModel?.GetSymbolInfo(typeSyntax, cancellationToken).Symbol is INamedTypeSymbol boundType)
+                return boundType;
+
+            return FindTypeByName(typeSyntax.ToString(), cancellationToken);
+        }
+
+        private SemanticModel? GetSemanticModel(SyntaxTree tree)
+        {
+            lock (syncRoot)
+            {
+                if (!semanticModels.TryGetValue(tree, out var semanticModel))
+                {
+                    semanticModel = compilation.TryGetOwnedSemanticModel(tree, out var model) ? model : null;
+                    semanticModels[tree] = semanticModel;
+                }
+
+                return semanticModel;
             }
         }
 
