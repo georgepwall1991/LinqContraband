@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- LC035 no longer slows the build to a crawl on a bulk delete whose query is built through a long chain of optionally composed locals (`var q1 = ...; if (a) q1 = q1.Where(...); var q2 = q1; ...`). It walked every path through the chain again for each read, which doubled with each local; each local and read position is now walked once. It also reads `q = q.OrderBy(...)` correctly: the `q` on the right-hand side is the value before the assignment, so a filtered query that is then re-sorted no longer reports as unfiltered, and an unfiltered one still reports.
+
 ### Added
 - `linqcontraband-scan --fix` applies the rules' code fixes to your source files, then scans again and reports what is left. It runs `dotnet format analyzers` with the scanner's analyzer injected, so the project does not need to reference the package, and lists the files it changed. `--rules` and `--skip-rules` pick which rules are fixed, and `--exclude` keeps matching files as they were. On Microsoft's eShop Catalog API it fixed 12 of 25 findings (LC008, LC023, LC042 and some LC009) in 4 files, and the project still built.
 
