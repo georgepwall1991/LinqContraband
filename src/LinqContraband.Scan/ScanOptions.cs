@@ -39,6 +39,9 @@ internal sealed record ScanOptions
     /// </summary>
     public string? FailOn { get; init; }
 
+    /// <summary>A SARIF report from an earlier scan. Findings it already has are not listed and do not fail the scan.</summary>
+    public string? BaselinePath { get; init; }
+
     public bool Verbose { get; init; }
 
     public bool ShowHelp { get; init; }
@@ -66,6 +69,8 @@ internal sealed record ScanOptions
                                      Repeat it for more globs. A glob without '/' matches a file or folder name.
               --fail-on <level>      Exit with code 1 when a finding is at least this severe: error, warning or info.
                                      Default: none (exit 0 whatever the scan finds).
+              --baseline <file>      A SARIF report from an earlier scan. Only findings it does not have are listed
+                                     and count for --fail-on; the new SARIF report marks each finding new or unchanged.
               --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
@@ -147,6 +152,11 @@ internal sealed record ScanOptions
                             error = $"--fail-on expects error, warning, info or none, got '{level}'.";
                             return false;
                     }
+                    break;
+                case "--baseline":
+                    if (!TryTakeValue(args, ref i, out var baselinePath, out error))
+                        return false;
+                    options = options with { BaselinePath = baselinePath };
                     break;
                 case "--findings":
                     if (!TryTakeValue(args, ref i, out var findingsText, out error))
