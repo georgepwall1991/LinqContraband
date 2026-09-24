@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace LinqContraband.Scan;
 
-internal sealed record RuleInfo(string Id, string Title, string Severity, string? HelpUri);
+internal sealed record RuleInfo(string Id, string Title, string Severity, string? HelpUri, string? Description = null, string? Category = null);
 
 internal sealed record Finding(string RuleId, string Severity, string Message, string Path, int Line, int Column);
 
@@ -75,7 +75,9 @@ internal static partial class SarifReader
             var title = rule.TryGetProperty("shortDescription", out var shortDescription) ? GetString(shortDescription, "text") : null;
             var level = rule.TryGetProperty("defaultConfiguration", out var configuration) ? GetString(configuration, "level") : null;
             var helpUri = GetString(rule, "helpUri") ?? (id!.StartsWith("EF", StringComparison.Ordinal) ? EfCoreSqlQueriesUri : null);
-            rules[id!] = new RuleInfo(id!, title ?? id!, ToSeverity(level), helpUri);
+            var description = rule.TryGetProperty("fullDescription", out var fullDescription) ? GetString(fullDescription, "text") : null;
+            var category = rule.TryGetProperty("properties", out var properties) ? GetString(properties, "category") : null;
+            rules[id!] = new RuleInfo(id!, title ?? id!, ToSeverity(level), helpUri, string.IsNullOrWhiteSpace(description) ? null : description, category);
         }
     }
 

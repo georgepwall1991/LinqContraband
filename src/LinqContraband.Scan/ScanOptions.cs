@@ -42,6 +42,12 @@ internal sealed record ScanOptions
     /// <summary>A SARIF report from an earlier scan. Findings it already has are not listed and do not fail the scan.</summary>
     public string? BaselinePath { get; init; }
 
+    /// <summary>Where to write the report as Markdown, if anywhere.</summary>
+    public string? SummaryPath { get; init; }
+
+    /// <summary>Skip the job summary and annotations the scan adds when it runs in GitHub Actions.</summary>
+    public bool NoGitHub { get; init; }
+
     public bool Verbose { get; init; }
 
     public bool ShowHelp { get; init; }
@@ -71,6 +77,8 @@ internal sealed record ScanOptions
                                      Default: none (exit 0 whatever the scan finds).
               --baseline <file>      A SARIF report from an earlier scan. Only findings it does not have are listed
                                      and count for --fail-on; the new SARIF report marks each finding new or unchanged.
+              --summary <file>       Also write the report as Markdown, for a pull request comment or a wiki.
+              --no-github            In GitHub Actions, skip the job summary and the pull request annotations.
               --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
@@ -152,6 +160,14 @@ internal sealed record ScanOptions
                             error = $"--fail-on expects error, warning, info or none, got '{level}'.";
                             return false;
                     }
+                    break;
+                case "--summary":
+                    if (!TryTakeValue(args, ref i, out var summaryPath, out error))
+                        return false;
+                    options = options with { SummaryPath = summaryPath };
+                    break;
+                case "--no-github":
+                    options = options with { NoGitHub = true };
                     break;
                 case "--baseline":
                     if (!TryTakeValue(args, ref i, out var baselinePath, out error))
