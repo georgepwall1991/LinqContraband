@@ -71,6 +71,120 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task Skip_AfterProjectSortHelper_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public List<User> Page(string sortBy, bool descending, int page)
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> query = db.Users;
+            query = ApplySort(query, sortBy, descending);
+            return query.Skip(page * 10).Take(10).ToList();
+        }
+
+        private static IQueryable<User> ApplySort(IQueryable<User> query, string sortBy, bool descending)
+        {
+            if (sortBy == ""name"")
+                return descending ? query.OrderByDescending(u => u.Name) : query.OrderBy(u => u.Name);
+
+            return descending ? query.OrderByDescending(u => u.Id) : query.OrderBy(u => u.Id);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Take_AfterExtensionSortHelper_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public static class QueryExtensions
+    {
+        public static IQueryable<User> SortBy(this IQueryable<User> query, string field) =>
+            field == ""name"" ? query.OrderBy(u => u.Name) : query.OrderBy(u => u.Id);
+    }
+
+    public class Program
+    {
+        public List<User> Top(string field)
+        {
+            using var db = new AppDbContext();
+            return db.Users.SortBy(field).Take(10).ToList();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Take_AfterHelperReturningOrderedQueryable_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public static class QueryExtensions
+    {
+        public static IOrderedQueryable<User> ApplyStandardFilter(this IQueryable<User> query) =>
+            query.Where(u => u.Name != null).OrderBy(u => u.Name);
+    }
+
+    public class Program
+    {
+        public List<User> Top()
+        {
+            using var db = new AppDbContext();
+            return db.Users.ApplyStandardFilter().Take(10).ToList();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Skip_AfterFilterOnlyHelper_ShouldTrigger()
+    {
+        var test = Usings + @"
+namespace TestApp
+{
+    public class AppDbContext : TestNamespace.DbContext { public TestNamespace.DbSet<User> Users { get; set; } }
+
+    public class Program
+    {
+        public List<User> Page(string name)
+        {
+            using var db = new AppDbContext();
+            var query = OnlyNamed(db.Users, name);
+            return query.{|#0:Skip|}(10).ToList();
+        }
+
+        private static IQueryable<User> OnlyNamed(IQueryable<User> query, string name) =>
+            query.Where(u => u.Name == name);
+    }
+}" + MockNamespace;
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule)
+            .WithLocation(0)
+            .WithArguments("Skip");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Skip_OnIQueryableAliasFromDbSet_ShouldTrigger()
     {
         var test = Usings + @"
