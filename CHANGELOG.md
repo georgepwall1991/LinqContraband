@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `linqcontraband-scan --fix` applies the rules' code fixes to your source files, then scans again and reports what is left. It runs `dotnet format analyzers` with the scanner's analyzer injected, so the project does not need to reference the package, and lists the files it changed. `--rules` and `--skip-rules` pick which rules are fixed, and `--exclude` keeps matching files as they were. On Microsoft's eShop Catalog API it fixed 12 of 25 findings (LC008, LC023, LC042 and some LC009) in 4 files, and the project still built.
 
+### Fixed
+- The LC009 code fix no longer puts `AsNoTracking()` on a line of its own at column 0 when the query is split over lines (`db.Users` on one line, `.Where(...)` on the next). The line break after the `DbSet` was kept both inside and after the new call. A `linqcontraband-scan --fix` run on Microsoft's eShop showed it. The fix now gives `db.Users.AsNoTracking()` on the source line and leaves the rest of the chain as it was.
+
 ## [5.12.0] - 2026-09-24
 
 ### Added
