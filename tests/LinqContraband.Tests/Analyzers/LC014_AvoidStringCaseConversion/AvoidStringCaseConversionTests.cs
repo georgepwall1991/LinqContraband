@@ -100,6 +100,46 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task ToLower_OnSelfReassignedQueryFromDbSet_ShouldTrigger()
+    {
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(string name)
+        {
+            using var db = new AppDbContext();
+            IQueryable<User> query = db.Users;
+            query = query.Where(u => u.Age > 0);
+            query = query.Where(u => {|LC014:u.Name.ToLower()|} == name);
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ToLower_OnSelfReassignedQueryFromParameter_ShouldNotTrigger()
+    {
+        // Used to loop forever: the `query` read resolved to the assignment it sits in.
+        var test = Usings + TestClasses + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public IQueryable<User> TestMethod(IQueryable<User> source, string name)
+        {
+            var query = source;
+            query = query.Where(u => u.Name.ToLower() == name);
+            return query;
+        }
+    }
+}";
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ToUpper_InWhereClause_ShouldTrigger()
     {
         var test = Usings + TestClasses + @"

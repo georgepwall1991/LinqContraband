@@ -173,6 +173,22 @@ public partial class AnalyzerPerformanceTests
                     query.ExecuteDelete();
                 }
 
+                public List<User> ReassignedWithPredicateShapes(AppDbContext db, IQueryable<User> source, string name)
+                {
+                    var query = source;
+                    query = query.Where(u => u.Name.ToLower() == name);
+                    query = query.Where(u => u.Name.ToUpperInvariant().Contains(name, StringComparison.OrdinalIgnoreCase));
+                    query = query.Where(u => u.Id < DateTime.Now.Year);
+                    query = query.Where(u => IsActive(u));
+                    query = query.OrderBy(u => u.Name).OrderBy(u => u.Id);
+                    var projected = query.Select(u => new { u.Id, Orders = u.Orders.ToList() }).ToList();
+                    var tracked = db.Users.Where(u => u.Name.ToLower() == name);
+                    tracked = tracked.Where(u => u.Name.ToLower() != null);
+                    return query.Skip(10).Take(5).ToList();
+                }
+
+                private static bool IsActive(User user) => user.Id > 0;
+
                 private static bool TryGetQuery(AppDbContext db, out IQueryable<User> query)
                 {
                     query = db.Users;

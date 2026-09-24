@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
@@ -27,6 +28,7 @@ public sealed partial class AvoidStringCaseConversionAnalyzer
     private static bool HasEntityFrameworkQuerySource(IOperation? operation)
     {
         var current = operation;
+        HashSet<IOperation>? visitedLocalValues = null;
         while (current != null)
         {
             current = current.UnwrapConversions();
@@ -61,7 +63,8 @@ public sealed partial class AvoidStringCaseConversionAnalyzer
                     if (localReference.Type.IsDbSet())
                         return true;
 
-                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue))
+                    if (TryResolveLocalValue(localReference.Local, localReference, localReference.FindOwningExecutableRoot(), out var resolvedValue) &&
+                        (visitedLocalValues ??= new HashSet<IOperation>()).Add(resolvedValue))
                     {
                         current = resolvedValue;
                         continue;
@@ -112,8 +115,11 @@ public sealed partial class AvoidStringCaseConversionAnalyzer
                 assignment.Target.UnwrapConversions() is ILocalReferenceOperation targetLocal &&
                 SymbolEqualityComparer.Default.Equals(targetLocal.Local, local))
             {
+                // In `query = query.Where(...)` the assignment starts before the `query` it reads, so
+                // resolving the read to its own assignment would walk the same receiver forever.
                 var writeStart = assignment.Syntax.SpanStart;
-                if (writeStart >= referenceStart || writeStart <= bestWriteStart)
+                if (writeStart >= referenceStart || writeStart <= bestWriteStart ||
+                    assignment.Syntax.Span.Contains(referenceStart))
                     continue;
 
                 bestWriteStart = writeStart;
