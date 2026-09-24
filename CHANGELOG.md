@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The scanner's report now shows where each rule fired. Under "Findings", every rule lists its first three findings with the file, line and column, the message and the line of code, so the report can be acted on without opening the SARIF file. `--findings <n>` changes how many are listed per rule, `--findings all` lists every finding, and `--findings 0` leaves the section out.
+
 ### Fixed
 - LC027 reads relationship configuration from the project's own helpers that `OnModelCreating` calls with the `ModelBuilder` or an `EntityTypeBuilder<T>`, and from chains that start at a `var b = builder.Entity<T>()` local or an `Entity<T>(b => ...)` lambda. It also skips `[NotMapped]` and computed navigations, and the principal side of a one-to-one whose target has a `{Entity}Id` key back. A scan of BTCPay Server reported three configured or unmapped navigations, and a scan of Jellyfin one principal-side navigation.
 - LC010 no longer reports a `SaveChanges` that runs once per batch: in a `foreach` over `Chunk(...)`, or in a loop that pages, keysets, drains or polls the database a batch at a time (the loops LC007 already treats as one query per batch). Saving per batch keeps the change tracker small on large jobs, and a scan of Kavita reported three such migrations. A batch loop inside an outer per-item loop still reports.

@@ -20,6 +20,9 @@ internal sealed class ScanReport
     /// <summary>Rules beyond this many get one catalog link instead of a line each.</summary>
     private const int MaxRuleLinks = 10;
 
+    /// <summary>Source lines longer than this are cut short in the findings list.</summary>
+    private const int MaxSourceLineLength = 110;
+
     private static readonly string[] SeverityOrder = ["Error", "Warning", "Info", "Hidden"];
 
     public ScanReport(string rootDirectory, IEnumerable<Finding> findings, IReadOnlyDictionary<string, RuleInfo> rules)
@@ -66,7 +69,7 @@ internal sealed class ScanReport
     public RuleInfo GetRule(string id) =>
         Rules.TryGetValue(id, out var rule) ? rule : new RuleInfo(id, id, "Warning", null);
 
-    public string RenderText(int topFiles, string? sarifPath)
+    public string RenderText(int topFiles, string? sarifPath, int findingsPerRule = 0)
     {
         var text = new StringBuilder();
         var summaries = RuleSummaries();
@@ -87,6 +90,9 @@ internal sealed class ScanReport
             {
                 text.AppendLine(Invariant($"  {summary.Rule.Id,-6} {summary.Severity,-8} {summary.Count,5}  {Truncate(summary.Rule.Title, titleWidth)}"));
             }
+
+            if (findingsPerRule > 0)
+                RenderFindings(text, summaries, findingsPerRule);
 
             var top = TopFiles(topFiles);
             if (top.Count > 0)
@@ -114,6 +120,67 @@ internal sealed class ScanReport
         text.AppendLine();
         text.AppendLine("Keep these checks on in the editor and CI: dotnet add package LinqContraband");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// Lists where each rule reported, up to <paramref name="perRule"/> findings a rule, with the message and the
+    /// line of code, so the terminal report can be acted on without opening the SARIF file.
+    /// </summary>
+    private void RenderFindings(StringBuilder text, IReadOnlyList<RuleSummary> summaries, int perRule)
+    {
+        var sources = new Dictionary<string, string[]?>(StringComparer.Ordinal);
+        text.AppendLine();
+        text.AppendLine("Findings:");
+        foreach (var summary in summaries)
+        {
+            text.AppendLine();
+            text.AppendLine(Invariant($"  {summary.Rule.Id}  {summary.Rule.Title}"));
+            var findings = Findings.Where(finding => finding.RuleId == summary.Rule.Id).ToList();
+            foreach (var finding in findings.Take(perRule))
+            {
+                text.AppendLine(Invariant($"    {Location(finding)}"));
+                if (finding.Message.Length > 0)
+                    text.AppendLine(Invariant($"      {finding.Message}"));
+                var code = SourceLine(sources, finding);
+                if (code is not null)
+                    text.AppendLine(Invariant($"      {finding.Line} | {code}"));
+            }
+
+            if (findings.Count > perRule)
+                text.AppendLine(Invariant($"    ...and {findings.Count - perRule} more in the SARIF report."));
+        }
+    }
+
+    private static string Location(Finding finding) => finding.Line <= 0
+        ? finding.Path
+        : finding.Column <= 0
+            ? Invariant($"{finding.Path}:{finding.Line}")
+            : Invariant($"{finding.Path}:{finding.Line}:{finding.Column}");
+
+    /// <summary>The finding's line of code, trimmed and shortened, or null when the file cannot be read.</summary>
+    private string? SourceLine(Dictionary<string, string[]?> sources, Finding finding)
+    {
+        if (finding.Line <= 0)
+            return null;
+
+        if (!sources.TryGetValue(finding.Path, out var lines))
+        {
+            try
+            {
+                lines = File.ReadAllLines(Path.Combine(RootDirectory, finding.Path));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                lines = null;
+            }
+            sources[finding.Path] = lines;
+        }
+
+        if (lines is null || finding.Line > lines.Length)
+            return null;
+
+        var code = lines[finding.Line - 1].Trim();
+        return code.Length == 0 ? null : Truncate(code, MaxSourceLineLength);
     }
 
     /// <summary>

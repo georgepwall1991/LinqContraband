@@ -19,6 +19,11 @@ internal sealed record ScanOptions
     /// <summary>How many files to list under "Most affected files".</summary>
     public int Top { get; init; } = 10;
 
+    /// <summary>How many findings to list under each rule. <see cref="int.MaxValue"/> lists them all; 0 lists none.</summary>
+    public int FindingsPerRule { get; init; } = DefaultFindingsPerRule;
+
+    public const int DefaultFindingsPerRule = 3;
+
     public bool Verbose { get; init; }
 
     public bool ShowHelp { get; init; }
@@ -40,6 +45,7 @@ internal sealed record ScanOptions
           -c, --configuration <cfg>  Build configuration (passed to dotnet build).
           -f, --framework <tfm>      Target framework to build (passed to dotnet build).
               --no-restore           Skip the implicit restore.
+              --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
               --version              Show the version (the analyzer the tool runs has the same version).
@@ -84,6 +90,21 @@ internal sealed record ScanOptions
                     if (!TryTakeValue(args, ref i, out var framework, out error))
                         return false;
                     options = options with { Framework = framework };
+                    break;
+                case "--findings":
+                    if (!TryTakeValue(args, ref i, out var findingsText, out error))
+                        return false;
+                    if (string.Equals(findingsText, "all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options = options with { FindingsPerRule = int.MaxValue };
+                        break;
+                    }
+                    if (!int.TryParse(findingsText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var findingsPerRule))
+                    {
+                        error = $"--findings expects a whole number or 'all', got '{findingsText}'.";
+                        return false;
+                    }
+                    options = options with { FindingsPerRule = findingsPerRule };
                     break;
                 case "--top":
                     if (!TryTakeValue(args, ref i, out var topText, out error))

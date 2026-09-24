@@ -10,7 +10,7 @@ dotnet tool install -g LinqContraband.Scan   # .NET 8 or 9 SDK
 linqcontraband-scan MyApp.sln
 ```
 
-The scanner builds your solution with the [LinqContraband](https://www.nuget.org/packages/LinqContraband) analyzers injected, then prints the rules that fired, how often, the most affected files and a link to each rule's page. It also writes a SARIF 2.1.0 file you can upload to GitHub code scanning. Your project files are not changed.
+The scanner builds your solution with the [LinqContraband](https://www.nuget.org/packages/LinqContraband) analyzers injected, then prints the rules that fired, how often, where (with the line of code), the most affected files and a link to each rule's page. It also writes a SARIF 2.1.0 file you can upload to GitHub code scanning. Your project files are not changed.
 
 Output looks like this:
 
@@ -20,6 +20,14 @@ LinqContraband found 14 problems (5 rules, 6 files).
   Rule   Severity Count  Title
   LC007  Warning      6  N+1 Problem: Database execution inside loop
   LC009  Info         4  Performance: Missing AsNoTracking() in Read-Only path
+  ...
+
+Findings:
+
+  LC007  N+1 Problem: Database execution inside loop
+    src/Orders/OrderService.cs:52:31
+      Executing 'FirstOrDefaultAsync' inside a loop causes N+1 database operations. Fetch data in bulk or eager load before the loop.
+      52 | var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == order.CustomerId);
   ...
 ```
 
