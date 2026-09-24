@@ -44,6 +44,20 @@ relationship.WithOne(c => c.Order).HasForeignKey("CustomerShadowId");
 
 If the relationship-builder local is reassigned before `HasForeignKey(...)`, LC027 stays conservative because the configured navigation is ambiguous.
 
+The configuration can live in the project's own helpers that `OnModelCreating` calls with the `ModelBuilder` or an `EntityTypeBuilder<T>`, up to four calls deep, and the chain can start from an entity-builder local or an `Entity<T>(b => ...)` lambda:
+
+```csharp
+protected override void OnModelCreating(ModelBuilder builder) => ApiKeyData.OnModelCreating(builder);
+
+public static void OnModelCreating(ModelBuilder builder)
+{
+    var b = builder.Entity<ApiKeyData>();
+    b.HasOne(o => o.StoreData).WithMany(s => s.ApiKeys).HasForeignKey(o => o.StoreId);
+}
+```
+
+LC027 also skips navigations EF Core does not map: `[NotMapped]` properties and computed properties without a setter or a conventionally named backing field, such as `public PlanData NextPlan => NewPlan ?? Plan;`. A navigation whose target type has a `{Entity}Id` property back to this entity, such as `User.ProfileImage` with `ImageInfo.UserId`, is the principal side of a one-to-one and has no key to add.
+
 When a team intentionally uses a configured shadow FK, keep the Fluent configuration explicit. LC027 treats that as intentional model design and does not offer a fixer.
 
 ## Samples

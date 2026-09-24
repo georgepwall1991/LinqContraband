@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -61,15 +62,52 @@ public sealed partial class MissingExplicitForeignKeyAnalyzer
             if (entityType == null)
             {
                 var entityTypeName = ExtractEntityTypeNameFromChain(memberAccess.Expression);
-                if (entityTypeName == null)
-                    continue;
-
-                entityType = compilationModel.FindTypeByName(entityTypeName, cancellationToken);
+                entityType = entityTypeName != null
+                    ? compilationModel.FindTypeByName(entityTypeName, cancellationToken)
+                    : ResolveHasOneEntityType(memberAccess.Expression, compilationModel, cancellationToken);
             }
 
             if (entityType != null)
                 configuredForeignKeys.Add(GetNavigationConfigurationKey(entityType, navName));
         }
+    }
+
+    /// <summary>
+    /// The entity whose <c>HasOne</c> starts the chain, read from the builder's type when the chain does not
+    /// start at <c>Entity&lt;T&gt;()</c>: a <c>var b = builder.Entity&lt;T&gt;()</c> local, an
+    /// <c>Entity&lt;T&gt;(b =&gt; ...)</c> lambda, or an <c>EntityTypeBuilder&lt;T&gt;</c> parameter.
+    /// </summary>
+    private static INamedTypeSymbol? ResolveHasOneEntityType(
+        ExpressionSyntax expression,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken)
+    {
+        for (var current = expression; current != null;)
+        {
+            if (current is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
+            {
+                if (memberAccess.Name.Identifier.Text == "HasOne")
+                {
+                    if (!compilationModel.Compilation.TryGetOwnedSemanticModel(memberAccess.SyntaxTree, out var semanticModel))
+                        return null;
+
+                    return semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken).Type is INamedTypeSymbol
+                    {
+                        Name: "EntityTypeBuilder",
+                        TypeArguments.Length: 1
+                    } builder
+                        ? builder.TypeArguments[0] as INamedTypeSymbol
+                        : null;
+                }
+
+                current = memberAccess.Expression;
+                continue;
+            }
+
+            current = current is MemberAccessExpressionSyntax nextMemberAccess ? nextMemberAccess.Expression : null;
+        }
+
+        return null;
     }
 
     private static string GetNavigationConfigurationKey(INamedTypeSymbol entityType, string navigationName)
