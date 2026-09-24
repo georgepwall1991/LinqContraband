@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **56 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.11.0
-- Base audited commit: b0a4b5c1a8e01c3430a0089c2a8b23efc5d8dbd1
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.11.0-final`
+- Package version: 5.12.0
+- Base audited commit: 6cdc81a440afbfdade93f4d7a66df79423f51ec4
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.12.0-final`
 
 ## Rubric
 
@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-24 5.12.0 release ships the `LinqContraband.Scan` CI gates, baselines, HTML report and GitHub Action, Fix All under `dotnet format analyzers`, and the analyzer fixes for LC002, LC007, LC009, LC010, LC011, LC014, LC015, LC017, LC024, LC027, LC035, LC040 and LC041, and re-verifies the merged master, bringing the full local net10.0 suite to **4,473 tests**.
+>
 > The 2026-09-24 Fix All pass makes every fixer's Fix All work under `dotnet format analyzers` when a rule's first finding has no fix, and adds 3 tests, which with the scanner, LC041 and LC015 tests added since raises the full local net10.0 suite to **4,466 tests**.
 
 > The 2026-09-24 LC015 sort-helper pass stops LC015 reporting paging after a project helper that sorts or a call returning `IOrderedQueryable<T>`, where the fix's `OrderBy(x => x.Id)` replaced the caller's sort, and adds 4 tests, raising the full local net10.0 suite to **4,462 tests**.
@@ -1440,9 +1442,9 @@ Checked and unchanged: LC022 and LC010 also use `FindNode` without the tie flag,
 
 ## Verification Baseline
 
-Package version: **5.11.0**
+Package version: **5.12.0**
 
-Base audited commit: master at `b0a4b5c1a8e01c3430a0089c2a8b23efc5d8dbd1` (5.11.0 release-preparation base). 5.11.0 adds the `LinqContraband.Scan` dotnet tool, which ships the same analyzer, plus false-positive, false-negative and code-fix fixes for LC001, LC002, LC006, LC007, LC008, LC009, LC012, LC020, LC021, LC023, LC026, LC027, LC029, LC030, LC031, LC033, LC040, LC041, LC043 and LC045 on top of the 5.10.0 baseline. 5.10.0 was audited at `9af60ca304cee21c009ccc7b37c7273e0d6794c8` and adds LC051 through LC056 (five with code fixes), the LC042 rescue and fixer, the EF query culture-warning suppressor, and the 2026-09-22 research-scan false-positive fixes on top of the 5.9.0 baseline. 5.9.0 was audited at `ed4c14d2fc2d01e8441e6009d0aab25bca006b5b` and adds LC049 and LC050 with code fixes and the opt-in severity presets on top of the 5.8.1 baseline. 5.8.1 was audited at `1166a0705b5b43de1f5a5540e141fe9608638935`. 5.8.1 adds the cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (which also restores LC012's tracked-delete gate in multi-project IDE workspaces), LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and 31 coverage pins on top of the 5.8.0 baseline. The 5.8.0 baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
+Base audited commit: master at `6cdc81a440afbfdade93f4d7a66df79423f51ec4` (5.12.0 release-preparation base). 5.12.0 adds `LinqContraband.Scan` CI gating (`--fail-on`, baselines, rule and path filters), an HTML report and a GitHub Action, makes every fixer's Fix All work under `dotnet format analyzers`, and adds false-positive fixes for LC002, LC007, LC009, LC010, LC011, LC014, LC015, LC017, LC024, LC027, LC035, LC040 and LC041, ending an LC014 build hang, on top of the 5.11.0 baseline. 5.11.0 was audited at `b0a4b5c1a8e01c3430a0089c2a8b23efc5d8dbd1` and adds the `LinqContraband.Scan` dotnet tool, which ships the same analyzer, plus false-positive, false-negative and code-fix fixes for LC001, LC002, LC006, LC007, LC008, LC009, LC012, LC020, LC021, LC023, LC026, LC027, LC029, LC030, LC031, LC033, LC040, LC041, LC043 and LC045 on top of the 5.10.0 baseline. 5.10.0 was audited at `9af60ca304cee21c009ccc7b37c7273e0d6794c8` and adds LC051 through LC056 (five with code fixes), the LC042 rescue and fixer, the EF query culture-warning suppressor, and the 2026-09-22 research-scan false-positive fixes on top of the 5.9.0 baseline. 5.9.0 was audited at `ed4c14d2fc2d01e8441e6009d0aab25bca006b5b` and adds LC049 and LC050 with code fixes and the opt-in severity presets on top of the 5.8.1 baseline. 5.8.1 was audited at `1166a0705b5b43de1f5a5540e141fe9608638935`. 5.8.1 adds the cross-project crash guard for LC004/LC045/LC046/LC047/LC048 (which also restores LC012's tracked-delete gate in multi-project IDE workspaces), LC044 async-helper completion through `WhenAll`/`WaitAll`/stored tasks, and 31 coverage pins on top of the 5.8.0 baseline. The 5.8.0 baseline includes all prior analyzer hardening through 5.7.65 plus **LC048 shipped in 5.8.0** with tracked read-modify-write origin proof, reachable same-context save correlation, optimistic-concurrency evidence, conservative helper boundaries, public docs, and sample coverage.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -1521,7 +1523,12 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-09-23, 5.11.0: the `LinqContraband.Scan` tool, which also reports the EF1002/EF1003 findings LC018/LC034 defer to, README threshold examples for LC038/LC042, analyzer fixes for LC001/LC007/LC009/LC023/LC029/LC030/LC031/LC033/LC040/LC045, and code-fix fixes for LC001/LC002/LC006/LC008/LC009/LC012/LC020/LC021/LC023/LC026/LC027/LC029/LC041/LC043, with 4,337 full net10.0 tests):
+Current verification (2026-09-24, 5.12.0: `LinqContraband.Scan` CI gating, baselines, HTML report and GitHub Action, Fix All under `dotnet format analyzers`, and analyzer fixes for LC002/LC007/LC009/LC010/LC011/LC014/LC015/LC017/LC024/LC027/LC035/LC040/LC041, with 4,473 full net10.0 tests):
+
+- Each change landed in its own PR with focused tests, CI on net8.0, net9.0 and net10.0, the doc generator check and the link check; the per-pass sections above record the evidence.
+- The release branch was re-verified on the merged master: full suite, doc generator check, sample verifier and link check.
+
+Previous verification (2026-09-23, 5.11.0: the `LinqContraband.Scan` tool, which also reports the EF1002/EF1003 findings LC018/LC034 defer to, README threshold examples for LC038/LC042, analyzer fixes for LC001/LC007/LC009/LC023/LC029/LC030/LC031/LC033/LC040/LC045, and code-fix fixes for LC001/LC002/LC006/LC008/LC009/LC012/LC020/LC021/LC023/LC026/LC027/LC029/LC041/LC043, with 4,337 full net10.0 tests):
 
 - Each change landed in its own PR with focused tests, CI on net8.0, net9.0 and net10.0, the doc generator check and the link check; the per-pass sections above record the evidence.
 - The release branch was re-verified on the merged master: full suite, doc generator check, sample verifier and link check.
@@ -1661,5 +1668,7 @@ Final verification (2026-09-24, LC041 coalesce): 35 LC041 tests pass, and the fu
 Final verification (2026-09-24, LC015 sort helpers): 45 LC015 tests pass, and the full local net10.0 suite passes 4,462 tests.
 
 Final verification (2026-09-24, Fix All under dotnet format): 3 LinqContrabandFixAllProvider tests pass, `dotnet format analyzers` fixes the fixable LC009 findings after an unfixable first one, and the full local net10.0 suite passes 4,466 tests.
+
+Final verification (2026-09-24, 5.12.0: scanner CI gating, Fix All and the analyzer fixes above): the full local net10.0 suite passes 4,473 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
