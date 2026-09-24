@@ -37,15 +37,19 @@ var users = db.Users.OrderBy(u => u.Name).ThenBy(u => u.Age).ToList();
 ```
 
 The code fix rewrites only the later resetting sort call, preserving the selector and any explicit generic type arguments.
-The same fix is offered when the resetting sort is called on a single-assignment local that still has an ordered type:
+LC005 also reports a resetting sort called on a single-assignment local that another statement sorted, but it offers no fix
+there:
 
 ```csharp
-var sorted = db.Users.OrderBy(u => u.Name);
-var users = sorted.ThenBy(u => u.Age).ToList();
+var query = db.ReadingListItems.OrderBy(x => x.Position);
+var next = query.OrderBy(x => x.IsRead).ThenBy(x => x.Position).First();   // LC005, no fix
 ```
 
-If the local is explicitly widened to `IEnumerable<T>` or `IQueryable<T>`, LC005 still reports the reset, but the fix is
-manual because `ThenBy` is not available on the widened receiver type. LC005 stays quiet when the local is reassigned
+The last `OrderBy` is the primary key in both EF Core and LINQ to Objects, so `ThenBy` here would make `Position` the
+primary key and return a different row. Re-sorting a query built elsewhere is usually deliberate. Decide by hand: drop the
+earlier `OrderBy` if it is only there by accident, or change this call to `ThenBy` if the earlier key should come first.
+The same applies to a local explicitly widened to `IEnumerable<T>` or `IQueryable<T>`, where `ThenBy` is not available
+on the receiver type either. LC005 stays quiet when the local is reassigned
 before the later `OrderBy` directly, through deconstruction, or through `out`/`ref`, because the analyzer cannot prove which ordering state
 reaches the reset.
 
