@@ -231,6 +231,27 @@ internal sealed class ScanReport
             ? Invariant($"{finding.Path}:{finding.Line}")
             : Invariant($"{finding.Path}:{finding.Line}:{finding.Column}");
 
+    /// <summary>
+    /// The finding's line and up to <paramref name="context"/> lines either side, untrimmed, or an empty list when the
+    /// file cannot be read.
+    /// </summary>
+    internal IReadOnlyList<(int Number, string Text)> SourceContext(Finding finding, int context)
+    {
+        var lines = new List<(int, string)>();
+        if (_sources.Line(finding.Path, finding.Line) is null)
+            return lines;
+
+        for (var number = Math.Max(1, finding.Line - context); number <= finding.Line + context; number++)
+        {
+            var text = _sources.Line(finding.Path, number);
+            if (text is null)
+                break;
+            lines.Add((number, text));
+        }
+
+        return lines;
+    }
+
     /// <summary>The finding's line of code, trimmed and shortened, or null when the file cannot be read.</summary>
     internal string? SourceLine(Finding finding)
     {

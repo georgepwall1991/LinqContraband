@@ -427,6 +427,43 @@ public sealed class ScanReportTests
     }
 
     [Fact]
+    public void Html_IsOneSelfContainedPageWithTheCodeAroundEachFinding()
+    {
+        var root = Directory.CreateTempSubdirectory("scan-html-").FullName;
+        try
+        {
+            var file = Path.Combine(root, "Orders.cs");
+            File.WriteAllLines(file, ["class Orders", "{", "        void A() => db.Orders.Where(o => o.Name == \"<b>\").ToList();", "}"]);
+            var report = ReportIn(root,
+                Result("LC007", "warning", file, 3, 21),
+                Result("LC031", "note", Path.Combine(root, "Gone.cs"), 9, 1));
+
+            var html = HtmlReport.Render(report, "9.9.9", root, new DateTimeOffset(2026, 9, 24, 21, 0, 0, TimeSpan.Zero));
+
+            Assert.StartsWith("<!DOCTYPE html>", html);
+            Assert.Contains($"<title>LinqContraband report: {Path.GetFileName(root)}</title>", html);
+            Assert.Contains("scanned 2026-09-24 21:00 UTC", html);
+            Assert.Contains("<span class=\"value\">2</span><span class=\"label\">problems</span>", html);
+            Assert.Contains("<details class=\"rule\" id=\"LC007\" open>", html);
+            Assert.Contains("Queries inside loops run once per item. <a href=\"https://georgepwall1991.github.io/LinqContraband/LC007_NPlusOneLooper.html\">", html);
+            Assert.Contains("<span class=\"line hit\"><span class=\"ln\">3</span>        void A() =&gt; db.Orders.Where(o =&gt; o.Name == &quot;&lt;b&gt;&quot;).ToList();</span>", html);
+            Assert.Contains("<span class=\"line\"><span class=\"ln\">1</span>class Orders</span>", html);
+            Assert.Contains("<input type=\"checkbox\" data-severity=\"Info\" checked>", html);
+            Assert.DoesNotContain("<script src", html);
+            Assert.DoesNotContain("<link", html);
+            Assert.Equal(1, html.Split("<pre>").Length - 1);
+
+            var empty = HtmlReport.Render(ReportIn(root), "9.9.9", root, DateTimeOffset.UnixEpoch);
+            Assert.Contains("LinqContraband found no EF Core query problems.", empty);
+            Assert.DoesNotContain("<details", empty);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Text_WithoutFindings_SaysSo()
     {
         var text = ReadReport(CompilerLog()).RenderText(topFiles: 10, sarifPath: null);

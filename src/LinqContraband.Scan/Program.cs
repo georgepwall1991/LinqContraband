@@ -106,6 +106,21 @@ namespace LinqContraband.Scan
             output.WriteLine();
             output.Write(report.RenderText(options.Top, DisplayPath(sarifPath), options.FindingsPerRule));
 
+            if (options.HtmlPath is not null)
+            {
+                var htmlPath = Path.GetFullPath(options.HtmlPath);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
+                    File.WriteAllText(htmlPath, HtmlReport.Render(report, version, Path.GetFullPath(options.Target), DateTimeOffset.UtcNow));
+                    output.WriteLine($"HTML report: {DisplayPath(htmlPath)}");
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    error.WriteLine($"Could not write the HTML report: {exception.Message}");
+                }
+            }
+
             WriteGitHubOutput(options, report, output, error, environment);
 
             if (result.BuildExitCode != 0)

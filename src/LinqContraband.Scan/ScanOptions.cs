@@ -42,6 +42,9 @@ internal sealed record ScanOptions
     /// <summary>A SARIF report from an earlier scan. Findings it already has are not listed and do not fail the scan.</summary>
     public string? BaselinePath { get; init; }
 
+    /// <summary>Where to write the report as a self-contained HTML page, if anywhere.</summary>
+    public string? HtmlPath { get; init; }
+
     /// <summary>Where to write the report as Markdown, if anywhere.</summary>
     public string? SummaryPath { get; init; }
 
@@ -77,6 +80,7 @@ internal sealed record ScanOptions
                                      Default: none (exit 0 whatever the scan finds).
               --baseline <file>      A SARIF report from an earlier scan. Only findings it does not have are listed
                                      and count for --fail-on; the new SARIF report marks each finding new or unchanged.
+              --html <file>          Also write the report as one HTML page, with the code around each finding.
               --summary <file>       Also write the report as Markdown, for a pull request comment or a wiki.
               --no-github            In GitHub Actions, skip the job summary and the pull request annotations.
               --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
@@ -160,6 +164,11 @@ internal sealed record ScanOptions
                             error = $"--fail-on expects error, warning, info or none, got '{level}'.";
                             return false;
                     }
+                    break;
+                case "--html":
+                    if (!TryTakeValue(args, ref i, out var htmlPath, out error))
+                        return false;
+                    options = options with { HtmlPath = htmlPath };
                     break;
                 case "--summary":
                     if (!TryTakeValue(args, ref i, out var summaryPath, out error))
