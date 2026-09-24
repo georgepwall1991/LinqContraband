@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - The scanner's report now shows where each rule fired. Under "Findings", every rule lists its first three findings with the file, line and column, the message and the line of code, so the report can be acted on without opening the SARIF file. `--findings <n>` changes how many are listed per rule, `--findings all` lists every finding, and `--findings 0` leaves the section out.
+- The scanner can gate CI. `--fail-on error|warning|info` makes it exit with code 1 when a finding at that severity or higher is reported (the default, `none`, keeps exit code 0). `--rules` and `--skip-rules` take comma-separated rule IDs, and `--exclude` leaves out findings in files matching a glob such as `tests/**`, `**/Migrations/**` or just `Migrations`. Filtered findings are left out of the SARIF report as well, and the summary says how many were left out.
 
 ### Fixed
 - LC027 reads relationship configuration from the project's own helpers that `OnModelCreating` calls with the `ModelBuilder` or an `EntityTypeBuilder<T>`, and from chains that start at a `var b = builder.Entity<T>()` local or an `Entity<T>(b => ...)` lambda. It also skips `[NotMapped]` and computed navigations, and the principal side of a one-to-one whose target has a `{Entity}Id` key back. A scan of BTCPay Server reported three configured or unmapped navigations, and a scan of Jellyfin one principal-side navigation.

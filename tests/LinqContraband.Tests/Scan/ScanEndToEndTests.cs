@@ -81,6 +81,16 @@ public sealed class ScanEndToEndTests
             var location = result.GetProperty("locations")[0].GetProperty("physicalLocation");
             Assert.Equal("Queries.cs", location.GetProperty("artifactLocation").GetProperty("uri").GetString());
             Assert.Equal(5, location.GetProperty("region").GetProperty("startLine").GetInt32());
+
+            // --fail-on turns the finding into exit code 1, and --exclude drops it (and the failure) again.
+            var failing = Run([directory, "--sarif", sarif, "--no-restore", "--fail-on", "warning"], BuiltAnalyzerPath());
+            Assert.True(failing.ExitCode == ScanCommand.FindingsFound, failing.Output + failing.Error);
+            Assert.Contains("Failing: 1 finding is warning severity or higher (--fail-on warning).", failing.Error);
+
+            var excluded = Run([directory, "--sarif", sarif, "--no-restore", "--fail-on", "warning", "--exclude", "Queries.cs"], BuiltAnalyzerPath());
+            Assert.True(excluded.ExitCode == ScanCommand.Success, excluded.Output + excluded.Error);
+            Assert.Contains("LinqContraband found no EF Core query problems.", excluded.Output);
+            Assert.Contains("1 finding left out by --rules, --skip-rules or --exclude.", excluded.Output);
         }
         finally
         {

@@ -25,6 +25,14 @@ internal sealed class ScanReport
 
     private static readonly string[] SeverityOrder = ["Error", "Warning", "Info", "Hidden"];
 
+    private ScanReport(string rootDirectory, IReadOnlyList<Finding> findings, IReadOnlyDictionary<string, RuleInfo> rules, int filteredOut)
+    {
+        RootDirectory = rootDirectory;
+        Findings = findings;
+        Rules = rules;
+        FilteredOut = filteredOut;
+    }
+
     public ScanReport(string rootDirectory, IEnumerable<Finding> findings, IReadOnlyDictionary<string, RuleInfo> rules)
     {
         RootDirectory = rootDirectory;
@@ -44,6 +52,23 @@ internal sealed class ScanReport
     public IReadOnlyList<Finding> Findings { get; }
 
     public IReadOnlyDictionary<string, RuleInfo> Rules { get; }
+
+    /// <summary>How many findings <c>--rules</c>, <c>--skip-rules</c> or <c>--exclude</c> left out.</summary>
+    public int FilteredOut { get; }
+
+    /// <summary>The report without the findings <paramref name="filter"/> leaves out.</summary>
+    public ScanReport Filter(ScanFilter filter)
+    {
+        if (filter.IsEmpty)
+            return this;
+
+        var kept = Findings.Where(filter.Includes).ToList();
+        return new ScanReport(RootDirectory, kept, Rules, FilteredOut + Findings.Count - kept.Count);
+    }
+
+    /// <summary>How many findings are at least as severe as <paramref name="severity"/> ("Error", "Warning" or "Info").</summary>
+    public int CountAtLeast(string severity) =>
+        Findings.Count(finding => SeverityRank(finding.Severity) <= SeverityRank(severity));
 
     /// <summary>Rules that reported, most severe first, then most frequent.</summary>
     public IReadOnlyList<RuleSummary> RuleSummaries() => Findings
@@ -77,11 +102,15 @@ internal sealed class ScanReport
         if (Findings.Count == 0)
         {
             text.AppendLine("LinqContraband found no EF Core query problems.");
+            if (FilteredOut > 0)
+                text.AppendLine(Invariant($"{Plural(FilteredOut, "finding")} left out by --rules, --skip-rules or --exclude."));
         }
         else
         {
             var files = Findings.Select(finding => finding.Path).Distinct(StringComparer.Ordinal).Count();
             text.AppendLine(Invariant($"LinqContraband found {Plural(Findings.Count, "problem")} ({Plural(summaries.Count, "rule")}, {Plural(files, "file")})."));
+            if (FilteredOut > 0)
+                text.AppendLine(Invariant($"{Plural(FilteredOut, "more finding")} left out by --rules, --skip-rules or --exclude."));
             text.AppendLine();
 
             var titleWidth = Math.Min(60, summaries.Max(summary => summary.Rule.Title.Length));

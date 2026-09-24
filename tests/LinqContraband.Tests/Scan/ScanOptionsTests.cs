@@ -37,6 +37,31 @@ public sealed class ScanOptionsTests
         Assert.True(options.Verbose);
     }
 
+    [Fact]
+    public void Filters_AccumulateAndNormalizeRuleIds()
+    {
+        Assert.True(ScanOptions.TryParse(
+            ["--rules", "lc007, LC009", "--rules", "EF1002", "--skip-rules", "LC031", "--exclude", "tests/**", "--exclude", "Migrations", "--fail-on", "Warning"],
+            out var options,
+            out var error), error);
+
+        Assert.Equal(["LC007", "LC009", "EF1002"], options.Rules);
+        Assert.Equal(["LC031"], options.SkippedRules);
+        Assert.Equal(["tests/**", "Migrations"], options.Excludes);
+        Assert.Equal("Warning", options.FailOn);
+    }
+
+    [Theory]
+    [InlineData("error", "Error")]
+    [InlineData("info", "Info")]
+    [InlineData("note", "Info")]
+    [InlineData("none", null)]
+    public void FailOn_TakesASeverity(string value, string? expected)
+    {
+        Assert.True(ScanOptions.TryParse(["--fail-on", value], out var options, out _));
+        Assert.Equal(expected, options.FailOn);
+    }
+
     [Theory]
     [InlineData("all", int.MaxValue)]
     [InlineData("ALL", int.MaxValue)]
@@ -63,6 +88,9 @@ public sealed class ScanOptionsTests
     [InlineData(new[] { "-o", "--verbose" }, "-o needs a value.")]
     [InlineData(new[] { "--top", "many" }, "--top expects a whole number, got 'many'.")]
     [InlineData(new[] { "--top", "-1" }, "--top needs a value.")]
+    [InlineData(new[] { "--rules", "LC007,CA1822" }, "--rules expects rule IDs such as LC007 or EF1002, got 'CA1822'.")]
+    [InlineData(new[] { "--skip-rules", "," }, "--skip-rules expects rule IDs such as LC007 or EF1002, got ','.")]
+    [InlineData(new[] { "--fail-on", "always" }, "--fail-on expects error, warning, info or none, got 'always'.")]
     [InlineData(new[] { "--findings", "some" }, "--findings expects a whole number or 'all', got 'some'.")]
     [InlineData(new[] { "a.sln", "b.sln" }, "Only one path can be scanned at a time; got 'a.sln' and 'b.sln'.")]
     public void BadArguments_ReportWhatIsWrong(string[] args, string expected)

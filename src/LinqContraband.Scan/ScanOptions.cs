@@ -24,6 +24,21 @@ internal sealed record ScanOptions
 
     public const int DefaultFindingsPerRule = 3;
 
+    /// <summary>Only these rules are reported. Empty reports every rule.</summary>
+    public IReadOnlyList<string> Rules { get; init; } = [];
+
+    /// <summary>These rules are left out of the report.</summary>
+    public IReadOnlyList<string> SkippedRules { get; init; } = [];
+
+    /// <summary>Globs of files whose findings are left out of the report.</summary>
+    public IReadOnlyList<string> Excludes { get; init; } = [];
+
+    /// <summary>
+    /// The least severe finding that makes the scan exit with <see cref="ScanCommand.FindingsFound"/>, as a
+    /// severity name ("Error", "Warning" or "Info"), or null to exit 0 whatever the scan finds.
+    /// </summary>
+    public string? FailOn { get; init; }
+
     public bool Verbose { get; init; }
 
     public bool ShowHelp { get; init; }
@@ -45,6 +60,12 @@ internal sealed record ScanOptions
           -c, --configuration <cfg>  Build configuration (passed to dotnet build).
           -f, --framework <tfm>      Target framework to build (passed to dotnet build).
               --no-restore           Skip the implicit restore.
+              --rules <ids>          Report only these rules, comma-separated (LC007,LC009).
+              --skip-rules <ids>     Leave these rules out, comma-separated.
+              --exclude <glob>       Leave out findings in matching files, such as '**/Migrations/**' or 'tests/**'.
+                                     Repeat it for more globs. A glob without '/' matches a file or folder name.
+              --fail-on <level>      Exit with code 1 when a finding is at least this severe: error, warning or info.
+                                     Default: none (exit 0 whatever the scan finds).
               --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
@@ -91,6 +112,42 @@ internal sealed record ScanOptions
                         return false;
                     options = options with { Framework = framework };
                     break;
+                case "--rules" or "--skip-rules":
+                    if (!TryTakeValue(args, ref i, out var ruleText, out error))
+                        return false;
+                    if (!TryParseRules(arg, ruleText, out var ruleIds, out error))
+                        return false;
+                    options = arg == "--rules"
+                        ? options with { Rules = [.. options.Rules, .. ruleIds] }
+                        : options with { SkippedRules = [.. options.SkippedRules, .. ruleIds] };
+                    break;
+                case "--exclude":
+                    if (!TryTakeValue(args, ref i, out var glob, out error))
+                        return false;
+                    options = options with { Excludes = [.. options.Excludes, glob] };
+                    break;
+                case "--fail-on":
+                    if (!TryTakeValue(args, ref i, out var level, out error))
+                        return false;
+                    switch (level.ToLowerInvariant())
+                    {
+                        case "error":
+                            options = options with { FailOn = "Error" };
+                            break;
+                        case "warning":
+                            options = options with { FailOn = "Warning" };
+                            break;
+                        case "info" or "note":
+                            options = options with { FailOn = "Info" };
+                            break;
+                        case "none":
+                            options = options with { FailOn = null };
+                            break;
+                        default:
+                            error = $"--fail-on expects error, warning, info or none, got '{level}'.";
+                            return false;
+                    }
+                    break;
                 case "--findings":
                     if (!TryTakeValue(args, ref i, out var findingsText, out error))
                         return false;
@@ -135,6 +192,24 @@ internal sealed record ScanOptions
         if (target is not null)
             options = options with { Target = target };
 
+        return true;
+    }
+
+    private static bool TryParseRules(string option, string text, out IReadOnlyList<string> ruleIds, out string? error)
+    {
+        var ids = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(id => id.ToUpperInvariant())
+            .ToList();
+        var bad = ids.FirstOrDefault(id => !SarifReader.IsReportedRule(id));
+        if (ids.Count == 0 || bad is not null)
+        {
+            ruleIds = [];
+            error = $"{option} expects rule IDs such as LC007 or EF1002, got '{bad ?? text}'.";
+            return false;
+        }
+
+        ruleIds = ids;
+        error = null;
         return true;
     }
 
