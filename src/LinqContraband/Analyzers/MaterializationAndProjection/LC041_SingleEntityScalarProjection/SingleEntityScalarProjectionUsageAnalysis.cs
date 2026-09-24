@@ -12,26 +12,39 @@ public sealed partial class SingleEntityScalarProjectionAnalyzer
     {
         local = null!;
 
-        var current = invocation.Parent;
-        while (current != null)
+        // The materializer has to be the whole value the local receives. In
+        // `var c = q.FirstOrDefault() ?? q.First();` the local holds whichever side ran, so
+        // projecting one side to a scalar would leave `Entity ?? int`, which does not compile.
+        IOperation current = invocation;
+        while (current.Parent != null)
         {
-            if (current is IVariableDeclaratorOperation declarator)
+            var parent = current.Parent;
+            switch (parent)
             {
-                local = declarator.Symbol;
-                return true;
+                case IAwaitOperation:
+                case IConversionOperation:
+                case IVariableInitializerOperation:
+                    current = parent;
+                    continue;
+
+                case IInvocationOperation { TargetMethod.Name: "ConfigureAwait" } configureAwait
+                    when configureAwait.Instance == current:
+                    current = parent;
+                    continue;
+
+                case IVariableDeclaratorOperation declarator:
+                    local = declarator.Symbol;
+                    return true;
+
+                case ISimpleAssignmentOperation assignment
+                    when assignment.Value == current &&
+                         assignment.Target is ILocalReferenceOperation localReference:
+                    local = localReference.Local;
+                    return true;
+
+                default:
+                    return false;
             }
-
-            if (current is ISimpleAssignmentOperation assignment &&
-                assignment.Target is ILocalReferenceOperation localReference)
-            {
-                local = localReference.Local;
-                return true;
-            }
-
-            if (current is IExpressionStatementOperation || current is IReturnOperation)
-                return false;
-
-            current = current.Parent;
         }
 
         return false;
