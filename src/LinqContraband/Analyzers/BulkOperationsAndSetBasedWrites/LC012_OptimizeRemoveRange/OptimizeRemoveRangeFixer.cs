@@ -23,7 +23,7 @@ public sealed partial class OptimizeRemoveRangeFixer : CodeFixProvider
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(OptimizeRemoveRangeAnalyzer.DiagnosticId);
 
-    public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public sealed override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {

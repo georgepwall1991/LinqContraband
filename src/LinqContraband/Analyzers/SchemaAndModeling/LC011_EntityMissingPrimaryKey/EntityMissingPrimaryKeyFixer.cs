@@ -23,7 +23,7 @@ public sealed partial class EntityMissingPrimaryKeyFixer : CodeFixProvider
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(EntityMissingPrimaryKeyAnalyzer.DiagnosticId);
 
-    public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public sealed override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {

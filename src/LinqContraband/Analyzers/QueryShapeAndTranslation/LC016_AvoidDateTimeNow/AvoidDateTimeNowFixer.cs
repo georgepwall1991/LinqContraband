@@ -24,7 +24,7 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidDateTimeNowAnalyzer.DiagnosticId);
 
-    public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public sealed override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {

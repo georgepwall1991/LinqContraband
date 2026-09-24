@@ -28,7 +28,7 @@ public sealed partial class MissingIncludeFixer : CodeFixProvider
 
     public sealed override FixAllProvider GetFixAllProvider()
     {
-        return WellKnownFixAllProviders.BatchFixer;
+        return LinqContrabandFixAllProvider.Instance;
     }
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)

@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Composition;
 using System.Threading;
 using System.Threading.Tasks;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -22,7 +23,7 @@ public sealed partial class MultipleOrderByFixer : CodeFixProvider
 
     public sealed override FixAllProvider GetFixAllProvider()
     {
-        return WellKnownFixAllProviders.BatchFixer;
+        return LinqContrabandFixAllProvider.Instance;
     }
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)

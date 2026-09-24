@@ -373,6 +373,12 @@ public sealed class RuleQualityContractTests
             {
                 failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' does not list the rule id in FixableDiagnosticIds.");
             }
+
+            // The plain batch fixer fixes nothing when dotnet format's first finding for the rule has no fix.
+            if (ReferenceEquals(fixer.GetFixAllProvider(), WellKnownFixAllProviders.BatchFixer))
+            {
+                failures.Add($"{rule.Id}: fixer type '{fixerType.Name}' returns WellKnownFixAllProviders.BatchFixer; return LinqContrabandFixAllProvider.Instance.");
+            }
         }
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
