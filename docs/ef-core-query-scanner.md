@@ -93,6 +93,7 @@ Core's diagnostic for them.
 | `--exclude <glob>` | Leave out findings in files matching a glob, such as `tests/**` or `**/Migrations/**`. A glob without `/` matches a file or folder name anywhere, so `Migrations` and `*.Designer.cs` work alone. Repeatable. |
 | `--fail-on <level>` | Exit with code 1 when a reported finding is at least this severe: `error`, `warning` or `info`. Defaults to `none`. |
 | `--baseline <file>` | A SARIF report from an earlier scan. Only findings it does not have are listed and count for `--fail-on`. |
+| `--html <file>` | Also write the report as one self-contained HTML page. |
 | `--summary <file>` | Also write the report as Markdown. |
 | `--no-github` | In GitHub Actions, skip the job summary and pull request annotations. |
 | `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
@@ -107,6 +108,17 @@ Put the scanner's arguments after `--` when using `dnx`, so that `dnx` does not 
 The exit code is 0 when the scan completes, whatever it finds, unless `--fail-on` is set: then it is 1 when a finding
 at that severity or higher is left after the filters. It is 2 for a usage error and 3 when the build fails (the report
 still covers the projects that compiled before the failure).
+
+## Share the Report
+
+`--html report.html` writes the whole report as one HTML page that needs nothing else to open: the rules that fired,
+then every finding with its message and the code around it, the finding's line highlighted. A search box and severity
+toggles narrow the list, and it follows the reader's light or dark setting. Attach it to a ticket, send it to the team,
+or keep it as a CI artifact.
+
+```bash
+dnx LinqContraband.Scan -- --html linqcontraband.html
+```
 
 ## Fail a Build on Findings
 

@@ -41,7 +41,7 @@ public sealed class ScanOptionsTests
     public void Filters_AccumulateAndNormalizeRuleIds()
     {
         Assert.True(ScanOptions.TryParse(
-            ["--rules", "lc007, LC009", "--rules", "EF1002", "--skip-rules", "LC031", "--exclude", "tests/**", "--exclude", "Migrations", "--fail-on", "Warning", "--baseline", "base.sarif", "--summary", "s.md", "--no-github"],
+            ["--rules", "lc007, LC009", "--rules", "EF1002", "--skip-rules", "LC031", "--exclude", "tests/**", "--exclude", "Migrations", "--fail-on", "Warning", "--baseline", "base.sarif", "--summary", "s.md", "--no-github", "--html", "r.html"],
             out var options,
             out var error), error);
 
@@ -52,6 +52,7 @@ public sealed class ScanOptionsTests
         Assert.Equal("base.sarif", options.BaselinePath);
         Assert.Equal("s.md", options.SummaryPath);
         Assert.True(options.NoGitHub);
+        Assert.Equal("r.html", options.HtmlPath);
     }
 
     [Theory]

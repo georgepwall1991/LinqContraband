@@ -31,7 +31,7 @@ Findings:
   ...
 ```
 
-In CI, `--fail-on warning` fails the build on findings, `--baseline <earlier.sarif>` fails only on new ones, and `--exclude 'tests/**'` leaves files out. In GitHub Actions the scan writes a job summary and annotates the pull request, and the repository is also an Action: `uses: georgepwall1991/LinqContraband@v5.12.0`.
+`--html report.html` writes the whole report as one page you can share, with the code around every finding. In CI, `--fail-on warning` fails the build on findings, `--baseline <earlier.sarif>` fails only on new ones, and `--exclude 'tests/**'` leaves files out. In GitHub Actions the scan writes a job summary and annotates the pull request, and the repository is also an Action: `uses: georgepwall1991/LinqContraband@v5.12.0`.
 
 To keep the checks on in the editor and in CI, add the analyzer package: `dotnet add package LinqContraband`.
 

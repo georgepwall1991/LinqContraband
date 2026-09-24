@@ -96,11 +96,13 @@ public sealed class ScanEndToEndTests
             var stepSummary = Path.Combine(directory, "out", "step-summary.md");
             var summary = Path.Combine(directory, "out", "summary.md");
             var actions = new Dictionary<string, string> { ["GITHUB_ACTIONS"] = "true", ["GITHUB_STEP_SUMMARY"] = stepSummary };
-            var inActions = Run([directory, "--sarif", sarif, "--no-restore", "--summary", summary], BuiltAnalyzerPath(), name => actions.GetValueOrDefault(name));
+            var html = Path.Combine(directory, "out", "report.html");
+            var inActions = Run([directory, "--sarif", sarif, "--no-restore", "--summary", summary, "--html", html], BuiltAnalyzerPath(), name => actions.GetValueOrDefault(name));
             Assert.True(inActions.ExitCode == ScanCommand.Success, inActions.Output + inActions.Error);
             Assert.Contains("::warning file=Queries.cs,line=5,", inActions.Output);
             Assert.StartsWith("## LinqContraband: 1 EF Core query problem (1 rule, 1 file)", File.ReadAllText(stepSummary));
             Assert.Equal(File.ReadAllText(stepSummary), File.ReadAllText(summary));
+            Assert.Contains("<span class=\"line hit\"><span class=\"ln\">5</span>    public static bool HasAny", File.ReadAllText(html));
 
             var optedOut = Run([directory, "--sarif", sarif, "--no-restore", "--no-github"], BuiltAnalyzerPath(), name => actions.GetValueOrDefault(name));
             Assert.DoesNotContain("::warning", optedOut.Output);
