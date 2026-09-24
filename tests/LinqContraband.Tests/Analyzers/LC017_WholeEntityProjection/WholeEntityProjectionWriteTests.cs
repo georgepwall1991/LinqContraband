@@ -15,6 +15,7 @@ class Program
 {
     public object Holder { get; set; }
     private List<LargeEntity> _cache;
+    private DbSet<RichEntity> _riches;
 
     public void Run(DateTime now)
     {
@@ -24,6 +25,27 @@ class Program
 }
 
 class ViewModel { public List<LargeEntity> Items { get; set; } }
+
+class Tag { public string Label { get; set; } }
+class Owner { public string Name { get; set; } public int Visits { get; set; } }
+class RichEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public string Email { get; set; }
+    public string Phone { get; set; }
+    public string Address { get; set; }
+    public string City { get; set; }
+    public string Country { get; set; }
+    public decimal Price { get; set; }
+    public int Quantity { get; set; }
+    public List<Tag> Tags { get; set; }
+    public Owner Owner { get; set; }
+    public void Archive() { }
+}
 " + MockNamespace;
 
     [Theory]
@@ -64,6 +86,28 @@ class ViewModel { public List<LargeEntity> Items { get; set; } }
     [InlineData(@"var entities = db.LargeEntities.Where(e => e.Id > 0).ToList();
         var pair = (entities, 1);
         foreach (var e in entities) Console.WriteLine(e.Name);")]
+    // Changed through a navigation or a domain method; a projection would lose the change.
+    [InlineData(@"var entities = _riches.Where(e => e.Id > 0).ToList();
+        foreach (var e in entities)
+            e.Tags.Add(new Tag { Label = e.Name });
+        db.SaveChanges();")]
+    [InlineData(@"var entities = _riches.Where(e => e.Id > 0).ToList();
+        foreach (var e in entities)
+        {
+            if (e.Name == null) continue;
+            e.Tags.Clear();
+        }")]
+    [InlineData(@"var entities = _riches.Where(e => e.Id > 0).ToList();
+        foreach (var e in entities)
+            e.Owner.Name = e.Name;
+        db.SaveChanges();")]
+    [InlineData(@"var entities = _riches.Where(e => e.Id > 0).ToList();
+        foreach (var e in entities)
+            e.Owner.Visits++;")]
+    [InlineData(@"var entities = _riches.Where(e => e.Id > 0).ToList();
+        foreach (var e in entities)
+            e.Archive();
+        db.SaveChanges();")]
     public Task WrittenOrStoredEntities_StayQuiet(string body) =>
         VerifyCS.VerifyAnalyzerAsync(WriteProgram(body));
 
@@ -80,6 +124,14 @@ class ViewModel { public List<LargeEntity> Items { get; set; } }
         var vm = new ViewModel();
         foreach (var e in entities)
             Console.WriteLine(e.Name);")]
+    [InlineData(@"var entities = {|LC017:_riches.Where(e => e.Id > 0).ToList()|};
+        foreach (var e in entities)
+            Console.WriteLine(e.Name.Trim() + e.Email.ToUpperInvariant());")]
+    [InlineData(@"var entities = {|LC017:_riches.Where(e => e.Id > 0).ToList()|};
+        var others = new List<Tag>();
+        foreach (var e in entities)
+            others.Add(new Tag { Label = e.Name });
+        Console.WriteLine(entities.Contains(null));")]
     public Task ReadOnlyUsage_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(WriteProgram(body));
 }

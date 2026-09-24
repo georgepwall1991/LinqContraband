@@ -103,6 +103,15 @@ LC017 uses conservative detection to minimize false positives:
 
 ## When LC017 Does NOT Trigger
 
+0. **Entities are changed**: a write to the entity or through its navigations (`e.Owner.Name = ...`, `e.Visits++`), a change to a navigation collection (`e.Tags.Add(...)`, `Remove`, `Clear`), or a call to one of the entity's own methods (`e.Archive()`) means the method loads the entities to update them. A projection returns untracked values, so `SaveChanges` would persist nothing.
+   ```csharp
+   // OK: the loop changes the tracked graph
+   var libraries = context.Libraries.Include(l => l.FileTypes).ToList();
+   foreach (var library in libraries)
+       library.FileTypes.Add(new LibraryFileType { Name = "epub" });
+   context.SaveChanges();
+   ```
+
 1. **Already using projection**:
    ```csharp
    // OK: Already projected
