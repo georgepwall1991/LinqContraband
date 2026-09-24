@@ -88,6 +88,10 @@ Core's diagnostic for them.
 | `-c`, `--configuration <name>` | Build configuration, passed to `dotnet build`. |
 | `-f`, `--framework <tfm>` | Build one target framework only, which is faster for multi-targeted projects. |
 | `--no-restore` | Skip the implicit restore. |
+| `--rules <ids>` | Report only these rules, comma-separated, such as `LC007,LC008`. Repeatable. |
+| `--skip-rules <ids>` | Leave these rules out, comma-separated. Repeatable. |
+| `--exclude <glob>` | Leave out findings in files matching a glob, such as `tests/**` or `**/Migrations/**`. A glob without `/` matches a file or folder name anywhere, so `Migrations` and `*.Designer.cs` work alone. Repeatable. |
+| `--fail-on <level>` | Exit with code 1 when a reported finding is at least this severe: `error`, `warning` or `info`. Defaults to `none`. |
 | `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
@@ -97,8 +101,20 @@ Core's diagnostic for them.
 Put the scanner's arguments after `--` when using `dnx`, so that `dnx` does not read options such as `-v` or
 `--version` as its own.
 
-The exit code is 0 when the scan completes, whatever it finds. It is 2 for a usage error and 3 when the build fails
-(the report still covers the projects that compiled before the failure).
+The exit code is 0 when the scan completes, whatever it finds, unless `--fail-on` is set: then it is 1 when a finding
+at that severity or higher is left after the filters. It is 2 for a usage error and 3 when the build fails (the report
+still covers the projects that compiled before the failure).
+
+## Fail a Build on Findings
+
+`--fail-on` turns the scan into a CI gate, and the filters decide what counts. This fails on any warning outside tests
+and migrations, and ignores the advisory unbounded-query rule:
+
+```bash
+dnx LinqContraband.Scan -- --fail-on warning --exclude 'tests/**' --exclude Migrations --skip-rules LC031
+```
+
+Filtered findings are left out of the SARIF report too, and the summary says how many were left out.
 
 ## Upload the Report to GitHub Code Scanning
 

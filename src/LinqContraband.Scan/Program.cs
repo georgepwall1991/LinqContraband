@@ -9,6 +9,7 @@ namespace LinqContraband.Scan
     internal static class ScanCommand
     {
         public const int Success = 0;
+        public const int FindingsFound = 1;
         public const int UsageError = 2;
         public const int ScanFailed = 3;
 
@@ -70,16 +71,29 @@ namespace LinqContraband.Scan
             if (result.UnreadableLogCount > 0)
                 error.WriteLine($"{result.UnreadableLogCount} of {result.ErrorLogCount} compiler logs could not be read, so their projects are missing from the results.");
 
+            var report = result.Report.Filter(new ScanFilter(options.Rules, options.SkippedRules, options.Excludes));
+
             var sarifPath = Path.GetFullPath(options.SarifPath);
             var sarifDirectory = Path.GetDirectoryName(sarifPath);
             if (!string.IsNullOrEmpty(sarifDirectory))
                 Directory.CreateDirectory(sarifDirectory);
             using (var stream = File.Create(sarifPath))
-                result.Report.WriteSarif(stream, version);
+                report.WriteSarif(stream, version);
 
             output.WriteLine();
-            output.Write(result.Report.RenderText(options.Top, DisplayPath(sarifPath), options.FindingsPerRule));
-            return result.BuildExitCode == 0 ? Success : ScanFailed;
+            output.Write(report.RenderText(options.Top, DisplayPath(sarifPath), options.FindingsPerRule));
+
+            if (result.BuildExitCode != 0)
+                return ScanFailed;
+
+            var failing = options.FailOn is null ? 0 : report.CountAtLeast(options.FailOn);
+            if (failing > 0)
+            {
+                error.WriteLine($"Failing: {failing} finding{(failing == 1 ? " is" : "s are")} {options.FailOn!.ToLowerInvariant()} severity or higher (--fail-on {options.FailOn.ToLowerInvariant()}).");
+                return FindingsFound;
+            }
+
+            return Success;
         }
 
         internal static string ToolVersion =>

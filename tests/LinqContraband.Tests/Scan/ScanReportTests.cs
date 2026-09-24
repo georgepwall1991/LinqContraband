@@ -204,6 +204,56 @@ public sealed class ScanReportTests
         }
     }
 
+    [Theory]
+    [InlineData("**/Migrations/**", "src/Data/Migrations/2024_Init.cs", true)]
+    [InlineData("Migrations", "src/Data/Migrations/2024_Init.cs", true)]
+    [InlineData("Migrations", "src/Data/MigrationsHelper.cs", false)]
+    [InlineData("tests/**", "tests/App.Tests/OrderTests.cs", true)]
+    [InlineData("tests/**", "src/tests.cs", false)]
+    [InlineData("tests", "src/App/tests/Seed.cs", true)]
+    [InlineData("*.Designer.cs", "src/Data/Model.Designer.cs", true)]
+    [InlineData("src/*.cs", "src/Orders.cs", true)]
+    [InlineData("src/*.cs", "src/Orders/Service.cs", false)]
+    [InlineData("./src/Orders?.cs", "src/Orders2.cs", true)]
+    [InlineData("src\\Legacy", "src/Legacy/Old.cs", true)]
+    public void ExcludeGlobs_MatchRelativePaths(string glob, string path, bool expected)
+    {
+        Assert.Equal(expected, ScanFilter.GlobToRegex(glob).IsMatch(path));
+    }
+
+    [Fact]
+    public void Filter_KeepsTheSelectedRulesAndFilesAndCountsTheRest()
+    {
+        var report = ReadReport(CompilerLog(
+            Result("LC007", "warning", InRoot("src", "Orders.cs"), 12, 9),
+            Result("LC007", "warning", InRoot("src", "Migrations", "Init.cs"), 3, 1),
+            Result("LC031", "note", InRoot("src", "Orders.cs"), 20, 1),
+            Result("EF1002", "warning", InRoot("src", "Orders.cs"), 30, 1)));
+
+        var filtered = report
+            .Filter(new ScanFilter(["LC007", "lc031"], [], ["Migrations"]))
+            .Filter(new ScanFilter([], ["LC031"], []));
+
+        var finding = Assert.Single(filtered.Findings);
+        Assert.Equal(("LC007", "src/Orders.cs"), (finding.RuleId, finding.Path));
+        Assert.Equal(3, filtered.FilteredOut);
+        Assert.Contains("3 more findings left out by --rules, --skip-rules or --exclude.", filtered.RenderText(topFiles: 0, sarifPath: null));
+        Assert.Same(report, report.Filter(new ScanFilter([], [], [])));
+    }
+
+    [Fact]
+    public void CountAtLeast_CountsFindingsAtOrAboveASeverity()
+    {
+        var report = ReadReport(CompilerLog(
+            Result("LC007", "error", InRoot("A.cs"), 1, 1),
+            Result("LC007", "warning", InRoot("A.cs"), 2, 1),
+            Result("LC031", "note", InRoot("A.cs"), 3, 1)));
+
+        Assert.Equal(1, report.CountAtLeast("Error"));
+        Assert.Equal(2, report.CountAtLeast("Warning"));
+        Assert.Equal(3, report.CountAtLeast("Info"));
+    }
+
     [Fact]
     public void Text_WithoutFindings_SaysSo()
     {
