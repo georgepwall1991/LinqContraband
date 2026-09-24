@@ -419,4 +419,83 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task ExecuteDelete_WithProjectLocalPredicateWhere_ShouldNotTrigger()
+    {
+        // BTCPay Server declares its own Where on DbSet<T> that forwards to Queryable.Where.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class ApiKeyUsage { public string ApiKeyId { get; set; } }
+
+    public static class Extensions
+    {
+        public static IQueryable<TEntity> Where<TEntity>(this DbSet<TEntity> set, System.Linq.Expressions.Expression<Func<TEntity, bool>> predicate) where TEntity : class
+            => System.Linq.Queryable.Where(set, predicate);
+    }
+
+    public sealed class Program
+    {
+        public async Task Run(DbContext db, string id)
+        {
+            await db.Set<ApiKeyUsage>().Where(u => u.ApiKeyId == id).ExecuteDeleteAsync();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithProjectLocalPredicateWhereWithoutLambda_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public static class Extensions
+    {
+        public static IQueryable<TEntity> Where<TEntity>(this DbSet<TEntity> set, System.Linq.Expressions.Expression<Func<TEntity, bool>> predicate) where TEntity : class
+            => set;
+    }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var result = {|LC035:db.Set<User>().Where(null).ExecuteDelete()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_WithProjectLocalWhereTakingBoolDelegate_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public static class Extensions
+    {
+        public static IQueryable<TEntity> Where<TEntity>(this DbSet<TEntity> set, Func<bool> enabled) where TEntity : class
+            => set;
+    }
+
+    public sealed class Program
+    {
+        public void Run(DbContext db)
+        {
+            var result = {|LC035:db.Set<User>().Where(() => true).ExecuteDelete()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
