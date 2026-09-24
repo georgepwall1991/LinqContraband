@@ -82,13 +82,21 @@ public sealed partial class WholeEntityProjectionAnalyzer
                     break;
 
                 // Loading tracked entities to change them is an update, not a read a projection could serve.
+                // That includes writes through a navigation (`user.Preferences.Theme = ...`).
                 case IAssignmentOperation { Target: IPropertyReferenceOperation or IFieldReferenceOperation } write when
-                    IsTrackedEntityReference(((IMemberReferenceOperation)write.Target).Instance, variable, foreachLocals, manualIterationLocals):
+                    IsRootedInTrackedEntity(((IMemberReferenceOperation)write.Target).Instance, variable, foreachLocals, manualIterationLocals):
                     result.HasEscapingUsage = true;
                     break;
 
                 case IIncrementOrDecrementOperation { Target: IPropertyReferenceOperation or IFieldReferenceOperation } increment when
-                    IsTrackedEntityReference(((IMemberReferenceOperation)increment.Target).Instance, variable, foreachLocals, manualIterationLocals):
+                    IsRootedInTrackedEntity(((IMemberReferenceOperation)increment.Target).Instance, variable, foreachLocals, manualIterationLocals):
+                    result.HasEscapingUsage = true;
+                    break;
+
+                // `library.FileTypes.Add(...)` or `order.MarkPaid()` changes the tracked graph, and
+                // SaveChanges would persist nothing once the query returns a projection instead.
+                case IInvocationOperation call when call != invocation &&
+                    IsEntityMutatingCall(call, variable, foreachLocals, manualIterationLocals):
                     result.HasEscapingUsage = true;
                     break;
 
