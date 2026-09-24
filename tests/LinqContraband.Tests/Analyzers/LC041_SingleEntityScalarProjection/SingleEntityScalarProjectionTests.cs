@@ -95,6 +95,110 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task CoalescedMaterializers_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class Currency
+    {
+        public int Id { get; set; }
+        public string Code { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<Currency> currencies)
+        {
+            // Projecting one side would leave `Currency ?? int`, which does not compile.
+            var currency = currencies.FirstOrDefault(x => x.Code == ""EUR"") ?? currencies.First();
+            System.Console.WriteLine(currency.Id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ConditionalMaterializer_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class Currency
+    {
+        public int Id { get; set; }
+        public string Code { get; set; }
+    }
+
+    public class TestClass
+    {
+        public void Run(DbSet<Currency> currencies, bool preferEuro)
+        {
+            var currency = preferEuro ? currencies.First(x => x.Code == ""EUR"") : null;
+            System.Console.WriteLine(currency.Id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CoalescedAssignment_ShouldNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class Currency
+    {
+        public int Id { get; set; }
+        public string Code { get; set; }
+    }
+
+    public class TestClass
+    {
+        public async Task Run(DbSet<Currency> currencies, Currency fallback)
+        {
+            Currency currency;
+            currency = await currencies.FirstOrDefaultAsync(x => x.Code == ""EUR"") ?? fallback;
+            System.Console.WriteLine(currency.Id);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AwaitedWithConfigureAwait_Triggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;" + EfCoreMock + @"
+namespace TestApp
+{
+    public class Currency
+    {
+        public int Id { get; set; }
+        public string Code { get; set; }
+    }
+
+    public class TestClass
+    {
+        public async Task Run(DbSet<Currency> currencies)
+        {
+            var currency = await {|LC041:currencies.FirstAsync(x => x.Code == ""EUR"")|}.ConfigureAwait(false);
+            System.Console.WriteLine(currency.Code);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PrimaryKeyLookup_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfCoreMock + @"
