@@ -33,7 +33,7 @@ public sealed partial class PrematureMaterializationAnalyzer
         "Calling '{0}' after materializing an IQueryable forces the operation to run in memory";
 
     private static readonly LocalizableString RedundantMessageFormat =
-        "The call to '{0}' is redundant because the sequence was already materialized by '{1}'";
+        "'{1}' already materialized the sequence, so '{0}' copies it again; materialize once with '{0}'";
 
     private static readonly LocalizableString Description =
         "Keep approved query operations on IQueryable before materialization and avoid redundant second materializers.";

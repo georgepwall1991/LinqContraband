@@ -56,6 +56,13 @@ var pairs = db.Users.ToDictionary(u => u.Id).ToList();   // NOT reported — yie
 var groups = db.Users.ToLookup(u => u.Age).ToList();     // NOT reported — yields List<IGrouping<int, User>>
 ```
 
+After an async materializer, LC002 only reports a second materializer that EF Core can run asynchronously on its own (`ToList`, `ToArray`, `ToDictionary`, `ToHashSet`, through `ToListAsync`, `ToArrayAsync`, `ToDictionaryAsync` and `ToHashSetAsync`). EF Core has no `ToLookupAsync` or `ToImmutable*Async`, so buffering the query first is the only way to build those without blocking:
+
+```csharp
+var ids = (await db.Users.ToListAsync()).ToHashSet();                // reported — use ToHashSetAsync()
+var byGroup = (await db.Users.ToListAsync()).ToLookup(u => u.GroupId); // NOT reported — no ToLookupAsync
+```
+
 ## Provider-Safe Continuation Gate
 LC002 only reports lambda continuations when the lambda looks safe to keep in the provider query. Simple member access, captured scalar values, comparisons, boolean expressions, tuples, anonymous objects, and basic string calls such as `Contains`, `StartsWith`, `EndsWith`, `IsNullOrEmpty`, and `IsNullOrWhiteSpace` are eligible:
 
