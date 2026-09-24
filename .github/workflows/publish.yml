@@ -199,7 +199,9 @@ jobs:
 
     - name: Pack
       if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
-      run: dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
+      run: |
+        dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
+        dotnet pack src/LinqContraband.Scan/LinqContraband.Scan.csproj -c Release --no-build --output .
       
     - name: Require NUGET_USER for Trusted Publishing
       if: success() && steps.nuget_cooldown.outputs.skip_push != 'true'
