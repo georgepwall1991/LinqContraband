@@ -72,6 +72,41 @@ public sealed class ScanCommandTests
     }
 
     [Fact]
+    public void Fix_WithNoFixableRuleSelected_IsAUsageErrorBeforeFixing()
+    {
+        var (exitCode, output, error) = Run([Path.GetTempPath(), "--fix", "--rules", "LC031,EF1002"]);
+        Assert.Equal(ScanCommand.UsageError, exitCode);
+        Assert.Contains("None of the rules selected by --rules and --skip-rules has a code fix", error);
+        Assert.DoesNotContain("Fixing", output);
+    }
+
+    [Fact]
+    public void FixableRules_MatchTheRuleCatalog()
+    {
+        var catalog = LinqContraband.Catalog.RuleCatalog.All.Where(rule => rule.HasCodeFix).Select(rule => rule.Id);
+        Assert.Equal(catalog, ScanFixer.FixableRules);
+    }
+
+    [Fact]
+    public void Fix_SelectsTheFixableRulesThatTheRuleOptionsKeep()
+    {
+        Assert.Equal(ScanFixer.FixableRules, ScanFixer.SelectRules(new ScanOptions()));
+        Assert.Equal(["LC009"], ScanFixer.SelectRules(new ScanOptions { Rules = ["LC009", "LC031", "EF1002"] }));
+        Assert.DoesNotContain("LC009", ScanFixer.SelectRules(new ScanOptions { SkippedRules = ["LC009"] }));
+        Assert.Empty(ScanFixer.SelectRules(new ScanOptions { Rules = ["LC009"], SkippedRules = ["LC009"] }));
+    }
+
+    [Fact]
+    public void Fix_RunsDotnetFormatAnalyzersForTheSelectedRules()
+    {
+        var arguments = ScanFixer.FormatArguments(new ScanOptions { NoRestore = true }, "/src/App.sln", ["LC003", "LC009"]);
+        Assert.Equal(
+            ["format", "analyzers", "/src/App.sln", "--severity", "info", "--diagnostics", "LC003", "LC009", "--no-restore", "--verbosity", "quiet"],
+            arguments);
+        Assert.Equal("normal", ScanFixer.FormatArguments(new ScanOptions { Verbose = true }, "App.sln", ["LC003"])[^1]);
+    }
+
+    [Fact]
     public void MissingAnalyzer_FailsBeforeBuilding()
     {
         var (exitCode, output, error) = Run([Path.GetTempPath()], analyzerPath: Path.Combine(Path.GetTempPath(), "missing", "LinqContraband.dll"));

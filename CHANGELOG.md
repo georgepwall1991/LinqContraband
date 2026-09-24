@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `linqcontraband-scan --fix` applies the rules' code fixes to your source files, then scans again and reports what is left. It runs `dotnet format analyzers` with the scanner's analyzer injected, so the project does not need to reference the package, and lists the files it changed. `--rules` and `--skip-rules` pick which rules are fixed, and `--exclude` keeps matching files as they were. On Microsoft's eShop Catalog API it fixed 12 of 25 findings (LC008, LC023, LC042 and some LC009) in 4 files, and the project still built.
+
 ## [5.12.0] - 2026-09-24
 
 ### Added

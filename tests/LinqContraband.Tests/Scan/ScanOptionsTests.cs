@@ -15,6 +15,7 @@ public sealed class ScanOptionsTests
         Assert.Null(options.Framework);
         Assert.False(options.NoRestore);
         Assert.False(options.Verbose);
+        Assert.False(options.Fix);
         Assert.Equal(10, options.Top);
         Assert.Equal(3, options.FindingsPerRule);
     }
@@ -23,7 +24,7 @@ public sealed class ScanOptionsTests
     public void EveryOption_IsParsed()
     {
         Assert.True(ScanOptions.TryParse(
-            ["src/App.sln", "--sarif", "out/x.sarif", "-c", "Release", "-f", "net9.0", "--no-restore", "--top", "3", "--findings", "7", "-v"],
+            ["src/App.sln", "--sarif", "out/x.sarif", "-c", "Release", "-f", "net9.0", "--no-restore", "--top", "3", "--findings", "7", "-v", "--fix"],
             out var options,
             out _));
 
@@ -35,6 +36,7 @@ public sealed class ScanOptionsTests
         Assert.Equal(3, options.Top);
         Assert.Equal(7, options.FindingsPerRule);
         Assert.True(options.Verbose);
+        Assert.True(options.Fix);
     }
 
     [Fact]

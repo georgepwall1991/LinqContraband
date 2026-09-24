@@ -91,7 +91,11 @@ internal static class Scanner
         return arguments;
     }
 
-    private static (int ExitCode, string Output) RunDotnet(IReadOnlyList<string> arguments, string workingDirectory, Action<string>? onOutput)
+    internal static (int ExitCode, string Output) RunDotnet(
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        Action<string>? onOutput,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -113,6 +117,8 @@ internal static class Scanner
         // The indexer throws for a missing key, so a plain ??= would crash wherever the variable is unset.
         if (!startInfo.Environment.ContainsKey("DOTNET_CLI_TELEMETRY_OPTOUT"))
             startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+            startInfo.Environment[name] = value;
 
         using var process = new Process { StartInfo = startInfo };
         var output = new System.Text.StringBuilder();
@@ -152,7 +158,7 @@ internal static class Scanner
         return null;
     }
 
-    private static void TryDelete(string directory)
+    internal static void TryDelete(string directory)
     {
         try
         {

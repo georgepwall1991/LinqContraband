@@ -114,6 +114,59 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
+    /// <c>--fix</c> applies the code fix through dotnet format and then scans what is left; <c>--exclude</c> keeps a
+    /// file as it was.
+    /// </summary>
+    [Fact]
+    public void Fix_AppliesTheCodeFixesAndReportsWhatIsLeft()
+    {
+        var directory = Directory.CreateTempSubdirectory("scan-fix-e2e-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "App.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """);
+            const string queries = """
+                using System.Linq;
+
+                public static class Queries
+                {
+                    public static bool HasAny(IQueryable<int> query) => query.Count() > 0;
+                }
+                """;
+            var queriesPath = Path.Combine(directory, "Queries.cs");
+            var legacyPath = Path.Combine(directory, "Legacy", "Old.cs");
+            File.WriteAllText(queriesPath, queries);
+            Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+            File.WriteAllText(legacyPath, queries.Replace("class Queries", "class OldQueries"));
+            var sarif = Path.Combine(directory, "out", "report.sarif");
+
+            var (exitCode, output, error) = Run([directory, "--fix", "--exclude", "Legacy", "--sarif", sarif], BuiltAnalyzerPath());
+            var transcript = output + Environment.NewLine + error;
+
+            Assert.True(exitCode == ScanCommand.Success, transcript);
+            Assert.Contains("query.Any();", File.ReadAllText(queriesPath));
+            Assert.Equal(queries.Replace("class Queries", "class OldQueries"), File.ReadAllText(legacyPath));
+            Assert.True(output.Contains("Applied fixes to 1 file. Review them with 'git diff' before you commit:" + Environment.NewLine + "  Queries.cs", StringComparison.Ordinal), transcript);
+            Assert.True(output.Contains("Put back 1 file that --exclude leaves out.", StringComparison.Ordinal), transcript);
+            Assert.True(output.Contains("LinqContraband found no EF Core query problems.", StringComparison.Ordinal), transcript);
+
+            // Nothing left to fix: the report says so, and the excluded file's finding is still left out.
+            var again = Run([directory, "--fix", "--no-restore", "--exclude", "Legacy", "--sarif", sarif], BuiltAnalyzerPath());
+            Assert.True(again.ExitCode == ScanCommand.Success, again.Output + again.Error);
+            Assert.Contains("No finding had a fix to apply.", again.Output);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// The analyzer as the analyzer project built it, which is what the tool package ships. The copy next to the
     /// test assembly can be instrumented by the coverage collector, and shares a folder with a newer Roslyn.
     /// </summary>
