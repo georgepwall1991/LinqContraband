@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- LC026 no longer reports, or fixes, a call inside a `static` local function or `static` lambda by passing the enclosing method's token. The fix wrote `ToListAsync(ct)` with an outer `ct`, which a static function cannot capture (CS8421). A token the static function declares itself is still passed.
 - The LC008 code fix is no longer offered inside a `lock` body or an unsafe context (an `unsafe` block, or an `unsafe` method, local function or type), where the `await` it inserts does not compile (CS1996, CS4004). LC008 still reports those calls.
 
 ## [5.13.0] - 2026-09-25

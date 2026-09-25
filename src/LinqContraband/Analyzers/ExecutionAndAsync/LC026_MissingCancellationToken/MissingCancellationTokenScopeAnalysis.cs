@@ -8,7 +8,9 @@ public sealed partial class MissingCancellationTokenAnalyzer
     {
         ISymbol? fallback = null;
         ISymbol? shortName = null;
-        var inStaticContext = IsInStaticContext(semanticModel.GetEnclosingSymbol(position));
+        var enclosing = semanticModel.GetEnclosingSymbol(position);
+        var staticFunction = FindInnermostStaticFunction(enclosing);
+        var inStaticContext = staticFunction != null || IsInStaticContext(enclosing);
 
         foreach (var symbol in semanticModel.LookupSymbols(position))
         {
@@ -16,7 +18,11 @@ public sealed partial class MissingCancellationTokenAnalyzer
             if (symbol is ILocalSymbol && IsDeclaredAfter(symbol, position))
                 continue;
 
-            // An instance field or property is not reachable from a static method (CS0120).
+            // A static local function or lambda cannot capture outer locals or parameters (CS8421, CS8820).
+            if (staticFunction != null && symbol is ILocalSymbol or IParameterSymbol && !IsDeclaredWithin(symbol, staticFunction))
+                continue;
+
+            // An instance field or property is not reachable from a static method or function (CS0120).
             if (inStaticContext && symbol is IFieldSymbol or IPropertySymbol && !symbol.IsStatic)
                 continue;
 
@@ -62,6 +68,28 @@ public sealed partial class MissingCancellationTokenAnalyzer
         }
 
         return symbol.DeclaringSyntaxReferences.Length > 0;
+    }
+
+    private static IMethodSymbol? FindInnermostStaticFunction(ISymbol? enclosing)
+    {
+        for (var current = enclosing; current is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction or MethodKind.LocalFunction } function; current = current.ContainingSymbol)
+        {
+            if (function.IsStatic)
+                return function;
+        }
+
+        return null;
+    }
+
+    private static bool IsDeclaredWithin(ISymbol symbol, IMethodSymbol function)
+    {
+        for (var current = symbol.ContainingSymbol; current != null; current = current.ContainingSymbol)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, function))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsInStaticContext(ISymbol? enclosing)
