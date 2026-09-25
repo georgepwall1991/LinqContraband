@@ -202,6 +202,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC058_TransactionScopeWithoutAsyncFlow",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC059",
+                slug: "LC059_DisposedContextConnection",
+                title: "Connection owned by the DbContext is disposed",
+                category: "Reliability",
+                domain: "Change Tracking & Context Lifetime",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "DisposedContextConnectionAnalyzer",
+                fixerTypeName: "DisposedContextConnectionFixer",
+                documentationPath: "docs/LC059_DisposedContextConnection.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC059_DisposedContextConnection/DisposedContextConnectionSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC059_DisposedContextConnection",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }

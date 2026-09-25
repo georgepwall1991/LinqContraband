@@ -139,7 +139,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**58 rules**, 41 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**59 rules**, 42 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -201,6 +201,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC056](https://georgepwall1991.github.io/LinqContraband/LC056_StoredProcedureComposed.html) | LINQ composed over a stored procedure call | Warning | Yes |
 | [LC057](https://georgepwall1991.github.io/LinqContraband/LC057_EmptyQueryAggregate.html) | Min, Max or Average throws on an empty query | Warning | Yes |
 | [LC058](https://georgepwall1991.github.io/LinqContraband/LC058_TransactionScopeWithoutAsyncFlow.html) | TransactionScope without async flow spans an await | Warning | Yes |
+| [LC059](https://georgepwall1991.github.io/LinqContraband/LC059_DisposedContextConnection.html) | Connection owned by the DbContext is disposed | Warning | Yes |
 
 <!-- rule-table:end -->
 
@@ -227,7 +228,7 @@ Pick a preset with one line in your project file (or `Directory.Build.props`):
 | Preset | What it does |
 | --- | --- |
 | `security` | SQL injection rules (LC018, LC034, LC037, plus EF Core's own EF1002 and EF1003, which LC018 and LC034 defer to) fail the build. |
-| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055, LC056, LC058) fail the build. |
+| `critical` | `security` plus the runtime-failure and silent data-loss rules (LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055, LC056, LC058, LC059) fail the build. |
 | `strict` | Every warning rule fails the build and every advisory rule becomes a warning. |
 | `essentials` | Advisory (Info) rules are turned off; warning rules keep their defaults. |
 
