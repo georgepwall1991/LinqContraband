@@ -102,7 +102,8 @@ public sealed class MissingQueryTagsFixer : CodeFixProvider
         var receiver = memberAccess.Expression;
 
         // Keep the chain's layout: in a multi-line chain the tag gets its own line with the terminal's indentation.
-        var dot = SyntaxFactory.Token(SyntaxKind.DotToken).WithLeadingTrivia(memberAccess.OperatorToken.LeadingTrivia);
+        // Only the indentation is copied; comments and directives above the terminal stay with it.
+        var dot = SyntaxFactory.Token(SyntaxKind.DotToken).WithLeadingTrivia(TrailingIndentation(memberAccess.OperatorToken.LeadingTrivia));
         var tagAccess = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
             receiver,
@@ -120,6 +121,15 @@ public sealed class MissingQueryTagsFixer : CodeFixProvider
             editor.EnsureUsing(EfCoreNamespace);
 
         return editor.GetChangedDocument();
+    }
+
+    private static SyntaxTriviaList TrailingIndentation(SyntaxTriviaList leadingTrivia)
+    {
+        var start = leadingTrivia.Count;
+        while (start > 0 && leadingTrivia[start - 1].IsKind(SyntaxKind.WhitespaceTrivia))
+            start--;
+
+        return SyntaxFactory.TriviaList(leadingTrivia.Skip(start));
     }
 
     /// <summary>
