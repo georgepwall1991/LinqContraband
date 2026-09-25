@@ -56,6 +56,33 @@ The analyzer follows direct EF roots such as `DbSet<T>`, `DbContext.Set<T>()`, n
 Deferred `AsEnumerable()` boundaries before terminal execution still report when the upstream source is provably EF-backed.
 When a query materializer is used as the source of an inner `foreach`, LC007 still reports if that inner loop sits inside another loop and the source is re-executed once per outer iteration.
 
+### 4. Helper methods that run the query
+The most common hidden N+1 is a loop that calls a helper in the same project which runs the query. LC007 reads the helper's body and reports the call in the loop:
+
+```csharp
+foreach (var order in orders)
+{
+    var customer = await GetCustomerAsync(order.CustomerId, ct);
+    // LC007: 'GetCustomerAsync' runs 'FirstOrDefaultAsync' on every iteration of the loop
+}
+
+private Task<Customer?> GetCustomerAsync(int id, CancellationToken ct) =>
+    _db.Customers.FirstOrDefaultAsync(c => c.Id == id, ct);
+```
+
+This covers ordinary and static methods, extension methods and local functions whose source is in the project being analyzed, followed up to three calls deep (loop → `A` → `B` → `C` running the query). The helper's execution must be one LC007 would report if it were written in the loop: `Find`, an explicit load, or a materializer or executor on a provably EF-backed source such as `_db.Customers` or `db.Set<T>()`. The loop exemptions below (batch, drain, polling, retry, `Chunk`, level-by-level loops) apply at the call site exactly as they do to a direct query, and a `while`, `do` or `for` loop whose condition runs a query through a helper (`while (await HasPendingAsync())`) counts as a drain loop.
+
+LC007 stays quiet on a helper call when:
+- the helper is overridable: `virtual`, `abstract` or interface dispatch, unless the method or its type is `sealed` or `static`, since an override might not query;
+- the helper exists only as metadata, or its source belongs to another project;
+- the query sits in a lambda or local function the helper only declares, such as a cache factory `_cache.GetOrCreateAsync(key, _ => db.Customers.FirstAsync(...))`;
+- the helper is memoized: it calls a cache API (`TryGetValue`, `ContainsKey`, `GetOrAdd`, `GetOrCreate`, any `*Cache*` type), assigns with `??=` or reads with `??` a field or property, or returns early from an `if` that reads a field or property of its own type before the query;
+- the helper's query is inside a loop of its own (reported there once, or exempt there as a batch loop);
+- the helper only builds and returns an `IQueryable`. Executing that result in the loop (`Children(id).Count()`) is not traced back into the helper;
+- the query source is a parameter (`IQueryable<T>`, `DbSet<T>` or a `List<T>`), which LC007 cannot prove is EF-backed.
+
+The code fix is not offered for helper calls.
+
 ## What LC007 Intentionally Ignores
 - Plain LINQ-to-Objects or `AsQueryable()` sources
 - `AsEnumerable()` aggregates over already in-memory collections
@@ -63,7 +90,7 @@ When a query materializer is used as the source of an inner `foreach`, LC007 sti
 - Ambiguous `IQueryable` provenance through parameters, fields, properties, or multi-assignment locals
 - Query construction inside loops when no execution method is invoked
 - `Reference(...)` and `Collection(...)` access without `Load`, `LoadAsync`, or `Query()` execution
-- Invocations nested inside lambdas or local functions declared in the loop body
+- Invocations nested inside lambdas or local functions declared in the loop body (a call to such a local function from the loop is a helper call, see above)
 - Loop-source materialization that happens once before iteration, such as the `db.Users.ToList()` part of a `foreach`
 - `while`, `do` and `for` loops that run until the database says they are done, as long as the loop condition does not walk an item source of its own (see below)
 
@@ -159,7 +186,7 @@ LC007 offers a fixer only for conservative, analyzer-proven explicit-loading cas
 
 - It rewrites unconditional strongly-typed `Reference(...).Load/LoadAsync` and `Collection(...).Load/LoadAsync` inside `foreach` or `await foreach` loops to eager loading with `Include(...)`.
 - It updates the loop source query and removes the per-item load statement.
-- It does not offer a fix for string-based navigation access, `Find`, aggregates, `Query().Count()`, filtered navigation queries, conditional loads, or control-flow-heavy loops.
+- It does not offer a fix for helper-method calls, string-based navigation access, `Find`, aggregates, `Query().Count()`, filtered navigation queries, conditional loads, or control-flow-heavy loops.
 
 ## Example Fix
 

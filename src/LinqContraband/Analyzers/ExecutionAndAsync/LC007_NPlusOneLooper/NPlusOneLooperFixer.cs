@@ -31,6 +31,12 @@ public sealed partial class NPlusOneLooperFixer : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
+        if (diagnostic.Properties.TryGetValue(NPlusOneLooperDiagnosticProperties.PatternKind, out var patternKind) &&
+            patternKind == NPlusOneLooperDiagnosticProperties.HelperCall)
+        {
+            return;
+        }
+
         var diagnosticSpan = diagnostic.Location.SourceSpan;
         var invocation = FindInvocation(root, diagnosticSpan);
         if (invocation == null)
