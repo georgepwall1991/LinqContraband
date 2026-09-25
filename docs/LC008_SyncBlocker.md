@@ -127,6 +127,30 @@ public async Task LoadAsync()
 }
 ```
 
+## In-Memory Queries
+A query built over an in-memory collection with `AsQueryable()` runs on LINQ to Objects. A sync `Count()` or `ToList()` on it does no I/O, and the async rewrite would throw at run time ("The source IQueryable doesn't implement IAsyncEnumerable"), so LC008 stays quiet when it can prove the query is in memory:
+
+- the chain starts at `AsQueryable()` over an array or a concrete collection class such as `List<T>` or `HashSet<T>`, or at `new EnumerableQuery<T>(...)`, and only adds library query operators (`Where`, `Skip`, `Take`, ...);
+- a local is followed through **every** write in its method, including writes inside lambdas and local functions: each write must be in-memory-rooted or composed from the same local (`query = query.Where(...)`);
+- a call to a non-virtual helper declared in the same compilation is followed when every `return` in its body is composed only from one `IQueryable<T>` parameter (reassignments of that parameter included), and LC008 then checks the argument passed for it.
+
+```csharp
+public async Task<(int, List<Issue>)> GetIssuesAsync(bool onlyErrors, int page, int size)
+{
+    var allIssues = await LoadAllIssuesAsync();          // List<Issue>
+    var filtered = allIssues.AsQueryable();
+    if (onlyErrors) filtered = filtered.Where(i => i.IsError);
+
+    var total = filtered.Count();                        // no LC008: LINQ to Objects
+    var items = Filter(filtered.Skip(page * size).Take(size)).ToList(); // no LC008
+    return (total, items);
+}
+
+private IQueryable<Issue> Filter(IQueryable<Issue> query) => query.OrderBy(i => i.Id);
+```
+
+LC008 still reports when any write to the local, or the helper argument, could be an EF query (`db.Set<T>()`, a `DbSet` property, a repository `Query()` that returns one), when the local is written through `ref`/`out`, `??=` or deconstruction, when the helper is virtual, abstract or declared in another project, and when `AsQueryable()` wraps an interface-typed sequence such as `IEnumerable<T>` whose element is an entity (some `DbContext` in the project or its references exposes a `DbSet<T>` of it), because it may be a `DbSet` at run time. An interface-typed sequence of a non-entity type, such as VirtoCommerce's `IEnumerable<SettingDescriptor> AllRegisteredSettings`, is in memory and stays quiet. Because these in-memory shapes do not report, the fixer is never offered for them.
+
 ## Fixer Behavior
 The fixer is intentionally narrow. It replaces the method name with the mapped async name and wraps the invocation in `await` only when `await` is legal at that syntax location.
 
@@ -141,7 +165,7 @@ The fixer is intentionally narrow. It replaces the method name with the mapped a
 
 ## Analyzer Logic
 - Reports only mapped sync methods on EF Core `DbContext`, `DbSet`, or `IQueryable` sources.
-- Does not report plain in-memory `IEnumerable` work or synchronous methods outside async contexts.
+- Does not report plain in-memory `IEnumerable` work, `IQueryable` chains proven to wrap an in-memory collection (see [In-Memory Queries](#in-memory-queries)), or synchronous methods outside async contexts.
 - Does not report sync-looking operators that are part of an `IQueryable` expression tree and will be translated by the provider.
 
 ### ID: `LC008`

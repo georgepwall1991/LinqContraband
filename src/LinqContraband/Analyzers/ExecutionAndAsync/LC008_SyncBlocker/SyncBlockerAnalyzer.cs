@@ -47,10 +47,16 @@ public sealed partial class SyncBlockerAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            var provenance = new InMemoryQueryProvenance(compilationContext.Compilation);
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, provenance),
+                OperationKind.Invocation);
+        });
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context, InMemoryQueryProvenance provenance)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -66,11 +72,21 @@ public sealed partial class SyncBlockerAnalyzer : DiagnosticAnalyzer
         // 3. Is the containing method Async?
         if (!IsInsideAsyncMethod(context.Operation)) return;
 
+        // 4. A query over an in-memory collection runs on LINQ to Objects: no I/O to await, and the
+        // async twin would throw because EnumerableQuery does not implement IAsyncEnumerable.
+        if (IsQueryableTerminal(method) && provenance.IsProvablyInMemory(invocation.GetInvocationReceiver()))
+            return;
+
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name, asyncMethodName));
     }
 
-    private bool IsEfCoreMethod(IMethodSymbol method, IInvocationOperation invocation)
+    private static bool IsQueryableTerminal(IMethodSymbol method)
+    {
+        return method.Name is not ("SaveChanges" or "Find");
+    }
+
+    private static bool IsEfCoreMethod(IMethodSymbol method, IInvocationOperation invocation)
     {
         // Case A: DbContext.SaveChanges
         if (method.Name == "SaveChanges")
