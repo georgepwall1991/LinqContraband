@@ -7,8 +7,8 @@ namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
 
 public sealed partial class AvoidDateTimeNowFixer
 {
-    private static string GetUniqueVariableName(SyntaxNode node) =>
-        GetUniqueVariableName(CollectExistingNames(node));
+    private static string GetUniqueVariableName(SyntaxNode node, SemanticModel semanticModel) =>
+        GetUniqueVariableName(CollectExistingNames(node, semanticModel));
 
     private static string GetUniqueVariableName(HashSet<string> existingNames)
     {
@@ -24,17 +24,56 @@ public sealed partial class AvoidDateTimeNowFixer
         return baseName;
     }
 
-    private static HashSet<string> CollectExistingNames(SyntaxNode node)
+    // A new local may not reuse any name declared anywhere in the enclosing member (CS0128/CS0136), and
+    // should not shadow a field, property or other symbol the member already reads by that name.
+    private static HashSet<string> CollectExistingNames(SyntaxNode node, SemanticModel semanticModel)
     {
         var existingNames = new HashSet<string>();
-        var block = node.AncestorsAndSelf().OfType<BlockSyntax>().FirstOrDefault();
-        if (block != null)
+        var scope = node.AncestorsAndSelf().LastOrDefault(ancestor =>
+            ancestor is MemberDeclarationSyntax and not BaseTypeDeclarationSyntax and not NamespaceDeclarationSyntax ||
+            ancestor is GlobalStatementSyntax);
+        foreach (var descendant in (scope ?? node).DescendantNodes())
         {
-            foreach (var descendant in block.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+            switch (descendant)
             {
-                existingNames.Add(descendant.Identifier.Text);
+                case VariableDeclaratorSyntax declarator:
+                    existingNames.Add(declarator.Identifier.ValueText);
+                    break;
+                case SingleVariableDesignationSyntax designation:
+                    existingNames.Add(designation.Identifier.ValueText);
+                    break;
+                case ForEachStatementSyntax forEach:
+                    existingNames.Add(forEach.Identifier.ValueText);
+                    break;
+                case CatchDeclarationSyntax catchDeclaration:
+                    existingNames.Add(catchDeclaration.Identifier.ValueText);
+                    break;
+                case ParameterSyntax parameter:
+                    existingNames.Add(parameter.Identifier.ValueText);
+                    break;
+                case LocalFunctionStatementSyntax localFunction:
+                    existingNames.Add(localFunction.Identifier.ValueText);
+                    break;
+                case FromClauseSyntax fromClause:
+                    existingNames.Add(fromClause.Identifier.ValueText);
+                    break;
+                case LetClauseSyntax letClause:
+                    existingNames.Add(letClause.Identifier.ValueText);
+                    break;
+                case JoinClauseSyntax joinClause:
+                    existingNames.Add(joinClause.Identifier.ValueText);
+                    break;
+                case JoinIntoClauseSyntax joinInto:
+                    existingNames.Add(joinInto.Identifier.ValueText);
+                    break;
+                case QueryContinuationSyntax continuation:
+                    existingNames.Add(continuation.Identifier.ValueText);
+                    break;
             }
         }
+
+        foreach (var symbol in semanticModel.LookupSymbols(node.SpanStart))
+            existingNames.Add(symbol.Name);
 
         AddEnclosingParameterNames(node, existingNames);
         return existingNames;
