@@ -95,9 +95,24 @@ A `while`, `do` or `for` loop counts as one of these when:
 - the loop condition itself queries the database (`while (await db.Jobs.AnyAsync(...))`);
 - the loop body waits with `Task.Delay` or `Thread.Sleep`, or the condition waits on `PeriodicTimer.WaitForNextTickAsync`; or
 - the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds; or
-- the query pages by a counter the loop advances: its `Skip(...)` reads the counter (`Skip(page * size)`, or an `offset` the body increases) and its `Take(...)` reads more than one row.
+- the query pages by a counter the loop advances: its `Skip(...)` reads the counter (`Skip(page * size)`, or an `offset` the body increases) and its `Take(...)` reads more than one row; or
+- the loop is a batch drain loop (`while` or `do` only): another query in the same iteration is bounded by `Take(n)` with `n` other than 0 or 1, and its result ends the loop as in the first point, such as the row count an `ExecuteDelete` returns or the length, count or emptiness of the materialized batch. Every query in that iteration, including the delete or update that works on the batch, then runs once per batch.
 
-The exemption only applies when the loop condition reads nothing but constants, integer counters, `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` report, except over `Chunk(...)` as below, and so does a query inside a batch loop that sits in an outer per-item loop.
+```csharp
+var found = int.MaxValue;
+while (found >= options.BatchSize)
+{
+    var query = db.PersistedGrants.Where(g => g.Expiration < now).OrderBy(g => g.Expiration);
+    var expired = await query.Take(options.BatchSize).AsNoTracking().ToArrayAsync(ct);
+    found = expired.Length;                 // a short batch ends the loop
+    if (found > 0)
+    {
+        await query.Where(g => g.Expiration <= expired[^1].Expiration).ExecuteDeleteAsync(ct); // quiet: one per batch
+    }
+}
+```
+
+The exemption only applies when the loop condition reads nothing but constants, integer counters (including an integer setting such as `_options.BatchSize`, read through fields and properties that are not collections), `bool` flags, cancellation, database executions and values derived from the query result. A condition that walks items of its own, such as `queue.TryDequeue(out var id)`, `reader.Read()` or `i < ids.Length`, still reports, even when the loop also breaks on the result. Queries in a `foreach` report, except over `Chunk(...)` as below, and so does a query inside a batch loop that sits in an outer per-item loop.
 
 A `foreach` over `ids.Chunk(n)` is the usual way to keep an `IN` list under the database's parameter limit, and it stays quiet when the query reads the whole chunk: `batch.Contains(...)`, the chunk passed as an argument, or a local built from it such as `batch.ToHashSet()`:
 
