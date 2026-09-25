@@ -53,6 +53,7 @@ using LinqContraband.Sample.Samples.LC051_ToAsyncEnumerableOnQuery;
 using LinqContraband.Sample.Samples.LC052_NonDeterministicModelData;
 using LinqContraband.Sample.Samples.LC053_OverwrittenQueryFilter;
 using LinqContraband.Sample.Samples.LC054_MigrateInsideTransaction;
+using LinqContraband.Sample.Samples.LC057_EmptyQueryAggregate;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
@@ -136,6 +137,7 @@ internal class Program
         await RunAsync("LC051", () => ToAsyncEnumerableOnQuerySample.RunAsync(db));
         Run("LC052", NonDeterministicModelDataSample.Run);
         Run("LC053", OverwrittenQueryFilterSample.Run);
+        Run("LC057", () => EmptyQueryAggregateSample.OldestAgeOver(db, minimumAge: 200));
 
         // LC054 opens a transaction around a migration, so it runs last. LC055 is a model
         // configuration check with nothing to run, and LC056 needs SQL Server stored procedures.

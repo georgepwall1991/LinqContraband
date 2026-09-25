@@ -139,7 +139,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**56 rules**, 39 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**57 rules**, 40 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -199,6 +199,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC054](https://georgepwall1991.github.io/LinqContraband/LC054_MigrateInsideTransaction.html) | Migrate called inside a user transaction | Warning | Yes |
 | [LC055](https://georgepwall1991.github.io/LinqContraband/LC055_MissingBaseOnModelCreating.html) | OnModelCreating override skips the base configuration | Warning | Yes |
 | [LC056](https://georgepwall1991.github.io/LinqContraband/LC056_StoredProcedureComposed.html) | LINQ composed over a stored procedure call | Warning | Yes |
+| [LC057](https://georgepwall1991.github.io/LinqContraband/LC057_EmptyQueryAggregate.html) | Min, Max or Average throws on an empty query | Warning | Yes |
 
 <!-- rule-table:end -->
 
