@@ -42,7 +42,9 @@ public sealed partial class LocalMethodFixer : CodeFixProvider
         var queryInvocation = FindQueryInvocation(invocation, semanticModel, context.CancellationToken);
         if (queryInvocation == null ||
             IsNestedQueryInvocation(semanticModel, queryInvocation, context.CancellationToken) ||
-            !CanRewriteQueryInvocation(semanticModel, queryInvocation, context.CancellationToken))
+            !CanRewriteQueryInvocation(semanticModel, queryInvocation, context.CancellationToken) ||
+            LocalCallReadsRowSubQuery(semanticModel, invocation, queryInvocation, context.CancellationToken) ||
+            ResultStillNeedsQueryable(semanticModel, queryInvocation, context.CancellationToken))
             return;
 
         context.RegisterCodeFix(

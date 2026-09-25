@@ -82,6 +82,14 @@ For fully qualified static calls, the fix preserves the `System.Linq` qualifier.
 
 The fixer is conservative for nested correlated query lambdas. LC001 still reports helpers inside nested subqueries, including helpers that reference only an outer query range variable, but it does not offer a partial `AsEnumerable()` rewrite when the diagnostic belongs to a nested query invocation. Moving only that inner boundary can leave an `Enumerable` subquery embedded in the outer `IQueryable` predicate instead of making the intended client-evaluation boundary clear.
 
+The fix is not offered where the query must stay an `IQueryable<T>` after the local method, because `AsEnumerable()` turns it into an `IEnumerable<T>` and the code would stop compiling:
+
+- the result is assigned to an `IQueryable<T>` variable, such as `query = query.Where(u => IsPreferred(u));`, passed to an `IQueryable<T>` parameter, or returned as one;
+- a later call in the chain needs a query, such as `ToArrayAsync()`, `Include(...)` or a project extension on `IQueryable<T>`, or passes a stored `Expression<...>` to a `Queryable` operator;
+- the query is kept in a `var` local that is later used in one of those ways.
+
+It is also not offered when the local method works on a sub-query of the row, such as `g.Items.AsQueryable().Where(...).Restrict(r).Count()` inside a projection. Moving the whole outer query to the client would run that projection in memory, where navigations such as `g.Items` are not loaded. LC001 still reports all of these; rewrite them by hand.
+
 Treat that fix as an explicit client-evaluation fallback, not as the best performance answer. For large tables, prefer a SQL-translatable rewrite.
 
 ## Reported Query Positions
