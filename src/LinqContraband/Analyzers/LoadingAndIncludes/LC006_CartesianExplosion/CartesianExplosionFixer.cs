@@ -85,10 +85,11 @@ public sealed partial class CartesianExplosionFixer : CodeFixProvider
         var source = memberAccess.Expression;
         if (IsInvocationOf(source, "AsSplitQuery")) return document;
 
-        // Create .AsSplitQuery() invocation
+        // Create .AsSplitQuery() invocation. In a chain split over lines, the source's trailing line break moves
+        // after the new call, so AsSplitQuery() stays on the source's line instead of column 0.
         var asSplitQuery = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
-            source,
+            source.WithoutTrailingTrivia(),
             SyntaxFactory.IdentifierName("AsSplitQuery"));
 
         var asSplitQueryInvocation = SyntaxFactory.InvocationExpression(asSplitQuery);

@@ -320,4 +320,46 @@ class Rules
 
         await testObj.RunAsync();
     }
+
+    // In a chain split over lines, AsEnumerable() stays on the source's line instead of landing at column 0.
+    [Fact]
+    public async Task FixCrime_MultilineChain_KeepsAsEnumerableOnTheSourceLine()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users
+            .Where(u => {|#0:CalculateAge(u.Dob)|} > 18)
+            .ToList();
+    }
+
+    int CalculateAge(DateTime dob) => 0;
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsEnumerable()
+            .Where(u => CalculateAge(u.Dob) > 18)
+            .ToList();
+    }
+
+    int CalculateAge(DateTime dob) => 0;
+}
+" + MockNamespace;
+
+        var testObj = new CodeFixTest { TestCode = test, FixedCode = fixedCode };
+        testObj.ExpectedDiagnostics.Add(new DiagnosticResult("LC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("CalculateAge"));
+
+        await testObj.RunAsync();
+    }
 }

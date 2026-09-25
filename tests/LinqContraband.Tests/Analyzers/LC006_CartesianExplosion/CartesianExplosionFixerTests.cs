@@ -448,4 +448,39 @@ class Program
             FixedCode = fixedCode
         }.RunAsync();
     }
+
+    // In a chain split over lines, AsSplitQuery() stays on the source's line instead of landing at column 0.
+    [Fact]
+    public async Task FixCrime_MultilineChain_KeepsAsSplitQueryOnTheSourceLine()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = {|LC006:db.Users
+            .Include(u => u.Orders)
+            .Include(u => u.Roles)|}
+            .ToList();
+    }
+}
+" + MockNamespace;
+
+        var fixedCode = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var query = db.Users.AsSplitQuery()
+            .Include(u => u.Orders)
+            .Include(u => u.Roles)
+            .ToList();
+    }
+}
+" + MockNamespace;
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
 }

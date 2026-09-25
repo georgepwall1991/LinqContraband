@@ -98,11 +98,12 @@ public sealed partial class MissingOrderByFixer : CodeFixProvider
             generator.MemberAccessExpression(generator.IdentifierName(lambdaParamName), keyName)
         );
 
-        // Expression: source.OrderBy(...)
-        var orderByInvocation = generator.InvocationExpression(
-            generator.MemberAccessExpression(sourceExpression, "OrderBy"),
+        // Expression: source.OrderBy(...). In a chain split over lines, the source's trailing line break moves
+        // after the new call, so OrderBy stays on the source's line instead of column 0.
+        var orderByInvocation = ((ExpressionSyntax)generator.InvocationExpression(
+            generator.MemberAccessExpression(sourceExpression.WithoutTrailingTrivia(), "OrderBy"),
             lambda
-        );
+        )).WithTrailingTrivia(sourceExpression.GetTrailingTrivia());
 
         // Replace the original source expression (e.g. 'db.Users') with 'db.Users.OrderBy(x => x.Id)'
         // But wait, 'sourceExpression' is inside 'invocation'.
