@@ -257,13 +257,19 @@ For the scan it also:
 - rebuilds every project, because a project that is already up to date is not compiled, and its analyzers would not
   run;
 - stops treating warnings as errors and ignores `LinqContrabandPreset`, whose presets make some findings build errors,
-  so one project's findings cannot keep the projects that depend on it from being built and scanned.
+  so one project's findings cannot keep the projects that depend on it from being built and scanned;
+- resets each LinqContraband rule (and EF1002/EF1003) to its default severity in a global analyzer config, so a
+  severity your `.editorconfig` sets for all analyzers or a whole category, such as
+  `dotnet_analyzer_diagnostic.severity = error`, does not turn the findings into build errors either. The scan reports
+  those findings at the rule's default severity, and a rule turned off only that way is still scanned. Compiler
+  errors (`CSxxxx`) still fail the build and the scan.
 
 The build writes to the usual `bin/` and `obj/` folders. No package is restored from NuGet for the analyzer, and the
-injected file is deleted when the scan ends.
+injected files are deleted when the scan ends.
 
-Your repository's `.editorconfig` rule settings still apply, so a rule you have turned off stays off. A rule set to
-`error` there still fails that project's build, and the projects that depend on it are then not scanned. The scanner
+Your repository's settings for a rule by its id (`dotnet_diagnostic.LC009.severity = ...` in `.editorconfig` or a
+global config) still apply, so a rule you have turned off stays off. A rule set to `error` by its id still fails that
+project's build, and the projects that depend on it are then not scanned. The scanner
 names those rules when it happens; set them to `warning` to scan everything.
 
 `--fix` runs `dotnet format analyzers` with the same file injected through the `CustomAfterMicrosoftCommonTargets`

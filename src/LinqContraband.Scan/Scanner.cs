@@ -19,8 +19,7 @@ internal static class Scanner
 
         try
         {
-            var targetsPath = Path.Combine(workDirectory, "LinqContraband.Scan.targets");
-            File.WriteAllText(targetsPath, ScanTargets.Create(analyzerAssemblyPath, logDirectory));
+            var targetsPath = ScanTargets.Write(workDirectory, analyzerAssemblyPath, logDirectory);
 
             var (exitCode, output) = RunDotnet(BuildArguments(options, target, targetsPath), rootDirectory, onBuildOutput);
 

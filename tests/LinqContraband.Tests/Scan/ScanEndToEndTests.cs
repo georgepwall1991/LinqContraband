@@ -114,6 +114,95 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
+    /// A repository that raises every analyzer diagnostic to an error in <c>.editorconfig</c> (as
+    /// evolutionary-architecture-by-example's Fitnet does, with <c>TreatWarningsAsErrors</c> on top) no longer fails the
+    /// scan build on LinqContraband's own findings, so the project that depends on the one with findings is built and
+    /// scanned too. A rule turned off by its own id stays off, and a real compile error still fails the scan.
+    /// </summary>
+    [Fact]
+    public void Scan_DoesNotFailTheBuildWhenTheRepositoryRaisesAllAnalyzerDiagnosticsToErrors()
+    {
+        var directory = Directory.CreateTempSubdirectory("scan-errors-e2e-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, ".editorconfig"), """
+                root = true
+
+                [*.cs]
+                dotnet_analyzer_diagnostic.severity = error
+                dotnet_analyzer_diagnostic.category-Performance.severity = error
+
+                [**/Legacy/*.cs]
+                dotnet_diagnostic.LC003.severity = none
+                """);
+            Directory.CreateDirectory(Path.Combine(directory, "Lib", "Legacy"));
+            File.WriteAllText(Path.Combine(directory, "Lib", "Lib.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                    <WarningsAsErrors>$(WarningsAsErrors);LC003</WarningsAsErrors>
+                  </PropertyGroup>
+                </Project>
+                """);
+            const string queries = """
+                using System.Linq;
+
+                public static class Queries
+                {
+                    public static bool HasAny(IQueryable<int> query) => query.Count() > 0;
+                }
+                """;
+            File.WriteAllText(Path.Combine(directory, "Lib", "Queries.cs"), queries);
+            File.WriteAllText(Path.Combine(directory, "Lib", "Legacy", "Old.cs"), queries.Replace("class Queries", "class OldQueries"));
+            Directory.CreateDirectory(Path.Combine(directory, "App"));
+            File.WriteAllText(Path.Combine(directory, "App", "App.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "App", "AppQueries.cs"), queries.Replace("class Queries", "class AppQueries"));
+
+            var project = Path.Combine(directory, "App", "App.csproj");
+            var sarif = Path.Combine(directory, "out", "report.sarif");
+
+            var (exitCode, output, error) = Run([project, "--sarif", sarif, "--verbose"], BuiltAnalyzerPath());
+            var transcript = output + Environment.NewLine + error;
+
+            Assert.True(exitCode == ScanCommand.Success, transcript);
+            Assert.True(output.Contains("LinqContraband found 2 problems (1 rule, 2 files).", StringComparison.Ordinal), transcript);
+            Assert.True(output.Contains("  LC003  Warning      2  ", StringComparison.Ordinal), transcript);
+            Assert.DoesNotContain("error LC003", transcript);
+
+            // Legacy/Old.cs has the same finding, but its rule is off there by id, and that setting still applies.
+            using (var document = JsonDocument.Parse(File.ReadAllText(sarif)))
+            {
+                var files = document.RootElement.GetProperty("runs")[0].GetProperty("results").EnumerateArray()
+                    .Select(result => result.GetProperty("locations")[0].GetProperty("physicalLocation").GetProperty("artifactLocation").GetProperty("uri").GetString()!.Split('/')[^1])
+                    .Order(StringComparer.Ordinal)
+                    .ToList();
+                Assert.Equal(["AppQueries.cs", "Queries.cs"], files);
+            }
+
+            // A compile error is still a failed build.
+            File.WriteAllText(Path.Combine(directory, "Lib", "Broken.cs"), "public class Broken { int value = ; }");
+            var broken = Run([project, "--sarif", sarif, "--no-restore"], BuiltAnalyzerPath());
+            Assert.True(broken.ExitCode == ScanCommand.ScanFailed, broken.Output + broken.Error);
+            Assert.Contains(": error CS", broken.Error);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// <c>--fix</c> applies the code fix through dotnet format and then scans what is left; <c>--exclude</c> keeps a
     /// file as it was.
     /// </summary>
