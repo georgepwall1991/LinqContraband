@@ -92,7 +92,7 @@ var users = db.Users.Where(u => u.IsActive).OrderBy(u => u.Name).Take(10).ToList
 var users = db.Users.Where(u => u.IsActive).OrderBy(u => u.Name).Take(10).TagWith("UserService.GetActive").ToList();
 ```
 
-In a multi-line chain the tag goes on its own line. The fix adds `using Microsoft.EntityFrameworkCore;` when the tag method is not already in scope. The static form (`Enumerable.ToList(query)`) is reported without a fix. Rename the generated tag if your team uses a different convention; the rule only checks that a tag exists.
+In a multi-line chain the tag goes on its own line. A comment or `#pragma` above the terminal stays with the terminal and is not copied onto the tag's line. The fix adds `using Microsoft.EntityFrameworkCore;` when the tag method is not already in scope. The static form (`Enumerable.ToList(query)`) is reported without a fix. Rename the generated tag if your team uses a different convention; the rule only checks that a tag exists.
 
 ## Test Cases
 

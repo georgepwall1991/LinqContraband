@@ -103,6 +103,57 @@ namespace TestApp
         }");
     }
 
+    // The terminal's directives and comments stay with it; the tag copies only the indentation.
+    [Fact]
+    public async Task MultilineChain_DirectiveBeforeTerminal_IsNotDuplicated()
+    {
+        await VerifyFixAsync(@"
+        public object Run(AppDbContext db)
+        {
+            return db.Orders
+                .Where(o => o.Total > 0)
+                .OrderBy(o => o.Id)
+                .Take(10)
+#pragma warning disable CS0618
+                .{|LC042:ToList|}();
+        }", @"
+        public object Run(AppDbContext db)
+        {
+            return db.Orders
+                .Where(o => o.Total > 0)
+                .OrderBy(o => o.Id)
+                .Take(10)
+                .TagWith(""Queries.Run"")
+#pragma warning disable CS0618
+                .ToList();
+        }");
+    }
+
+    [Fact]
+    public async Task MultilineChain_CommentBeforeTerminal_IsNotDuplicated()
+    {
+        await VerifyFixAsync(@"
+        public object Run(AppDbContext db)
+        {
+            return db.Orders
+                .Where(o => o.Total > 0)
+                .OrderBy(o => o.Id)
+                .Take(10)
+                // one page
+                .{|LC042:ToList|}();
+        }", @"
+        public object Run(AppDbContext db)
+        {
+            return db.Orders
+                .Where(o => o.Total > 0)
+                .OrderBy(o => o.Id)
+                .Take(10)
+                .TagWith(""Queries.Run"")
+                // one page
+                .ToList();
+        }");
+    }
+
     [Fact]
     public async Task AsyncTerminal()
     {
