@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.12.0</Version>
+        <Version>5.13.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>LinqContraband.Scan can now gate CI: --fail-on fails the build on findings at a chosen severity, --baseline fails only on new findings, --rules, --skip-rules and --exclude filter the report, --html writes a shareable report, and a GitHub Action (uses: georgepwall1991/LinqContraband@v5.12.0) adds a job summary and pull-request annotations. The text report lists each rule's findings with the line of code. dotnet format analyzers now applies every fix it can, even when a rule's first finding has none (such as an LC009 query whose entities leave the method or an LC007 loop it cannot rewrite). Fixes from scans of real EF Core applications: LC014 no longer hangs the build on query = query.Where(u =&gt; u.Name.ToLower() == name); LC009 stays quiet when a helper such as AutoMapper's ProjectTo reshapes the query into DTOs or scalars; LC007 and LC010 stay quiet on Chunk batches and Skip/Take paging loops; LC015 counts a project's own sort helpers as ordering; LC017 no longer reports loads whose entities are changed through a navigation or an entity method, where its fix made SaveChanges save nothing; LC011 reads keys from Entity&lt;T&gt;(b =&gt; ...) lambdas, configuration helpers and referenced projects; LC027 reads relationship configuration from OnModelCreating helpers and builder locals; LC040 skips methods that pick one tracking mode per call and non-entity reads; LC024 accepts conversions around aggregates; LC002 allows ToLookup after ToListAsync and names both calls correctly; LC035 counts a project's own predicate-taking Where as a filter; LC041 reports only a materializer that is the local's whole value.</PackageReleaseNotes>
+        <PackageReleaseNotes>New: linqcontraband-scan --fix applies the rules' code fixes to your source files through dotnet format, then scans again and reports what is left (on Microsoft's eShop Catalog API it fixed LC008, LC023, LC042 and LC009 findings). Code-fix safety fixes from applying the fixes to real applications: LC001 no longer offers AsEnumerable() where the query must stay an IQueryable; LC005 no longer offers ThenBy when the value was sorted in another statement; LC009 keeps AsNoTracking() on the source line in multi-line queries; LC016's local-extraction fix no longer clashes with existing locals, throws or freezes a loop's clock; LC023 passes Find a key value of exactly the key type, so Find no longer throws; LC020 and LC012 fix titles say what the fix changes. LC035 no longer slows the build on long chains of optionally composed query locals.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
