@@ -24,6 +24,14 @@ using System.Collections.Generic;
 using System.Linq;
 ";
 
+    private const string UsingsWithFrozen = @"
+using System;
+using System.Collections;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
+";
+
     private const string FrozenSupport = @"
 namespace System.Collections.Frozen
 {
@@ -62,9 +70,9 @@ class Program
         var fixedCode = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -113,9 +121,9 @@ class Program
         var fixedCode = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -153,9 +161,9 @@ class Program
         var test = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Frozen;
 " + FrozenSupport + @"
 class Program
 {
@@ -168,9 +176,9 @@ class Program
         var fixedCode = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -218,9 +226,9 @@ class Program
         var fixedCode = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -285,10 +293,10 @@ class Program
         var fixedCode = @"
 using System;
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using IntSet = System.Collections.Generic.HashSet<int>;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -349,10 +357,10 @@ class Program
 
         var fixedCode = @"
 using System.Collections;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Frozen;
 
 namespace System.Collections.Frozen
 {
@@ -454,8 +462,7 @@ class Program
     static bool IsElevated(string role) => ElevatedRoles.Contains(role);
 }";
 
-        var fixedCode = Usings + @"using System.Collections.Frozen;
-
+        var fixedCode = UsingsWithFrozen + @"
 class Program
 {
     private static readonly FrozenSet<string> ElevatedRoles = new string[] {
@@ -484,8 +491,7 @@ class Program
     static bool IsReserved(int value) => ReservedIds.Contains(value);
 }";
 
-        var fixedCode = Usings + @"using System.Collections.Frozen;
-
+        var fixedCode = UsingsWithFrozen + @"
 class Program
 {
     private static readonly int[] SeedValues = { 1, 2, 3 };
@@ -512,8 +518,7 @@ class Program
     static bool IsElevated(string role) => ElevatedRoles.Contains(role);
 }";
 
-        var fixedCode = Usings + @"using System.Collections.Frozen;
-
+        var fixedCode = UsingsWithFrozen + @"
 class Program
 {
     private static readonly string[] SeedValues = { ""admin"", ""ops"" };
