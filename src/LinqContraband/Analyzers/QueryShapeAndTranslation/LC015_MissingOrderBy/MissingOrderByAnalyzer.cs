@@ -93,7 +93,7 @@ public sealed partial class MissingOrderByAnalyzer : DiagnosticAnalyzer
 
         if (isSorting)
         {
-            if (HasPaginationUpstream(receiver, localValueCache, context.CancellationToken))
+            if (HasUnorderedPaginationUpstream(receiver, localValueCache, context.CancellationToken))
                 context.ReportDiagnostic(Diagnostic.Create(MisplacedRule, GetMethodLocation(invocation), method.Name));
             return;
         }

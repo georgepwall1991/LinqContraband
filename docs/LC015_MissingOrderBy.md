@@ -23,7 +23,7 @@ When you paginate data ("get page 2") or ask for the "last" item, you implicitly
 2. **Non-repeatable "last" lookups**: `Last()` returns different rows on consecutive runs, especially across a deploy that changes the plan.
 3. **Chunked enumeration drift**: `Chunk(n)` produces partitions whose membership changes between iterations.
 
-The rule also flags **misplaced** `OrderBy` calls that happen *after* pagination (e.g. `.Skip(10).OrderBy(...)`). This is almost always a bug: it sorts only the returned page, not the entire dataset, so the page boundary was already non-deterministic.
+The rule also flags **misplaced** `OrderBy` calls that happen *after* pagination (e.g. `.Skip(10).OrderBy(...)`). This is almost always a bug: it sorts only the returned page, not the entire dataset, so the page boundary was already non-deterministic. It stays quiet when the `Skip`/`Take` is itself ordered upstream: `OrderByDescending(m => m.SentAt).Take(10).OrderBy(m => m.SentAt)` ("latest 10, shown oldest first") re-sorts a deterministic window on purpose.
 
 ### Example Violations
 ```csharp
@@ -94,6 +94,8 @@ LC015 evaluates EF-backed `IQueryable<T>` chains where pagination or "last row" 
 
 A project's own query helper counts as ordering when its body calls `OrderBy`, `OrderByDescending`, `ThenBy` or `ThenByDescending`, as in `query = ApplySort(query, sortBy, direction)` or `db.Users.SortBy(field)`, and so does any call that returns `IOrderedQueryable<T>`. A helper from another assembly counts when its name contains `Sort` or `Order` (`ApplySorting`, `ApplyOrdering`). Prepending `OrderBy(x => x.Id)` after such a helper would replace the sort the caller asked for, so LC015 stays quiet rather than offer that fix. A helper that sorts only on some paths still counts; add a final key inside the helper if the default path can page unordered.
 
+The misplaced-sort report fires only when the nearest `Skip`/`Take` before the sort has no ordering of its own. When an `OrderBy`/`OrderByDescending`/`ThenBy` chain, a recognized sort helper, or an `IOrderedQueryable<T>` source sits before that `Skip`/`Take` (directly, or through a simple local), the window is a deterministic top-N or page and sorting it again (`OrderByDescending(x => x.Id).Take(scanLimit).Where(...).OrderByDescending(x => x.Id).Take(count)`) is intentional, so LC015 stays quiet and no fix is offered.
+
 The order must be established upstream of the reported operator; an `OrderBy` after `Skip` or `Take` still leaves the page selection non-deterministic, and it does not suppress the missing-order warning when later pagination continues from that already-arbitrary page boundary, including through simple query or sorted-query aliases.
 
 ## Rule Boundary
@@ -123,6 +125,8 @@ db.Users.Skip(10).OrderBy(u => u.Name).Take(5);      // missing upstream order a
 ```csharp
 db.Users.OrderBy(x => x.Id).Skip(10);
 db.Users.OrderByDescending(x => x.Date).Last();
+db.Users.OrderByDescending(x => x.Id).Take(10).OrderBy(x => x.Id);    // ordered window re-sorted for display
+db.Users.OrderBy(x => x.Name).Skip(20).Take(10).OrderByDescending(x => x.Id); // ordered page re-sorted
 db.Users.OrderBy(x => x.Id).Where(x => x.Active).Skip(10);            // order preserved through Where
 db.Users.OrderBy(x => x.Id).Select(x => x.Name).Skip(10);             // order preserved through projection
 var ordered = db.Users.OrderBy(x => x.Id); ordered.Skip(10);          // ordered alias

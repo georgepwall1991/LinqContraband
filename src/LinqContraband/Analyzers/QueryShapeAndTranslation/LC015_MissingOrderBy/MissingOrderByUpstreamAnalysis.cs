@@ -13,6 +13,32 @@ public sealed partial class MissingOrderByAnalyzer
         LocalValueCache localValueCache,
         CancellationToken cancellationToken)
     {
+        return FindPaginationUpstream(operation, localValueCache, cancellationToken) != null;
+    }
+
+    // A sort after Skip/Take only sorts an arbitrary subset when that window was picked from an
+    // unordered set. `OrderByDescending(x => x.Id).Take(10).OrderBy(x => x.Id)` ("latest 10, shown
+    // oldest first") re-sorts a deterministic window, so the nearest upstream Skip/Take must itself
+    // sit on an unordered source for the misplaced-sort report.
+    private bool HasUnorderedPaginationUpstream(
+        IOperation operation,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken)
+    {
+        var pagination = FindPaginationUpstream(operation, localValueCache, cancellationToken);
+        if (pagination == null)
+            return false;
+
+        var paginationReceiver = pagination.GetInvocationReceiver();
+        return paginationReceiver == null ||
+               !HasOrderByUpstream(paginationReceiver, localValueCache, cancellationToken);
+    }
+
+    private IInvocationOperation? FindPaginationUpstream(
+        IOperation operation,
+        LocalValueCache localValueCache,
+        CancellationToken cancellationToken)
+    {
         var current = operation.UnwrapConversions();
         while (current != null)
         {
@@ -23,7 +49,7 @@ public sealed partial class MissingOrderByAnalyzer
             if (current is IInvocationOperation inv)
             {
                 if (PaginationMethods.Contains(inv.TargetMethod.Name))
-                    return true;
+                    return inv;
 
                 var next = inv.GetInvocationReceiver();
                 if (next == null)
@@ -49,7 +75,7 @@ public sealed partial class MissingOrderByAnalyzer
             break;
         }
 
-        return false;
+        return null;
     }
 
     private bool HasOrderByUpstream(
