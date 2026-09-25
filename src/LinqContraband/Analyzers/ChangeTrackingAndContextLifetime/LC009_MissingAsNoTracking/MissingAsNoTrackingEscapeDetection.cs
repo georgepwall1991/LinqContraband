@@ -39,15 +39,21 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         if (entityLocals.Count == 0)
             return false;
 
+        // Loop variables over a navigation of an entity join the set as the walk reaches their loop.
+        entityLocals = new HashSet<ILocalSymbol>(entityLocals, SymbolEqualityComparer.Default);
+
         foreach (var descendant in root.Descendants())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             if (descendant is ILocalReferenceOperation localReference &&
-                entityLocals.Contains(localReference.Local) &&
-                IsEscapingUse(localReference, isMaterializer: false, entityType))
+                entityLocals.Contains(localReference.Local))
             {
-                return true;
+                if (IsEscapingUse(localReference, isMaterializer: false, entityType))
+                    return true;
+
+                if (NavigationEscapes(localReference, entityLocals))
+                    return true;
             }
 
             // users.ForEach(u => service.Save(u)): a delegate over the entity list can hand
@@ -62,6 +68,76 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// <c>order.Lines</c> or <c>tag.Items.Select(i => i.Series)</c> reaches entities loaded with the row. Stored in
+    /// another object or handed to other code, they can join a tracked graph, where untracked duplicates of the
+    /// same key fail to attach. Scalars read through a navigation (<c>order.Lines.Sum(...)</c>) stay reads.
+    /// </summary>
+    private static bool NavigationEscapes(ILocalReferenceOperation entity, HashSet<ILocalSymbol> entityLocals)
+    {
+        IOperation current = entity;
+        var navigated = false;
+        while (current.Parent is IPropertyReferenceOperation property &&
+               property.Instance == current &&
+               ReachesEntities(property.Type))
+        {
+            current = property;
+            navigated = true;
+        }
+
+        if (!navigated)
+            return false;
+
+        var parent = current.Parent;
+        while (parent is IConversionOperation or IParenthesizedOperation)
+            parent = parent.Parent;
+
+        if (parent is IForEachLoopOperation loop)
+        {
+            foreach (var local in loop.Locals)
+                entityLocals.Add(local);
+
+            return false;
+        }
+
+        // The navigation's element type is not the query's entity type, so any reference-typed result counts.
+        return IsEscapingUse(current, isMaterializer: false, entityType: null);
+    }
+
+    // A class or interface outside System, or a collection of one: a navigation rather than a scalar.
+    private static bool ReachesEntities(ITypeSymbol? type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return ReachesEntities(array.ElementType);
+            case INamedTypeSymbol named:
+                if (named.TypeKind is TypeKind.Class or TypeKind.Interface &&
+                    named.SpecialType == SpecialType.None &&
+                    !IsInSystemNamespace(named))
+                    return true;
+
+                foreach (var typeArgument in named.TypeArguments)
+                {
+                    if (ReachesEntities(typeArgument))
+                        return true;
+                }
+
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsInSystemNamespace(INamedTypeSymbol type)
+    {
+        var ns = type.ContainingNamespace;
+        while (ns is { IsGlobalNamespace: false, ContainingNamespace.IsGlobalNamespace: false })
+            ns = ns.ContainingNamespace;
+
+        return ns is { IsGlobalNamespace: false, Name: "System" };
     }
 
     private static bool IsEscapingUse(IOperation value, bool isMaterializer, ITypeSymbol? entityType)

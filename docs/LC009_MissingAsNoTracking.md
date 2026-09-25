@@ -71,6 +71,8 @@ The fix is offered only when the materialized entities stay inside the method. W
 - handed to a delegate (`users.ForEach(u => ...)`), or
 - carried through LINQ to Objects into one of the above (`return users.Where(...).ToList();`).
 
+The same holds for entities reached through a navigation: `Show(order.Lines)`, `new Basket { Lines = order.Lines.ToList() }`, or a `foreach` over `order.Lines` that adds each line to another object. Stored elsewhere, those untracked entities can join a tracked graph, where two instances with the same key fail to attach. Scalars read through a navigation, such as `order.Lines.Sum(l => l.Quantity)`, keep the fix.
+
 LINQ that no longer carries the entity stays local: `users.Count(...)`, `users.Any(...)` and `users.Select(u => u.Name).ToList()` keep the fix. For a reported query without a fix, check the callers first: if none of them changes and saves the entities, add `AsNoTracking()` by hand.
 
 The fixer inserts `AsNoTracking()` directly on the EF source it found, using the semantic type rather than syntax so it places the call correctly for both shapes:
