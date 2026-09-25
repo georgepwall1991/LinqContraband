@@ -39,6 +39,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (prevInvocation.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.ContextIsLocal = IsLocalContext(prevInvocation.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, prevInvocation.Type, prevInvocation.Instance?.Type);
                         return result;
                     }
@@ -51,6 +52,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (propRef.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.ContextIsLocal = IsLocalContext(propRef.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, propRef.Type, propRef.Instance?.Type);
                     }
                     return result;
@@ -59,6 +61,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (fieldRef.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.ContextIsLocal = IsLocalContext(fieldRef.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, fieldRef.Type, fieldRef.Instance?.Type);
                     }
                     return result;
@@ -87,6 +90,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer
 
         return result;
     }
+
+    // using var db = new AppDbContext(); the context lives and dies in this method, so no caller can save
+    // the entities it tracks.
+    private static bool IsLocalContext(IOperation? instance) =>
+        instance?.UnwrapConversions() is ILocalReferenceOperation;
 
     // The materializer's element type is an entity when it is the root DbSet's entity, a type
     // derived from it (OfType<Derived>()), a navigation of the root entity or another entity the
