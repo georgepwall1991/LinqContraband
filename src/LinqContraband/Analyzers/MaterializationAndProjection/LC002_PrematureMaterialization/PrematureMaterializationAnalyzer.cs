@@ -42,6 +42,8 @@ public sealed partial class PrematureMaterializationAnalyzer : DiagnosticAnalyze
             return;
         }
 
+        if (IsInMemoryRecheckOfUpstreamFilter(invocation, unwrappedReceiver)) return;
+
         var properties = CreateProperties(
             ContinuationDiagnosticKind,
             materializationOrigin.OriginKind,
