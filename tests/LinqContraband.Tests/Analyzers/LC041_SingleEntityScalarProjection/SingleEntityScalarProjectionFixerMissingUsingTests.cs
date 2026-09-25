@@ -61,9 +61,9 @@ namespace TestApp
     }
 }";
 
-        var fixedCode = @"using System.Threading.Tasks;
+        var fixedCode = @"using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
 " + QueryableEfCoreMock + @"
 namespace TestApp
 {
