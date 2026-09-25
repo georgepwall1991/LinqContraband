@@ -41,8 +41,7 @@ internal static class ScanFixer
 
         try
         {
-            var targetsPath = Path.Combine(workDirectory, "LinqContraband.Scan.targets");
-            File.WriteAllText(targetsPath, ScanTargets.Create(analyzerAssemblyPath, logDirectory));
+            var targetsPath = ScanTargets.Write(workDirectory, analyzerAssemblyPath, logDirectory);
 
             var excludes = options.Excludes.Select(ScanFilter.GlobToRegex).ToList();
             var before = Snapshot(reportRoot, excludes);

@@ -167,8 +167,9 @@ public sealed class ScanCommandTests
     {
         var analyzer = Path.Combine(Path.GetTempPath(), "tool & co", "LinqContraband.dll");
         var logs = Path.Combine(Path.GetTempPath(), "logs");
+        var globalConfig = Path.Combine(Path.GetTempPath(), "tool & co", ScanTargets.GlobalConfigFileName);
 
-        var project = XDocument.Parse(ScanTargets.Create(analyzer, logs));
+        var project = XDocument.Parse(ScanTargets.Create(analyzer, logs, globalConfig));
 
         var target = Assert.Single(project.Root!.Elements("Target"));
         Assert.Equal("CoreCompile", target.Attribute("BeforeTargets")?.Value);
@@ -176,11 +177,54 @@ public sealed class ScanCommandTests
         Assert.Equal("@(Analyzer)", analyzers[0].Attribute("Remove")?.Value);
         Assert.Equal("'%(Filename)' == 'LinqContraband'", analyzers[0].Attribute("Condition")?.Value);
         Assert.Equal(analyzer, analyzers[1].Attribute("Include")?.Value);
+        Assert.Equal(globalConfig, target.Element("ItemGroup")!.Element("EditorConfigFiles")?.Attribute("Include")?.Value);
 
         var errorLog = target.Element("PropertyGroup")!.Element("ErrorLog")!.Value;
         Assert.StartsWith(logs + Path.DirectorySeparatorChar + "$(MSBuildProjectName).", errorLog);
         Assert.Contains("$([System.Guid]::NewGuid()", errorLog);
         Assert.EndsWith(".sarif,version=2.1", errorLog);
+    }
+
+    [Fact]
+    public void ReportedRules_MatchTheRuleCatalog()
+    {
+        var catalog = LinqContraband.Catalog.RuleCatalog.All.Select(rule => rule.Id).Concat(["EF1002", "EF1003"]);
+        Assert.Equal(catalog, ScanTargets.ReportedRules);
+    }
+
+    /// <summary>
+    /// A repository's <c>dotnet_analyzer_diagnostic.severity = error</c> would make every finding a build error; a
+    /// per-rule <c>default</c> in a global config wins over it, at a global level below any the repository uses.
+    /// </summary>
+    [Fact]
+    public void GlobalConfig_ResetsEveryReportedRuleToItsDefaultSeverity()
+    {
+        var lines = ScanTargets.GlobalConfig().Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+
+        Assert.Contains("is_global = true", lines);
+        Assert.Contains("global_level = -1000", lines);
+        foreach (var rule in ScanTargets.ReportedRules)
+            Assert.Contains($"dotnet_diagnostic.{rule}.severity = default", lines);
+        Assert.DoesNotContain(lines, line => line.StartsWith("dotnet_analyzer_diagnostic", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Write_PutsTheTargetsAndTheGlobalConfigInTheWorkDirectory()
+    {
+        var work = Directory.CreateTempSubdirectory("scan-targets-").FullName;
+        try
+        {
+            var targets = ScanTargets.Write(work, Path.Combine(work, "LinqContraband.dll"), Path.Combine(work, "logs"));
+
+            Assert.Equal(Path.Combine(work, ScanTargets.TargetsFileName), targets);
+            var globalConfig = Path.Combine(work, ScanTargets.GlobalConfigFileName);
+            Assert.Equal(ScanTargets.GlobalConfig(), File.ReadAllText(globalConfig));
+            Assert.Contains($"<EditorConfigFiles Include=\"{globalConfig}\" />", File.ReadAllText(targets));
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
     }
 
     [Fact]
