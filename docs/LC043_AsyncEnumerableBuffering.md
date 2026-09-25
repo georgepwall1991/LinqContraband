@@ -45,4 +45,4 @@ await foreach (var user in stream)
 ### Notes
 This v1 rule is intentionally narrow. It reports only immediate buffer-then-loop patterns that are safe to rewrite to `await foreach`. The buffered call must come from a proven `IAsyncEnumerable<T>` source, so custom non-stream helpers named `ToListAsync` or `ToArrayAsync` stay quiet. Calls with buffer-method arguments, such as cancellation tokens, are left alone so the fixer does not drop behavior. Buffers captured by nested lambdas or local functions are also left alone because removing the local would break that captured use.
 
-The code fix works on any receiver, including a chained one such as `await db.Users.AsAsyncEnumerable().ToListAsync()`, which becomes `await foreach (var user in db.Users.AsAsyncEnumerable())`.
+The code fix works on any receiver, including a chained one such as `await db.Users.AsAsyncEnumerable().ToListAsync()`, which becomes `await foreach (var user in db.Users.AsAsyncEnumerable())`. Comments and blank lines above the removed declaration move onto the `await foreach`.

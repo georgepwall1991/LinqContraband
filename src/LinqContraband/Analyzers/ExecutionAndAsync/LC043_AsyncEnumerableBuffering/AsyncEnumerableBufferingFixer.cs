@@ -54,14 +54,28 @@ public sealed partial class AsyncEnumerableBufferingFixer : CodeFixProvider
     private static async Task<Document> ApplyFixAsync(Document document, FixInfo fixInfo, CancellationToken cancellationToken)
     {
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-        var awaitForeach = fixInfo.LoopSyntax
-            .WithAwaitKeyword(SyntaxFactory.Token(SyntaxKind.AwaitKeyword))
+        var loop = fixInfo.LoopSyntax;
+        var awaitForeach = loop
+            .WithForEachKeyword(loop.ForEachKeyword.WithLeadingTrivia())
+            .WithAwaitKeyword(SyntaxFactory.Token(SyntaxKind.AwaitKeyword).WithTrailingTrivia(SyntaxFactory.Space))
             .WithExpression(fixInfo.SourceExpression)
-            .WithTriviaFrom(fixInfo.LoopSyntax);
+            .WithLeadingTrivia(MergeLeadingTrivia(fixInfo.LocalDeclaration, loop))
+            .WithTrailingTrivia(loop.GetTrailingTrivia());
 
         editor.ReplaceNode(fixInfo.LoopSyntax, awaitForeach);
         editor.RemoveNode(fixInfo.LocalDeclaration, SyntaxRemoveOptions.KeepNoTrivia);
         return editor.GetChangedDocument();
+    }
+
+    // The removed declaration's comments and blank lines move onto the loop, followed by the loop's own trivia.
+    private static SyntaxTriviaList MergeLeadingTrivia(LocalDeclarationStatementSyntax declaration, ForEachStatementSyntax loop)
+    {
+        var declarationTrivia = declaration.GetLeadingTrivia();
+        var end = declarationTrivia.Count;
+        while (end > 0 && declarationTrivia[end - 1].IsKind(SyntaxKind.WhitespaceTrivia))
+            end--;
+
+        return SyntaxFactory.TriviaList(declarationTrivia.Take(end).Concat(loop.GetLeadingTrivia()));
     }
 
     private static bool TryGetFixInfo(InvocationExpressionSyntax invocation, SemanticModel semanticModel, out FixInfo fixInfo)

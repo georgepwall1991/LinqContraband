@@ -130,6 +130,49 @@ namespace TestApp
         await VerifyFix.VerifyCodeFixAsync(test, expected, fixedCode);
     }
 
+    // The comment and blank line above the removed declaration move onto the await foreach.
+    [Fact]
+    public async Task Fixer_KeepsTheCommentAboveTheRemovedDeclaration()
+    {
+        const string Header = @"using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Threading.Tasks;" + AsyncEnumerableMock + @"
+namespace TestApp
+{
+    public class User { public string Name { get; set; } }
+
+    public class TestClass
+    {
+        public async Task Run(IAsyncEnumerable<User> users)
+        {
+            System.Console.WriteLine(""start"");
+";
+        var test = Header + @"
+            // Stream the users once.
+            var items = await {|LC043:users.ToListAsync()|};
+            // Print each one.
+            foreach (var item in items)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+        }
+    }
+}";
+
+        var fixedCode = Header + @"
+            // Stream the users once.
+            // Print each one.
+            await foreach (var item in users)
+            {
+                System.Console.WriteLine(item.Name);
+            }
+        }
+    }
+}";
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
+
     [Fact]
     public async Task BufferedAsyncEnumerable_WithInterveningStatement_ShouldNotTrigger()
     {
@@ -350,6 +393,7 @@ namespace TestApp
             {
                 System.Console.WriteLine(item.Name);
             }
+
             await foreach (var other in otherUsers)
             {
                 System.Console.WriteLine(other.Name);
@@ -479,6 +523,7 @@ namespace TestApp
             {
                 System.Console.WriteLine(user.Name);
             }
+
             await foreach (var user in db.Users.Where(u => u.IsActive).AsAsyncEnumerable())
             {
                 System.Console.WriteLine(user.Name);
