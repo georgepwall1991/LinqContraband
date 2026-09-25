@@ -97,6 +97,7 @@ indent_size = 2
 
 # LC009: The Tracking Tax - Missing AsNoTracking() on read-only queries
 # dotnet_diagnostic.LC009.severity = info
+# dotnet_code_quality.LC009.report_returned_entities = true
 
 # LC010: SaveChanges Loop Tax - SaveChanges() inside a loop
 # dotnet_diagnostic.LC010.severity = warning

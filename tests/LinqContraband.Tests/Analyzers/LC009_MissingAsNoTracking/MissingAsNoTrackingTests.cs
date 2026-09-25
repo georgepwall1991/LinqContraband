@@ -1,5 +1,4 @@
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
-    LinqContraband.Analyzers.LC009_MissingAsNoTracking.MissingAsNoTrackingAnalyzer>;
+using VerifyCS = LinqContraband.Tests.Analyzers.LC009_MissingAsNoTracking.ReturnedEntitiesOptInVerifier;
 
 namespace LinqContraband.Tests.Analyzers.LC009_MissingAsNoTracking;
 

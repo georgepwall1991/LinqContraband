@@ -72,7 +72,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (enclosingSymbol is IMethodSymbol enclosingMethod && enclosingMethod.ReturnType.IsIQueryable())
             return;
 
-        if (!AnalyzeQueryChain(invocation).IsTrackedEfRead)
+        var chain = AnalyzeQueryChain(invocation);
+        if (!chain.IsTrackedEfRead)
             return;
 
         // db.Orders.AsEnumerable().Where(...).ToList(): AsEnumerable() defers, so the query runs
@@ -96,6 +97,14 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         // SaveChanges lives in a helper the analyzer cannot see — suggesting AsNoTracking
         // would break that cross-method save.
         if (root != null && MaterializedEntityIsMutated(resultAnchor, root, entityLocals, context.CancellationToken))
+            return;
+
+        // Returned entities are usually changed and saved by the caller (a repository getter), so they report
+        // only when the project opts in, or when the method's own local context tracks them and no caller can save.
+        if (root != null &&
+            !chain.ContextIsLocal &&
+            !ReportsReturnedEntities(context.Options, invocation.Syntax.SyntaxTree) &&
+            MaterializedEntitiesAreReturned(resultAnchor, root, entityLocals, context.CancellationToken))
             return;
 
         // Entities that leave the method may be changed and saved by code this analysis does
@@ -145,6 +154,9 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         public bool HasAsNoTracking { get; set; }
         public bool HasAsTracking { get; set; }
         public bool HasSelect { get; set; }
+
+        // The DbContext is a local of the method, so entities returned from it cannot be saved by a caller.
+        public bool ContextIsLocal { get; set; }
 
         // Set when a helper reshapes the query into something that is not an entity, such as
         // AutoMapper's ProjectTo<Dto>() or an extension that selects IDs. EF Core does not track it.

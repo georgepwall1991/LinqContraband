@@ -44,7 +44,9 @@ public sealed class LinqContrabandFixAllProviderTests
         public class Queries
         {
             // The entities leave the method, so LC009 reports this query without a fix.
-            public List<User> Escapes(Db db) => db.Users.Where(u => u.Active).ToList();
+            public void Escapes(Db db) => Show(db.Users.Where(u => u.Active).ToList());
+
+            private static void Show(object value) { }
 
             public int CountActive(Db db)
             {
@@ -77,7 +79,7 @@ public sealed class LinqContrabandFixAllProviderTests
         Assert.NotNull(action);
 
         var fixedText = await ApplyAsync(document, action!);
-        Assert.Contains("public List<User> Escapes(Db db) => db.Users.Where(u => u.Active).ToList();", fixedText);
+        Assert.Contains("public void Escapes(Db db) => Show(db.Users.Where(u => u.Active).ToList());", fixedText);
         Assert.Contains("var users = db.Users.AsNoTracking().Where(u => u.Active).ToList();", fixedText);
         Assert.Contains("var users = db.Users.AsNoTracking().ToList();", fixedText);
     }

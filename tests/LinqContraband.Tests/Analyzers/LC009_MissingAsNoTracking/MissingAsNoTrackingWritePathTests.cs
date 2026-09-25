@@ -87,6 +87,10 @@ class Service
     private static Task VerifyReportedWithoutFixAsync(string members) =>
         VerifyFix.VerifyCodeFixAsync(Code(members), Code(members));
 
+    // Returned entities report only with dotnet_code_quality.LC009.report_returned_entities = true.
+    private static Task VerifyReportedWithoutFixWhenOptedInAsync(string members) =>
+        ReturnedEntitiesOptInVerifier.VerifyCodeFixAsync(Code(members), Code(members));
+
     private static Task VerifyReportedWithFixAsync(string members, string fixedMembers) =>
         VerifyFix.VerifyCodeFixAsync(Code(members), Code(fixedMembers));
 
@@ -208,11 +212,11 @@ class Service
     }");
 
     [Fact]
-    public Task ReturnedMaterializer_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    public Task ReturnedMaterializer_ReportsWithoutFix_WhenOptedIn() => VerifyReportedWithoutFixWhenOptedInAsync(@"
     List<Order> Read() => {|LC009:db.Orders.Where(o => o.Id > 0).ToList()|};");
 
     [Fact]
-    public Task ReturnedResultLocal_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    public Task ReturnedResultLocal_ReportsWithoutFix_WhenOptedIn() => VerifyReportedWithoutFixWhenOptedInAsync(@"
     Order Read()
     {
         var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
@@ -220,7 +224,7 @@ class Service
     }");
 
     [Fact]
-    public Task ReturnedFilteredCopy_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    public Task ReturnedFilteredCopy_ReportsWithoutFix_WhenOptedIn() => VerifyReportedWithoutFixWhenOptedInAsync(@"
     List<Order> Read()
     {
         var orders = {|LC009:db.Orders.ToList()|};
