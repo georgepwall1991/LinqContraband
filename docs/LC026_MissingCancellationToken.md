@@ -108,7 +108,7 @@ await db.AuditLog.AddAsync(entry, CancellationToken.None); // deliberately not c
 dotnet_code_quality.LC026.report_explicit_none = true
 ```
 
-A token only counts as usable when the call could actually pass it. A local declared later in the method (CS0841) and an instance field or property seen from a `static` method (CS0120) do not count, so neither the diagnostic nor the fix relies on them.
+A token only counts as usable when the call could actually pass it. A local declared later in the method (CS0841) and an instance field or property seen from a `static` method (CS0120) do not count, so neither the diagnostic nor the fix relies on them. Inside a `static` local function or `static` lambda, only tokens declared in that function (its parameters and locals) and static members count: it cannot capture the enclosing method's token (CS8421, CS8820) or reach instance members.
 
 ## Boundaries
 

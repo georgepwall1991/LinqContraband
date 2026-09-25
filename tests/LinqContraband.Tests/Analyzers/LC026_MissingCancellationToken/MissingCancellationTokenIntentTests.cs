@@ -121,6 +121,28 @@ namespace LinqContraband.Test
         {
             var users = await query.ToListAsync();
         }")]
+    // A static local function or lambda cannot capture the outer token (CS8421, CS8820) or reach an instance one.
+    [InlineData(@"
+        public async Task Run(DbSet<User> query, CancellationToken ct)
+        {
+            static async Task Inner(DbSet<User> q) { var list = await q.ToListAsync(); }
+            await Inner(query);
+        }")]
+    [InlineData(@"
+        public async Task Run(DbSet<User> query)
+        {
+            var ct = new CancellationTokenSource().Token;
+            System.Func<DbSet<User>, Task> load = static async q => { var list = await q.ToListAsync(); };
+            await load(query);
+        }")]
+    [InlineData(@"
+        private CancellationToken _stopping;
+
+        public async Task Run(DbSet<User> query)
+        {
+            static async Task Inner(DbSet<User> q) { var list = await q.ToListAsync(); }
+            await Inner(query);
+        }")]
     public Task TokenNotUsableAtTheCall_IsQuiet(string members) =>
         VerifyCS.VerifyAnalyzerAsync(IntentProgram(members));
 
@@ -141,4 +163,33 @@ namespace LinqContraband.Test
         }")]
     public Task UsableToken_StillReports(string members) =>
         VerifyCS.VerifyAnalyzerAsync(IntentProgram(members));
+
+    // Inside a static local function, the function's own token is still passed, and a capturing lambda nested
+    // in it may use that token too.
+    [Fact]
+    public async Task StaticLocalFunction_PassesItsOwnToken()
+    {
+        var test = IntentProgram(@"
+        public async Task Run(DbSet<User> query, CancellationToken ct)
+        {
+            static async Task Inner(DbSet<User> q, CancellationToken token)
+            {
+                var list = await {|LC026:q.ToListAsync()|};
+                System.Func<Task> again = async () => await {|LC026:q.ToListAsync()|};
+            }
+            await Inner(query, ct);
+        }");
+        var fixedCode = IntentProgram(@"
+        public async Task Run(DbSet<User> query, CancellationToken ct)
+        {
+            static async Task Inner(DbSet<User> q, CancellationToken token)
+            {
+                var list = await q.ToListAsync(token);
+                System.Func<Task> again = async () => await q.ToListAsync(token);
+            }
+            await Inner(query, ct);
+        }");
+
+        await new CodeFixTest { TestCode = test, FixedCode = fixedCode }.RunAsync();
+    }
 }
