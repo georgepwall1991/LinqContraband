@@ -17,8 +17,24 @@ public sealed partial class MultipleOrderByFixer
         if (receiverExpression == null)
             return false;
 
+        // Sorting a query that another statement already sorted, such as `query.OrderBy(...)` where
+        // `query` ends in `OrderBy(x => x.Position)`, is usually a deliberate re-sort. EF Core and
+        // LINQ both use the last OrderBy as the primary key, so ThenBy would make the earlier
+        // statement's key primary and return rows in a different order.
+        if (IsReadOfSortedValue(receiverExpression))
+            return false;
+
         var receiverType = semanticModel.GetTypeInfo(receiverExpression).Type;
         return IsOrderedSequence(receiverType);
+    }
+
+    private static bool IsReadOfSortedValue(ExpressionSyntax receiverExpression)
+    {
+        while (receiverExpression is ParenthesizedExpressionSyntax parenthesized)
+            receiverExpression = parenthesized.Expression;
+
+        return receiverExpression is IdentifierNameSyntax or
+            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or IdentifierNameSyntax, Name: IdentifierNameSyntax };
     }
 
     private static ExpressionSyntax? GetLogicalReceiverExpression(

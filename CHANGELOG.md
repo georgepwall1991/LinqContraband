@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The LC005 code fix is no longer offered when the resetting `OrderBy` sorts a local, field or parameter that another statement already sorted, such as `query.OrderBy(x => x.IsRead).ThenBy(x => x.Position)` where `query` ends in `OrderBy(x => x.Position)`. The last `OrderBy` is the primary key in EF Core and LINQ to Objects, so rewriting it to `ThenBy` made the earlier key primary and returned a different row; applying the fix to Kavita's reading-list lookup picked the wrong item. LC005 still reports these, and the fix stays available for two sorts in one chain.
 - LC035 no longer slows the build to a crawl on a bulk delete whose query is built through a long chain of optionally composed locals (`var q1 = ...; if (a) q1 = q1.Where(...); var q2 = q1; ...`). It walked every path through the chain again for each read, which doubled with each local; each local and read position is now walked once. It also reads `q = q.OrderBy(...)` correctly: the `q` on the right-hand side is the value before the assignment, so a filtered query that is then re-sorted no longer reports as unfiltered, and an unfiltered one still reports.
 
 ### Added

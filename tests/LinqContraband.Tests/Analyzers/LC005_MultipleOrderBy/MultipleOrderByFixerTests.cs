@@ -77,7 +77,7 @@ class Test
     }
 
     [Fact]
-    public async Task ExplicitOrderedEnumerableLocal_RewritesToThenBy()
+    public async Task ExplicitOrderedEnumerableLocal_ReportsWithoutFix()
     {
         var test = @"
 using System.Linq;
@@ -91,20 +91,7 @@ class Test
         var q = sorted.{|LC005:OrderBy|}(x => x);
     }
 }";
-        var fix = @"
-using System.Linq;
-using System.Collections.Generic;
-
-class Test
-{
-    void Method(List<int> list)
-    {
-        IOrderedEnumerable<int> sorted = list.OrderBy(x => x);
-        var q = sorted.ThenBy(x => x);
-    }
-}";
-
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+        await VerifyCS.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
@@ -166,7 +153,7 @@ class Test
     }
 
     [Fact]
-    public async Task ExplicitOrderedQueryableLocal_RewritesToThenBy()
+    public async Task ExplicitOrderedQueryableLocal_ReportsWithoutFix()
     {
         var test = @"
 using System.Linq;
@@ -180,20 +167,30 @@ class Test
         var q = sorted.{|LC005:OrderBy|}(x => x);
     }
 }";
-        var fix = @"
+        await VerifyCS.VerifyCodeFixAsync(test, test);
+    }
+
+    [Fact]
+    public async Task DeliberateResortOfEarlierSortedQuery_ReportsWithoutFix()
+    {
+        // Kavita's reading-list lookup re-sorts a query that another statement ordered by position:
+        // ThenBy would make the position primary and return a different first item.
+        var test = @"
 using System.Linq;
 using System.Collections.Generic;
 
+class Item { public int Position { get; set; } public int Status { get; set; } }
+
 class Test
 {
-    void Method(List<int> list)
+    Item Method(List<Item> items)
     {
-        IOrderedQueryable<int> sorted = list.AsQueryable().OrderBy(x => x);
-        var q = sorted.ThenBy(x => x);
+        var query = items.OrderBy(x => x.Position);
+        return query.{|LC005:OrderBy|}(x => x.Status).ThenBy(x => x.Position).First();
     }
 }";
 
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+        await VerifyCS.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]

@@ -130,7 +130,7 @@ class Test
     }
 
     [Fact]
-    public async Task Diagnostic_SingleAssignmentSortedLocalThenOrderBy()
+    public async Task Diagnostic_SingleAssignmentSortedLocalThenOrderBy_WithoutFix()
     {
         var test = @"
 using System.Linq;
@@ -144,23 +144,11 @@ class Test
         var q = sorted.{|LC005:OrderBy|}(x => x);
     }
 }";
-        var fix = @"
-using System.Linq;
-using System.Collections.Generic;
-
-class Test
-{
-    void Method(List<int> list)
-    {
-        var sorted = list.OrderBy(x => x);
-        var q = sorted.ThenBy(x => x);
-    }
-}";
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+        await VerifyCS.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
-    public async Task Diagnostic_ParenthesizedSingleAssignmentSortedLocalThenOrderBy()
+    public async Task Diagnostic_ParenthesizedSingleAssignmentSortedLocalThenOrderBy_WithoutFix()
     {
         var test = @"
 using System.Linq;
@@ -174,19 +162,7 @@ class Test
         var q = sorted.{|LC005:OrderBy|}(x => x);
     }
 }";
-        var fix = @"
-using System.Linq;
-using System.Collections.Generic;
-
-class Test
-{
-    void Method(List<int> list)
-    {
-        var sorted = (list.OrderBy(x => x));
-        var q = sorted.ThenBy(x => x);
-    }
-}";
-        await VerifyCS.VerifyCodeFixAsync(test, fix);
+        await VerifyCS.VerifyCodeFixAsync(test, test);
     }
 
     [Fact]
