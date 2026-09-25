@@ -30,28 +30,52 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : Diag
         Description,
         helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC035_MissingWhereBeforeExecuteDeleteUpdate.html");
 
+    // Reported once the whole compilation is seen: a helper's query parameter is unfiltered at one of
+    // its call sites, or the helper's callers cannot all be seen.
+    private static readonly DiagnosticDescriptor CallerFlowRule = new(
+        DiagnosticId,
+        Title,
+        MessageFormat,
+        Category,
+        DiagnosticSeverity.Info,
+        true,
+        Description,
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC035_MissingWhereBeforeExecuteDeleteUpdate.html",
+        customTags: WellKnownDiagnosticTags.CompilationEnd);
+
     private static readonly ImmutableHashSet<string> TargetMethods = ImmutableHashSet.Create(
         "ExecuteDelete",
         "ExecuteDeleteAsync",
         "ExecuteUpdate",
         "ExecuteUpdateAsync");
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule, CallerFlowRule);
 
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            var callerFlow = new CallerFlowState();
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, callerFlow),
+                OperationKind.Invocation);
+            compilationContext.RegisterOperationAction(callerFlow.RecordMethodReference, OperationKind.MethodReference);
+            compilationContext.RegisterCompilationEndAction(callerFlow.Report);
+        });
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context, CallerFlowState callerFlow)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
         if (!TargetMethods.Contains(method.Name))
+        {
+            callerFlow.RecordCallSites(invocation, context.CancellationToken);
             return;
+        }
 
         if (!IsEntityFrameworkCoreNamespace(method.ContainingNamespace))
             return;
@@ -60,10 +84,16 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : Diag
         if (receiverType?.IsIQueryable() != true && receiverType?.IsDbSet() != true)
             return;
 
-        if (HasWhereInChain(invocation.GetInvocationReceiver(), context.CancellationToken))
+        var state = new LocalFlowState(trackParameters: true);
+        if (!HasWhereInChain(invocation.GetInvocationReceiver(), context.CancellationToken, state))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
             return;
+        }
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+        // Filtered only if the helper's callers pass filtered queries: decide at compilation end.
+        if (state.ParameterRoots!.Count > 0)
+            callerFlow.AddExecute(invocation.Syntax.GetLocation(), method.Name, state.ParameterRoots);
     }
 
     private static bool IsEntityFrameworkCoreNamespace(INamespaceSymbol? namespaceSymbol)

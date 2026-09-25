@@ -15,8 +15,21 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
     // exploring every path again took more than 15 minutes on Bitwarden.
     private sealed class LocalFlowState
     {
+        public LocalFlowState(bool trackParameters, HashSet<IMethodSymbol>? helpersInProgress = null)
+        {
+            ParameterRoots = trackParameters ? new HashSet<IParameterSymbol>(SymbolEqualityComparer.Default) : null;
+            HelpersInProgress = helpersInProgress ?? new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        }
+
         public HashSet<(ILocalSymbol Local, int Position)> InProgress { get; } = new();
         public Dictionary<(ILocalSymbol Local, int Position), bool> Results { get; } = new();
+
+        // When set, a query that starts at a parameter whose callers can be found counts as filtered
+        // for now; the parameter is recorded and its call sites decide at compilation end.
+        public HashSet<IParameterSymbol>? ParameterRoots { get; }
+
+        // Filter helpers whose bodies are being read, so a helper that calls itself ends the walk.
+        public HashSet<IMethodSymbol> HelpersInProgress { get; }
     }
 
     private static bool HasWhereInLocalInitializer(
@@ -52,25 +65,50 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         var conditionalReassignments = new List<LocalAssignment>();
 
         var assignments = LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken);
+        var read = localReference.Syntax;
+        var laterAssignmentsInEnclosingLoops = new List<LocalAssignment>();
 
         foreach (var assignment in assignments)
         {
             // In `q = q.TagWith(...)` the read belongs to the assignment it sits in; it sees the
             // value `q` held before that assignment.
-            if (assignment.SpanStart >= localReference.Syntax.SpanStart ||
-                assignment.Value.Syntax.Span.Contains(localReference.Syntax.SpanStart))
+            if (assignment.Value.Syntax.Span.Contains(read.SpanStart))
                 continue;
 
-            if (IsControlFlowConditionalAssignment(assignment.Value.Syntax))
+            if (assignment.SpanStart >= read.SpanStart)
+            {
+                // A later assignment inside a loop that also holds the read reaches it on the next pass.
+                if (IsInLoopEnclosingRead(assignment.Value.Syntax, read, executableRoot.Syntax))
+                    laterAssignmentsInEnclosingLoops.Add(assignment);
+                continue;
+            }
+
+            if (IsControlFlowConditionalAssignment(assignment.Value.Syntax, read))
                 conditionalReassignments.Add(assignment);
             else if (latestUnconditional == null || assignment.SpanStart > latestUnconditional.Value.SpanStart)
                 latestUnconditional = assignment;
         }
 
+        foreach (var later in laterAssignmentsInEnclosingLoops)
+        {
+            // An unconditional assignment in the same loop, before the read, overwrites it first.
+            if (latestUnconditional != null &&
+                SharesEnclosingLoop(later.Value.Syntax, latestUnconditional.Value.Value.Syntax, read))
+                continue;
+
+            if (latestUnconditional == null &&
+                assignments.Any(assignment => assignment.SpanStart < read.SpanStart &&
+                                              SharesEnclosingLoop(later.Value.Syntax, assignment.Value.Syntax, read)))
+                continue;
+
+            if (!HasWhereInChain(later.Value.UnwrapConversions(), cancellationToken, visitedLocals))
+                return false;
+        }
+
         if (latestUnconditional == null)
             return HasWhereInExhaustiveIfElseAssignments(
                 assignments,
-                localReference.Syntax.SpanStart,
+                read.SpanStart,
                 cancellationToken,
                 visitedLocals);
 
@@ -156,11 +194,49 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         return false;
     }
 
-    private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax)
+    // An assignment is conditional for a read when a branch, loop or try separates them. A construct
+    // that holds both (the read in the same loop body or try block) runs the assignment first on every
+    // path, so it does not make the assignment optional. When the construct is where the two meet, such
+    // as an assignment in a try block read from its catch, the assignment stays optional.
+    private static bool IsControlFlowConditionalAssignment(SyntaxNode syntax, SyntaxNode read)
     {
-        return syntax.Ancestors().Any(ancestor =>
-            ancestor is IfStatementSyntax or SwitchStatementSyntax or SwitchExpressionSyntax or
-                ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax or
-                TryStatementSyntax or CatchClauseSyntax);
+        foreach (var ancestor in syntax.Ancestors())
+        {
+            if (IsConditionalConstruct(ancestor))
+                return true;
+
+            if (ancestor.Span.Contains(read.Span))
+                return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsConditionalConstruct(SyntaxNode node)
+    {
+        return node is IfStatementSyntax or SwitchStatementSyntax or SwitchExpressionSyntax or
+            ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax or
+            TryStatementSyntax or CatchClauseSyntax;
+    }
+
+    private static bool IsLoop(SyntaxNode node)
+    {
+        return node is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax;
+    }
+
+    private static bool IsInLoopEnclosingRead(SyntaxNode assignment, SyntaxNode read, SyntaxNode rootSyntax)
+    {
+        return assignment.Ancestors()
+            .TakeWhile(ancestor => ancestor != rootSyntax)
+            .Any(ancestor => IsLoop(ancestor) && ancestor.Span.Contains(read.Span));
+    }
+
+    // The later assignment reaches the read through the back edge of the innermost loop holding both.
+    // An earlier assignment inside that loop runs again on every pass before the read, so it wins.
+    private static bool SharesEnclosingLoop(SyntaxNode laterAssignment, SyntaxNode earlierAssignment, SyntaxNode read)
+    {
+        var innermostLoop = laterAssignment.Ancestors()
+            .FirstOrDefault(ancestor => IsLoop(ancestor) && ancestor.Span.Contains(read.Span));
+        return innermostLoop != null && innermostLoop.Span.Contains(earlierAssignment.Span);
     }
 }
