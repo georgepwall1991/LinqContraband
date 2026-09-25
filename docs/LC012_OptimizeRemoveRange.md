@@ -53,7 +53,7 @@ LC012 is conservative. It reports only when:
 
 ## Code Fix
 
-The fixer rewrites `context.RemoveRange(query)` to a direct bulk delete and prepends a warning comment (`// Warning: ExecuteDelete bypasses change tracking and cascades.`):
+The fixer, titled "Use ExecuteDelete() (deletes immediately, not on SaveChanges)", rewrites `context.RemoveRange(query)` to a direct bulk delete and prepends a warning comment (`// Warning: ExecuteDelete bypasses change tracking and cascades.`). `RemoveRange` only marks rows for the next `SaveChanges`; the rewritten call deletes them when it runs, so code that never saves goes from deleting nothing to deleting the rows:
 
 | Context | Rewrite |
 | --- | --- |

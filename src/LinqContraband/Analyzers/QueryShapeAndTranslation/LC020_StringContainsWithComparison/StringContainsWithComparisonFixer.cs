@@ -37,9 +37,20 @@ public sealed class StringContainsWithComparisonFixer : CodeFixProvider
         var invocation = root.FindReportedInvocation(diagnosticSpan);
         if (invocation == null) return;
 
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        var comparison = semanticModel == null
+            ? null
+            : FindStringComparisonArgument(invocation, semanticModel, context.CancellationToken);
+
+        // Without the argument the database collation decides case sensitivity. SQLite and PostgreSQL
+        // compare case-sensitively by default, so an ignore-case match can stop matching.
+        var title = comparison != null && IsCaseSensitiveComparison(comparison, semanticModel!, context.CancellationToken)
+            ? "Remove StringComparison argument"
+            : "Remove StringComparison argument (database collation decides case sensitivity)";
+
         context.RegisterCodeFix(
             CodeAction.Create(
-                "Remove StringComparison argument",
+                title,
                 c => ApplyFixAsync(context.Document, invocation, c),
                 "RemoveStringComparison"),
             diagnostic);
@@ -83,6 +94,17 @@ public sealed class StringContainsWithComparisonFixer : CodeFixProvider
         }
 
         return null;
+    }
+
+    private static bool IsCaseSensitiveComparison(
+        ArgumentSyntax argument,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var value = semanticModel.GetConstantValue(argument.Expression, cancellationToken);
+        return value.HasValue &&
+               value.Value is int comparison &&
+               comparison is (int)System.StringComparison.Ordinal or (int)System.StringComparison.InvariantCulture or (int)System.StringComparison.CurrentCulture;
     }
 
     private static bool IsStringComparison(ITypeSymbol? type)

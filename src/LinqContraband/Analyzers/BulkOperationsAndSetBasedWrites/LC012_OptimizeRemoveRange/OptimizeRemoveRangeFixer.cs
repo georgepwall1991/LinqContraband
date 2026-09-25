@@ -41,7 +41,9 @@ public sealed partial class OptimizeRemoveRangeFixer : CodeFixProvider
 
         context.RegisterCodeFix(
             CodeAction.Create(
-                "Use ExecuteDelete()",
+                // RemoveRange only marks rows for SaveChanges; ExecuteDelete deletes them when it runs,
+                // outside the unit of work, so the title says so.
+                "Use ExecuteDelete() (deletes immediately, not on SaveChanges)",
                 c => ApplyFixAsync(context.Document, invocation, c),
                 "UseExecuteDelete"),
             diagnostic);
