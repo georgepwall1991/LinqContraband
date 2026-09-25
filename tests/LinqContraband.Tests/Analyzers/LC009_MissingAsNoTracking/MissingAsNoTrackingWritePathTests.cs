@@ -135,6 +135,28 @@ class Service
     }");
 
     [Fact]
+    public Task CoalescedWithNewEntity_FieldWrite_IsAWritePath() => VerifyQuietAsync(@"
+    void Upsert()
+    {
+        var order = db.Orders.FirstOrDefault(o => o.Id == 1) ?? new Order();
+        order.Status = ""Open"";
+        Commit();
+    }");
+
+    [Fact]
+    public Task CoalescedWithNewEntity_ReadOnly_StillReports_AndKeepsTheFix() => VerifyReportedWithFixAsync(@"
+    void Read()
+    {
+        var order = {|LC009:db.Orders.FirstOrDefault(o => o.Id == 1)|} ?? new Order();
+        var text = order.ToString();
+    }", @"
+    void Read()
+    {
+        var order = db.Orders.AsNoTracking().FirstOrDefault(o => o.Id == 1) ?? new Order();
+        var text = order.ToString();
+    }");
+
+    [Fact]
     public Task MapperSource_StillReports_WithoutFix() => VerifyReportedWithoutFixAsync(@"
     void Read()
     {

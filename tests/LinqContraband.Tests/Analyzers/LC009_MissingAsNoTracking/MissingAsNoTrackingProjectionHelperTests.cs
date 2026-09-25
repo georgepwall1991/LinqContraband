@@ -91,6 +91,10 @@ class Program
     [InlineData("return db.Orders.Where(o => o.Total > 1).ToDtos().ToList();")]
     [InlineData("return db.Orders.SelectIds().ToList();")]
     [InlineData("return db.Set<Order>().ToDtos().FirstOrDefault();")]
+    [InlineData("return db.Orders.Join(db.Invoices, o => o.Id, i => i.Id, (o, i) => new { OrderId = o.Id, InvoiceId = i.Id }).ToList();")]
+    [InlineData("return await db.Orders.Join(db.Invoices, o => o.Id, i => i.Id, (o, i) => new { o.Id, o.Total }).ToListAsync();")]
+    [InlineData("return db.Orders.GroupJoin(db.Invoices, o => o.Id, i => i.Id, (o, invoices) => new { o.Id, Count = invoices.Count() }).ToList();")]
+    [InlineData("return db.Orders.Join(db.Invoices, o => o.Id, i => i.Id, (o, i) => new { o.Id, Totals = new { o.Total, Label = \"x\" } }).ToList();")]
     public Task HelperProjectingToNonEntity_NoDiagnostic(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 
@@ -104,6 +108,9 @@ class Program
     [InlineData("return {|LC009:db.Orders.ByCustomer().ToList()|};")]
     [InlineData("return {|LC009:db.Orders.Cast<IAuditable>().ToList()|};")]
     [InlineData("return {|LC009:db.Orders.Cast<EntityBase>().ToList()|};")]
+    [InlineData("return {|LC009:db.Orders.Join(db.Invoices, o => o.Id, i => i.Id, (o, i) => new { Order = o, i.Id }).ToList()|};")]
+    [InlineData("return {|LC009:db.Orders.GroupJoin(db.Invoices, o => o.Id, i => i.Id, (o, invoices) => new { o.Id, Invoices = invoices }).ToList()|};")]
+    [InlineData("return {|LC009:db.Orders.Join(db.Invoices, o => o.Id, i => i.Id, (o, i) => new { o.Id, Inner = new { Invoice = i } }).ToList()|};")]
     public Task HelperReturningEntities_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 }

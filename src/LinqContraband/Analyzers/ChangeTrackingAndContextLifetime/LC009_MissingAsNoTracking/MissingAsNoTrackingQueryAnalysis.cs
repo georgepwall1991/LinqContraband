@@ -91,8 +91,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
     // The materializer's element type is an entity when it is the root DbSet's entity, a type
     // derived from it (OfType<Derived>()), a navigation of the root entity or another entity the
     // context exposes as a DbSet (SelectMany(o => o.Lines)). Groupings are judged by their
-    // elements and anonymous types (Join result selectors) may carry entities, so both keep
-    // reporting. Anything else, a DTO or a scalar, is not tracked.
+    // elements, and anonymous types (Join result selectors) keep reporting when a member may hold an
+    // entity. Anything else, a DTO or a scalar, is not tracked.
     private static bool MaterializesNonEntity(IInvocationOperation materializer, ITypeSymbol? dbSetType, ITypeSymbol? contextType)
     {
         if (dbSetType is not INamedTypeSymbol { TypeArguments.Length: 1 } dbSet)
@@ -105,8 +105,13 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         if (elementType is INamedTypeSymbol { Name: "IGrouping", TypeArguments.Length: 2 } grouping)
             elementType = grouping.TypeArguments[1];
 
-        if (elementType.TypeKind is TypeKind.TypeParameter or TypeKind.Error || elementType.IsAnonymousType)
+        if (elementType.TypeKind is TypeKind.TypeParameter or TypeKind.Error)
             return false;
+
+        // A Join or GroupJoin result selector such as new { c.Id, PagesRead = ... } that holds only
+        // scalars loads no entity, so nothing is tracked.
+        if (elementType.IsAnonymousType)
+            return !AnonymousTypeCarriesEntities((INamedTypeSymbol)elementType);
 
         var rootEntity = dbSet.TypeArguments[0];
         for (var type = elementType; type != null; type = type.BaseType)
@@ -152,6 +157,21 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         }
 
         return true;
+    }
+
+    // Any member that is a class outside System (or a collection of one) may be an entity, so only
+    // scalar, string and System-typed members make an anonymous type entity-free.
+    private static bool AnonymousTypeCarriesEntities(INamedTypeSymbol anonymousType)
+    {
+        foreach (var property in anonymousType.GetMembers().OfType<IPropertySymbol>())
+        {
+            if (property.Type is INamedTypeSymbol { IsAnonymousType: true } nested
+                    ? AnonymousTypeCarriesEntities(nested)
+                    : ReachesEntities(property.Type) || property.Type.TypeKind is TypeKind.TypeParameter or TypeKind.Error)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsNavigationOf(ITypeSymbol entity, ITypeSymbol elementType)
