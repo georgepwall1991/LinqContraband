@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
 using LinqContraband.Extensions;
 
 namespace LinqContraband.Analyzers.LC016_AvoidDateTimeNow;
@@ -24,7 +25,12 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(AvoidDateTimeNowAnalyzer.DiagnosticId);
 
-    public sealed override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
+    // Independent fixes merged by the batch fixer each picked the same free name, so fixes in one declaration
+    // space (two statements, or several switch sections) declared `now` twice. Fix-all applies the fixes one
+    // after another instead, each choosing its name from the document the previous one produced.
+    public sealed override FixAllProvider GetFixAllProvider() =>
+        FixAllProvider.Create((fixAllContext, document, diagnostics) =>
+            FixAllInDocumentAsync(document, diagnostics, fixAllContext.CancellationToken));
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
@@ -40,6 +46,7 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
         var memberAccess = token.Parent.AncestorsAndSelf().OfType<MemberAccessExpressionSyntax>().FirstOrDefault();
         if (memberAccess == null) return;
         if (!CanApplyFix(memberAccess)) return;
+        if (FindHoistTarget(memberAccess) is { } target && ReadsClockOnEveryIteration(memberAccess, target)) return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -83,7 +90,7 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
             return ConvertExpressionBodiedMember(document, editor, memberAccess, semanticModel, cancellationToken);
         }
 
-        var variableName = GetUniqueVariableName(memberAccess);
+        var variableName = GetUniqueVariableName(memberAccess, semanticModel);
         var newVariable = CreateLocalDeclaration(memberAccess, variableName)
             .WithTrailingTrivia(statement.GetDocumentEndOfLine());
 
@@ -92,8 +99,19 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
             editor.ReplaceNode(access, SyntaxFactory.IdentifierName(variableName).WithTriviaFrom(access));
         }
 
-        // Insert the declaration before the statement
-        editor.InsertBefore(statement, newVariable);
+        if (statement.Parent is BlockSyntax or SwitchSectionSyntax)
+        {
+            // Insert the declaration before the statement
+            editor.InsertBefore(statement, newVariable);
+        }
+        else
+        {
+            // An embedded statement such as `if (flag) return ...;` has no statement list to insert into.
+            editor.ReplaceNode(statement, (current, _) =>
+                SyntaxFactory.Block(newVariable, ((StatementSyntax)current).WithoutLeadingTrivia())
+                    .WithLeadingTrivia(current.GetLeadingTrivia())
+                    .WithAdditionalAnnotations(Formatter.Annotation));
+        }
 
         return editor.GetChangedDocument();
     }
@@ -108,7 +126,7 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
                     SyntaxFactory.VariableDeclarator(
                         SyntaxFactory.Identifier(variableName),
                         null,
-                        SyntaxFactory.EqualsValueClause(memberAccess.WithoutTrivia())
+                        SyntaxFactory.EqualsValueClause(memberAccess.WithoutTrivia().WithoutAnnotations(FixAllAnnotationKind))
                     )
                 )
             )
@@ -126,8 +144,9 @@ public sealed partial class AvoidDateTimeNowFixer : CodeFixProvider
             yield break;
         }
 
-        var lambda = memberAccess.AncestorsAndSelf().OfType<LambdaExpressionSyntax>().FirstOrDefault();
-        var searchRoot = (SyntaxNode?)lambda ?? memberAccess;
+        // Query syntax has no lambda, so every clock read in the query is replaced together.
+        var searchRoot = memberAccess.AncestorsAndSelf()
+            .FirstOrDefault(node => node is LambdaExpressionSyntax or QueryExpressionSyntax) ?? memberAccess;
 
         foreach (var candidate in searchRoot.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>())
         {

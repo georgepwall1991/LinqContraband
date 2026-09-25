@@ -14,7 +14,7 @@ public sealed partial class AvoidDateTimeNowFixer
         SemanticModel semanticModel,
         CancellationToken cancellationToken)
     {
-        var existingNames = CollectExistingNames(memberAccess);
+        var existingNames = CollectExistingNames(memberAccess, semanticModel);
         var replacements = new List<ClockReplacement>();
 
         foreach (var access in FindExpressionBodyClockAccesses(expression, semanticModel, cancellationToken))

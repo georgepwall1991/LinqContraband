@@ -33,8 +33,9 @@ var now = DateTime.Now;
 var activeUsers = db.Users.Where(u => u.ExpiryDate > now).ToList();
 ```
 
-The fixer chooses a unique local name when `now` is already used by an enclosing method, local function, or lambda parameter.
-When the same clock property appears multiple times in one query lambda, LC016 reports it once and the fixer replaces each identical access in that lambda.
+The fixer picks a name nothing else in the method uses: not a local, parameter, pattern, `out`, `foreach` or `catch` variable anywhere in the member, and not a field, property or other symbol in scope, so the new local never clashes with an enclosing block (CS0136) or silently shadows a field. Fix All applies the fixes one after another, so two fixes in the same declaration space, such as neighbouring `case` sections, declare `now` and `now1` rather than `now` twice.
+When the same clock property appears multiple times in one query lambda or one query expression, LC016 reports it once and the fixer replaces each identical access there.
+When the query sits in an embedded statement such as `if (flag) return ...;`, the fixer wraps it in a block with the new local. It offers no fix for a clock read in a `while`, `do` or `for` condition or a `for` incrementor, because the loop evaluates those on every pass and a hoisted value would never advance.
 For expression-bodied methods and local functions that compose or materialize a query, the fixer converts the arrow body to a block, captures the clock value first, and then either returns the rewritten expression or keeps it as an expression statement for `void` and async non-generic task members. Other expression-bodied members remain manual because converting properties or indexers can change accessor shape and API style. Static query lambdas also remain manual because an extracted local would be an invalid capture.
 
 ## Guidance
