@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- LC009 withholds its `AsNoTracking()` fix when entities reached through a navigation of the loaded entity are passed on or stored in another object, including from a `foreach` over the navigation. On Kavita, the fix detached `Series` entities that a migration then put into new tracked collections, where duplicates of one key fail to attach. LC009 still reports those queries.
 - LC002 no longer reports, or fixes, a filter or projection after `ToList()` or `AsEnumerable()` that reads a computed, get-only or `[NotMapped]` property of the row, or a non-string indexer. Its fix moved `db.Users.ToList().Where(u => u.Display == "ann!")` into SQL, where EF Core threw "could not be translated". Those materializations are needed.
 - Code fixes that add a using (LC001, LC004, LC006, LC007, LC008, LC009, LC012, LC015, LC017, LC032, LC033, LC041, LC042, LC045, LC047 and LC051) no longer add one that a `global using` in another file, such as the SDK's implicit usings, or a namespace-scoped using already provides. That duplicate raised IDE0005 and failed builds with `EnforceCodeStyleInBuild`. A new using now goes below a leading copyright header instead of above it, and into its sorted place when the file's usings are already sorted.
 - The LC043 code fix keeps the comments and blank lines above the buffered declaration it removes. They move onto the new `await foreach`; before, they were deleted with the declaration, as with the sample's `// ADVISORY` comment.

@@ -49,6 +49,8 @@ namespace Shop
 
     public class OrderDto { public string Status { get; set; } }
 
+    public class Basket { public System.Collections.Generic.List<Line> Lines { get; set; } = new System.Collections.Generic.List<Line>(); }
+
     public interface IMapper { TDest Map<TSource, TDest>(TSource source, TDest destination); }
 
     public class ShopContext : Microsoft.EntityFrameworkCore.DbContext
@@ -241,5 +243,52 @@ class Service
     {
         var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
         return new { Order = order };
+    }");
+
+    // Kavita: entities reached through a navigation and put into another object can join a tracked graph,
+    // where untracked duplicates of one key fail to attach.
+    [Fact]
+    public Task NavigationStoredInAnotherObject_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    void Build()
+    {
+        var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
+        var basket = new Basket { Lines = order.Lines.Where(l => l.Quantity > 0).ToList() };
+        Show(basket);
+    }");
+
+    [Fact]
+    public Task NavigationPassedAsArgument_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    void Read()
+    {
+        var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
+        Show(order.Lines);
+    }");
+
+    [Fact]
+    public Task NavigationElementStoredFromLoop_ReportsWithoutFix() => VerifyReportedWithoutFixAsync(@"
+    void Build(Basket basket)
+    {
+        var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
+        foreach (var line in order.Lines)
+            basket.Lines.Add(line);
+    }");
+
+    [Fact]
+    public Task ScalarReadsThroughNavigation_KeepTheFix() => VerifyReportedWithFixAsync(@"
+    int Read()
+    {
+        var order = {|LC009:db.Orders.First(o => o.Id == 1)|};
+        var total = 0;
+        foreach (var line in order.Lines)
+            total += line.Quantity;
+        return total + order.Lines.Sum(l => l.Quantity);
+    }", @"
+    int Read()
+    {
+        var order = db.Orders.AsNoTracking().First(o => o.Id == 1);
+        var total = 0;
+        foreach (var line in order.Lines)
+            total += line.Quantity;
+        return total + order.Lines.Sum(l => l.Quantity);
     }");
 }
