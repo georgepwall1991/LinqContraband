@@ -10,13 +10,6 @@ namespace LinqContraband.Analyzers.LC035_MissingWhereBeforeExecuteDeleteUpdate;
 
 public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 {
-    private static bool HasWhereInChain(IOperation? operation, CancellationToken cancellationToken)
-    {
-        return HasWhereInChain(
-            operation,
-            cancellationToken,
-            new LocalFlowState());
-    }
 
     private static bool HasWhereInChain(
         IOperation? operation,
@@ -34,7 +27,15 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
                 if (IsKnownLinqWhere(invocation.TargetMethod) || IsPredicateWhere(invocation))
                     return true;
 
+                if (IsFilterHelper(invocation, cancellationToken, visitedLocals))
+                    return true;
+
+                // A call with no query receiver (a helper on `this`, a static factory) starts the chain.
+                // Walking on from its `this` would climb back up to the call itself and never end.
                 current = invocation.GetInvocationReceiver();
+                if (current == null || current.UnwrapConversions() is IInstanceReferenceOperation)
+                    return false;
+
                 continue;
             }
 
@@ -62,6 +63,14 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
             if (current is ILocalReferenceOperation localReference)
                 return HasWhereInLocalInitializer(localReference, cancellationToken, visitedLocals);
+
+            if (current is IParameterReferenceOperation parameterReference &&
+                visitedLocals.ParameterRoots != null &&
+                IsCallerTrackedParameter(parameterReference, cancellationToken))
+            {
+                visitedLocals.ParameterRoots.Add(parameterReference.Parameter.OriginalDefinition);
+                return true;
+            }
 
             if (current is IParameterReferenceOperation or IFieldReferenceOperation or IPropertyReferenceOperation)
                 return false;
