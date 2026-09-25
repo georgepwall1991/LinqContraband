@@ -99,6 +99,19 @@ public partial class AnalyzerPerformanceTests
     }
 
     [Fact]
+    public async Task LC007_HelperSummaries_CompleteOnDenseHelperCallGraph()
+    {
+        var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc007HelperGraphSource());
+
+        var diagnostics = await GetDiagnosticsWithinAsync(
+            new NPlusOneLooperAnalyzer(),
+            compilation,
+            AnalyzerTimeout);
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == NPlusOneLooperAnalyzer.DiagnosticId);
+    }
+
+    [Fact]
     public async Task LC017_WholeEntityUsage_CompletesOnManyMaterializers()
     {
         var compilation = CreateCompilation(GenerateEfCoreMock(), GenerateLc017StressSource());
@@ -341,6 +354,74 @@ public partial class AnalyzerPerformanceTests
             }
             """);
 
+        return source.ToString();
+    }
+
+    /// <summary>
+    /// A dense helper call graph: every helper calls the next forty, only the last ones query, and every helper
+    /// is called from a loop. Walking it without the per-compilation summary cache costs forty cubed body scans
+    /// per loop call; with the cache each (helper, depth) pair is scanned once.
+    /// </summary>
+    private static string GenerateLc007HelperGraphSource()
+    {
+        const int helperCount = 200;
+        const int fanOut = 40;
+        var source = new StringBuilder();
+        source.AppendLine(
+            """
+            using System.Collections.Generic;
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace PerfApp;
+
+            public class AppDbContext : DbContext
+            {
+                public DbSet<User> Users { get; set; }
+            }
+
+            public class User
+            {
+                public int Id { get; set; }
+            }
+
+            public class Helpers
+            {
+                private readonly AppDbContext _db = new AppDbContext();
+
+                public void Run(List<int> ids)
+                {
+                    foreach (var id in ids)
+                    {
+            """);
+
+        for (var i = 0; i < helperCount; i++)
+            source.AppendLine($"            Helper{i}(id);");
+
+        source.AppendLine(
+            """
+                    }
+                }
+            """);
+
+        for (var i = 0; i < helperCount; i++)
+        {
+            source.AppendLine($"    private int Helper{i}(int id)");
+            source.AppendLine("    {");
+            source.AppendLine("        var total = 0;");
+            for (var j = 1; j <= fanOut; j++)
+            {
+                var callee = (i + j) % helperCount;
+                source.AppendLine($"        total += Helper{callee}(id - 1);");
+            }
+
+            if (i >= helperCount - 2)
+                source.AppendLine("        total += _db.Users.Count(u => u.Id == id);");
+            source.AppendLine("        return total;");
+            source.AppendLine("    }");
+        }
+
+        source.AppendLine("}");
         return source.ToString();
     }
 

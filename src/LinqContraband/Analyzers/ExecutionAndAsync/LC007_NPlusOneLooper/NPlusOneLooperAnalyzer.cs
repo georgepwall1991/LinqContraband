@@ -17,7 +17,7 @@ namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 /// per-iteration execution are both provable.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
+public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "LC007";
     private const string Category = "Performance";
@@ -41,21 +41,48 @@ public sealed class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         Description,
         helpLinkUri: HelpLinkUri);
 
+    private static readonly LocalizableString HelperCallMessageFormat =
+        "'{0}' runs '{1}' on every iteration of the loop, causing N+1 database operations. Fetch data in bulk or eager load before the loop.";
+
+    /// <summary>
+    /// LC007 reported on a loop's call to a helper method that runs the query. The host accepts any diagnostic whose
+    /// ID a supported descriptor declares, so this variant message shares LC007's ID and stays out of
+    /// <see cref="SupportedDiagnostics"/>: tests and tools keep resolving LC007 to a single descriptor.
+    /// </summary>
+    public static readonly DiagnosticDescriptor HelperCallRule = new(
+        DiagnosticId,
+        Title,
+        HelperCallMessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description,
+        helpLinkUri: HelpLinkUri);
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            var helperCache = new NPlusOneLooperHelperCache(compilationContext.Compilation, NPlusOneLooperAnalysis.MaxHelperDepth);
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, helperCache),
+                OperationKind.Invocation);
+        });
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context, NPlusOneLooperHelperCache helperCache)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var match = NPlusOneLooperAnalysis.AnalyzeInvocation(invocation, context.CancellationToken);
         if (match == null)
+        {
+            ReportHelperCall(context, invocation, helperCache);
             return;
+        }
 
         var properties = ImmutableDictionary.CreateBuilder<string, string?>();
         properties[NPlusOneLooperDiagnosticProperties.PatternKind] = match.PatternKind;

@@ -294,6 +294,46 @@ class Program
     }
 
     [Fact]
+    public async Task HelperCallShapedLikeExplicitLoad_DoesNotRegisterFixer()
+    {
+        // A project's own tracker wrapper reads exactly like the explicit load the fixer rewrites
+        // (Entry(user).Collection(u => u.Orders).Load() in a direct foreach statement), but its Load is a helper that
+        // runs a query. The fix is withheld for helper calls: rewriting it to Include would drop the helper's work.
+        var test = Usings + @"
+class Program
+{
+    void Main(Tracker tracker)
+    {
+        var db = new MyDbContext();
+        foreach (var user in db.Users.ToList())
+        {
+            {|#0:tracker.Entry(user).Collection(u => u.Orders).Load()|};
+        }
+    }
+}
+
+class Tracker
+{
+    public Navigation Entry(User user) => new Navigation();
+}
+
+class Navigation
+{
+    public Loader Collection(Expression<Func<User, IEnumerable<Order>>> navigation) => new Loader();
+}
+
+class Loader
+{
+    private readonly MyDbContext _db = new MyDbContext();
+    public void Load() => _db.Users.ToList();
+}
+" + MockNamespace;
+
+        var expected = VerifyFix.Diagnostic(LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperAnalyzer.HelperCallRule).WithLocation(0).WithArguments("Load", "ToList");
+        await VerifyFix.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
     public async Task FixAll_RewritesAllNPlusOneLooperCases()
     {
         var test = Usings + @"

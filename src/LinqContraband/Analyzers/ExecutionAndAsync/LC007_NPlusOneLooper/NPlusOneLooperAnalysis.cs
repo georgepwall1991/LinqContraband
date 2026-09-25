@@ -13,12 +13,14 @@ internal static class NPlusOneLooperDiagnosticProperties
     public const string MethodName = "LC007.MethodName";
     public const string LoopKind = "LC007.LoopKind";
     public const string FixerEligible = "LC007.FixerEligible";
+    public const string HelperName = "LC007.HelperName";
 
     public const string Find = "Find";
     public const string ExplicitLoad = "ExplicitLoad";
     public const string NavigationQueryMaterializer = "NavigationQueryMaterializer";
     public const string EfQueryMaterializer = "EfQueryMaterializer";
     public const string EfSetBasedExecutor = "EfSetBasedExecutor";
+    public const string HelperCall = "HelperCall";
 }
 
 internal sealed class NPlusOneLoopMatch

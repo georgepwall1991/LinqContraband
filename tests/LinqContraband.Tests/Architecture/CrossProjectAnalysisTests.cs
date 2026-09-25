@@ -397,6 +397,12 @@ public class CrossProjectAnalysisTests
                     }
                 }
 
+                public async Task HelperInLoopAsync(List<Customer> customers)
+                {
+                    foreach (var customer in customers)
+                        Console.WriteLine(await CustomerHelpers.CountAsync(_db));
+                }
+
                 public void Queries(string name)
                 {
                     var filtered = _db.Customers.Where(CustomerHelpers.Filter).ToList();
