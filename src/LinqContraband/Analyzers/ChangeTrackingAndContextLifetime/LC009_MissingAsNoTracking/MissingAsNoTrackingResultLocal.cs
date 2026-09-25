@@ -27,6 +27,13 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     parent = parent.Parent;
                     continue;
 
+                // var stats = await db.Stats.SingleOrDefaultAsync(...) ?? new Stats(); holds the loaded entity
+                // whenever there is one, so writes through the local are writes to it.
+                case ICoalesceOperation:
+                    current = parent;
+                    parent = parent.Parent;
+                    continue;
+
                 case IVariableDeclaratorOperation declarator:
                     return declarator.Symbol;
 

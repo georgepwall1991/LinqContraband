@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- LC009 no longer reports a `Join` or `GroupJoin` whose result selector projects only scalars into an anonymous type, which loads no entity, and it sees writes through `var stats = await db.Stats.SingleOrDefaultAsync(...) ?? new Stats();`. On Kavita these were 4 of the 157 LC009 reports, plus 1 write path. Anonymous types that hold an entity still report.
 - The LC001, LC006, LC015 and LC017 code fixes keep the call they insert (`AsEnumerable()`, `AsSplitQuery()`, `OrderBy(...)`, `Select(...)`) on the source's line in a query split over lines. It used to land on a line of its own at column 0, as seen on eShop, Kavita, BTCPay Server and Bitwarden. LC009 was fixed the same way earlier.
 - LC009 withholds its `AsNoTracking()` fix when entities reached through a navigation of the loaded entity are passed on or stored in another object, including from a `foreach` over the navigation. On Kavita, the fix detached `Series` entities that a migration then put into new tracked collections, where duplicates of one key fail to attach. LC009 still reports those queries.
 - LC002 no longer reports, or fixes, a filter or projection after `ToList()` or `AsEnumerable()` that reads a computed, get-only or `[NotMapped]` property of the row, or a non-string indexer. Its fix moved `db.Users.ToList().Where(u => u.Display == "ann!")` into SQL, where EF Core threw "could not be translated". Those materializations are needed.
