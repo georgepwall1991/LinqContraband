@@ -5,7 +5,7 @@ namespace LinqContraband.Tests.Analyzers.LC008_SyncBlocker;
 
 public class SyncBlockerEdgeCasesTests
 {
-    private const string Usings = @"
+    internal const string Usings = @"
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using TestNamespace;
 ";
 
-    private const string MockNamespace = @"
+    internal const string MockNamespace = @"
 namespace Microsoft.EntityFrameworkCore
 {
     public class DbContext : IDisposable
