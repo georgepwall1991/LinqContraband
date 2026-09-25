@@ -233,6 +233,25 @@ class Program {
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
     }
 
+    [Fact]
+    public async Task OrderByAfterOrderedTake_HasNoDiagnosticOrFix()
+    {
+        // "Latest 10, shown oldest first": the window is ordered upstream, so nothing reports
+        // and the fixer has nothing to rewrite.
+        var test = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } public string Name { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Users.OrderByDescending(u => u.Id).Take(10).OrderBy(u => u.Id);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(test, test);
+    }
+
     /// <summary>
     /// Tests that the fixer does NOT register on a composite-keyed entity
     /// (two `[Key]`-annotated properties). The shared `TryFindPrimaryKey`
