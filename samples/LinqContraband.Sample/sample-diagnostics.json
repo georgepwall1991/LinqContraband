@@ -562,6 +562,15 @@
       "ruleIds": [
         "LC058"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC059_DisposedContextConnection/DisposedContextConnectionSample.cs",
+      "samplePaths": [
+        "Samples/LC059_DisposedContextConnection/DisposedContextConnectionSample.cs"
+      ],
+      "ruleIds": [
+        "LC059"
+      ]
     }
   ]
 }

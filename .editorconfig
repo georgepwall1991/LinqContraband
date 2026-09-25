@@ -250,3 +250,6 @@ indent_size = 2
 
 # LC058: TransactionScope Without Async Flow - the ambient transaction does not flow across an await without TransactionScopeAsyncFlowOption.Enabled
 # dotnet_diagnostic.LC058.severity = warning
+
+# LC059: Disposed Context Connection - disposing the connection from GetDbConnection() breaks later operations on the DbContext
+# dotnet_diagnostic.LC059.severity = warning

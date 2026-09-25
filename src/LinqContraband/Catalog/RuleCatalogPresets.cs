@@ -71,10 +71,11 @@ public static class RuleCatalogPresets
     /// disposed-context queries, always-throwing conditional includes, contexts shared across threads or
     /// concurrent operations, lost AsNoTracking writes, ExecuteDelete skipping soft-delete/cascade, lost updates,
     /// migrations that fail at startup inside a user transaction, models that skip their base configuration,
-    /// queries composed over stored procedure calls, and transaction scopes that do not flow across awaits.
+    /// queries composed over stored procedure calls, transaction scopes that do not flow across awaits, and disposed
+    /// context connections.
     /// </summary>
     public static ImmutableArray<string> CriticalRuleIds { get; } = SecurityRuleIds.AddRange(
-        new[] { "LC013", "LC019", "LC036", "LC044", "LC046", "LC047", "LC048", "LC054", "LC055", "LC056", "LC058" });
+        new[] { "LC013", "LC019", "LC036", "LC044", "LC046", "LC047", "LC048", "LC054", "LC055", "LC056", "LC058", "LC059" });
 
     public static ImmutableArray<RuleCatalogPreset> All { get; } = ImmutableArray.Create(
         new RuleCatalogPreset(

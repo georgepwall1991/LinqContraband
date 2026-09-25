@@ -636,5 +636,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC058_TransactionScopeWithoutAsyncFlow/TransactionScopeWithoutAsyncFlowSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/ExecutionAndAsync/LC058_TransactionScopeWithoutAsyncFlow"
+  },
+  {
+    "id": "LC059",
+    "title": "Connection owned by the DbContext is disposed",
+    "category": "Reliability",
+    "domain": "Change Tracking & Context Lifetime",
+    "domain_anchor": "change-tracking-context-lifetime",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC059_DisposedContextConnection/DisposedContextConnectionSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC059_DisposedContextConnection"
   }
 ]
