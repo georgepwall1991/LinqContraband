@@ -244,3 +244,6 @@ indent_size = 2
 
 # LC056: Stored Procedure Composed - EF Core cannot compose LINQ over EXEC and throws
 # dotnet_diagnostic.LC056.severity = warning
+
+# LC057: Empty Query Aggregate - Min, Max or Average over a non-nullable value throws when the EF Core query matches no rows
+# dotnet_diagnostic.LC057.severity = warning

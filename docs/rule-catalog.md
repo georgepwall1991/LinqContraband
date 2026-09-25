@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>56</strong><span>rules</span></div>
-    <div class="metric"><strong>37</strong><span>warnings</span></div>
-    <div class="metric"><strong>39</strong><span>code fixes</span></div>
+    <div class="metric"><strong>57</strong><span>rules</span></div>
+    <div class="metric"><strong>38</strong><span>warnings</span></div>
+    <div class="metric"><strong>40</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -539,6 +539,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC041_SingleEntityScalarProjection/</span>
+    </a>
+    <a class="rule-card" href="./LC057_EmptyQueryAggregate.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC057</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>Min, Max or Average throws on an empty query</h3>
+      <p class="rule-card__summary">Flags EF Core Min, Max and Average over a non-nullable value, which throw &#39;Sequence contains no elements&#39; when no row matches.</p>
+      <span class="rule-card__meta">
+        <span>Reliability</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC057_EmptyQueryAggregate/</span>
     </a>
   </div>
 </section>

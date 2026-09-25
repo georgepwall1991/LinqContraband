@@ -614,5 +614,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC056_StoredProcedureComposed/StoredProcedureComposedSample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/RawSqlAndSecurity/LC056_StoredProcedureComposed"
+  },
+  {
+    "id": "LC057",
+    "title": "Min, Max or Average throws on an empty query",
+    "category": "Reliability",
+    "domain": "Materialization & Projection",
+    "domain_anchor": "materialization-projection",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC057_EmptyQueryAggregate/EmptyQueryAggregateSample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/MaterializationAndProjection/LC057_EmptyQueryAggregate"
   }
 ]

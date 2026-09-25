@@ -544,6 +544,15 @@
       "ruleIds": [
         "LC056"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC057_EmptyQueryAggregate/EmptyQueryAggregateSample.cs",
+      "samplePaths": [
+        "Samples/LC057_EmptyQueryAggregate/EmptyQueryAggregateSample.cs"
+      ],
+      "ruleIds": [
+        "LC057"
+      ]
     }
   ]
 }

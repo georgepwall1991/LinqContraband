@@ -172,6 +172,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/RawSqlAndSecurity/LC056_StoredProcedureComposed",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC057",
+                slug: "LC057_EmptyQueryAggregate",
+                title: "Min, Max or Average throws on an empty query",
+                category: "Reliability",
+                domain: "Materialization & Projection",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "EmptyQueryAggregateAnalyzer",
+                fixerTypeName: "EmptyQueryAggregateFixer",
+                documentationPath: "docs/LC057_EmptyQueryAggregate.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC057_EmptyQueryAggregate/EmptyQueryAggregateSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC057_EmptyQueryAggregate",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }
