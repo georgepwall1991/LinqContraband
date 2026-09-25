@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.15.0] - 2026-09-25
+
 ### Fixed
 
 - LinqContraband.Scan no longer fails the build when a repository raises every analyzer diagnostic, or a whole category, to an error in `.editorconfig` (`dotnet_analyzer_diagnostic.severity = error`). Before, the scan stopped with "dotnet build reported errors" and exit code 3, as on evolutionary-architecture-by-example's Fitnet (`error LC031`), and the projects depending on the failing one were not scanned. The scan build now resets each LinqContraband rule and EF1002/EF1003 to its default severity, and those findings are reported at that severity. A rule set by its own id (`dotnet_diagnostic.LCxxx.severity`) still keeps that setting, and compiler errors still fail the scan.
