@@ -393,4 +393,45 @@ class Program
         await testObj.RunAsync();
     }
 
+    /// <summary>
+    /// In a chain split over lines, Select(...) stays on the source's line instead of landing at column 0.
+    /// </summary>
+    [Fact]
+    public async Task MultilineChain_KeepsSelectOnTheSourceLine()
+    {
+        var test = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities
+            .Where(e => e.Id > 0)
+            .ToList();
+        foreach (var e in entities)
+        {
+            Console.WriteLine(e.Name);
+        }
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + LargeEntity + @"
+class Program
+{
+    public void Process()
+    {
+        var db = new AppDbContext();
+        var entities = db.LargeEntities
+            .Where(e => e.Id > 0).Select(e => new { e.Name })
+            .ToList();
+        foreach (var e in entities)
+        {
+            Console.WriteLine(e.Name);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("LC017").WithLocation(46, 24).WithArguments("LargeEntity", "1", "12");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

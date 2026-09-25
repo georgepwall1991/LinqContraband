@@ -90,8 +90,9 @@ public sealed partial class LocalMethodFixer : CodeFixProvider
 
         if (IsInvocationOf(source, "AsEnumerable")) return editor.GetChangedDocument();
 
-        // 4. Create .AsEnumerable() call on the source
-        var asEnumerableInvocation = CreateAsEnumerableInvocation(source);
+        // 4. Create .AsEnumerable() call on the source. In a chain split over lines, the source's trailing line
+        // break moves after the new call, so AsEnumerable() stays on the source's line instead of column 0.
+        var asEnumerableInvocation = CreateAsEnumerableInvocation(source.WithoutTrailingTrivia());
 
         // 5. Replace the original source with the new source, preserving trivia
         editor.ReplaceNode(source, asEnumerableInvocation.WithTriviaFrom(source));

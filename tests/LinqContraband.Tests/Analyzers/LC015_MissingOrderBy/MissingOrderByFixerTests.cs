@@ -422,4 +422,38 @@ class Program {
 
         await testObj.RunAsync();
     }
+
+    // In a chain split over lines, OrderBy stays on the source's line, and the next operator keeps its indentation.
+    [Fact]
+    public async Task MultilineChain_KeepsOrderByOnTheSourceLine()
+    {
+        var test = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Users
+            .Where(u => u.Id > 0)
+            .{|#0:Skip|}(10);
+    }
+}";
+
+        var fixedCode = CommonUsings + MockEfCore + @"
+class User { public int Id { get; set; } }
+class AppDbContext : DbContext { public DbSet<User> Users { get; set; } }
+
+class Program {
+    void Main() {
+        var db = new AppDbContext();
+        var q = db.Users
+            .Where(u => u.Id > 0).OrderBy(x => x.Id)
+            .Skip(10);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic(MissingOrderByAnalyzer.Rule).WithLocation(0).WithArguments("Skip");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

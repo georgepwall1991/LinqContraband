@@ -36,14 +36,17 @@ public sealed partial class WholeEntityProjectionFixer
             SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName)),
             lambdaBody);
 
+        // In a chain split over lines, the source's trailing line break moves after Select(...), which stays on
+        // the source's line instead of column 0.
         var selectInvocation = SyntaxFactory.InvocationExpression(
             SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
-                sourceExpression,
+                sourceExpression.WithoutTrailingTrivia(),
                 SyntaxFactory.IdentifierName("Select")),
             SyntaxFactory.ArgumentList(
                 SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.Argument(lambda))));
+                    SyntaxFactory.Argument(lambda))))
+            .WithTrailingTrivia(sourceExpression.GetTrailingTrivia());
 
         editor.ReplaceNode(sourceExpression, selectInvocation);
         editor.EnsureUsing("System.Linq");
