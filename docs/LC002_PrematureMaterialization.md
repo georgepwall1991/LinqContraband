@@ -81,6 +81,12 @@ var ordinal = db.Users.ToList().Where(u => u.Name.Contains(term, StringCompariso
 var indexed = db.Users.ToList().Where((u, index) => index > 0); // no LC002
 ```
 
+A property of the row counts as simple member access only when EF Core can map it to a column: it needs a setter (`set`, `init` or a private setter) and no `[NotMapped]`. A computed property such as `public string Display => Name + "!"`, a get-only property, a `[NotMapped]` property or an indexer other than `string`'s exists only on the client, so filtering on it before materializing would throw "could not be translated". Those continuations stay quiet, and so does the fix. Members of `System` types such as `string.Length` and `DateTime.Year`, and properties of captured objects that do not read the row, are still eligible.
+
+```csharp
+var shown = db.Users.ToList().Where(u => u.Display == "ann!"); // no LC002: Display is computed
+```
+
 ## Intentional Client Boundaries
 Materializing early can be the right design when the rest of the work is deliberately client-side: custom comparers, non-translatable helpers, regex, snapshot reuse, or logic that must run after data leaves the provider. Keep that boundary visible by ending the provider query first, then continuing from a named local:
 

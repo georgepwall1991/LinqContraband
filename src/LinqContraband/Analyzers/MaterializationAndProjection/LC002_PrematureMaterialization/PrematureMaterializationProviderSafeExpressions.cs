@@ -16,10 +16,12 @@ public sealed partial class PrematureMaterializationAnalyzer
             case IParameterReferenceOperation:
             case ILocalReferenceOperation:
             case IFieldReferenceOperation:
-            case IPropertyReferenceOperation:
             case IConditionalAccessInstanceOperation:
             case IInstanceReferenceOperation:
                 return true;
+
+            case IPropertyReferenceOperation property:
+                return IsProviderSafeProperty(property);
 
             case IUnaryOperation unary:
                 return IsProviderSafeExpression(unary.Operand);
@@ -82,6 +84,67 @@ public sealed partial class PrematureMaterializationAnalyzer
             default:
                 return false;
         }
+    }
+
+    // A property read from the lambda's row must map to a column (or be a translatable BCL member such as
+    // string.Length). A computed or [NotMapped] property only works on the client, so moving the operator
+    // into SQL would throw "could not be translated".
+    private static bool IsProviderSafeProperty(IPropertyReferenceOperation reference)
+    {
+        if (reference.Instance == null || !ReadsLambdaParameter(reference.Instance))
+            return true;
+
+        if (!IsProviderSafeExpression(reference.Instance))
+            return false;
+
+        var property = reference.Property;
+        var containingType = property.ContainingType;
+        if (containingType == null)
+            return false;
+
+        if (containingType.IsAnonymousType || containingType.IsTupleType)
+            return true;
+
+        if (property.IsIndexer)
+            return containingType.SpecialType == SpecialType.System_String;
+
+        if (IsSystemNamespace(containingType.ContainingNamespace))
+            return true;
+
+        return property.SetMethod != null && !HasNotMappedAttribute(property);
+    }
+
+    private static bool ReadsLambdaParameter(IOperation operation)
+    {
+        foreach (var node in operation.DescendantsAndSelf())
+        {
+            if (node is IParameterReferenceOperation { Parameter.ContainingSymbol: IMethodSymbol { MethodKind: MethodKind.AnonymousFunction } })
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSystemNamespace(INamespaceSymbol? ns)
+    {
+        for (var current = ns; current is { IsGlobalNamespace: false }; current = current.ContainingNamespace)
+        {
+            if (current.ContainingNamespace is { IsGlobalNamespace: true })
+                return current.Name == "System";
+        }
+
+        return false;
+    }
+
+    private static bool HasNotMappedAttribute(IPropertySymbol property)
+    {
+        foreach (var attribute in property.GetAttributes())
+        {
+            if (attribute.AttributeClass?.Name == "NotMappedAttribute")
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsProviderSafeObjectCreation(IObjectCreationOperation objectCreation)
