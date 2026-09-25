@@ -33,6 +33,89 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ExecuteDelete_FilteredThenOptionalNonFilterComposition_ShouldNotTrigger()
+    {
+        // `q = q.TagWith(...)` keeps the filter the local already had.
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool tag, bool untracked)
+        {
+            var q = db.Set<User>().Where(u => u.Id > 10);
+            if (tag)
+                q = q.TagWith(""cleanup"");
+            if (untracked)
+                q = q.AsNoTracking();
+            return q.ExecuteDelete();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_UnfilteredThenOptionalNonFilterComposition_ShouldTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool tag)
+        {
+            var q = db.Set<User>().AsQueryable();
+            if (tag)
+                q = q.TagWith(""cleanup"");
+            return {|LC035:q.ExecuteDelete()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExecuteDelete_LongChainOfOptionallyComposedLocals_CompletesQuickly()
+    {
+        // Each local is read back through every earlier one on every path. Exploring each path afresh
+        // grew as 3^n and kept a scan of Bitwarden busy for more than 15 minutes.
+        var body = new System.Text.StringBuilder("var q0 = db.Set<User>().Where(u => u.Id > 10);\n");
+        for (var i = 1; i <= 16; i++)
+        {
+            body.Append($"var q{i} = q{i - 1};\n");
+            body.Append($"if (a) q{i} = q{i}.TagWith(\"t{i}\");\n");
+            body.Append($"if (b) q{i} = q{i}.AsNoTracking();\n");
+        }
+
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
+namespace TestApp
+{
+    public sealed class User { public int Id { get; set; } }
+
+    public sealed class Program
+    {
+        public int Run(DbContext db, bool a, bool b)
+        {
+" + body + @"
+            return q16.ExecuteDelete();
+        }
+    }
+}";
+
+        var verification = VerifyCS.VerifyAnalyzerAsync(test);
+        var finished = await Task.WhenAny(verification, Task.Delay(TimeSpan.FromSeconds(30)));
+        Assert.True(finished == verification, "LC035 did not finish within 30 seconds.");
+        await verification;
+    }
+
+    [Fact]
     public async Task ExecuteDelete_ConditionalReassignToUnfiltered_ShouldTrigger()
     {
         // The if path reassigns q to an UNfiltered query, so on that path the delete affects the whole
