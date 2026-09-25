@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -59,6 +58,12 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             var syntax = syntaxRef.GetSyntax(cancellationToken);
             var builderVariables = CollectConfigureBuilderParameters(method);
+            if (TryGetExtensionBlockReceiver(method, compilationModel, cancellationToken, out var receiver) &&
+                TryGetEntityTypeBuilderEntity(receiver.Type, out var receiverEntity))
+            {
+                builderVariables[receiver.Name] = receiverEntity;
+            }
+
             SemanticModel? semanticModel = null;
             var semanticModelResolved = false;
 
@@ -113,18 +118,47 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     }
                 }
 
-                if (depth >= MaxModelConfigurationHelperDepth || methodName is "Entity" or "HasOne" or "HasMany" or "WithOne" or "WithMany" or "Property" or "HasIndex")
+                if (depth >= MaxModelConfigurationHelperDepth || methodName is "HasOne" or "HasMany" or "WithOne" or "WithMany" or "Property" or "HasIndex")
                     continue;
 
                 if (!semanticModelResolved)
                 {
                     semanticModelResolved = true;
-                    if (compilationModel.Compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var model))
-                        semanticModel = model;
+                    semanticModel = compilationModel.GetSemanticModel(syntax.SyntaxTree);
                 }
 
-                if (semanticModel?.GetSymbolInfo(invocation, cancellationToken).Symbol is IMethodSymbol helper &&
-                    TryGetModelConfigurationHelper(helper, out var helperDefinition))
+                if (semanticModel == null)
+                    continue;
+
+                // builder.Entity<Package>(BuildPackageEntity): the method group builds the entity.
+                if (methodName == "Entity")
+                {
+                    foreach (var argument in invocation.ArgumentList.Arguments)
+                    {
+                        if (argument.Expression is not (IdentifierNameSyntax or MemberAccessExpressionSyntax) ||
+                            GetMethodGroupSymbol(semanticModel, argument.Expression, cancellationToken) is not { } builderMethod ||
+                            !TryGetModelConfigurationHelper(builderMethod, compilationModel, cancellationToken, out var builderDefinition))
+                        {
+                            continue;
+                        }
+
+                        ScanModelConfigurationMethod(
+                            builderDefinition,
+                            dbContextType,
+                            configuredEntities,
+                            keylessEntities,
+                            ownedEntities,
+                            compilationModel,
+                            visitedMethods,
+                            depth + 1,
+                            cancellationToken);
+                    }
+
+                    continue;
+                }
+
+                if (semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is IMethodSymbol helper &&
+                    TryGetModelConfigurationHelper(helper, compilationModel, cancellationToken, out var helperDefinition))
                 {
                     ScanModelConfigurationMethod(
                         helperDefinition,
@@ -141,7 +175,11 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         }
     }
 
-    private static bool TryGetModelConfigurationHelper(IMethodSymbol method, out IMethodSymbol helper)
+    private static bool TryGetModelConfigurationHelper(
+        IMethodSymbol method,
+        CompilationModel compilationModel,
+        CancellationToken cancellationToken,
+        out IMethodSymbol helper)
     {
         helper = (method.ReducedFrom ?? method).OriginalDefinition;
         if (helper.DeclaringSyntaxReferences.IsEmpty)
@@ -149,17 +187,35 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
         foreach (var parameter in helper.Parameters)
         {
-            if (parameter.Type is INamedTypeSymbol { Name: "ModelBuilder" } parameterType &&
-                parameterType.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
-            {
-                return true;
-            }
-
-            if (TryGetEntityTypeBuilderEntity(parameter.Type, out _))
+            if (IsModelConfigurationBuilderType(parameter.Type))
                 return true;
         }
 
-        return false;
+        return TryGetExtensionBlockReceiver(helper, compilationModel, cancellationToken, out var receiver) &&
+               IsModelConfigurationBuilderType(receiver.Type);
+    }
+
+    private static bool IsModelConfigurationBuilderType(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol { Name: "ModelBuilder" } namedType &&
+            namedType.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+        {
+            return true;
+        }
+
+        return TryGetEntityTypeBuilderEntity(type, out _);
+    }
+
+    private static IMethodSymbol? GetMethodGroupSymbol(
+        SemanticModel semanticModel,
+        ExpressionSyntax expression,
+        CancellationToken cancellationToken)
+    {
+        var symbolInfo = semanticModel.GetSymbolInfo(expression, cancellationToken);
+        if (symbolInfo.Symbol is IMethodSymbol method)
+            return method;
+
+        return symbolInfo.CandidateSymbols.Length == 1 ? symbolInfo.CandidateSymbols[0] as IMethodSymbol : null;
     }
 
     private static void ScanAppliedConfiguration(

@@ -61,7 +61,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             return FindTypeByName(typeSyntax.ToString(), cancellationToken);
         }
 
-        private SemanticModel? GetSemanticModel(SyntaxTree tree)
+        public SemanticModel? GetSemanticModel(SyntaxTree tree)
         {
             lock (syncRoot)
             {
