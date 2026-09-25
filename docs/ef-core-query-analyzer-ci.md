@@ -69,7 +69,7 @@ solution:
 | Preset | Effect |
 | --- | --- |
 | `security` | LC018, LC034, and LC037 (SQL injection through raw SQL) become build errors, together with EF Core's own EF1002 and EF1003, which LC018 and LC034 defer to. |
-| `critical` | `security` plus LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055, and LC056 (runtime failures and silent data loss) become build errors. |
+| `critical` | `security` plus LC013, LC019, LC036, LC044, LC046, LC047, LC048, LC054, LC055, LC056, and LC058 (runtime failures and silent data loss) become build errors. |
 | `strict` | Every warning rule becomes an error and every advisory rule becomes a warning. |
 | `essentials` | Advisory (Info) rules are turned off, so only the warnings remain. |
 

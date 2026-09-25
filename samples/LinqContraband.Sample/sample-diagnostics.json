@@ -553,6 +553,15 @@
       "ruleIds": [
         "LC057"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC058_TransactionScopeWithoutAsyncFlow/TransactionScopeWithoutAsyncFlowSample.cs",
+      "samplePaths": [
+        "Samples/LC058_TransactionScopeWithoutAsyncFlow/TransactionScopeWithoutAsyncFlowSample.cs"
+      ],
+      "ruleIds": [
+        "LC058"
+      ]
     }
   ]
 }

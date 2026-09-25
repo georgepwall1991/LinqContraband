@@ -187,6 +187,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/MaterializationAndProjection/LC057_EmptyQueryAggregate",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC058",
+                slug: "LC058_TransactionScopeWithoutAsyncFlow",
+                title: "TransactionScope without async flow spans an await",
+                category: "Reliability",
+                domain: "Execution & Async",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "TransactionScopeWithoutAsyncFlowAnalyzer",
+                fixerTypeName: "TransactionScopeWithoutAsyncFlowFixer",
+                documentationPath: "docs/LC058_TransactionScopeWithoutAsyncFlow.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC058_TransactionScopeWithoutAsyncFlow/TransactionScopeWithoutAsyncFlowSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC058_TransactionScopeWithoutAsyncFlow",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }
