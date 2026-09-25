@@ -66,6 +66,8 @@ The code fix rewrites simple synchronous lookups to `Find(key)` and awaited asyn
 
 When the awaited async lookup passes an explicit cancellation token, the fixer rewrites to `FindAsync(new object[] { key }, cancellationToken)` so the token is preserved. The fixer does not rewrite non-awaited async calls because EF Core `FindAsync` returns `ValueTask<TEntity?>`, which can be incompatible with a call site expecting `Task<TEntity?>`.
 
+`Find` compares the key value's type with the key property's type and throws `ArgumentException` when they differ, even where the query compiled through an implicit conversion. So when an `int` value is compared with a `long` key, the fix casts it: `tags.Find((long)id)`. It offers no fix for a nullable value compared with a non-nullable key (`t.Id == id` with an `int?` id is simply false for `null`) or for a value that reaches the key type through a user-defined conversion, such as a strongly typed ID.
+
 The fixer also requires the key value to be independent of the predicate parameter. LC023 may still report a column-to-column predicate such as `users.FirstOrDefault(x => x.Id == x.OtherId)`, but it stays manual because rewriting to `users.Find(x.OtherId)` would reference `x` outside the lambda and break the build.
 
 ## Non-Goals

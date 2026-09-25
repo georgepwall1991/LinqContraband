@@ -2043,12 +2043,12 @@ public sealed class AnalyzerModularizationTests
         var contextSource = File.ReadAllText(contextPath);
         Assert.DoesNotContain("private static bool TryGetKeyValueExpression", contextSource);
         Assert.DoesNotContain("private static bool ReferencesLambdaParameter", contextSource);
-        Assert.DoesNotContain("private static bool IsPrimaryKeyAccess", contextSource);
+        Assert.DoesNotContain("private static bool TryGetPrimaryKeyProperty", contextSource);
 
         var keyValueAnalysisSource = File.ReadAllText(keyValueAnalysisPath);
         Assert.Contains("private static bool TryGetKeyValueExpression", keyValueAnalysisSource);
         Assert.Contains("private static bool ReferencesLambdaParameter", keyValueAnalysisSource);
-        Assert.Contains("private static bool IsPrimaryKeyAccess", keyValueAnalysisSource);
+        Assert.Contains("private static bool TryGetPrimaryKeyProperty", keyValueAnalysisSource);
     }
 
     [Fact]
