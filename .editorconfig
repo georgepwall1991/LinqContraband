@@ -247,3 +247,6 @@ indent_size = 2
 
 # LC057: Empty Query Aggregate - Min, Max or Average over a non-nullable value throws when the EF Core query matches no rows
 # dotnet_diagnostic.LC057.severity = warning
+
+# LC058: TransactionScope Without Async Flow - the ambient transaction does not flow across an await without TransactionScopeAsyncFlowOption.Enabled
+# dotnet_diagnostic.LC058.severity = warning

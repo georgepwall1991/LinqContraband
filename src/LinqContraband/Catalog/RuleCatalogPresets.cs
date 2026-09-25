@@ -70,11 +70,11 @@ public static class RuleCatalogPresets
     /// Security plus the rules whose findings are runtime failures or silent data loss rather than slow queries:
     /// disposed-context queries, always-throwing conditional includes, contexts shared across threads or
     /// concurrent operations, lost AsNoTracking writes, ExecuteDelete skipping soft-delete/cascade, lost updates,
-    /// migrations that fail at startup inside a user transaction, models that skip their base configuration, and
-    /// queries composed over stored procedure calls.
+    /// migrations that fail at startup inside a user transaction, models that skip their base configuration,
+    /// queries composed over stored procedure calls, and transaction scopes that do not flow across awaits.
     /// </summary>
     public static ImmutableArray<string> CriticalRuleIds { get; } = SecurityRuleIds.AddRange(
-        new[] { "LC013", "LC019", "LC036", "LC044", "LC046", "LC047", "LC048", "LC054", "LC055", "LC056" });
+        new[] { "LC013", "LC019", "LC036", "LC044", "LC046", "LC047", "LC048", "LC054", "LC055", "LC056", "LC058" });
 
     public static ImmutableArray<RuleCatalogPreset> All { get; } = ImmutableArray.Create(
         new RuleCatalogPreset(

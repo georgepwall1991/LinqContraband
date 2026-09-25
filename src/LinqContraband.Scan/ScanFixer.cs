@@ -21,6 +21,7 @@ internal static class ScanFixer
         "LC011", "LC012", "LC015", "LC016", "LC017", "LC018", "LC020", "LC021", "LC022", "LC023",
         "LC025", "LC026", "LC027", "LC029", "LC032", "LC033", "LC034", "LC041", "LC042", "LC043",
         "LC045", "LC047", "LC049", "LC050", "LC051", "LC053", "LC054", "LC055", "LC056", "LC057",
+        "LC058",
     ];
 
     /// <summary>The fixable rules that <c>--rules</c> and <c>--skip-rules</c> select.</summary>
