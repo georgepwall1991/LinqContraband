@@ -41,6 +41,9 @@ internal static partial class NPlusOneLooperAnalysis
         if (IsCatchGuardedRetryAttempt(invocation, loop))
             return true;
 
+        if (loop is IWhileLoopOperation && IsTakeBoundedDrainLoop(loop, condition, cancellationToken))
+            return true;
+
         // A drain loop (`while (await q.AnyAsync()) { ... }`) asks the database whether to go on, so the work
         // inside it runs once per batch the database reports, not once per item of some other source.
         var conditionQueriesDatabase = condition != null && ConditionExecutesDatabaseWork(condition, cancellationToken);
@@ -408,12 +411,14 @@ internal static partial class NPlusOneLooperAnalysis
                     break;
                 case IFieldReferenceOperation fieldReference:
                     if (!IsResultMemberAccess(fieldReference.Instance, resultLocals) &&
-                        !IsCounterFlagOrCancellation(fieldReference.Type))
+                        !IsCounterFlagOrCancellation(fieldReference.Type) &&
+                        !IsConfiguredCount(fieldReference))
                         return false;
                     continue;
                 case IPropertyReferenceOperation propertyReference:
                     if (!IsResultMemberAccess(propertyReference.Instance, resultLocals) &&
-                        !IsCancellationMember(propertyReference))
+                        !IsCancellationMember(propertyReference) &&
+                        !(propertyReference.Arguments.Length == 0 && IsConfiguredCount(propertyReference)))
                         return false;
                     continue;
                 case IInvocationOperation invocation:

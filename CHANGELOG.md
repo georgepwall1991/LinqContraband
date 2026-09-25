@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LC007 stays quiet on batch drain loops: a `while` or `do` loop in which a `Take(n)` query's result ends the loop (the row count `ExecuteDelete` returns, or the length, count or emptiness of the materialized batch) runs once per batch, not once per item, so every query in that iteration stays quiet, including the delete that works on the batch. The loop condition may also read an integer setting such as `_options.BatchSize`. Seen 17 times in Duende IdentityServer's `TokenCleanupService` and in Smartstore's cleanup tasks. A loop over a queue, a `Take` query whose result never ends the loop, `Take(1)` and per-item queries nested inside the drain loop still report.
+
 ## [5.14.0] - 2026-09-25
 
 ### Changed
