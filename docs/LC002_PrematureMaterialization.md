@@ -87,6 +87,21 @@ A property of the row counts as simple member access only when EF Core can map i
 var shown = db.Users.ToList().Where(u => u.Display == "ann!"); // no LC002: Display is computed
 ```
 
+## In-Memory Re-Checks of an Applied Filter
+A predicate after the materializer that repeats a filter the query already ran in SQL is a deliberate re-check, not premature work. A case-insensitive database collation can return rows that the exact, case-sensitive C# comparison rejects, so stores such as Duende IdentityServer's filter in SQL and then check again in memory:
+
+```csharp
+var query = db.Clients.Where(x => x.ClientId == clientId).Include(x => x.AllowedScopes).AsNoTracking();
+var client = (await query.ToArrayAsync(ct)).SingleOrDefault(x => x.ClientId == clientId); // no LC002
+
+var grant = (await db.PersistedGrants.Where(x => x.Key == key).ToArrayAsync(ct))
+    .SingleOrDefault(g => key == g.Key); // no LC002
+```
+
+LC002 stays quiet, and offers no fix, when every `&&` conjunct of the in-memory predicate (`Where`, `Any`, `All`, `Count`, `LongCount`, `First*`, `Single*`, `Last*`) matches a conjunct of a `Queryable.Where` the materialized query already applies. The match is structural, ignoring the lambda parameter's name: the same member path compared with the same operator to the same local, parameter, field or literal, with the operands of `==` and `!=` in either order. The walk follows the query through a single-assignment local and through operators that keep the element type (`Include`, `AsNoTracking`, `OrderBy`, ...), and stops at a projection such as `Select`.
+
+It still reports when the in-memory predicate compares a different member, a different value or with a different operator, adds a condition the query did not apply, uses `||`, or when the query has no upstream filter (`db.Users.ToList().Where(...)`).
+
 ## Intentional Client Boundaries
 Materializing early can be the right design when the rest of the work is deliberately client-side: custom comparers, non-translatable helpers, regex, snapshot reuse, or logic that must run after data leaves the provider. Keep that boundary visible by ending the provider query first, then continuing from a named local:
 
@@ -110,6 +125,7 @@ LC002 intentionally avoids chasing locals, fields, properties, constructor mater
 - A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) used as the source of a second materializer (`ToHashSet().ToList()`, `ToImmutableHashSet().ToArray()`, `ToHashSet(comparer).ToHashSet()`), where removing the source would drop de-duplication or a custom comparer
 - A keyed (`ToDictionary`) or grouped (`ToLookup`) materializer used as the source of a second materializer (`ToDictionary().ToList()`, `ToLookup().ToList()`), where the trailing call transforms the keyed/grouped shape and is not a redundant re-materialization
 - Pure in-memory sequences that never came from `IQueryable`
+- An in-memory predicate that only repeats a `Where` filter the query already applied (`(await q.Where(x => x.Key == key).ToArrayAsync()).SingleOrDefault(x => x.Key == key)`), which is a deliberate exact-match re-check
 
 ## Fixer Behavior
 The fixer is intentionally conservative.
