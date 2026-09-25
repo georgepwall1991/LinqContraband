@@ -24,7 +24,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
     /// <summary>
     /// True when the member returns or yields the materialized entities to its caller: the materializer itself, its
     /// result local, or either carried there through LINQ to Objects that keeps the entity
-    /// (<c>return users.Where(...).ToList();</c>).
+    /// (<c>return users.Where(...).ToList();</c>) or as an element of a returned tuple literal
+    /// (<c>return (result, user);</c>).
     /// </summary>
     private static bool MaterializedEntitiesAreReturned(
         IInvocationOperation materializer,
@@ -78,6 +79,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer
             {
                 case IReturnOperation returnOperation:
                     return ReturnsFromMember(returnOperation);
+                // return (result, order, id); hands the entity to the caller as one element of a tuple literal,
+                // nested or not. A tuple stored in a local first is not followed.
+                case ITupleOperation tuple:
+                    current = tuple;
+                    continue;
                 case IArgumentOperation { Parent: IInvocationOperation linq } argument
                     when entityType != null && IsLinqToObjectsSource(linq, argument) && ContainsType(linq.Type, entityType):
                     current = linq;

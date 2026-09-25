@@ -75,6 +75,11 @@ class OrderRepository
     [InlineData("public IEnumerable<Order> Stream() { foreach (var order in db.Orders.ToList()) yield return order; }")]
     [InlineData("public IEnumerable<Order> Stream() { var orders = db.Orders.ToList(); foreach (var order in orders) yield return order; }")]
     [InlineData("public List<Order> FromCaller(ShopContext context) => context.Orders.ToList();")]
+    [InlineData("public (Order, int) WithCount(int id) { var order = db.Orders.First(o => o.Id == id); return (order, 1); }")]
+    [InlineData("public (Order Order, int Count) Inline(int id) => (db.Orders.First(o => o.Id == id), 1);")]
+    [InlineData("public (List<Order> Orders, int Count) All() { var orders = db.Orders.ToList(); return (Orders: orders, Count: orders.Count); }")]
+    [InlineData("public (int, (Order, string)) Nested(int id) { var order = db.Orders.First(o => o.Id == id); return (1, (order, order.Status)); }")]
+    [InlineData("public (object, int) AsObject(int id) { var order = db.Orders.First(o => o.Id == id); return (order, 1); }")]
     public Task ReturnedEntities_AreQuietByDefault(string members) =>
         VerifyCS.VerifyAnalyzerAsync(Code(members));
 
@@ -85,6 +90,41 @@ class OrderRepository
     [InlineData("public IEnumerable<Order> Stream() { foreach (var order in {|LC009:db.Orders.ToList()|}) yield return order; }")]
     public Task ReturnedEntities_ReportWhenOptedIn(string members) =>
         ReturnedEntitiesOptInVerifier.VerifyAnalyzerAsync(Code(members));
+
+    // bit Boilerplate's IdentityController.WebAuthn: the credential leaves in a tuple and the caller bumps its
+    // SignCount and saves it.
+    private static string TupleReturnMembers(string query) => @"
+    public async Task<(string Result, Order Order, int Key)> VerifyAsync(int id)
+    {
+        var order = (await " + query + @") ?? throw new System.InvalidOperationException();
+        var result = order.Status + ""!"";
+        return (result, order, id);
+    }";
+
+    [Fact]
+    public Task EntityReturnedInTuple_IsQuietByDefault() =>
+        VerifyCS.VerifyAnalyzerAsync(Code(TupleReturnMembers("db.Orders.FirstOrDefaultAsync(o => o.Id == id)")));
+
+    [Fact]
+    public Task EntityReturnedInTuple_ReportsWhenOptedIn() =>
+        ReturnedEntitiesOptInVerifier.VerifyAnalyzerAsync(
+            Code(TupleReturnMembers("{|#0:db.Orders.FirstOrDefaultAsync(o => o.Id == id)|}")),
+            ReturnedEntitiesOptInVerifier.Diagnostic("LC009").WithLocation(0).WithArguments("VerifyAsync"));
+
+    [Theory]
+    [InlineData("public (Order, int) WithCount(int id) { var order = {|LC009:db.Orders.First(o => o.Id == id)|}; return (order, 1); }")]
+    [InlineData("public (int, (Order, string)) Nested(int id) { var order = {|LC009:db.Orders.First(o => o.Id == id)|}; return (1, (order, order.Status)); }")]
+    public Task EntityReturnedInTuple_ReportsWhenOptedIn_Theory(string members) =>
+        ReturnedEntitiesOptInVerifier.VerifyAnalyzerAsync(Code(members));
+
+    [Theory]
+    [InlineData("public (string, int) Summary(int id) { var order = {|LC009:db.Orders.First(o => o.Id == id)|}; return (order.Status, order.Id); }")]
+    [InlineData("public (int, string) Pair(int id) => (1, {|LC009:db.Orders.First(o => o.Id == id)|}.Status);")]
+    [InlineData("public (int, int) Counted() { var orders = {|LC009:db.Orders.ToList()|}; return (orders.Count, orders.Count(o => o.Status == \"Open\")); }")]
+    [InlineData("public int FromLocalTuple() { var pair = ({|LC009:db.Orders.ToList()|}, 1); return pair.Item2; }")]
+    [InlineData("public void BackgroundTuple() { _ = Task.Run(() => ({|LC009:db.Orders.ToList()|}, 1)); }")]
+    public Task TupleThatDoesNotReturnTheEntity_StillReportsByDefault(string members) =>
+        VerifyCS.VerifyAnalyzerAsync(Code(members));
 
     [Theory]
     [InlineData("public int Count() { var orders = {|LC009:db.Orders.ToList()|}; return orders.Count; }")]
