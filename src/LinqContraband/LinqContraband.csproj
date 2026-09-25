@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.13.0</Version>
+        <Version>5.14.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>New: linqcontraband-scan --fix applies the rules' code fixes to your source files through dotnet format, then scans again and reports what is left (on Microsoft's eShop Catalog API it fixed LC008, LC023, LC042 and LC009 findings). Code-fix safety fixes from applying the fixes to real applications: LC001 no longer offers AsEnumerable() where the query must stay an IQueryable; LC005 no longer offers ThenBy when the value was sorted in another statement; LC009 keeps AsNoTracking() on the source line in multi-line queries; LC016's local-extraction fix no longer clashes with existing locals, throws or freezes a loop's clock; LC023 passes Find a key value of exactly the key type, so Find no longer throws; LC020 and LC012 fix titles say what the fix changes. LC035 no longer slows the build on long chains of optionally composed query locals.</PackageReleaseNotes>
+        <PackageReleaseNotes>LC009 is quieter on real code: it no longer reports queries whose entities the method returns to its caller (set dotnet_code_quality.LC009.report_returned_entities = true to report them again), nor a Join or GroupJoin that projects only scalars, and it sees writes through a ?? new fallback; on Kavita its reports fall from 157 to 34. Code-fix safety fixes from applying the fixes to real applications: LC009 withholds AsNoTracking() when entities reached through a navigation are passed on or stored; LC002 no longer moves filters on computed or [NotMapped] properties into SQL; fixes that add a using (LC001, LC004, LC006, LC007, LC008, LC009, LC012, LC015, LC017, LC032, LC033, LC041, LC042, LC045, LC047 and LC051) skip one a global using already provides and place it below a copyright header; LC001, LC006, LC015 and LC017 keep the inserted call on the source line in multi-line queries; LC043 keeps comments above the removed declaration; LC042 no longer duplicates a #pragma; LC026 no longer passes an outer token into a static lambda or local function; LC008 is not offered inside a lock or unsafe context.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>

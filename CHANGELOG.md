@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.14.0] - 2026-09-25
+
 ### Changed
 
 - LC009 no longer reports queries whose entities the method returns to its caller, such as repository getters (`return await db.Users.FirstOrDefaultAsync(...)`). The caller, which the analyzer cannot see, usually changes and saves them: on Kavita, 7 of 8 sampled callers did. Set `dotnet_code_quality.LC009.report_returned_entities = true` to report them again. Queries on a context the method creates itself, returns from lambdas and local functions, and entities read or handed on inside the method still report. Kavita's LC009 reports drop from 152 to 34.
