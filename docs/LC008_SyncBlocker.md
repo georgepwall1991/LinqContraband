@@ -135,6 +135,7 @@ The fixer is intentionally narrow. It replaces the method name with the mapped a
 - When the sync call feeds a following member, element, invocation, or null-conditional access, the fixer parenthesizes the awaited result: `db.Users.ToList().Count` becomes `(await db.Users.ToListAsync()).Count`, and `db.Users.FirstOrDefault()?.Name` becomes `(await db.Users.FirstOrDefaultAsync())?.Name`.
 - Query-expression subqueries that are part of the provider expression do not report and therefore do not offer a fix.
 - Diagnostics inside non-async lambdas or non-async local functions can report, but the fixer stays quiet because inserting `await` there would not compile without refactoring the delegate/local-function shape.
+- Calls inside a `lock` body, an `unsafe` block, or an `unsafe` method, local function or type still report, but the fixer stays quiet: C# forbids `await` there (CS1996 and CS4004). Move the query out of the lock or unsafe region first, then apply the fix.
 - The fixer does not add cancellation tokens or choose overloads; pass tokens explicitly after the rewrite when the surrounding code has one.
 - `ToList()`, `Count()` and the other query terminals bind through `System.Linq` alone, but their async twins are EF Core extension methods. When the file does not already import them (through a file, namespace or global using), the fixer adds `using Microsoft.EntityFrameworkCore;`. `SaveChangesAsync()` and `FindAsync()` are instance members, so those rewrites add no using.
 
