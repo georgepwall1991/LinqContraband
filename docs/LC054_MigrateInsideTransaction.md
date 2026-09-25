@@ -82,6 +82,13 @@ using (db.Database.BeginTransaction())
 {
     db.Database.Migrate();
 }
+
+using var tx = db.Database.BeginTransaction();
+for (var i = 0; i < 2; i++)
+{
+    db.Database.Migrate();
+}
+tx.Commit();
 ```
 
 ### Valid
@@ -91,6 +98,10 @@ await db.Database.MigrateAsync(ct);
 
 using var tx = db.Database.BeginTransaction();
 tx.Commit();
+db.Database.Migrate();
+
+db.Database.BeginTransaction();
+db.Database.RollbackTransaction();
 db.Database.Migrate();
 
 using var otherTx = reportingDb.Database.BeginTransaction();
