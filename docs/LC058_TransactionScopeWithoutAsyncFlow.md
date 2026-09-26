@@ -82,6 +82,10 @@ The overloads that take an `EnterpriseServicesInteropOption` have no async flow 
 using (var scope = new TransactionScope()) { await db.SaveChangesAsync(ct); scope.Complete(); }
 using var scope = new TransactionScope(TransactionScopeOption.Required, options); await db.SaveChangesAsync(ct);
 using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Suppress); await db.SaveChangesAsync(ct);
+using (var scope = new TransactionScope()) { await using (var stream = new MemoryStream()) { } }
+using (var scope = new TransactionScope()) { await using var stream = new MemoryStream(); }
+using var scope = (new TransactionScope()); await db.SaveChangesAsync(ct);
+using (((new TransactionScope()))) { await db.SaveChangesAsync(ct); }
 ```
 
 ### Valid
@@ -89,4 +93,6 @@ using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Suppress)
 ```csharp
 using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled); await db.SaveChangesAsync(ct);
 using (var scope = new TransactionScope()) { db.SaveChanges(); scope.Complete(); }
+using (var scope = new TransactionScope()) { db.SaveChanges(); }
+await using var stream = new MemoryStream();
 ```
