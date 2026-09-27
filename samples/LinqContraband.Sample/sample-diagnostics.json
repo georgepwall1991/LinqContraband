@@ -571,6 +571,15 @@
       "ruleIds": [
         "LC059"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC060"
+      ]
     }
   ]
 }
