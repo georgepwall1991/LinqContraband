@@ -106,15 +106,23 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
             if (value.ConstantValue is { HasValue: true, Value: int milliseconds } && milliseconds == 0)
                 return true;
 
-            if (value is IFieldReferenceOperation { Field: { Name: "Zero", IsStatic: true } field } &&
-                field.ContainingType is { Name: "TimeSpan" } timeSpan &&
-                timeSpan.ContainingNamespace?.ToDisplayString() == "System")
+            // default, default(int), default(TimeSpan) and new TimeSpan() are all a zero timeout.
+            if (value is IDefaultValueOperation ||
+                value is IObjectCreationOperation { Arguments.Length: 0, Initializer: null, Type: { } created } && IsTimeSpan(created))
             {
                 return true;
             }
+
+            if (value is IFieldReferenceOperation { Field: { Name: "Zero", IsStatic: true } field } && IsTimeSpan(field.ContainingType))
+                return true;
         }
 
         return false;
+    }
+
+    private static bool IsTimeSpan(ITypeSymbol type)
+    {
+        return type is { Name: "TimeSpan" } && type.ContainingNamespace?.ToDisplayString() == "System";
     }
 
     private static void Report(OperationAnalysisContext context, IOperation site, IOperation taskExpression, string blockingText)

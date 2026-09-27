@@ -255,6 +255,64 @@ class Program
     }
 
     [Theory]
+    // Overrides are matched by signature: SaveChanges() does not cover SaveChangesAsync(bool, CancellationToken).
+    [InlineData(@"var mismatched = new MismatchedAuditedContext(); var saved = {|LC062:mismatched.SaveChangesAsync(true, ct).Result|};")]
+    [InlineData(@"var mismatched = new MismatchedAuditedContext(); var saved = {|LC062:mismatched.SaveChangesAsync(ct).Result|};")]
+    public async Task AsyncOverloadOverriddenWithoutItsSyncOverload_OffersNoSynchronousFix(string code)
+    {
+        await VerifyNoFixAsync(code, isAsync: false);
+    }
+
+    [Theory]
+    [InlineData(
+        @"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(true, ct).Result|};",
+        @"var paired = new PairedAuditedContext(); var saved = paired.SaveChanges(true);")]
+    [InlineData(
+        @"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(ct).Result|};",
+        @"var paired = new PairedAuditedContext(); var saved = paired.SaveChanges();")]
+    public async Task AsyncOverloadOverriddenWithItsSyncOverload_KeepsTheSynchronousFix(string before, string after)
+    {
+        await VerifyFixAsync(before, after, isAsync: false);
+    }
+
+    [Theory]
+    // Dropping the token argument would drop the call or allocation that produces it.
+    [InlineData(@"CancellationToken GetToken() => ct; var users = {|LC062:db.Users.ToListAsync(GetToken()).Result|};")]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(new CancellationTokenSource().Token).Result|};")]
+    [InlineData(@"var sources = new CancellationTokenSource[1]; var users = {|LC062:db.Users.ToListAsync(sources[0].Token).Result|};")]
+    public async Task TokenArgumentWithSideEffects_OffersNoSynchronousFix(string code)
+    {
+        await VerifyNoFixAsync(code, isAsync: false);
+    }
+
+    [Theory]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(CancellationToken.None).Result|};", @"var users = db.Users.ToList();")]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(default).Result|};", @"var users = db.Users.ToList();")]
+    [InlineData(@"var source = new CancellationTokenSource(); var users = {|LC062:db.Users.ToListAsync(source.Token).Result|};", @"var source = new CancellationTokenSource(); var users = db.Users.ToList();")]
+    public async Task TokenArgumentWithoutSideEffects_KeepsTheSynchronousFix(string before, string after)
+    {
+        await VerifyFixAsync(before, after, isAsync: false);
+    }
+
+    [Theory]
+    // A ref or ref readonly local cannot be live across an await (CS9217).
+    [InlineData(@"var numbers = new int[1]; ref int slot = ref numbers[0]; var count = {|LC062:db.Users.CountAsync().Result|}; slot = count;")]
+    [InlineData(@"var numbers = new int[1]; ref readonly int view = ref numbers[0]; var count = {|LC062:db.Users.CountAsync().Result|}; var sum = view + count;")]
+    public async Task RefLocalReadAfterTheCall_GetsNoAwaitFix(string code)
+    {
+        await VerifyNoFixAsync(code, isAsync: true);
+    }
+
+    [Fact]
+    public async Task RefLocalNotReadAfterTheCall_KeepsTheAwaitFix()
+    {
+        await VerifyFixAsync(
+            @"var numbers = new int[1]; ref int slot = ref numbers[0]; slot = 1; var count = {|LC062:db.Users.CountAsync().Result|};",
+            @"var numbers = new int[1]; ref int slot = ref numbers[0]; slot = 1; var count = await db.Users.CountAsync();",
+            isAsync: true);
+    }
+
+    [Theory]
     // A sealed context that overrides only the async save.
     [InlineData(@"var sealedAudited = new SealedAuditedContext(); var saved = {|LC062:sealedAudited.SaveChangesAsync().Result|};")]
     // Public unsealed receivers: another assembly can derive from them and override only the async method.

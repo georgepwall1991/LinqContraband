@@ -62,7 +62,7 @@ Reports `.Result` on `Task<T>` or `ValueTask<T>`, any `Task.Wait(...)` overload,
 - Tasks that do not come straight from EF Core: `Task.FromResult`, the application's own `...Async` methods, `Task.Run(() => db.Users.ToListAsync()).Result`, fields and properties that hold a task, and locals assigned more than once or copied from another local.
 - Queries over an in-memory collection wrapped with `AsQueryable()`: the EF Core async operators throw on those instead (LC060's case).
 - A task stored in a local outside the lambda that blocks on it.
-- `task.Wait(0)` and `task.Wait(TimeSpan.Zero)`, which only check whether the task has finished. Any other timeout blocks and is reported.
+- `task.Wait(0)`, `task.Wait(TimeSpan.Zero)` and other zero timeouts (`default`, `default(TimeSpan)`, `new TimeSpan()`, a constant 0), which only check whether the task has finished. Any other timeout blocks and is reported.
 
 ## Code Fix
 
@@ -73,12 +73,13 @@ No fix is offered where neither rewrite is provably safe:
 
 - A non-async lambda inside an async method, or a `lock` body: `await` is not allowed there, and the synchronous call would be LC008's finding.
 - A task stored in a local outside async code.
-- No `await` fix when a `ref struct` value, such as a `Span<T>` local or parameter, is used after the blocking access: it cannot live across an `await`.
+- No `await` fix when a `ref struct` value, such as a `Span<T>` local or parameter, or a `ref` or `ref readonly` local, is used after the blocking access: it cannot live across an `await`.
+- No synchronous fix when the `CancellationToken` argument could have an effect, such as `ToListAsync(GetToken())` or `ToListAsync(new CancellationTokenSource().Token)`: dropping it would drop that call. Locals, parameters, field and property reads, `default` and `CancellationToken.None` are dropped.
 - `Wait(timeout)`, which returns whether the task finished.
 - Code inside a `try`, in the same member, with a catch that can see the `AggregateException` that `.Result` and `.Wait()` throw and the rewrites do not: a bare `catch`, `catch (Exception)`, `catch (SystemException)`, or a catch of `AggregateException` or one of its base types, with or without a `when` filter. A catch that cannot be an `AggregateException`, such as `catch (InvalidOperationException)` or `catch (DbUpdateException)`, keeps the fix.
 - An operation with no synchronous counterpart, such as `ForEachAsync`, and the static form `EntityFrameworkQueryableExtensions.ToListAsync(query)`.
 - No synchronous fix unless the receiver's type is closed to other assemblies: `sealed`, or declared (or nested) `internal` or `private` in a project without `InternalsVisibleTo`. A public unsealed type, including `DbContext`, `DbSet<T>` and `DatabaseFacade` themselves, may hold an object from another assembly that overrides only the async method, and the synchronous call would skip that override. So `FindAsync`, `AddAsync` and the `Database` methods get only the `await` fix, and so does `SaveChangesAsync` on a public unsealed context.
-- No synchronous fix when the application overrides the async method but not the synchronous one, as a context that audits in `SaveChangesAsync` and inherits `SaveChanges` does: `SaveChanges()` would skip the override. This applies to the receiver's own type and to any type in the project derived from it, since a `DbContext` variable can hold such a context. It is offered when the synchronous method is overridden at the same level or deeper. The `await` fix is unaffected.
+- No synchronous fix when the application overrides the async method but not the synchronous one, as a context that audits in `SaveChangesAsync` and inherits `SaveChanges` does: `SaveChanges()` would skip the override. This applies to the receiver's own type and to any type in the project derived from it, since a `DbContext` variable can hold such a context. Overloads are matched by signature: every overridden async overload needs an override of the synchronous overload with the same parameters minus the token, at the same level or deeper, so a context that overrides `SaveChangesAsync(bool, CancellationToken)` and only `SaveChanges()` gets no synchronous fix, because `SaveChanges(true)` would skip its async code. The rewritten call must also bind to that matching overload. The `await` fix is unaffected.
 
 Comments between the task and the blocking access, as in `db.Users.ToListAsync() /* why */ .Result`, move after the new expression; a `//` comment keeps a line break after it.
 

@@ -94,6 +94,10 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
             if (BypassesAsyncOverride(efInvocation, semanticModel.Compilation, cancellationToken))
                 continue;
 
+            // The synchronous call drops the token argument, so evaluating it must have no effect worth keeping.
+            if (!TokenArgumentsAreSideEffectFree(efInvocation))
+                continue;
+
             var syncMarker = new SyntaxAnnotation();
             var synchronousDraft = await CreateSyncFixAsync(document, site, efInvocation, efSyntax, syncName, syncMarker, cancellationToken)
                 .ConfigureAwait(false);
@@ -102,6 +106,9 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
             {
                 continue;
             }
+
+            if (!await CallsTheMatchingOverloadAsync(synchronousDraft, syncMarker, efInvocation.TargetMethod, cancellationToken).ConfigureAwait(false))
+                continue;
 
             var synchronous = await WithoutMarkerAsync(synchronousDraft, syncMarker, cancellationToken).ConfigureAwait(false);
 
@@ -230,7 +237,7 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
 
     /// <summary>
     /// True when a ref-like value that exists before the site (a parameter, a local declared earlier, or <c>this</c>
-    /// in a ref struct) is read after it: an inserted <c>await</c> would keep it live across the suspension point,
+    /// in a ref struct), or a <c>ref</c> or <c>ref readonly</c> local declared earlier, is read after it: an inserted <c>await</c> would keep it live across the suspension point,
     /// which the async rewriter rejects (CS4007, CS4012). LC008's helper covers locals; this adds the rest.
     /// </summary>
     private static bool WouldStrandRefLikeValue(SyntaxNode site, SemanticModel semanticModel, CancellationToken cancellationToken)
@@ -258,8 +265,10 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
             {
                 case IParameterSymbol { Type.IsRefLikeType: true }:
                     return true;
-                case ILocalSymbol { Type.IsRefLikeType: true } local
-                    when local.DeclaringSyntaxReferences.Any(reference => reference.Span.Start < site.SpanStart):
+                // A ref-like local, or a ref / ref readonly local, cannot be live across an await (CS4007, CS9217).
+                case ILocalSymbol local
+                    when (local.Type.IsRefLikeType || local.RefKind != RefKind.None) &&
+                         local.DeclaringSyntaxReferences.Any(reference => reference.Span.Start < site.SpanStart):
                     return true;
             }
         }
@@ -366,8 +375,7 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         {
             if (argument.IsImplicit ||
                 argument.ArgumentKind != ArgumentKind.Explicit ||
-                argument.Parameter?.Type is not { Name: "CancellationToken" } tokenType ||
-                tokenType.ContainingNamespace?.ToDisplayString() != "System.Threading" ||
+                !IsCancellationToken(argument.Parameter?.Type) ||
                 argument.Syntax is not ArgumentSyntax tokenArgument)
             {
                 continue;
@@ -433,6 +441,81 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
                originalType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 
+    /// <summary>
+    /// True when every explicit <c>CancellationToken</c> argument can be dropped without losing an effect: a local, a
+    /// parameter, <c>this</c>, a field or property read on one of those (or static), <c>default</c> or a constant.
+    /// A call such as <c>ToListAsync(GetToken())</c> would lose the call.
+    /// </summary>
+    private static bool TokenArgumentsAreSideEffectFree(IInvocationOperation efInvocation)
+    {
+        foreach (var argument in efInvocation.Arguments)
+        {
+            if (argument.IsImplicit || argument.ArgumentKind != ArgumentKind.Explicit || !IsCancellationToken(argument.Parameter?.Type))
+                continue;
+
+            if (!IsSideEffectFree(argument.Value))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsSideEffectFree(IOperation? operation)
+    {
+        switch (operation?.UnwrapConversions())
+        {
+            case null:
+                return true;
+            case ILocalReferenceOperation or IParameterReferenceOperation or IInstanceReferenceOperation or IDefaultValueOperation:
+                return true;
+            case { ConstantValue.HasValue: true }:
+                return true;
+            case IFieldReferenceOperation field:
+                return IsSideEffectFree(field.Instance);
+            case IPropertyReferenceOperation { Arguments.Length: 0 } property:
+                return IsSideEffectFree(property.Instance);
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsCancellationToken(ITypeSymbol? type)
+    {
+        return type is { Name: "CancellationToken" } && type.ContainingNamespace?.ToDisplayString() == "System.Threading";
+    }
+
+    /// <summary>
+    /// For an instance method that can be overridden, the synchronous call must bind to the overload with the async
+    /// method's parameters minus the token (<c>SaveChangesAsync(bool, CancellationToken)</c> to <c>SaveChanges(bool)</c>),
+    /// the one <see cref="SyncOverridesCoverAsyncOverrides"/> paired it with.
+    /// </summary>
+    private static async Task<bool> CallsTheMatchingOverloadAsync(
+        Document fixedDocument,
+        SyntaxAnnotation marker,
+        IMethodSymbol asyncMethod,
+        CancellationToken cancellationToken)
+    {
+        if (asyncMethod.IsStatic || asyncMethod.IsExtensionMethod)
+            return true;
+
+        var newModel = await fixedDocument.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var newRoot = await fixedDocument.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        var replaced = newRoot?.GetAnnotatedNodes(marker).OfType<InvocationExpressionSyntax>().FirstOrDefault();
+        return newModel != null && replaced != null &&
+               newModel.GetSymbolInfo(replaced, cancellationToken).Symbol is IMethodSymbol syncMethod &&
+               SignatureWithoutToken(syncMethod) == SignatureWithoutToken(asyncMethod);
+    }
+
+    /// <summary>The parameter types other than <c>CancellationToken</c>, with ref kinds, so overloads compare by signature.</summary>
+    private static string SignatureWithoutToken(IMethodSymbol method)
+    {
+        return string.Join(
+            ",",
+            method.Parameters
+                .Where(parameter => !IsCancellationToken(parameter.Type))
+                .Select(parameter => parameter.RefKind + " " + parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+    }
+
     /// <summary>The synchronous call must be EF Core's or LINQ's, not an application method that happens to share the name.</summary>
     private static async Task<bool> BindsToEfOrLinqAsync(Document fixedDocument, SyntaxAnnotation marker, CancellationToken cancellationToken)
     {
@@ -457,8 +540,9 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
     /// True when the call resolves to an application override of the async method, when the receiver's static type
     /// is unsealed and another assembly could derive from it (a public context, <c>DbContext</c>, <c>DbSet&lt;T&gt;</c>),
     /// or when the receiver's type, or a type in this compilation derived from it, overrides the async method at a
-    /// more derived level than the synchronous one: the synchronous call could then skip an override. Overloads count together, because
-    /// <c>SaveChangesAsync(CancellationToken)</c> calls the overridable <c>SaveChangesAsync(bool, CancellationToken)</c>.
+    /// more derived level than the synchronous overload with the same parameters: the synchronous call could then skip
+    /// an override. Every async overload counts, because <c>SaveChangesAsync(CancellationToken)</c> calls the
+    /// overridable <c>SaveChangesAsync(bool, CancellationToken)</c>.
     /// </summary>
     private static bool BypassesAsyncOverride(
         IInvocationOperation efInvocation,
@@ -473,7 +557,7 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         var syncName = asyncName.Substring(0, asyncName.Length - "Async".Length);
 
         // The chain from the receiver's type covers an override the call itself resolves to.
-        if (!SyncOverriddenNoLessDerived(receiverType, asyncName, syncName))
+        if (!SyncOverridesCoverAsyncOverrides(receiverType, asyncName, syncName))
             return true;
 
         if (receiverType.IsSealed)
@@ -489,7 +573,7 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         {
             if (symbol is INamedTypeSymbol candidate &&
                 DerivesFrom(candidate, receiverType) &&
-                !SyncOverriddenNoLessDerived(candidate, asyncName, syncName))
+                !SyncOverridesCoverAsyncOverrides(candidate, asyncName, syncName))
             {
                 return true;
             }
@@ -521,33 +605,34 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
     }
 
     /// <summary>
-    /// Walking from <paramref name="type"/> towards EF Core's own base type, the synchronous method must be
-    /// overridden no less derived than the async one. A chain that overrides neither is fine.
+    /// Walking from <paramref name="type"/> towards EF Core's own base type, every override of an async overload
+    /// needs an override of the synchronous overload with the same parameters minus the token, declared at the same
+    /// level or a more derived one. Overloads are matched by signature, not name: a context that overrides
+    /// <c>SaveChangesAsync(bool, CancellationToken)</c> and only <c>SaveChanges()</c> would have
+    /// <c>SaveChanges(bool)</c> skip its async code. A chain that overrides neither is fine.
     /// </summary>
-    private static bool SyncOverriddenNoLessDerived(INamedTypeSymbol type, string asyncName, string syncName)
+    private static bool SyncOverridesCoverAsyncOverrides(INamedTypeSymbol type, string asyncName, string syncName)
     {
+        var syncOverrides = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
         for (var current = type; current != null && !IsEfCoreType(current); current = current.BaseType)
         {
-            var overridesAsync = DeclaresOverride(current, asyncName);
-            var overridesSync = DeclaresOverride(current, syncName);
-            if (overridesAsync)
-                return overridesSync;
-            if (overridesSync)
-                return true;
+            foreach (var member in current.GetMembers(syncName))
+            {
+                if (member is IMethodSymbol { IsOverride: true } syncOverride)
+                    syncOverrides.Add(SignatureWithoutToken(syncOverride));
+            }
+
+            foreach (var member in current.GetMembers(asyncName))
+            {
+                if (member is IMethodSymbol { IsOverride: true } asyncOverride &&
+                    !syncOverrides.Contains(SignatureWithoutToken(asyncOverride)))
+                {
+                    return false;
+                }
+            }
         }
 
         return true;
-    }
-
-    private static bool DeclaresOverride(INamedTypeSymbol type, string name)
-    {
-        foreach (var member in type.GetMembers(name))
-        {
-            if (member is IMethodSymbol { IsOverride: true })
-                return true;
-        }
-
-        return false;
     }
 
     private static bool DerivesFrom(INamedTypeSymbol type, INamedTypeSymbol baseType)

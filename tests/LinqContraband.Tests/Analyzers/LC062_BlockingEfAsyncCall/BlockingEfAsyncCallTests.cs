@@ -133,6 +133,21 @@ public sealed class SealedAuditedContext : Microsoft.EntityFrameworkCore.DbConte
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
 }
 
+// Overrides SaveChangesAsync(bool, CancellationToken) but only the parameterless SaveChanges():
+// SaveChanges(true) would skip the async override.
+public sealed class MismatchedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
+{
+    public override int SaveChanges() => base.SaveChanges();
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) => base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+}
+
+// Overrides the (bool) overload on both sides.
+public sealed class PairedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
+{
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) => base.SaveChanges(acceptAllChangesOnSuccess);
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) => base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+}
+
 public static class Helpers
 {
     public static Task<int> GetNumberAsync() => Task.FromResult(1);
@@ -221,6 +236,11 @@ class Program
     [InlineData(@"var done = db.SaveChangesAsync().Wait(0);")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(TimeSpan.Zero);")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(millisecondsTimeout: 0);")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(default(TimeSpan));")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(timeout: default);")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(new TimeSpan());")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(default(int));")]
+    [InlineData(@"const int NoWait = 0; var done = db.SaveChangesAsync().Wait(NoWait);")]
     public async Task ZeroTimeoutWait_OnlyPolls_DoesNotReport(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body));
@@ -229,6 +249,7 @@ class Program
     [Theory]
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(1)|};")]
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromMilliseconds(1))|};")]
+    [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(new TimeSpan(1))|};")]
     public async Task NonZeroTimeoutWait_Reports(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());
