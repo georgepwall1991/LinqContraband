@@ -90,6 +90,11 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
             }
 
             var asyncName = efInvocation.TargetMethod.Name;
+            // SaveChangesInterceptor.SavingChangesAsync and SaveChangesAsync overrides (auditing, soft delete) run
+            // only on the async path, and an interceptor registration cannot be seen here: never call SaveChanges.
+            if (asyncName == "SaveChangesAsync")
+                continue;
+
             var syncName = asyncName.Substring(0, asyncName.Length - "Async".Length);
             // An application override of the async method (SaveChangesAsync auditing, say) would be skipped by the
             // synchronous call unless the synchronous method is overridden as well.

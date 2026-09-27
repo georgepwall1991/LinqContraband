@@ -79,12 +79,6 @@ public class BlockingEfAsyncCallFixerTests
         @"var users = {|LC062:db.Users.ToListAsync(ct).Result|};",
         @"var users = db.Users.ToList();")]
     [InlineData(
-        @"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.SaveChangesAsync().Wait()|};",
-        @"var sealedDb = new SealedShopContext(); sealedDb.SaveChanges();")]
-    [InlineData(
-        @"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync(true, ct).Result|};",
-        @"var internalDb = new InternalShopContext(); var saved = internalDb.SaveChanges(true);")]
-    [InlineData(
         @"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, ct).GetAwaiter().GetResult()|};",
         @"var user = db.Users.FirstOrDefault(x => x.Id == id);")]
     [InlineData(
@@ -255,13 +249,18 @@ class Program
             isAsync: true);
     }
 
-    [Fact]
-    public async Task AsyncAndSyncBothOverridden_KeepsTheSynchronousFix()
+    [Theory]
+    // A SaveChangesInterceptor that implements only SavingChangesAsync, or a SaveChangesAsync override, runs only on
+    // the async path, and interceptor registration is not visible to the fixer: SaveChangesAsync never gets the
+    // synchronous fix, even on a sealed or internal context or one that overrides both saves.
+    [InlineData(@"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.SaveChangesAsync().Wait()|};")]
+    [InlineData(@"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync(true, ct).Result|};")]
+    [InlineData(@"var full = new FullyAuditedContext(); var saved = {|LC062:full.SaveChangesAsync().Result|};")]
+    [InlineData(@"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(true, ct).Result|};")]
+    [InlineData(@"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(ct).Result|};")]
+    public async Task SaveChangesAsync_NeverGetsTheSynchronousFix(string code)
     {
-        await VerifyFixAsync(
-            @"var full = new FullyAuditedContext(); var saved = {|LC062:full.SaveChangesAsync().Result|};",
-            @"var full = new FullyAuditedContext(); var saved = full.SaveChanges();",
-            isAsync: false);
+        await VerifyNoFixAsync(code, isAsync: false);
     }
 
     [Theory]
@@ -271,18 +270,6 @@ class Program
     public async Task AsyncOverloadOverriddenWithoutItsSyncOverload_OffersNoSynchronousFix(string code)
     {
         await VerifyNoFixAsync(code, isAsync: false);
-    }
-
-    [Theory]
-    [InlineData(
-        @"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(true, ct).Result|};",
-        @"var paired = new PairedAuditedContext(); var saved = paired.SaveChanges(true);")]
-    [InlineData(
-        @"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(ct).Result|};",
-        @"var paired = new PairedAuditedContext(); var saved = paired.SaveChanges();")]
-    public async Task AsyncOverloadOverriddenWithItsSyncOverload_KeepsTheSynchronousFix(string before, string after)
-    {
-        await VerifyFixAsync(before, after, isAsync: false);
     }
 
     [Theory]

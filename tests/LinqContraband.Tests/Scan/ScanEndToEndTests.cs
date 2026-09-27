@@ -256,10 +256,9 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
-    /// <c>--fix</c> turns LC062's blocking call into the synchronous method only where that runs the same code and
-    /// throws the same exceptions: a context that overrides <c>SaveChangesAsync</c> but inherits <c>SaveChanges</c>
-    /// keeps its call, as does a call inside a <c>catch</c> that can see the <c>AggregateException</c>. A comment
-    /// before <c>.Wait()</c> survives the fix.
+    /// <c>--fix</c> never turns a blocking <c>SaveChangesAsync</c> into <c>SaveChanges</c> in synchronous code: a
+    /// <c>SaveChangesAsync</c> override or an async-only interceptor would be skipped. Plain, overriding and
+    /// <c>catch</c>-wrapped saves all keep their call.
     /// </summary>
     [Fact]
     public void Fix_LeavesBlockingCallsOnOverriddenAsyncSavesAlone()
@@ -344,19 +343,7 @@ public sealed class ScanEndToEndTests
 
             Assert.True(exitCode is ScanCommand.Success or ScanCommand.FindingsFound, transcript);
             var fixedSaves = File.ReadAllText(savesPath);
-            Assert.Equal(
-                saves.Replace(
-                    """
-                        public static void SavePlain(PlainContext db)
-                        {
-                            db.SaveChangesAsync() /* startup path */ .Wait();
-                    """,
-                    """
-                        public static void SavePlain(PlainContext db)
-                        {
-                            db.SaveChanges() /* startup path */;
-                    """),
-                fixedSaves);
+            Assert.Equal(saves, fixedSaves);
             Assert.True(output.Contains("LC062", StringComparison.Ordinal), transcript);
         }
         finally

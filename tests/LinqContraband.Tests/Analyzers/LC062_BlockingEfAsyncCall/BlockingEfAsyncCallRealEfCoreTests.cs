@@ -72,7 +72,7 @@ public class Program
     }
 
     [Theory]
-    [InlineData(false, 5, "ToList", "ExecuteSqlRaw(\"DELETE FROM Users\")", "db.SaveChanges()", "db.AddRange(new User(), new User())")]
+    [InlineData(false, 6, "ToList", "ExecuteSqlRaw(\"DELETE FROM Users\")", "db.AddRange(new User(), new User())")]
     [InlineData(true, 0, "await db.Users.ToListAsync(ct)", "await db.Database.MigrateAsync(ct)", "await db.SaveChangesAsync(ct).ConfigureAwait(false)")]
     public async Task EveryFix_CompilesAgainstEfCore(bool isAsync, int expectedUnfixed, params string[] expectedFragments)
     {
@@ -111,7 +111,8 @@ public class Program
 
         // Async code awaits every call. Synchronous code leaves the DbSet and DatabaseFacade calls (FindAsync twice,
         // AddAsync, BeginTransactionAsync, EnsureCreatedAsync): those public unsealed types can be subclassed elsewhere
-        // with only the async method overridden, so the synchronous rewrite is withheld.
+        // with only the async method overridden, so the synchronous rewrite is withheld. SaveChangesAsync is left too:
+        // interceptors and overrides may run only on the async path.
         Assert.Equal(expectedUnfixed, (await GetLc062Async(document)).Length);
     }
 
