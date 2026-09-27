@@ -470,6 +470,88 @@ static class DatabaseOptions
     }
 
     [Fact]
+    public async Task MutualRecursionEnteredOnlyFromStrategy_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => A(3));",
+            extraMembers: @"
+    private void A(int n) { if (n > 0) B(n - 1); }
+
+    private void B(int n)
+    {
+        using var tx = _db.Database.BeginTransaction();
+        tx.Commit();
+        A(n);
+    }"));
+    }
+
+    [Fact]
+    public async Task MutualRecursionWithAnUnprotectedEntry_Reports()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => A(3));
+        B(1);",
+            extraMembers: @"
+    private void A(int n) { if (n > 0) B(n - 1); }
+
+    private void B(int n)
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        tx.Commit();
+        A(n);
+    }"));
+    }
+
+    [Fact]
+    public async Task ConstructedGenericContexts_AreKeptApart()
+    {
+        await VerifyAsync(Wrap(
+            @"using var audit = auditDb.Database.BeginTransaction(); audit.Commit();
+        using var customers = customerDb.Database.{|LC063:BeginTransaction|}(); customers.Commit();",
+            configuration: @"
+static class Registration
+{
+    public static void Configure(IServiceCollection services)
+    {
+        services.AddDbContext<TenantDb<Customer>>(o => o.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure()));
+        services.AddDbContext<TenantDb<Audit>>(o => o.UseSqlServer(""cs""));
+        var options = new DbContextOptionsBuilder<TenantDb<Customer>>().UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure()).Options;
+    }
+}
+
+public class TenantDb<T> : DbContext { }
+public class Customer { }
+public class Audit { }
+",
+            extraMembers: @"
+    private readonly TenantDb<Customer> customerDb = new TenantDb<Customer>();
+    private readonly TenantDb<Audit> auditDb = new TenantDb<Audit>();"));
+    }
+
+    [Fact]
+    public async Task OpenGenericOnConfiguring_AppliesToEveryConstruction()
+    {
+        await VerifyAsync(Wrap(
+            @"using var audit = auditDb.Database.{|LC063:BeginTransaction|}(); audit.Commit();
+        using var customers = customerDb.Database.{|LC063:BeginTransaction|}(); customers.Commit();",
+            configuration: @"
+public class TenantDb<T> : DbContext
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure());
+}
+
+public class Customer { }
+public class Audit { }
+",
+            extraMembers: @"
+    private readonly TenantDb<Customer> customerDb = new TenantDb<Customer>();
+    private readonly TenantDb<Audit> auditDb = new TenantDb<Audit>();"));
+    }
+
+    [Fact]
     public async Task ProjectResilientTransactionWrapper_NotReported()
     {
         await VerifyAsync(Wrap(

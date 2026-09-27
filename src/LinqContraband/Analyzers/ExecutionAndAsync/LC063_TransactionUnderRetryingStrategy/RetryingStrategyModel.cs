@@ -21,19 +21,26 @@ internal sealed class RetryingStrategyModel
 
     private static readonly RetryingStrategyModel Empty = new(
         new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default),
+        new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default),
         null,
         null);
 
+    // Registrations and DbContextOptionsBuilder<T> chains name one exact (possibly constructed generic) context type.
     private readonly Dictionary<INamedTypeSymbol, Location> _configuredContexts;
+
+    // OnConfiguring overrides belong to the declared type, so they apply to every construction of a generic context.
+    private readonly Dictionary<INamedTypeSymbol, Location> _configuredDefinitions;
     private readonly INamedTypeSymbol? _onlyContext;
     private readonly Location? _unattributedLocation;
 
     private RetryingStrategyModel(
         Dictionary<INamedTypeSymbol, Location> configuredContexts,
+        Dictionary<INamedTypeSymbol, Location> configuredDefinitions,
         INamedTypeSymbol? onlyContext,
         Location? unattributedLocation)
     {
         _configuredContexts = configuredContexts;
+        _configuredDefinitions = configuredDefinitions;
         _onlyContext = onlyContext;
         _unattributedLocation = unattributedLocation;
     }
@@ -46,8 +53,11 @@ internal sealed class RetryingStrategyModel
     {
         for (var current = contextType as INamedTypeSymbol; current != null; current = current.BaseType)
         {
-            if (_configuredContexts.TryGetValue(current.OriginalDefinition, out var location))
+            if (_configuredContexts.TryGetValue(current, out var location) ||
+                _configuredDefinitions.TryGetValue(current.OriginalDefinition, out location))
+            {
                 return location;
+            }
         }
 
         if (_unattributedLocation != null &&
@@ -63,6 +73,7 @@ internal sealed class RetryingStrategyModel
     public static RetryingStrategyModel Build(Compilation compilation, CancellationToken cancellationToken)
     {
         var configured = new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default);
+        var configuredDefinitions = new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default);
         Location? unattributed = null;
 
         foreach (var tree in compilation.SyntaxTrees)
@@ -83,23 +94,25 @@ internal sealed class RetryingStrategyModel
                     continue;
 
                 var location = invocation.GetLocation();
-                var contextType = FindConfiguredContext(invocation, semanticModel, cancellationToken);
+                var contextType = FindConfiguredContext(invocation, semanticModel, cancellationToken, out var isDeclaration);
                 if (contextType == null)
                 {
                     unattributed ??= location;
                 }
-                else if (!configured.ContainsKey(contextType))
+                else
                 {
-                    configured.Add(contextType, location);
+                    var target = isDeclaration ? configuredDefinitions : configured;
+                    if (!target.ContainsKey(contextType))
+                        target.Add(contextType, location);
                 }
             }
         }
 
-        if (configured.Count == 0 && unattributed == null)
+        if (configured.Count == 0 && configuredDefinitions.Count == 0 && unattributed == null)
             return Empty;
 
         var onlyContext = unattributed != null ? FindOnlySourceContext(compilation, cancellationToken) : null;
-        return new RetryingStrategyModel(configured, onlyContext, unattributed);
+        return new RetryingStrategyModel(configured, configuredDefinitions, onlyContext, unattributed);
     }
 
     /// <summary>
@@ -240,13 +253,16 @@ internal sealed class RetryingStrategyModel
 
     /// <summary>
     /// The context type a configuration belongs to: the context of an enclosing <c>AddDbContext&lt;T&gt;</c>-style
-    /// registration, a <c>DbContextOptionsBuilder&lt;T&gt;</c> chain, or an <c>OnConfiguring</c> override.
+    /// registration or a <c>DbContextOptionsBuilder&lt;T&gt;</c> chain (the exact, possibly constructed, type), or the
+    /// declaring context of an <c>OnConfiguring</c> override (<paramref name="isDeclaration"/>: every construction).
     /// </summary>
     private static INamedTypeSymbol? FindConfiguredContext(
         InvocationExpressionSyntax configuration,
         SemanticModel semanticModel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        out bool isDeclaration)
     {
+        isDeclaration = false;
         for (var node = configuration.Parent; node != null; node = node.Parent)
         {
             switch (node)
@@ -259,7 +275,7 @@ internal sealed class RetryingStrategyModel
                         for (var i = method.TypeArguments.Length - 1; i >= 0; i--)
                         {
                             if (method.TypeArguments[i] is INamedTypeSymbol typeArgument && typeArgument.IsDbContext())
-                                return typeArgument.OriginalDefinition;
+                                return typeArgument;
                         }
 
                         return null;
@@ -273,7 +289,7 @@ internal sealed class RetryingStrategyModel
                         returnType.TypeArguments[0] is INamedTypeSymbol builderContext &&
                         builderContext.IsDbContext())
                     {
-                        return builderContext.OriginalDefinition;
+                        return builderContext;
                     }
 
                     break;
@@ -286,6 +302,7 @@ internal sealed class RetryingStrategyModel
                         semanticModel.GetDeclaredSymbol(methodDeclaration, cancellationToken)?.ContainingType is { } owner &&
                         owner.IsDbContext())
                     {
+                        isDeclaration = true;
                         return owner.OriginalDefinition;
                     }
 

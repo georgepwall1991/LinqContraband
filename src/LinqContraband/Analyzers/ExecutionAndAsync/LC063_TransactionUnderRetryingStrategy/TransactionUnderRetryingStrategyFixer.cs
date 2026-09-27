@@ -24,8 +24,8 @@ namespace LinqContraband.Analyzers.LC063_TransactionUnderRetryingStrategy;
 /// </summary>
 /// <remarks>
 /// Only the simple shape gets a fix: a <c>BeginTransaction</c>/<c>BeginTransactionAsync</c> call on
-/// <c>ctx.Database</c> (where <c>ctx</c> is <c>this</c>, a readonly field, a get-only auto-property, or a parameter or
-/// local the method never writes) that initializes the single local
+/// <c>ctx.Database</c> (where <c>ctx</c> is <c>this</c>, a readonly field, a non-virtual (or sealed-type) get-only
+/// auto-property, or a parameter or local the method never writes) that initializes the single local
 /// of a using declaration or using statement directly inside a block, with no <c>return</c>, <c>yield</c>, label or
 /// <c>goto</c> in the moved code. The fixer compiles the rewritten document and only offers a rewrite that adds no
 /// errors, which also rules out moved code that uses <c>ref</c>/<c>out</c> parameters, ref-like locals, jumps out of
@@ -117,14 +117,19 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
 
         // The transaction value, through an optional ConfigureAwait(...) and await.
         SyntaxNode value = invocation;
+        var configureAwaitFalse = false;
         if (value.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" } configureAwait &&
             configureAwait.Parent is InvocationExpressionSyntax configureAwaitCall)
         {
             value = configureAwaitCall;
+            configureAwaitFalse = configureAwaitCall.ArgumentList.Arguments.Count == 1 &&
+                                  configureAwaitCall.ArgumentList.Arguments[0].Expression.IsKind(SyntaxKind.FalseLiteralExpression);
         }
 
         if (value.Parent is AwaitExpressionSyntax awaitExpression)
             value = awaitExpression;
+        else
+            configureAwaitFalse = false;
 
         if (value.Parent is not EqualsValueClauseSyntax
             {
@@ -173,7 +178,8 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
             .WithAdditionalAnnotations(Formatter.Annotation);
 
         var executeText = isAsync
-            ? "await " + strategyName + ".ExecuteAsync(async () => { });"
+            // Code that avoids resuming on the captured context keeps doing so for the outer await.
+            ? "await " + strategyName + ".ExecuteAsync(async () => { })" + (configureAwaitFalse ? ".ConfigureAwait(false);" : ";")
             : strategyName + ".Execute(() => { });";
         var executeStatement = SyntaxFactory.ParseStatement(executeText);
         var placeholder = executeStatement.DescendantNodes().OfType<BlockSyntax>().First();
@@ -193,7 +199,7 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
     }
 
     // The fix reads the context twice (CreateExecutionStrategy() before the transaction, BeginTransaction inside the
-    // delegate), so the receiver must not be able to change in between: this, a readonly field, a get-only
+    // delegate), so the receiver must not be able to change in between: this, a readonly field, a non-dispatching get-only
     // auto-property, or a parameter or non-ref local that the method never writes after declaring it.
     private static bool IsStableContext(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken cancellationToken)
     {
@@ -213,7 +219,11 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
             case IFieldSymbol field:
                 return field.IsReadOnly || field.IsConst;
             case IPropertySymbol property:
+                // An override could compute a different context on each read, so the property must not dispatch.
+                var canDispatch = property.IsVirtual || property.IsAbstract || property.IsOverride ||
+                                  property.ContainingType.TypeKind == TypeKind.Interface;
                 return property.SetMethod == null &&
+                       (!canDispatch || (property.ContainingType.IsSealed && property.ContainingType.TypeKind != TypeKind.Interface)) &&
                        property.ContainingType.GetMembers().Any(member =>
                            member is IFieldSymbol field && SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property));
             default:

@@ -119,8 +119,70 @@ public class TransactionUnderRetryingStrategyFixerTests
                 saved = await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
-        });
+        }).ConfigureAwait(false);
         Console.WriteLine(saved);");
+    }
+
+    [Fact]
+    public async Task ConfigureAwaitFalse_IsKeptOnTheOuterAwait()
+    {
+        await VerifyFixAsync(@"
+        await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct).ConfigureAwait(false);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        await tx.CommitAsync(ct).ConfigureAwait(false);", @"
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+        }).ConfigureAwait(false);");
+    }
+
+    [Fact]
+    public async Task OverrideInSealedType_IsFixed()
+    {
+        var code = @"
+    class DbHolder
+    {
+        public virtual AppDb Db { get; } = new AppDb();
+    }
+
+    sealed class SealedHolder : DbHolder
+    {
+        public override AppDb Db { get; } = new AppDb();
+
+        void Save()
+        {
+            using var tx = Db.Database.{|LC063:BeginTransaction|}();
+            tx.Commit();
+        }
+    }";
+        var fixedCode = @"
+    class DbHolder
+    {
+        public virtual AppDb Db { get; } = new AppDb();
+    }
+
+    sealed class SealedHolder : DbHolder
+    {
+        public override AppDb Db { get; } = new AppDb();
+
+        void Save()
+        {
+            var strategy = Db.Database.CreateExecutionStrategy();
+            strategy.Execute(() =>
+            {
+                using var tx = Db.Database.BeginTransaction();
+                tx.Commit();
+            });
+        }
+    }";
+        await new CodeFixTest
+        {
+            TestCode = TransactionUnderRetryingStrategyTests.Wrap("await Task.CompletedTask;", extraMembers: code),
+            FixedCode = TransactionUnderRetryingStrategyTests.Wrap("await Task.CompletedTask;", extraMembers: fixedCode)
+        }.RunAsync();
     }
 
     [Fact]
@@ -252,6 +314,8 @@ public class TransactionUnderRetryingStrategyFixerTests
     [InlineData(@"using var tx = _mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"using var tx = this._mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"using var tx = Settable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    // A virtual get-only auto-property can be overridden to return a different context on each read.
+    [InlineData(@"using var tx = VirtualDb.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"if (ct.CanBeCanceled) db = new AppDb(); using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"var local = db; using var tx = local.Database.{|LC063:BeginTransaction|}(); tx.Commit(); local = null;")]
     [InlineData(@"var local = db; Swap(ref local); using var tx = local.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
@@ -266,6 +330,7 @@ public class TransactionUnderRetryingStrategyFixerTests
     private AppDb Fresh => new AppDb();
     private AppDb _mutable = new AppDb();
     public AppDb Settable { get; set; } = new AppDb();
+    public virtual AppDb VirtualDb { get; } = new AppDb();
     private static void Swap(ref AppDb context) { }");
     }
 
