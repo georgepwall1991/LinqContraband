@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **63 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.15.0
-- Base audited commit: 56238ce7399ad2f456d687c32ddffaa3bfef1c99
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.15.0-final`
+- Package version: 5.16.0
+- Base audited commit: c8d2d7b69066e9a45005e3f0af6f8ee2c2a0d9e9
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.16.0-final`
 
 ## Rubric
 
@@ -36,6 +36,8 @@ Priority is a planning signal: `High` means the analyzer is important and has me
 
 ## Scorecard
 
+> The 2026-09-27 5.16.0 release ships LC060, LC061, LC062 and LC063 and the scan-round-4 false-positive fixes for LC001, LC004, LC008, LC011, LC016, LC020, LC022, LC024, LC035 and LC039, with the full local net10.0 suite at **5,542 tests**.
+>
 > The 2026-09-27 LC062 new-rule pass adds blocking on an EF Core async call, with 168 rule tests and a scanner --fix test, raising the full local net10.0 suite to **5,552 tests**.
 >
 > The 2026-09-27 LC063 new-rule pass adds user transaction under a retrying execution strategy, with 116 tests, raising the full local net10.0 suite to **5,376 tests**.
@@ -1639,9 +1641,9 @@ Review of the scan-round-4 pass found two ways it was too trusting.
 
 ## Verification Baseline
 
-Package version: **5.15.0**
+Package version: **5.16.0**
 
-Base audited commit: master at `56238ce7399ad2f456d687c32ddffaa3bfef1c99` (5.15.0 release-preparation base). 5.15.0 adds LC057 (Min/Max/Average on an empty query), LC058 (TransactionScope without async flow) and LC059 (disposed context connection), makes LC007 follow same-project helper methods, fixes false positives found by scanning real apps in LC002, LC007, LC008, LC009, LC011, LC015 and LC035, fixes an LC035 build hang, and stops LinqContraband.Scan failing on repositories that raise every analyzer diagnostic to an error.
+Base audited commit: master at `c8d2d7b69066e9a45005e3f0af6f8ee2c2a0d9e9` (5.16.0 release-preparation base). 5.16.0 adds LC060 (async EF operators on in-memory queries), LC061 (uncached compiled query), LC062 (blocking on an EF Core async call) and LC063 (user transaction under a retrying execution strategy), and fixes false positives found by scanning real apps in LC001, LC004, LC008, LC011, LC016, LC020, LC022, LC024, LC035 and LC039. 5.15.0 was audited at `56238ce7399ad2f456d687c32ddffaa3bfef1c99` and adds LC057 (Min/Max/Average on an empty query), LC058 (TransactionScope without async flow) and LC059 (disposed context connection), makes LC007 follow same-project helper methods, fixes false positives found by scanning real apps in LC002, LC007, LC008, LC009, LC011, LC015 and LC035, fixes an LC035 build hang, and stops LinqContraband.Scan failing on repositories that raise every analyzer diagnostic to an error.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -1720,7 +1722,12 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-09-25, 5.15.0: new rules LC057/LC058/LC059, LC007 helper tracking, false-positive fixes for LC002/LC007/LC008/LC009/LC011/LC015/LC035, the LC035 hang fix and the scanner warnings-as-errors fix (an LC031 error no longer fails the scan build), with 4,875 full net10.0 tests):
+Current verification (2026-09-27, 5.16.0: new rules LC060/LC061/LC062/LC063 and false-positive fixes for LC001/LC004/LC008/LC011/LC016/LC020/LC022/LC024/LC035/LC039, with 5,542 full net10.0 tests):
+
+- Each change landed in its own PR (#630 to #639) with focused tests, CI on net8.0, net9.0 and net10.0, the doc generator check and the link check; the per-pass sections above record the evidence.
+- The release branch was re-verified on the merged master: full suite, doc generator check and sample verifier.
+
+Previous verification (2026-09-25, 5.15.0: new rules LC057/LC058/LC059, LC007 helper tracking, false-positive fixes for LC002/LC007/LC008/LC009/LC011/LC015/LC035, the LC035 hang fix and the scanner warnings-as-errors fix (an LC031 error no longer fails the scan build), with 4,875 full net10.0 tests):
 
 - Each change landed in its own PR (#615 to #626) with focused tests, CI on net8.0, net9.0 and net10.0, the doc generator check and the link check; the per-pass sections above record the evidence.
 - The release branch was re-verified on the merged master: full suite, doc generator check and sample verifier. A rescan of 11 open-source apps with the release build found no LC057-LC059 false positives.
@@ -1944,6 +1951,8 @@ Final verification (2026-09-25, LC058 new rule): 37 LC058 tests pass, and the fu
 Final verification (2026-09-25, LC059 new rule): 40 LC059 tests pass, and the full local net10.0 suite passes 4,875 tests.
 
 Final verification (2026-09-25, 5.15.0: new rules and scan-round-3 fixes above): the full local net10.0 suite passes 4,875 tests.
+
+Final verification (2026-09-27, 5.16.0: new rules and scan-round-4 fixes above): the full local net10.0 suite passes 5,542 tests.
 
 Historical baselines: 2026-06-04 rerun verified 919 tests at 5.5.13; 2026-05-29 deep rescan verified 828 tests at 5.4.12 (840d00b); the 2026-05-14 fine-comb re-audit (six parallel slices, scores moved on 30 of 44 rules) established the harsh calibration and the DS=5 anchors (LC011 FP/T/DS, LC030 DS, LC036 DS/Imp) that remain the reference for what a `5` requires.
 

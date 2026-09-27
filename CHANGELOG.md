@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.16.0] - 2026-09-27
+
 ### Added
 
 - LC060 reports EF Core async operators (`ToListAsync`, `FirstOrDefaultAsync`, `CountAsync`, `AnyAsync`, `SumAsync`, `ToDictionaryAsync`, `ForEachAsync`, `LoadAsync`, `AsAsyncEnumerable` and the rest of `EntityFrameworkQueryableExtensions`) on a query built with `AsQueryable()` over a list, array or other in-memory collection. That query is an `EnumerableQuery<T>`, which does not implement `IAsyncEnumerable<T>`, so every such call throws `InvalidOperationException` at run time (dotnet/efcore#35666). It follows `Queryable` operators, EF Core's `AsNoTracking`/`Include`/`TagWith`, locals whose every write is in memory, and non-overridable helpers in the same project. It stays quiet on `DbSet` queries, `AsQueryable()` over something already queryable, `IQueryable` and `IEnumerable` parameters and fields, MockQueryable's `BuildMock()`, and collections that implement `IAsyncEnumerable<T>`. The fix replaces `await q.ToListAsync(ct)` with `q.ToList()`, dropping the `await` and the cancellation token. LC060 joins the `critical` preset.
