@@ -553,8 +553,8 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// True when the new <c>Lazy</c>/<c>AsyncLazy</c> goes straight into a field or property and is kept there: a field
-    /// or property initializer, or an assignment to one that the rule would accept for a compiled query (<c>??=</c>, a
-    /// null guard, a constructor or a static member). Any other use (<c>.Value</c>,
+    /// or property initializer, or an assignment to a member of this instance or a static member that the rule would
+    /// accept for a compiled query (<c>??=</c>, a null guard, a constructor or a static member). Any other use (<c>.Value</c>,
     /// <c>.GetValueAsync()</c>, <c>.Task</c>, a local, an argument or a return) may build it on every call.
     /// </summary>
     private static bool LazyIsStored(BaseObjectCreationExpressionSyntax creation, SemanticModel semanticModel)
@@ -571,7 +571,9 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             case AssignmentExpressionSyntax assignment
                 when assignment.Right == value &&
                      (assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression)):
-                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false } &&
+                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is { } target &&
+                       target is IFieldSymbol or IPropertySymbol { IsIndexer: false } &&
+                       IsOwnOrStaticMember(assignment.Left, target) &&
                        !AssignmentCompilesOnEveryCall(assignment, semanticModel);
 
             default:
@@ -602,6 +604,23 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         return first.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
             ? IsKeptRefTarget(first.Expression, semanticModel)
             : IsKeptReceiver(first.Expression, semanticModel);
+    }
+
+    /// <summary>
+    /// True for a store to a member of this instance (unqualified, <c>this.</c> or <c>base.</c>) or to a static
+    /// member. A store through another object (<c>holder.Query = ...</c>) says nothing about how long it lives.
+    /// </summary>
+    private static bool IsOwnOrStaticMember(ExpressionSyntax target, ISymbol member)
+    {
+        if (member.IsStatic)
+            return true;
+
+        return StripParentheses(target) switch
+        {
+            IdentifierNameSyntax => true,
+            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } => true,
+            _ => false
+        };
     }
 
     private static bool IsKeptReceiver(ExpressionSyntax expression, SemanticModel semanticModel)

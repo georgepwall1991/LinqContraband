@@ -26,8 +26,9 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// see them), when it reads a static member of the type (its order against the new field is not known), when the
 /// call does not sit in a class, struct or record member, when the member sits inside an <c>#if</c>, <c>#elif</c>
 /// or <c>#else</c> region opened in the type before it, when another partial declaration of the type has a static
-/// initializer or static constructor (the order across parts is not defined), when the member and the top of the
-/// type are in different nullable annotation contexts, or when the rewritten document has more compiler errors than
+/// initializer or static constructor (the order across parts is not defined), when the first member's leading trivia
+/// holds a preprocessor directive, when the member and the top of the type are in different nullable annotation
+/// contexts, or when the rewritten document has more compiler errors than
 /// before (for example a delegate type that uses a method type parameter).
 /// </remarks>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UncachedCompiledQueryFixer))]
@@ -164,9 +165,14 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
             return null;
         }
 
+        // The field goes in front of the first member's leading trivia, so a directive there (`#nullable`, `#if`,
+        // `#pragma` and so on) would not apply to it; and its nullable context is the one before that trivia.
         var first = type.Members[0];
+        if (first.GetLeadingTrivia().Any(trivia => trivia.IsDirective))
+            return null;
+
         var nullableHere = semanticModel.GetNullableContext(member.SpanStart).AnnotationsEnabled();
-        var nullableAtTop = semanticModel.GetNullableContext(first.SpanStart).AnnotationsEnabled();
+        var nullableAtTop = semanticModel.GetNullableContext(first.GetFirstToken().FullSpan.Start).AnnotationsEnabled();
         if (nullableHere != nullableAtTop)
             return null;
 

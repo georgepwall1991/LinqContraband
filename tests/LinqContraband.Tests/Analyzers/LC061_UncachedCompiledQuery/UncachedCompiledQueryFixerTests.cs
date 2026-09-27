@@ -335,6 +335,11 @@ public class UncachedCompiledQueryFixerTests
     public Blog Get(int id) { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }", @"
     private Lazy<Func<Ctx, int, Blog>> _lazy;
     public Blog Get(int id) { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => GetQuery); return _lazy.Value(_db, id); }")]
+    [InlineData(@"
+    private sealed class Holder { public Lazy<Func<Ctx, int, Blog>> Query; }
+    public Blog Get(int id) { var holder = new Holder(); holder.Query = new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return holder.Query.Value(_db, id); }", @"
+    private sealed class Holder { public Lazy<Func<Ctx, int, Blog>> Query; }
+    public Blog Get(int id) { var holder = new Holder(); holder.Query = new Lazy<Func<Ctx, int, Blog>>(() => GetQuery); return holder.Query.Value(_db, id); }")]
     public async Task CacheNotKept_Hoists(string before, string after)
     {
         await VerifyFixAsync(before, @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", after);
@@ -363,6 +368,16 @@ public class UncachedCompiledQueryFixerTests
     public Blog Get(int id) { base._query = GetQuery; return base._query(_db, id); }").Replace(
                 "class Repo : RepoBase\n{\n", "class Repo : RepoBase\n{\n    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));\n\n")
         }.RunAsync();
+    }
+
+    [Fact]
+    public async Task DirectiveBeforeTheFirstMember_GetsNoFix()
+    {
+        // The field would go in front of `#nullable enable`, outside the context the first member opted into.
+        var code = WrapMembers(@"
+    public Blog Get(int id) => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);").Replace(
+            "{\n    private readonly Ctx _db", "{\n#nullable enable\n    private readonly Ctx _db");
+        await new CodeFixTest { TestCode = code, FixedCode = code }.RunAsync();
     }
 
     [Fact]

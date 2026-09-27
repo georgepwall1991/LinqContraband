@@ -167,6 +167,13 @@ class Repo
     // A Lazy stored without a null guard from an ordinary method is replaced on every call.
     [InlineData(@"private Lazy<Func<Ctx, int, Blog>> _lazy; public Blog Get(int id) { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }")]
     [InlineData(@"public Lazy<Func<Ctx, int, Blog>> ById { get; set; } public void Init() { ById = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
+    // A Lazy stored on another object lives as long as that object, which is not known.
+    [InlineData(@"
+    private sealed class Holder { public Lazy<Func<Ctx, int, Blog>> Query; }
+    public Blog Get(int id) { var holder = new Holder(); holder.Query = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return holder.Query.Value(_db, id); }")]
+    [InlineData(@"
+    public sealed class Holder { public Lazy<Func<Ctx, int, Blog>> Query; }
+    public Blog Get(Holder holder, int id) { holder.Query ??= new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return holder.Query.Value(_db, id); }")]
     // A cache created in the method is thrown away after the call.
     [InlineData(@"public Blog Get(string key, int id) => new ConcurrentDictionary<string, Func<Ctx, int, Blog>>().GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
     [InlineData(@"public Blog Get(string key, int id) { var cache = new ConcurrentDictionary<string, Func<Ctx, int, Blog>>(); return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
@@ -272,6 +279,8 @@ class Repo
     [InlineData(@"private Lazy<Func<Ctx, int, Blog>> _lazy; public Blog Get(int id) { _lazy ??= new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }")]
     [InlineData(@"private Lazy<Func<Ctx, int, Blog>> _lazy; public Blog Get(int id) { if (_lazy == null) _lazy = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }")]
     [InlineData(@"private readonly Lazy<Func<Ctx, int, Blog>> _lazy; public Repo() { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
+    [InlineData(@"private Lazy<Func<Ctx, int, Blog>> _lazy; public Blog Get(int id) { this._lazy ??= new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }")]
+    [InlineData(@"private static Lazy<Func<Ctx, int, Blog>> Shared; public Blog Get(int id) { Repo.Shared ??= new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return Shared.Value(_db, id); }")]
     // An auto-property cache is a stored cache.
     [InlineData(@"
     private static ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache { get; } = new();
