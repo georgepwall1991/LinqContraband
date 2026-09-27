@@ -77,6 +77,8 @@ public async Task SaveAsync()
 }
 ```
 
+LC062 covers the reverse: blocking on an EF Core async call with `.Result`, `.Wait()` or `.GetAwaiter().GetResult()`, in any method. See [LC062: blocking on an EF Core async call](/LinqContraband/LC062_BlockingEfAsyncCall.html).
+
 ## Async Counterpart Families
 LC008 uses a fixed sync-to-async map. If a method has no mapped async counterpart, LC008 does not guess at one and does not report it as a sync-over-async violation.
 

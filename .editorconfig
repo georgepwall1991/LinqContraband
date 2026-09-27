@@ -258,5 +258,7 @@ indent_size = 2
 # dotnet_diagnostic.LC060.severity = warning
 # LC061: Uncached Compiled Query - EF.CompileQuery/CompileAsyncQuery compiled on every call instead of stored in a static readonly field
 # dotnet_diagnostic.LC061.severity = warning
+# LC062: Blocking EF Async Call - .Result, .Wait() or .GetAwaiter().GetResult() on an EF Core async call starves the thread pool and can deadlock
+# dotnet_diagnostic.LC062.severity = warning
 # LC063: Transaction Under Retrying Strategy - a user transaction on a context with a retrying execution strategy throws on its first query or SaveChanges
 # dotnet_diagnostic.LC063.severity = warning

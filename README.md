@@ -139,7 +139,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**62 rules**, 45 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**63 rules**, 46 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -204,6 +204,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC059](https://georgepwall1991.github.io/LinqContraband/LC059_DisposedContextConnection.html) | Connection owned by the DbContext is disposed | Warning | Yes |
 | [LC060](https://georgepwall1991.github.io/LinqContraband/LC060_AsyncOnInMemoryQuery.html) | EF Core async operator on an in-memory query | Warning | Yes |
 | [LC061](https://georgepwall1991.github.io/LinqContraband/LC061_UncachedCompiledQuery.html) | Compiled query is not cached | Warning | Yes |
+| [LC062](https://georgepwall1991.github.io/LinqContraband/LC062_BlockingEfAsyncCall.html) | Blocking on an EF Core async call | Warning | Yes |
 | [LC063](https://georgepwall1991.github.io/LinqContraband/LC063_TransactionUnderRetryingStrategy.html) | User transaction under a retrying execution strategy | Warning | Yes |
 
 <!-- rule-table:end -->

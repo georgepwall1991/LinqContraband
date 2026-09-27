@@ -24,6 +24,21 @@ public static partial class RuleCatalog
                 noCodeFixRationale: null
             ),
             new RuleCatalogEntry(
+                id: "LC062",
+                slug: "LC062_BlockingEfAsyncCall",
+                title: "Blocking on an EF Core async call",
+                category: "Performance",
+                domain: "Execution & Async",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "BlockingEfAsyncCallAnalyzer",
+                fixerTypeName: "BlockingEfAsyncCallFixer",
+                documentationPath: "docs/LC062_BlockingEfAsyncCall.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC062_BlockingEfAsyncCall/BlockingEfAsyncCallSample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC062_BlockingEfAsyncCall",
+                hasCodeFix: true,
+                noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
                 id: "LC063",
                 slug: "LC063_TransactionUnderRetryingStrategy",
                 title: "User transaction under a retrying execution strategy",

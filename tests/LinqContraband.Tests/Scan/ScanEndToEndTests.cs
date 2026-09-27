@@ -256,6 +256,100 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
+    /// <c>--fix</c> leaves LC062's blocking calls in synchronous code alone: the only fix is <c>await</c> in async
+    /// code, because a synchronous rewrite could skip an async-only override or interceptor. Plain, overriding and
+    /// <c>catch</c>-wrapped saves all keep their call.
+    /// </summary>
+    [Fact]
+    public void Fix_LeavesBlockingCallsOnOverriddenAsyncSavesAlone()
+    {
+        var directory = Directory.CreateTempSubdirectory("scan-fix-lc062-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "App.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "EfCore.cs"), """
+                using System.Threading;
+                using System.Threading.Tasks;
+
+                namespace Microsoft.EntityFrameworkCore
+                {
+                    public class DbContext
+                    {
+                        public virtual int SaveChanges() => 0;
+                        public virtual Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+                    }
+                }
+                """);
+            const string saves = """
+                using System.Threading;
+                using System.Threading.Tasks;
+                using Microsoft.EntityFrameworkCore;
+
+                public sealed class PlainContext : DbContext
+                {
+                }
+
+                public sealed class AuditedContext : DbContext
+                {
+                    public int Audits { get; private set; }
+
+                    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+                    {
+                        Audits++;
+                        return base.SaveChangesAsync(cancellationToken);
+                    }
+                }
+
+                public static class Saves
+                {
+                    public static void SavePlain(PlainContext db)
+                    {
+                        db.SaveChangesAsync() /* startup path */ .Wait();
+                    }
+
+                    public static void SaveAudited(AuditedContext db)
+                    {
+                        db.SaveChangesAsync().Wait();
+                    }
+
+                    public static bool TrySave(PlainContext db)
+                    {
+                        try
+                        {
+                            db.SaveChangesAsync().Wait();
+                            return true;
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    }
+                }
+                """;
+            var savesPath = Path.Combine(directory, "Saves.cs");
+            File.WriteAllText(savesPath, saves);
+
+            var (exitCode, output, error) = Run([directory, "--fix", "--rules", "LC062"], BuiltAnalyzerPath());
+            var transcript = output + Environment.NewLine + error;
+
+            Assert.True(exitCode is ScanCommand.Success or ScanCommand.FindingsFound, transcript);
+            var fixedSaves = File.ReadAllText(savesPath);
+            Assert.Equal(saves, fixedSaves);
+            Assert.True(output.Contains("LC062", StringComparison.Ordinal), transcript);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// The analyzer as the analyzer project built it, which is what the tool package ships. The copy next to the
     /// test assembly can be instrumented by the coverage collector, and shares a folder with a newer Roslyn.
     /// </summary>

@@ -7,7 +7,7 @@ namespace LinqContraband.Analyzers.LC008_SyncBlocker;
 
 public sealed partial class SyncBlockerFixer
 {
-    private static bool IsInvalidAwaitContext(SyntaxNode invocation)
+    internal static bool IsInvalidAwaitContext(SyntaxNode invocation)
     {
         for (SyntaxNode? node = invocation; node != null; node = node.Parent)
         {

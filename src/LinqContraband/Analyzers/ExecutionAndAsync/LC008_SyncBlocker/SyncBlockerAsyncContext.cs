@@ -10,7 +10,7 @@ public sealed partial class SyncBlockerAnalyzer
     /// This includes being directly in an async method, or being inside a lambda/local function
     /// that is itself within an async method.
     /// </summary>
-    private static bool IsInsideAsyncMethod(IOperation operation)
+    internal static bool IsInsideAsyncMethod(IOperation operation)
     {
         // Walk up the operation tree looking for async context.
         var parent = operation.Parent;
