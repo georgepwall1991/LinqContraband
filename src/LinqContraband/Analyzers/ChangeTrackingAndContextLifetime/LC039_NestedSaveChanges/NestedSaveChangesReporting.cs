@@ -16,10 +16,12 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             foreach (var rootGroup in groupedByRoot)
             {
-                var boundaries = rootGroup
+                var boundaryRecords = rootGroup
                     .Where(record => record.IsBoundary)
+                    .OrderBy(record => record.Position)
+                    .ToArray();
+                var boundaries = boundaryRecords
                     .Select(record => record.Position)
-                    .OrderBy(position => position)
                     .ToArray();
 
                 var savesByContext = rootGroup
@@ -37,13 +39,21 @@ public sealed partial class NestedSaveChangesAnalyzer
 
                     for (var i = 1; i < saves.Length; i++)
                     {
-                        var previous = saves[i - 1];
                         var current = saves[i];
 
-                        if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
+                        // A save in a branch that always returns or throws, or in a branch exclusive with the
+                        // later save, never precedes it; compare with the nearest earlier save that can.
+                        var previousIndex = i - 1;
+                        while (previousIndex >= 0 &&
+                               (LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax, saves[previousIndex].Root.SemanticModel) ||
+                                AreMutuallyExclusiveBranches(saves[previousIndex].Syntax, current.Syntax)))
+                            previousIndex--;
+                        if (previousIndex < 0)
                             continue;
 
-                        if (AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
+                        var previous = saves[previousIndex];
+
+                        if (HasTransactionBoundaryBetween(boundaryRecords, previous, current))
                             continue;
 
                         if (AreInsideSameTransactionUsing(previous.Syntax, current.Syntax, boundaries))
