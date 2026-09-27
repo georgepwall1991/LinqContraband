@@ -42,7 +42,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         var terminal = FindOutermostGroupChainInvocation(invocation, groupProjections);
         if (!(IsAllowedAggregateMethod(terminal.TargetMethod.Name) ||
               groupProjections && (IsGroupProjectionTerminal(terminal.TargetMethod) ||
-                                   TranslatableGroupOperators.Contains(terminal.TargetMethod.Name))) ||
+                                   IsTranslatableGroupOperator(terminal.TargetMethod))) ||
             !IsKnownAggregateContainingType(terminal.TargetMethod.ContainingType))
         {
             return false;
@@ -203,9 +203,35 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
     private static bool IsGroupChainMethod(IMethodSymbol method, bool groupProjections)
     {
-        return (IsAllowedAggregateMethod(method.Name) || TranslatableGroupOperators.Contains(method.Name) ||
+        return (IsAllowedAggregateMethod(method.Name) || IsTranslatableGroupOperator(method) ||
                 groupProjections && IsGroupProjectionTerminal(method)) &&
                IsKnownAggregateContainingType(method.ContainingType);
+    }
+
+    // Only the plain overloads translate: Distinct() without a comparer, and Where/Select/OrderBy/ThenBy
+    // with a single one-parameter lambda. Indexed predicates and comparer overloads stay reported.
+    private static bool IsTranslatableGroupOperator(IMethodSymbol method)
+    {
+        if (!TranslatableGroupOperators.Contains(method.Name))
+            return false;
+
+        var parameters = (method.IsExtensionMethod && method.ReducedFrom == null
+            ? method.Parameters.Skip(1)
+            : method.Parameters).ToList();
+        if (method.Name == "Distinct")
+            return parameters.Count == 0;
+
+        return parameters.Count == 1 && GetDelegateParameterCount(parameters[0].Type) == 1;
+    }
+
+    private static int GetDelegateParameterCount(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } expression)
+            type = expression.TypeArguments[0];
+
+        return type is INamedTypeSymbol { TypeKind: TypeKind.Delegate, DelegateInvokeMethod: { } invoke }
+            ? invoke.Parameters.Length
+            : -1;
     }
 
     private static bool IsKnownAggregateContainingType(INamedTypeSymbol? containingType)

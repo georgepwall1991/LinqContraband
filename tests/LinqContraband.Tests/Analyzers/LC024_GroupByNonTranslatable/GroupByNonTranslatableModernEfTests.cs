@@ -118,6 +118,8 @@ namespace TestApp
             var afterList = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.ToList().Where(f => f.Version > 1)|});
             var distinctLast = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.OrderBy(f => f.Version).Distinct().Last()|});
             var unorderedFiltered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 1).LastOrDefault()|});
+            var indexed = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where((f, i) => i > 0)|});
+            var compared = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Distinct(EqualityComparer<Form>.Default).ToList()|});
         }
     }
 }";
