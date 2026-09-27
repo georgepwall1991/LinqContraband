@@ -90,6 +90,8 @@ namespace TestApp
             var helper = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:Pick(g)|});
             var scaled = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Select(f => Scale(f.Version)).First()|});
             var created = forms.GroupBy(f => f.CorrelationId).Select(g => new Summary({|LC024:g|}));
+            var unordered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Last()|});
+            var unorderedFiltered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 1).LastOrDefault()|});
         }
     }
 }";

@@ -48,12 +48,25 @@ public sealed partial class GroupByNonTranslatableAnalyzer
             return false;
         }
 
+        // Relational EF Core rejects Last/LastOrDefault without an ordering, so g.Last() stays reported.
+        if (groupProjections && UsesLastWithoutOrdering(terminal))
+            return false;
+
         // The chain operators are translatable, but their predicate/selector lambda bodies must be
         // too. Rather than guess which BCL/user method calls EF can translate, this stays
         // deliberately conservative: the chain is exempt only when its lambda bodies are
         // invocation-free (member access, comparisons, arithmetic). ANY method call inside a
         // predicate/selector keeps the chain reported. The terminal subtree contains every lambda in the chain.
         return !ChainHasLambdaInvocation(terminal, groupParam, groupProjections);
+    }
+
+    private static bool UsesLastWithoutOrdering(IInvocationOperation terminal)
+    {
+        var names = GetAllOperations(terminal).OfType<IInvocationOperation>()
+            .Select(chained => chained.TargetMethod.Name)
+            .ToArray();
+        return names.Any(name => name is "Last" or "LastOrDefault") &&
+               !names.Any(name => name is "OrderBy" or "OrderByDescending");
     }
 
     // True when the group-chain subtree contains an invocation that is NOT one of the chain's own
