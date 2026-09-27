@@ -7,11 +7,12 @@ public partial class GroupByNonTranslatableTests
 {
     // The EF Core version is read from the assembly that declares DbContext; here that is the test
     // compilation itself, so its AssemblyVersion stands in for the referenced EF Core package.
-    private static string EfCoreVersion(string version) => Usings + @"
+    private static string EfCoreVersion(string version, string provider = "RelationalDatabaseFacadeExtensions") => Usings + @"
 [assembly: System.Reflection.AssemblyVersion(""" + version + @""")]
 namespace Microsoft.EntityFrameworkCore
 {
     public class DbContext { }
+    public static class " + provider + @" { }
 }
 ";
 
@@ -48,6 +49,29 @@ namespace TestApp
     public async Task EfCore9_GroupElementAccessorsAndSubsequences_DoNotTrigger()
     {
         await VerifyCS.VerifyAnalyzerAsync(EfCoreVersion("9.0.0.0") + GroupShapes);
+    }
+
+    [Theory]
+    [InlineData("CosmosDbContextOptionsExtensions")]
+    [InlineData("NoProviderMarker")]
+    public async Task EfCore9_WithoutRelationalProvider_GroupElementAccessor_StillTriggers(string provider)
+    {
+        // Cosmos, or a project with no relational provider, does not translate these GroupBy shapes.
+        var test = EfCoreVersion("9.0.0.0", provider) + @"
+namespace TestApp
+{
+    public class Form { public string CorrelationId { get; set; } }
+
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<Form> forms)
+        {
+            var latest = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.First()|});
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

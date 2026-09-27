@@ -98,11 +98,14 @@ public sealed partial class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
     /// EF Core 8 and later (checked on 8 and 9) translate element accessors (<c>g.First()</c>) and group sub-sequences
     /// (<c>g.Where(p)</c>, <c>g.ToList()</c>) in a GroupBy projection. Older EF Core, or a
     /// compilation where the EF Core version cannot be read, keeps the conservative behavior.
+    /// The translation is provider-specific, so it also needs EF Core's relational layer and no Cosmos provider.
     /// </summary>
     private static bool TranslatesGroupProjections(Compilation compilation)
     {
         var dbContext = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext");
-        return dbContext?.ContainingAssembly.Identity.Version.Major >= 8;
+        return dbContext?.ContainingAssembly.Identity.Version.Major >= 8 &&
+               compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions") != null &&
+               compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.CosmosDbContextOptionsExtensions") == null;
     }
 
     private static System.Collections.Generic.IEnumerable<IAnonymousFunctionOperation> GetAnonymousFunctionArguments(
