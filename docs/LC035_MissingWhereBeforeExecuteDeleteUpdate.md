@@ -24,6 +24,10 @@ db.Users.ExecuteDelete();
 db.Users.ExecuteUpdate(setters => setters.SetProperty(u => u.Name, "Archived"));
 ```
 
+## Whole-table operations named as such
+
+LC035 stays quiet when the code says it empties the table on purpose: the bulk call runs on a bare table (`db.Logs` or `db.Set<Log>()`) inside a method or local function whose name pairs a clearing verb with `All` (`ClearAllData`, `DeleteAllSessions`), or starts with `Clear`, `Purge`, `Truncate` or `Wipe` followed by the plural of the entity or set (`ClearMentions` over `MentionEntity`, `PurgeCategories` over `Categories`). A handler's `Handle`/`HandleAsync`/`Execute` method is read by its type name, so `ClearActivityLogsCommandHandler.HandleAsync` counts. `ClearUserSession`, `ClearCache`, `ResetPassword`, a query handed in as a parameter, and names without `All` or the table's plural still report.
+
 ## Safer shapes
 
 Filter the target rows before the bulk operation:
