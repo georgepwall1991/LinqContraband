@@ -37,8 +37,17 @@ public sealed partial class NestedSaveChangesAnalyzer
 
                     for (var i = 1; i < saves.Length; i++)
                     {
-                        var previous = saves[i - 1];
                         var current = saves[i];
+
+                        // A save in a branch that always returns or throws never precedes the later
+                        // save; compare with the nearest earlier save that can.
+                        var previousIndex = i - 1;
+                        while (previousIndex >= 0 && LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax))
+                            previousIndex--;
+                        if (previousIndex < 0)
+                            continue;
+
+                        var previous = saves[previousIndex];
 
                         if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
                             continue;

@@ -78,6 +78,38 @@ public sealed partial class NestedSaveChangesAnalyzer
             return false;
         }
 
+        /// <summary>
+        /// <c>if (entity is null) { db.Add(e); await db.SaveChangesAsync(); return 1; } entity.Count++; await db.SaveChangesAsync();</c>:
+        /// the first save sits in a branch that always leaves the method, so the later save never runs after it.
+        /// </summary>
+        private static bool LeavesMethodBefore(SyntaxNode left, SyntaxNode right)
+        {
+            foreach (var ifStatement in left.Ancestors().OfType<IfStatementSyntax>())
+            {
+                if (ifStatement.Span.Contains(right.SpanStart))
+                    return false;
+
+                var branch = GetContainingBranch(ifStatement, left);
+                if (branch != null && EndsWithMethodExit(branch) && !IsInFinallyAround(left, right))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool EndsWithMethodExit(StatementSyntax branch)
+        {
+            var last = branch is BlockSyntax block ? block.Statements.LastOrDefault() : branch;
+            return last is ReturnStatementSyntax or ThrowStatementSyntax ||
+                   last is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax };
+        }
+
+        private static bool IsInFinallyAround(SyntaxNode left, SyntaxNode right)
+        {
+            return left.Ancestors().OfType<TryStatementSyntax>().Any(tryStatement =>
+                tryStatement.Finally?.Block.Span.Contains(right.SpanStart) == true);
+        }
+
         private static SyntaxNode? GetContainingTryBranch(TryStatementSyntax tryStatement, SyntaxNode node)
         {
             if (tryStatement.Block.Span.Contains(node.SpanStart))
