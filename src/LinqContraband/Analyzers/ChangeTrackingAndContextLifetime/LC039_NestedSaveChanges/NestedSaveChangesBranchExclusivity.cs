@@ -103,25 +103,33 @@ public sealed partial class NestedSaveChangesAnalyzer
                     return false;
 
                 var branch = GetContainingBranch(ifStatement, left);
-                if (branch != null && EndsWithMethodExit(branch, right, semanticModel) && !IsInFinallyAround(left, right))
+                if (branch != null && EndsWithMethodExit(branch, left, right, semanticModel) && !IsInFinallyAround(left, right))
                     return true;
             }
 
             return false;
         }
 
-        private static bool EndsWithMethodExit(StatementSyntax branch, SyntaxNode right, SemanticModel? semanticModel)
+        private static bool EndsWithMethodExit(StatementSyntax branch, SyntaxNode left, SyntaxNode right, SemanticModel? semanticModel)
         {
-            return !MayContinueAfter(branch, right, null, semanticModel);
+            // A throw or exit before the earlier save runs without it, so only those after it matter; inside a loop
+            // an earlier statement can also run after the save, so then the whole branch counts.
+            var inLoop = left.Ancestors()
+                .TakeWhile(node => node != branch)
+                .Any(node => node is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax or DoStatementSyntax);
+            var after = inLoop ? branch.SpanStart : left.Span.End;
+
+            return !MayContinueAfter(branch, right, null, semanticModel, after);
         }
 
         /// <summary>
         /// Whether control can leave <paramref name="block"/> other than by <c>return</c>, <c>goto</c> or a throw that
         /// nothing catches before <paramref name="right"/>: falling off its end, <c>break</c> or <c>continue</c> out of
         /// it, or a throw a later catch swallows. <c>catch { if (retry) return; else throw; }</c> cannot.
-        /// Anything the control-flow analysis cannot answer counts as continuing.
+        /// Anything the control-flow analysis cannot answer counts as continuing. Only exits and throws starting at or
+        /// after <paramref name="after"/> are considered.
         /// </summary>
-        private static bool MayContinueAfter(StatementSyntax block, SyntaxNode right, ITypeSymbol? rethrownType, SemanticModel? semanticModel)
+        private static bool MayContinueAfter(StatementSyntax block, SyntaxNode right, ITypeSymbol? rethrownType, SemanticModel? semanticModel, int after = 0)
         {
             if (semanticModel == null || block.SyntaxTree != semanticModel.SyntaxTree)
                 return true;
@@ -132,13 +140,14 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             // A goto out of the block is not followed: it counts as leaving, which keeps LC039 quiet.
             if (controlFlow.ExitPoints.Any(exitPoint =>
+                    exitPoint.SpanStart >= after &&
                     exitPoint is not (ReturnStatementSyntax or GotoStatementSyntax) &&
                     !exitPoint.IsKind(SyntaxKind.YieldBreakStatement)))
             {
                 return true;
             }
 
-            foreach (var throwNode in GetThrows(block))
+            foreach (var throwNode in GetThrows(block).Where(node => node.SpanStart >= after))
             {
                 var thrownType = GetThrownType(throwNode, semanticModel) ?? (IsRethrow(throwNode) ? rethrownType : null);
                 if (IsCaughtBefore(throwNode, block, right, thrownType, semanticModel))
@@ -292,7 +301,8 @@ public sealed partial class NestedSaveChangesAnalyzer
         private static bool IsInFinallyAround(SyntaxNode left, SyntaxNode right)
         {
             return left.Ancestors().OfType<TryStatementSyntax>().Any(tryStatement =>
-                tryStatement.Finally?.Block.Span.Contains(right.SpanStart) == true);
+                tryStatement.Finally?.Block.Span.Contains(right.SpanStart) == true &&
+                !tryStatement.Finally.Block.Span.Contains(left.SpanStart));
         }
 
         private static SyntaxNode? GetContainingTryBranch(TryStatementSyntax tryStatement, SyntaxNode node)

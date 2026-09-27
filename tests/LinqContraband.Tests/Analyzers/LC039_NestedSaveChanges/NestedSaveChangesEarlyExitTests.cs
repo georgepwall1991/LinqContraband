@@ -1066,4 +1066,66 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SaveInReturningBranch_CaughtThrowBeforeSave_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag, bool invalid)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                if (invalid)
+                    throw new InvalidOperationException();
+
+                db.SaveChanges();
+                return;
+            }
+        }
+        catch
+        {
+        }
+
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInThrowingBranchInsideFinally_ThenSaveInSameFinally_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            Console.WriteLine();
+        }
+        finally
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
