@@ -59,6 +59,10 @@ var query = db.Orders
 
 LC024 applies to fluent `GroupBy(...).Select(...)`, fluent `GroupBy(..., (key, group) => ...)` result selectors, and query-syntax `group ... by ... into g select ...` projections. It stays quiet for aggregate-only projections (`Key`, `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`, `Any`, `All`) and for LINQ-to-Objects grouping where the source is already `IEnumerable<T>`.
 
+### EF Core 8 and later
+
+EF Core 8 and 9 translate more of the group than older versions: element accessors (`g.First()`, `g.OrderByDescending(f => f.Version).FirstOrDefault()`, `g.FirstOrDefault(p)`, `Last` after an `OrderBy`, `Single`, `ElementAt`), a filtered sub-sequence (`g.Where(p)`), and the group's rows (`g.ToList()`, `g.ToArray()`) all produce SQL (checked with `ToQueryString()` on SQLite). When the project references EF Core 8 or later and a relational provider (not Cosmos), LC024 stays quiet on those shapes, as long as their predicates and selectors call no methods. The "latest row per group" query `GroupBy(f => f.CorrelationId).Select(g => g.OrderByDescending(f => f.Version).First())` is the common case. With EF Core 7 or older, or when the EF Core version cannot be read, they still report. A local helper over the group (`Pick(g)`), a method inside the chain's lambdas, passing `g` to a constructor, and `g.Last()` with no `OrderBy` in the chain (EF Core rejects it) still report on every version.
+
 ### Translatable aggregate chains
 
 EF Core 9 translates aggregates that filter or project the group before collapsing it to a scalar, so these stay quiet:
@@ -72,7 +76,7 @@ g.Distinct().Count()                    // COUNT(DISTINCT ...)
 
 The exemption follows an aggregate whose receiver chain roots at the grouping parameter through translatable operators (`Where`, `Select`, `OrderBy`/`OrderByDescending`/`ThenBy`/`ThenByDescending`, `Distinct`), as well as the direct forms `g.Count()`, `g.Sum(...)`, `Enumerable.Count(g)`, `Enumerable.Sum(g, ...)`.
 
-A chain that **terminates in a non-aggregate** is still reported, because it returns a sub-sequence or materializes per group rather than collapsing to a scalar: a bare `g.Where(p)`, a materializer `g.Select(s).ToList()`, and an element accessor `g.OrderBy(s).First()` all remain crimes.
+Before EF Core 8, a chain that **terminates in a non-aggregate** is still reported, because it returns a sub-sequence or materializes per group rather than collapsing to a scalar: a bare `g.Where(p)`, a materializer `g.Select(s).ToList()`, and an element accessor `g.OrderBy(s).First()` all remain crimes.
 
 The exemption is deliberately conservative about the chain's `Where`/`Select` lambda bodies: it covers only **invocation-free** predicates and selectors (member access, comparisons, arithmetic). Any method call inside a predicate or selector keeps the chain reported — a local function, a user-defined method (`g.Select(o => Scale(o.Amount)).Sum()`), or a non-translatable BCL overload (`o.Name.Equals(s, StringComparison.OrdinalIgnoreCase)`, `Regex.IsMatch(...)`) — because the rule does not assume translatability it cannot prove from the expression shape alone. The single-argument `System.Convert` conversions (`Convert.ToInt32`, `Convert.ToBoolean` and the like) are the exception, because EF Core's relational providers translate them to SQL casts.
 
