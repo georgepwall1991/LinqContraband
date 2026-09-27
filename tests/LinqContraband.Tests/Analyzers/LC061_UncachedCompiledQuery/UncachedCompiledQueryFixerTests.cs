@@ -91,6 +91,28 @@ public class UncachedCompiledQueryFixerTests
     }
 
     [Fact]
+    public async Task DelegateNestedInCacheFactory_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => (c, i) => {|LC061:EF.CompileQuery|}((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x))(c, i))(_db, id);", @"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x));
+
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => (c, i) => GetQuery(c, i))(_db, id);");
+    }
+
+    [Fact]
+    public async Task InstanceFieldInitializer_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private readonly Blog _first = {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);", @"
+    private static readonly Func<Ctx, int, Blog> CompiledQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    private readonly Blog _first = CompiledQuery(new Ctx(), 1);");
+    }
+
+    [Fact]
     public async Task NameInUse_PicksAnotherName()
     {
         await VerifyFixAsync(@"

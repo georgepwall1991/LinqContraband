@@ -21,7 +21,8 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// <para>The analyzer is conservative: it reports only when the delegate is invoked straight away, kept in a local
 /// that is only invoked, returned from an expression-bodied property or getter, returned from a private factory whose
 /// every caller invokes the result straight away, or stored on <c>this</c> from an ordinary method without a null
-/// guard. Static fields and properties, instance field and property initializers, constructors, <c>??=</c>, lazy and
+/// guard. Static fields and properties (including values compiled and invoked in their initializers), instance field
+/// and property initializers that store the delegate, constructors, <c>??=</c>, lazy and
 /// dictionary caches, factory lambdas and delegates passed elsewhere stay quiet.</para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -328,11 +329,13 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// True for code that runs once per program or type: a static constructor or top-level statements, outside
-    /// any lambda or local function.
+    /// True for code that runs once per program or type: a static constructor, a static field or static
+    /// auto-property initializer, or top-level statements, outside any lambda or local function. Instance field
+    /// initializers run once per instance, so they are not included.
     /// </summary>
     private static bool RunsOnce(SyntaxNode node)
     {
+        SyntaxNode? previous = null;
         foreach (var ancestor in node.Ancestors())
         {
             switch (ancestor)
@@ -341,39 +344,47 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
                     return false;
                 case ConstructorDeclarationSyntax constructor:
                     return constructor.Modifiers.Any(SyntaxKind.StaticKeyword);
+                case BaseFieldDeclarationSyntax field:
+                    return field.Modifiers.Any(SyntaxKind.StaticKeyword);
+                case PropertyDeclarationSyntax property:
+                    // Only the `= ...` initializer runs once; getters and `=>` bodies run on every read.
+                    return property.Initializer != null && previous == property.Initializer &&
+                           property.Modifiers.Any(SyntaxKind.StaticKeyword);
                 case GlobalStatementSyntax:
                     return true;
                 case MemberDeclarationSyntax:
                     return false;
             }
+
+            previous = ancestor;
         }
 
         return false;
     }
 
     /// <summary>
-    /// True inside a lambda handed to a cache that runs it once (per key): <c>GetOrAdd</c>, <c>AddOrUpdate</c>,
-    /// <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c> constructor.
+    /// True when the nearest enclosing lambda is the one handed to a cache that runs it once (per key):
+    /// <c>GetOrAdd</c>, <c>AddOrUpdate</c>, <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a
+    /// <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
+    /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
     /// </summary>
     private static bool IsInsideCacheFactory(SyntaxNode node, SemanticModel semanticModel)
     {
-        foreach (var lambda in node.Ancestors().OfType<AnonymousFunctionExpressionSyntax>())
+        var boundary = node.Ancestors()
+            .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
+        if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
+            lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } })
         {
-            if (lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } })
-                continue;
-
-            switch (owner)
-            {
-                case InvocationExpressionSyntax call when CacheFactoryMethods.Contains(GetInvokedName(call.Expression)):
-                    return true;
-
-                case BaseObjectCreationExpressionSyntax creation
-                    when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" }:
-                    return true;
-            }
+            return false;
         }
 
-        return false;
+        return owner switch
+        {
+            InvocationExpressionSyntax call => CacheFactoryMethods.Contains(GetInvokedName(call.Expression)),
+            BaseObjectCreationExpressionSyntax creation =>
+                semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" },
+            _ => false
+        };
     }
 
     private static string GetInvokedName(ExpressionSyntax expression)

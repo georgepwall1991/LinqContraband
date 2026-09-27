@@ -43,7 +43,7 @@ public Task<Blog?> Get(int id) => GetQuery(_db, id);
 
 Reports `Microsoft.EntityFrameworkCore.EF.CompileQuery` and `EF.CompileAsyncQuery` when the delegate is:
 
-1. Invoked straight away, in a method, constructor, accessor, lambda or local function: `EF.CompileQuery(...)(db, id)` or `EF.CompileQuery(...).Invoke(db, id)`.
+1. Invoked straight away, in a method, instance constructor, instance field or property initializer, accessor, lambda or local function: `EF.CompileQuery(...)(db, id)` or `EF.CompileQuery(...).Invoke(db, id)`. This includes a delegate nested inside a cache factory, such as `cache.GetOrAdd(key, _ => (c, id) => EF.CompileQuery(...)(c, id))`: the cache keeps the inner delegate, which compiles on every call.
 2. Assigned to a local whose every use invokes it: `var query = EF.CompileQuery(...); return query(db, id);`.
 3. Returned from an expression-bodied property or a `get` accessor, which compiles it on every read: `static Func<...> ById => EF.CompileQuery(...);`.
 4. Returned from a private method or local function whose every call invokes the result straight away: `Build()(db, id)`.
@@ -51,10 +51,10 @@ Reports `Microsoft.EntityFrameworkCore.EF.CompileQuery` and `EF.CompileAsyncQuer
 
 ## When it stays quiet (non-goals)
 
-- Static field and property initializers, and assignments to static members (including in a static constructor).
+- Static field and static auto-property initializers, even when they invoke the compiled delegate straight away, and assignments to static members (including in a static constructor).
 - `??=` and `if (_query == null) _query = ...` lazy initialization.
-- Instance field and property initializers, and assignments in instance constructors. Whether the instance lives long enough to reuse the delegate (a singleton, or a scoped service built per request) is not known, so the rule does not guess.
-- Lambdas passed to a cache that runs them once per key: `GetOrAdd`, `AddOrUpdate`, `GetOrCreate`, `GetOrCreateAsync`, `LazyInitializer.EnsureInitialized` and `Lazy<T>`.
+- Instance field and property initializers that store the delegate, and assignments in instance constructors. Whether the instance lives long enough to reuse the delegate (a singleton, or a scoped service built per request) is not known, so the rule does not guess.
+- Lambdas passed to a cache that runs them once per key, when the compile call sits directly in that lambda rather than in a delegate nested inside it: `GetOrAdd`, `AddOrUpdate`, `GetOrCreate`, `GetOrCreateAsync`, `LazyInitializer.EnsureInitialized` and `Lazy<T>`.
 - Dictionary stores (`cache[key] = EF.CompileQuery(...)`) and the delegate passed to another method.
 - Factory lambdas that return the delegate (`() => EF.CompileQuery(...)`), and public, internal or protected methods that return it, because their callers decide how long it lives. A private factory is quiet as soon as one caller does anything other than invoke the result, such as initializing a static field.
 - A local that is stored, returned or passed on as well as invoked.

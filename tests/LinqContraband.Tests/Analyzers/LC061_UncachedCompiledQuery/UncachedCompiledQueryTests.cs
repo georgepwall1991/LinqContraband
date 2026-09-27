@@ -111,6 +111,17 @@ class Repo
     [InlineData(@"
     private Func<Ctx, int, Blog> _byId;
     public Blog Get(int id) { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    // An instance field or property initializer runs once per instance, like a constructor.
+    [InlineData(@"private readonly Blog _first = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
+    [InlineData(@"public Blog First { get; } = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
+    // A static expression-bodied property or getter still runs on every read.
+    [InlineData(@"public static Blog First => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
+    // The cache stores the inner delegate, which compiles again on every call.
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => (c, i) => {|#0:EF.CompileQuery|}((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x))(c, i))(_db, id);")]
+    [InlineData(@"
+    private static readonly Lazy<Func<Ctx, int, Blog>> ById = new(() => (c, i) => {|#0:EF.CompileQuery|}((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x))(c, i));")]
     public async Task CompiledOnEveryCall_Members_Reports(string members)
     {
         var name = members.Contains("CompileAsyncQuery") ? "CompileAsyncQuery" : "CompileQuery";
@@ -167,6 +178,10 @@ class Repo
     [InlineData(@"public void Init(Action<Func<Ctx, int, Blog>> register) { register(EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
     // A static constructor runs once.
     [InlineData(@"private static readonly Blog First; static Repo() { First = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1); }")]
+    // A static field or static auto-property initializer runs once.
+    [InlineData(@"private static readonly Blog First = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
+    [InlineData(@"public static Blog First { get; } = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
+    [InlineData(@"private static readonly int Count = EF.CompileQuery((Ctx c) => c.Blogs.Count()).Invoke(new Ctx());")]
     // Some other EF class.
     [InlineData(@"public Blog Get(int id) => Other.EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
     public async Task CachedOrUnknownLifetime_DoesNotReport(string members)
