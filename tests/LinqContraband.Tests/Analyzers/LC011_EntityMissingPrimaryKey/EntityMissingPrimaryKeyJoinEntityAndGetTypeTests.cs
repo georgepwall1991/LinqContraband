@@ -1,5 +1,9 @@
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey.EntityMissingPrimaryKeyAnalyzer>;
+using AnalyzerTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+    LinqContraband.Analyzers.LC011_EntityMissingPrimaryKey.EntityMissingPrimaryKeyAnalyzer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
 namespace LinqContraband.Tests.Analyzers.LC011_EntityMissingPrimaryKey;
 
@@ -15,16 +19,8 @@ public partial class EntityMissingPrimaryKeyEdgeCasesTests
     }
 }";
 
+    // Test scaffolding that hands out the referenced CollectionCollectionBuilder.
     private const string ManyToManyMock = ManyToManyEntities + @"
-namespace Microsoft.EntityFrameworkCore.Metadata.Builders
-{
-    public class CollectionCollectionBuilder
-    {
-        public Microsoft.EntityFrameworkCore.EntityTypeBuilder<TJoin> UsingEntity<TJoin>(
-            System.Action<Microsoft.EntityFrameworkCore.EntityTypeBuilder<TJoin>> configureJoin) where TJoin : class => null;
-        public CollectionCollectionBuilder UsingEntity(string joinEntityName) => this;
-    }
-}
 namespace Microsoft.EntityFrameworkCore
 {
     public static class ManyToManyBuilderExtensions
@@ -33,6 +29,28 @@ namespace Microsoft.EntityFrameworkCore
             => new Microsoft.EntityFrameworkCore.Metadata.Builders.CollectionCollectionBuilder();
     }
 }";
+
+    // LC011 only trusts a UsingEntity declared in a referenced EF Core assembly, so the builder is
+    // compiled as its own project with EF Core's assembly name rather than declared in the test source.
+    private const string CollectionCollectionBuilderSource = @"
+using System;
+
+namespace Microsoft.EntityFrameworkCore.Metadata.Builders
+{
+    public class CollectionCollectionBuilder
+    {
+        public CollectionCollectionBuilder UsingEntity<TJoin>(Action<TJoin> configureJoin) where TJoin : class => this;
+        public CollectionCollectionBuilder UsingEntity(string joinEntityName) => this;
+    }
+}";
+
+    private static Task VerifyWithReferencedBuilderAsync(string source, string assemblyName = "Microsoft.EntityFrameworkCore")
+    {
+        var test = new AnalyzerTest { TestCode = source };
+        test.TestState.AdditionalProjects[assemblyName].Sources.Add(("CollectionCollectionBuilder.cs", CollectionCollectionBuilderSource));
+        test.TestState.AdditionalProjectReferences.Add(assemblyName);
+        return test.RunAsync();
+    }
 
     [Fact]
     public async Task TestInnocent_JoinEntityConfiguredWithUsingEntity_ShouldNotTrigger()
@@ -45,12 +63,12 @@ namespace Microsoft.EntityFrameworkCore
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<Post>().ManyToMany().UsingEntity<PostTag>(j => j.ToTable(""PostTag""));
+            modelBuilder.Entity<Post>().ManyToMany().UsingEntity<PostTag>(j => { });
         }
     }
 " + ManyToManyMock;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        await VerifyWithReferencedBuilderAsync(test);
     }
 
     [Fact]
@@ -67,7 +85,25 @@ namespace Microsoft.EntityFrameworkCore
     }
 " + ManyToManyMock;
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        await VerifyWithReferencedBuilderAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_UsingEntityFromNonEfCoreAssemblyInEfCoreNamespace_ShouldTrigger()
+    {
+        // The EF Core namespace is not enough: the declaring assembly must be EF Core's.
+        var test = Usings + SemanticMockAttributes + @"
+        public DbSet<Post> Posts { get; set; }
+        public DbSet<PostTag> {|LC011:PostTags|} { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Post>().ManyToMany().UsingEntity<PostTag>(j => { });
+        }
+    }
+" + ManyToManyMock;
+
+        await VerifyWithReferencedBuilderAsync(test, assemblyName: "Contoso.ModelBuilding");
     }
 
     [Fact]
@@ -90,6 +126,32 @@ namespace Microsoft.EntityFrameworkCore
             => builder;
     }
 " + ManyToManyEntities;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SameProjectUsingEntityInEfCoreNamespace_ShouldTrigger()
+    {
+        // A project method declared inside the Microsoft.EntityFrameworkCore namespace is still the project's own.
+        var test = Usings + SemanticMockAttributes + @"
+        public DbSet<Post> Posts { get; set; }
+        public DbSet<PostTag> {|LC011:PostTags|} { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Post>().UsingEntity<PostTag>();
+        }
+    }
+" + ManyToManyEntities + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class ProjectJoinExtensions
+    {
+        public static EntityTypeBuilder<TestNamespace.Post> UsingEntity<TJoin>(this EntityTypeBuilder<TestNamespace.Post> builder) where TJoin : class
+            => builder;
+    }
+}";
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

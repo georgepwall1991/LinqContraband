@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - LC011 no longer reports a many-to-many join entity named in `UsingEntity<TJoin>(...)`, such as Moonglade's `PostTagEntity` in `HasMany(p => p.Tags).WithMany(p => p.Posts).UsingEntity<PostTagEntity>(...)`: EF Core keys it by convention with the composite of its two foreign keys. It also reads `ApplyConfigurationsFromAssembly(GetType().Assembly)` and `this.GetType().Assembly` in the context as the current assembly, so the `HasKey` calls in that assembly's configurations count, as in modular-monolith-with-ddd, where eight `MeetingsContext` entities were reported. A context that declares its own `GetType`, and another object's `GetType().Assembly`, are not read that way.
-- LC011 counts `UsingEntity<TJoin>(...)` only when the call binds to EF Core's own method, so a project method with the same name no longer hides a missing key on `TJoin`. It also reads `GetType().Assembly` as the current assembly only in a non-abstract context: in an abstract context `GetType()` returns a derived type that may be declared in another assembly, so its entities report as before.
+- LC011 counts `UsingEntity<TJoin>(...)` only when the call binds to EF Core's own method, declared in a referenced `Microsoft.EntityFrameworkCore` assembly, so a project method with the same name, even one declared in the `Microsoft.EntityFrameworkCore` namespace, no longer hides a missing key on `TJoin`. It also reads `GetType().Assembly` as the current assembly only in a non-abstract context: in an abstract context `GetType()` returns a derived type that may be declared in another assembly, so its entities report as before.
 
 ## [5.15.0] - 2026-09-25
 

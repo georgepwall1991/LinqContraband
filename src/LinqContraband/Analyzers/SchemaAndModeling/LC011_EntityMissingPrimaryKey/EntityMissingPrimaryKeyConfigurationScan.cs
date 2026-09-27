@@ -51,18 +51,29 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             return false;
 
         // A lambda argument that does not bind yet leaves only candidates; accept them when all are EF Core's.
+        var compilationAssembly = compilationModel.Compilation.Assembly;
         var symbolInfo = semanticModel.GetSymbolInfo(invocation, cancellationToken);
         if (symbolInfo.Symbol is IMethodSymbol method)
-            return IsInEntityFrameworkCoreNamespace(method.ContainingType);
+            return IsDeclaredByEntityFrameworkCore(method, compilationAssembly);
 
         return !symbolInfo.CandidateSymbols.IsEmpty &&
                symbolInfo.CandidateSymbols.All(candidate =>
-                   candidate is IMethodSymbol && IsInEntityFrameworkCoreNamespace(candidate.ContainingType));
+                   candidate is IMethodSymbol && IsDeclaredByEntityFrameworkCore(candidate, compilationAssembly));
     }
 
-    private static bool IsInEntityFrameworkCoreNamespace(INamedTypeSymbol? type)
+    // The namespace alone is not enough: a project can declare its own method inside
+    // Microsoft.EntityFrameworkCore. The method must also come from a referenced EF Core assembly.
+    private static bool IsDeclaredByEntityFrameworkCore(ISymbol method, IAssemblySymbol compilationAssembly)
     {
-        var ns = type?.ContainingNamespace?.ToDisplayString();
+        var assembly = method.ContainingAssembly;
+        if (assembly == null ||
+            SymbolEqualityComparer.Default.Equals(assembly, compilationAssembly) ||
+            !assembly.Name.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var ns = method.ContainingType?.ContainingNamespace?.ToDisplayString();
         return ns != null &&
                (ns == "Microsoft.EntityFrameworkCore" ||
                 ns.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal));
