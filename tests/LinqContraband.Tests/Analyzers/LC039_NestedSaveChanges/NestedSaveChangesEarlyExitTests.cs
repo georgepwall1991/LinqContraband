@@ -852,8 +852,9 @@ class Program
     }
 
     [Fact]
-    public async Task SavesInSwitchSections_GotoCaseIntoOtherSection_Triggers()
+    public async Task SavesInSwitchSections_GotoCaseIntoOtherSection_KnownFalseNegative_DoesNotTrigger()
     {
+        // Known false negative: both saves run, but LC039 does not follow goto and keeps switch sections exclusive.
         var test = EFCoreMock + Types + @"
 
 class Program
@@ -867,7 +868,7 @@ class Program
                 db.SaveChanges();
                 goto case 1;
             case 1:
-                {|LC039:db.SaveChanges()|};
+                db.SaveChanges();
                 break;
         }
     }
@@ -975,6 +976,91 @@ class Program
         }
 
         {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SavesInSwitchSections_GotoBeforeSourceSave_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode, bool skip)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                if (skip)
+                    goto case 1;
+                db.SaveChanges();
+                break;
+            case 1:
+                db.SaveChanges();
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_CatchGoesToLabelPastLaterSave_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch
+        {
+            goto Done;
+        }
+
+        db.SaveChanges();
+        Done:
+        Console.WriteLine();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SavesInSwitchSections_ReverseGotoCaseAfterBoundary_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                db.SaveChanges();
+                break;
+            case 1:
+                db.SaveChanges();
+                db.Database.BeginTransaction();
+                goto case 0;
+        }
     }
 }";
 

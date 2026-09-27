@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -11,15 +10,14 @@ public sealed partial class NestedSaveChangesAnalyzer
 {
     private sealed partial class AnalysisState
     {
-        private static readonly ConditionalWeakTable<SwitchStatementSyntax, bool[,]> SwitchSectionReachability = new();
-
         /// <summary>
-        /// Whether <paramref name="left"/> and <paramref name="right"/> can never both run in one call. Two switch
-        /// sections stop counting as exclusive when a <c>goto</c> can carry control from one to the other. A try
-        /// block and its catch are exclusive only as whole branches: part of the try block may run before the catch, so
-        /// callers asking whether something definitely did not run pass <paramref name="tryCatchIsExclusive"/> false.
+        /// Whether <paramref name="left"/> and <paramref name="right"/> can never both run in one call. LC039 does not
+        /// follow <c>goto</c>, so switch sections count as exclusive for save pairing and stay quiet on goto-joined paths.
+        /// Callers asking whether something definitely did not run pass <paramref name="definitely"/> true: then a switch
+        /// holding a <c>goto</c> joins its sections, and a try block and its catch are not exclusive because part of the
+        /// try block may run before the catch.
         /// </summary>
-        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right, SemanticModel? semanticModel, bool tryCatchIsExclusive = true)
+        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right, bool definitely = false)
         {
             foreach (var ifStatement in left.AncestorsAndSelf().OfType<IfStatementSyntax>())
             {
@@ -48,7 +46,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                 if (leftSection != null &&
                     rightSection != null &&
                     leftSection != rightSection &&
-                    !AreJoinedByGoto(switchStatement, leftSection, rightSection, semanticModel))
+                    !(definitely && switchStatement.Sections.Any(section => section.DescendantNodes().OfType<GotoStatementSyntax>().Any())))
                 {
                     return true;
                 }
@@ -70,7 +68,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                 }
             }
 
-            if (!tryCatchIsExclusive)
+            if (definitely)
                 return false;
 
             // SaveChanges in try and catch branches are mutually exclusive; finally is not exclusive.
@@ -91,130 +89,6 @@ public sealed partial class NestedSaveChangesAnalyzer
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// <c>case 0: save; goto case 1; case 1: save; break;</c> runs both saves. Sections are joined when a goto in one
-        /// can carry control to the other, directly or through further sections.
-        /// </summary>
-        private static bool AreJoinedByGoto(SwitchStatementSyntax switchStatement, SwitchSectionSyntax left, SwitchSectionSyntax right, SemanticModel? semanticModel)
-        {
-            var reachability = SwitchSectionReachability.GetValue(
-                switchStatement,
-                statement => BuildSectionReachability(statement, semanticModel));
-            var leftIndex = switchStatement.Sections.IndexOf(left);
-            var rightIndex = switchStatement.Sections.IndexOf(right);
-
-            return reachability[leftIndex, rightIndex] || reachability[rightIndex, leftIndex];
-        }
-
-        private static bool[,] BuildSectionReachability(SwitchStatementSyntax switchStatement, SemanticModel? semanticModel)
-        {
-            var sections = switchStatement.Sections;
-            var count = sections.Count;
-            var reachable = new bool[count, count];
-
-            for (var from = 0; from < count; from++)
-            {
-                var gotos = sections[from].Statements
-                    .SelectMany(statement => statement.DescendantNodesAndSelf(node =>
-                        node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)))
-                    .OfType<GotoStatementSyntax>();
-
-                foreach (var gotoStatement in gotos)
-                {
-                    foreach (var to in GetGotoTargets(switchStatement, gotoStatement, semanticModel))
-                    {
-                        if (to != from)
-                            reachable[from, to] = true;
-                    }
-                }
-            }
-
-            for (var via = 0; via < count; via++)
-            {
-                for (var from = 0; from < count; from++)
-                {
-                    if (!reachable[from, via])
-                        continue;
-
-                    for (var to = 0; to < count; to++)
-                    {
-                        if (reachable[via, to])
-                            reachable[from, to] = true;
-                    }
-                }
-            }
-
-            return reachable;
-        }
-
-        /// <summary>
-        /// The sections of <paramref name="switchStatement"/> a goto can land in. <c>goto case</c> and
-        /// <c>goto default</c> belong to their nearest switch; an unresolved target joins every section. A labelled goto
-        /// lands in the section holding its label, or nowhere in this switch when the label is outside it.
-        /// </summary>
-        private static IEnumerable<int> GetGotoTargets(SwitchStatementSyntax switchStatement, GotoStatementSyntax gotoStatement, SemanticModel? semanticModel)
-        {
-            var sections = switchStatement.Sections;
-
-            if (gotoStatement.IsKind(SyntaxKind.GotoStatement))
-            {
-                if (gotoStatement.Expression is not IdentifierNameSyntax labelName)
-                    return Enumerable.Empty<int>();
-
-                // A label inside a lambda or local function belongs to that function, not to this switch.
-                var label = switchStatement.Sections
-                    .SelectMany(section => section.DescendantNodes(node =>
-                        node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)))
-                    .OfType<LabeledStatementSyntax>()
-                    .FirstOrDefault(statement => statement.Identifier.ValueText == labelName.Identifier.ValueText);
-                if (label == null)
-                    return Enumerable.Empty<int>();
-
-                return new[] { sections.IndexOf(GetContainingSwitchSection(switchStatement, label)!) };
-            }
-
-            if (gotoStatement.FirstAncestorOrSelf<SwitchStatementSyntax>() != switchStatement)
-                return Enumerable.Empty<int>();
-
-            if (gotoStatement.IsKind(SyntaxKind.GotoDefaultStatement))
-            {
-                var defaultIndex = IndexOfSection(sections, section => section.Labels.Any(label => label is DefaultSwitchLabelSyntax));
-                return defaultIndex >= 0 ? new[] { defaultIndex } : Enumerable.Range(0, sections.Count);
-            }
-
-            if (gotoStatement.Expression == null ||
-                semanticModel == null ||
-                gotoStatement.SyntaxTree != semanticModel.SyntaxTree)
-            {
-                return Enumerable.Range(0, sections.Count);
-            }
-
-            var target = semanticModel.GetConstantValue(gotoStatement.Expression);
-            if (!target.HasValue)
-                return Enumerable.Range(0, sections.Count);
-
-            var caseIndex = IndexOfSection(sections, section => section.Labels
-                .OfType<CaseSwitchLabelSyntax>()
-                .Any(label =>
-                {
-                    var value = semanticModel.GetConstantValue(label.Value);
-                    return value.HasValue && Equals(value.Value, target.Value);
-                }));
-
-            return caseIndex >= 0 ? new[] { caseIndex } : Enumerable.Range(0, sections.Count);
-        }
-
-        private static int IndexOfSection(SyntaxList<SwitchSectionSyntax> sections, System.Func<SwitchSectionSyntax, bool> predicate)
-        {
-            for (var i = 0; i < sections.Count; i++)
-            {
-                if (predicate(sections[i]))
-                    return i;
-            }
-
-            return -1;
         }
 
         /// <summary>
@@ -242,9 +116,9 @@ public sealed partial class NestedSaveChangesAnalyzer
         }
 
         /// <summary>
-        /// Whether control can leave <paramref name="block"/> other than by <c>return</c> or by a throw that nothing
-        /// catches before <paramref name="right"/>: falling off its end, <c>break</c>, <c>continue</c> or <c>goto</c>
-        /// out of it, or a throw a later catch swallows. <c>catch { if (retry) return; else throw; }</c> cannot.
+        /// Whether control can leave <paramref name="block"/> other than by <c>return</c>, <c>goto</c> or a throw that
+        /// nothing catches before <paramref name="right"/>: falling off its end, <c>break</c> or <c>continue</c> out of
+        /// it, or a throw a later catch swallows. <c>catch { if (retry) return; else throw; }</c> cannot.
         /// Anything the control-flow analysis cannot answer counts as continuing.
         /// </summary>
         private static bool MayContinueAfter(StatementSyntax block, SyntaxNode right, ITypeSymbol? rethrownType, SemanticModel? semanticModel)
@@ -256,8 +130,9 @@ public sealed partial class NestedSaveChangesAnalyzer
             if (controlFlow == null || !controlFlow.Succeeded || controlFlow.EndPointIsReachable)
                 return true;
 
+            // A goto out of the block is not followed: it counts as leaving, which keeps LC039 quiet.
             if (controlFlow.ExitPoints.Any(exitPoint =>
-                    exitPoint is not ReturnStatementSyntax &&
+                    exitPoint is not (ReturnStatementSyntax or GotoStatementSyntax) &&
                     !exitPoint.IsKind(SyntaxKind.YieldBreakStatement)))
             {
                 return true;
