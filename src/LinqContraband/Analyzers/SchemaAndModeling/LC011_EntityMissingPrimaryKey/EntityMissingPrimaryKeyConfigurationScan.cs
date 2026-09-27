@@ -104,6 +104,16 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                         continue;
                     }
 
+                    // HasMany(...).WithMany(...).UsingEntity<PostTag>(...): EF Core keys a many-to-many
+                    // join entity by convention with the composite of its two foreign keys.
+                    if (methodName == "UsingEntity" &&
+                        memberAccess.Name is GenericNameSyntax { TypeArgumentList.Arguments.Count: 1 } usingEntity &&
+                        compilationModel.FindType(usingEntity.TypeArgumentList.Arguments[0], cancellationToken) is { } joinEntity)
+                    {
+                        configuredEntities.Add(joinEntity);
+                        continue;
+                    }
+
                     if (methodName == "ApplyConfiguration")
                     {
                         ScanAppliedConfiguration(invocation, dbContextType, compilationModel, configuredEntities, keylessEntities, cancellationToken);
