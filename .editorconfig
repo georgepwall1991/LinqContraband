@@ -253,3 +253,6 @@ indent_size = 2
 
 # LC059: Disposed Context Connection - disposing the connection from GetDbConnection() breaks later operations on the DbContext
 # dotnet_diagnostic.LC059.severity = warning
+
+# LC063: Transaction Under Retrying Strategy - a user transaction on a context with a retrying execution strategy throws on its first query or SaveChanges
+# dotnet_diagnostic.LC063.severity = warning

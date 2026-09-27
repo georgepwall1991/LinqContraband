@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - LC011 no longer reports a many-to-many join entity named in `UsingEntity<TJoin>(...)`, such as Moonglade's `PostTagEntity` in `HasMany(p => p.Tags).WithMany(p => p.Posts).UsingEntity<PostTagEntity>(...)`: EF Core keys it by convention with the composite of its two foreign keys. It also reads `ApplyConfigurationsFromAssembly(GetType().Assembly)` and `this.GetType().Assembly` in the context as the current assembly, so the `HasKey` calls in that assembly's configurations count, as in modular-monolith-with-ddd, where eight `MeetingsContext` entities were reported. A context that declares its own `GetType`, and another object's `GetType().Assembly`, are not read that way.
 
+### Added
+
+- LC063 reports `Database.BeginTransaction`, `BeginTransactionAsync`, `UseTransaction` and `UseTransactionAsync` on a context configured with a retrying execution strategy (`EnableRetryOnFailure()`, or `ExecutionStrategy(...)` creating a strategy derived from `ExecutionStrategy`) when the transaction does not run through `Database.CreateExecutionStrategy()`. EF Core throws "The configured execution strategy ... does not support user-initiated transactions" on the first query or `SaveChanges` inside it, often only in production where retries are on. It ties each configuration to its context through `AddDbContext<T>`-style registrations, `DbContextOptionsBuilder<T>` and `OnConfiguring`, and stays quiet inside delegates passed to `Execute`/`ExecuteAsync`/`ExecuteInTransaction`, in methods such delegates call, on contexts without a retrying configuration, and when retries are set to 0. The fix moves the transaction and the rest of its block into `strategy.ExecuteAsync(async () => { ... })` (or `Execute` for synchronous code). LC063 joins the `critical` preset.
+
 ## [5.15.0] - 2026-09-25
 
 ### Fixed
