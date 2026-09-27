@@ -1,4 +1,5 @@
 using LinqContraband.Extensions;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC001_LocalMethod;
@@ -14,6 +15,20 @@ public sealed partial class LocalMethodAnalyzer
         return source?.Type.IsIQueryable() == true &&
                TranslationCriticalQueryMethods.Contains(invocation.TargetMethod.Name) &&
                !source.IsProvablyInMemoryQueryable();
+    }
+
+    private static bool IsExpressionTreeLambda(IAnonymousFunctionOperation lambda)
+    {
+        for (var wrapper = lambda.Parent;
+             wrapper is IDelegateCreationOperation or IConversionOperation;
+             wrapper = wrapper.Parent)
+        {
+            if (wrapper.Type is INamedTypeSymbol { Name: "Expression", Arity: 1 } expression &&
+                expression.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+                return true;
+        }
+
+        return false;
     }
 
     private static IArgumentOperation? GetInputSequenceArgument(IInvocationOperation invocation)

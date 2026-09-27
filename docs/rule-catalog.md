@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>60</strong><span>rules</span></div>
-    <div class="metric"><strong>41</strong><span>warnings</span></div>
-    <div class="metric"><strong>43</strong><span>code fixes</span></div>
+    <div class="metric"><strong>62</strong><span>rules</span></div>
+    <div class="metric"><strong>43</strong><span>warnings</span></div>
+    <div class="metric"><strong>45</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -339,6 +339,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC058_TransactionScopeWithoutAsyncFlow/</span>
+    </a>
+    <a class="rule-card" href="./LC060_AsyncOnInMemoryQuery.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC060</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>EF Core async operator on an in-memory query</h3>
+      <p class="rule-card__summary">Flags EF Core ToListAsync, CountAsync and other async operators on AsQueryable() over an in-memory collection, which throw at run time.</p>
+      <span class="rule-card__meta">
+        <span>Reliability</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC060_AsyncOnInMemoryQuery/</span>
     </a>
     <a class="rule-card" href="./LC063_TransactionUnderRetryingStrategy.html" data-severity="warning" data-fix="true">
       <span class="rule-card__top">
@@ -717,6 +730,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC050_OrderByBeforeDistinct/</span>
+    </a>
+    <a class="rule-card" href="./LC061_UncachedCompiledQuery.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC061</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>Compiled query is not cached</h3>
+      <p class="rule-card__summary">Flags EF Core EF.CompileQuery and EF.CompileAsyncQuery calls that compile the query on every call instead of once in a static readonly field.</p>
+      <span class="rule-card__meta">
+        <span>Performance</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC061_UncachedCompiledQuery/</span>
     </a>
   </div>
 </section>
