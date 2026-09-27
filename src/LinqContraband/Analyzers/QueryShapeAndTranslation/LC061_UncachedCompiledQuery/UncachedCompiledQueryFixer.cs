@@ -22,7 +22,9 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// <remarks>
 /// No fix is offered when the query reads a local, a parameter of the method or the instance (a static field cannot
 /// see them), when the call does not sit in a class, struct or record member, when the member's leading trivia holds
-/// an <c>#if</c>, <c>#elif</c>, <c>#else</c> or <c>#endif</c> (the field could land in the wrong branch), or when the
+/// an <c>#if</c>, <c>#elif</c>, <c>#else</c> or <c>#endif</c> (the field could land in the wrong branch), when a static
+/// field or property initializer above the member refers to it (initializers run in source order, so it would read
+/// the new field before it is set), or when the
 /// rewritten document has more
 /// compiler errors than before (for example a delegate type that uses a method type parameter).
 /// </remarks>
@@ -99,6 +101,12 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         if (member.GetLeadingTrivia().Any(IsConditionalDirective))
             return null;
 
+        // Static initializers run in source order: one above the new field that reaches this member would read the
+        // field before it is set.
+        var memberName = GetMemberName(member, type);
+        if (type.Members.TakeWhile(candidate => candidate != member).Any(candidate => IsStaticInitializerUsing(candidate, memberName)))
+            return null;
+
         var name = ChooseName(type, member, compile, semanticModel);
         var typeName = delegateType.ToMinimalDisplayString(semanticModel, member.SpanStart, TypeFormat);
         if (SyntaxFactory.ParseMemberDeclaration(
@@ -119,6 +127,19 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         var index = type.Members.IndexOf(member);
         var members = type.Members.Replace(member, newMember).Insert(index, field);
         return root.ReplaceNode(type, type.WithMembers(members));
+    }
+
+    private static bool IsStaticInitializerUsing(MemberDeclarationSyntax candidate, string memberName)
+    {
+        SyntaxNode? initializer = candidate switch
+        {
+            FieldDeclarationSyntax field when field.Modifiers.Any(SyntaxKind.StaticKeyword) => field.Declaration,
+            PropertyDeclarationSyntax { Initializer: { } value } property when property.Modifiers.Any(SyntaxKind.StaticKeyword) => value,
+            _ => null
+        };
+
+        return initializer != null &&
+               initializer.DescendantNodes().OfType<SimpleNameSyntax>().Any(name => name.Identifier.ValueText == memberName);
     }
 
     private static bool IsConditionalDirective(SyntaxTrivia trivia)

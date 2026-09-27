@@ -87,8 +87,11 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     private static bool CompilesOnEveryCall(InvocationExpressionSyntax compile, SemanticModel semanticModel)
     {
-        if (RunsOnce(compile) || IsInsideCacheFactory(compile, semanticModel))
+        if (RunsOnce(compile))
             return false;
+
+        if (IsInsideCacheFactory(compile, semanticModel, out var lazyCreation))
+            return lazyCreation != null && LazyIsBuiltPerCall(lazyCreation);
 
         var value = ClimbValue(compile);
         switch (value.Parent)
@@ -209,7 +212,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// A store to a field or property of <c>this</c> from an ordinary method or accessor, not guarded by an
-    /// <c>if</c> that tests the member. Constructors and <c>init</c> accessors are a non-goal: whether the instance
+    /// <c>if</c> that tests the member is null (or an <c>else</c> of a test that it is not null). Constructors and <c>init</c> accessors are a non-goal: whether the instance
     /// lives long enough to reuse the delegate is not known.
     /// </summary>
     private static bool InstanceStoreCompilesOnEveryCall(AssignmentExpressionSyntax assignment, string memberName)
@@ -224,14 +227,100 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         if (member is not (MethodDeclarationSyntax or AccessorDeclarationSyntax { RawKind: (int)SyntaxKind.GetAccessorDeclaration or (int)SyntaxKind.SetAccessorDeclaration }))
             return false;
 
-        foreach (var ifStatement in assignment.Ancestors().OfType<IfStatementSyntax>())
+        SyntaxNode previous = assignment;
+        foreach (var ancestor in assignment.Ancestors())
         {
-            if (ifStatement.Condition.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
-                .Any(identifier => identifier.Identifier.ValueText == memberName))
-                return false;
+            if (ancestor is MemberDeclarationSyntax or AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
+                break;
+
+            if (ancestor is IfStatementSyntax ifStatement)
+            {
+                // `if (_q == null) _q = ...` or `if (_q != null) ... else _q = ...`.
+                var inElse = ifStatement.Else != null && previous == ifStatement.Else;
+                if (TestsMember(ifStatement.Condition, memberName, inElse ? NullTest.NotNull : NullTest.Null))
+                    return false;
+            }
+
+            previous = ancestor;
         }
 
         return true;
+    }
+
+    private enum NullTest
+    {
+        Null,
+        NotNull
+    }
+
+    /// <summary>
+    /// True when <paramref name="condition"/> tests that the member named <paramref name="memberName"/> (or
+    /// <c>this.</c> it) is null (or, for <see cref="NullTest.NotNull"/>, is not null), alone or as one operand of
+    /// <c>&amp;&amp;</c> or <c>||</c>. A guard on another member, or the opposite test, does not count.
+    /// </summary>
+    private static bool TestsMember(ExpressionSyntax condition, string memberName, NullTest test)
+    {
+        switch (condition)
+        {
+            case ParenthesizedExpressionSyntax parenthesized:
+                return TestsMember(parenthesized.Expression, memberName, test);
+
+            case PrefixUnaryExpressionSyntax unary when unary.IsKind(SyntaxKind.LogicalNotExpression):
+                return TestsMember(unary.Operand, memberName, test == NullTest.Null ? NullTest.NotNull : NullTest.Null);
+
+            case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression) || binary.IsKind(SyntaxKind.LogicalOrExpression):
+                return TestsMember(binary.Left, memberName, test) || TestsMember(binary.Right, memberName, test);
+
+            case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression):
+            {
+                var isNullTest = binary.IsKind(SyntaxKind.EqualsExpression);
+                var matches = IsMember(binary.Left, memberName) && IsNull(binary.Right) ||
+                              IsMember(binary.Right, memberName) && IsNull(binary.Left);
+                return matches && isNullTest == (test == NullTest.Null);
+            }
+
+            case IsPatternExpressionSyntax isPattern when IsMember(isPattern.Expression, memberName):
+                return PatternTestsNull(isPattern.Pattern) is { } isNull && isNull == (test == NullTest.Null);
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>True for <c>null</c>, false for <c>not null</c> and <c>{ }</c>, null for any other pattern.</summary>
+    private static bool? PatternTestsNull(PatternSyntax pattern)
+    {
+        switch (pattern)
+        {
+            case ConstantPatternSyntax constant when IsNull(constant.Expression):
+                return true;
+            case UnaryPatternSyntax unary when unary.IsKind(SyntaxKind.NotPattern):
+                return PatternTestsNull(unary.Pattern) is { } inner ? !inner : null;
+            case RecursivePatternSyntax { Type: null, PositionalPatternClause: null, Designation: null } recursive
+                when recursive.PropertyPatternClause is { Subpatterns.Count: 0 }:
+                return false;
+            case ParenthesizedPatternSyntax parenthesized:
+                return PatternTestsNull(parenthesized.Pattern);
+            default:
+                return null;
+        }
+    }
+
+    private static bool IsMember(ExpressionSyntax expression, string memberName)
+    {
+        return expression switch
+        {
+            ParenthesizedExpressionSyntax parenthesized => IsMember(parenthesized.Expression, memberName),
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText == memberName,
+            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText == memberName,
+            _ => false
+        };
+    }
+
+    private static bool IsNull(ExpressionSyntax expression)
+    {
+        return expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.NullLiteralExpression) ||
+               expression is LiteralExpressionSyntax defaultLiteral && defaultLiteral.IsKind(SyntaxKind.DefaultLiteralExpression);
     }
 
     /// <summary>
@@ -348,7 +437,9 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             if (!IsInvoked(ClimbValue(call)))
                 return false;
 
-            referenced = true;
+            // A call from a static initializer or static constructor compiles once.
+            if (!RunsOnce(call))
+                referenced = true;
         }
 
         return true;
@@ -399,9 +490,14 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     /// <c>GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs every time the key
     /// exists), <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
     /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
+    /// For a Lazy, <paramref name="lazyCreation"/> is the <c>new Lazy</c> expression, whose own lifetime decides.
     /// </summary>
-    private static bool IsInsideCacheFactory(SyntaxNode node, SemanticModel semanticModel)
+    private static bool IsInsideCacheFactory(
+        SyntaxNode node,
+        SemanticModel semanticModel,
+        out BaseObjectCreationExpressionSyntax? lazyCreation)
     {
+        lazyCreation = null;
         var boundary = node.Ancestors()
             .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
         if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
@@ -410,16 +506,71 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             return false;
         }
 
-        return owner switch
+        switch (owner)
         {
-            InvocationExpressionSyntax call =>
-                CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
-                IsAddFactory(argument, argumentList, semanticModel),
-            BaseObjectCreationExpressionSyntax creation =>
-                semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" } &&
-                IsAddFactory(argument, argumentList, semanticModel),
-            _ => false
-        };
+            case InvocationExpressionSyntax call:
+                return CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
+                       IsAddFactory(argument, argumentList, semanticModel);
+
+            case BaseObjectCreationExpressionSyntax creation
+                when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" } &&
+                     IsAddFactory(argument, argumentList, semanticModel):
+                lazyCreation = creation;
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// True when a <c>Lazy&lt;T&gt;</c> is built and read on every call instead of kept: its <c>.Value</c> read
+    /// straight away, or a local whose every use reads <c>.Value</c>. A Lazy stored in a field or property, passed
+    /// on, returned or built in run-once code (a static initializer or constructor) stays quiet.
+    /// </summary>
+    private static bool LazyIsBuiltPerCall(BaseObjectCreationExpressionSyntax creation)
+    {
+        if (RunsOnce(creation))
+            return false;
+
+        var value = ClimbValue(creation);
+        switch (value.Parent)
+        {
+            case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Value" } access when access.Expression == value:
+                return true;
+
+            case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
+                when declarator.Parent?.Parent is LocalDeclarationStatementSyntax:
+                return IsOnlyReadForValue(declarator.Identifier.ValueText, declarator);
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsOnlyReadForValue(string name, SyntaxNode declaration)
+    {
+        var scope = GetEnclosingMember(declaration);
+        if (scope == null)
+            return false;
+
+        var read = false;
+        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.ValueText != name)
+                continue;
+
+            if (IsMemberName(identifier) ||
+                identifier.Parent is not MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Value" } access ||
+                access.Expression != identifier)
+            {
+                return false;
+            }
+
+            read = true;
+        }
+
+        return read;
     }
 
     /// <summary>

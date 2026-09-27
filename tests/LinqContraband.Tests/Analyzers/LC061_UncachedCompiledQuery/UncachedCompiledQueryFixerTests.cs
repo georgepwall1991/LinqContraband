@@ -162,6 +162,52 @@ public class UncachedCompiledQueryFixerTests
     }
 
     [Fact]
+    public async Task LazyBuiltPerCall_Hoists()
+    {
+        await VerifyFixAsync(@"
+    public Blog Get(int id) => new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))).Value(_db, id);", @"
+    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    public Blog Get(int id) => new Lazy<Func<Ctx, int, Blog>>(() => GetQuery).Value(_db, id);");
+    }
+
+    [Fact]
+    public async Task NotNullGuardedStore_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { if (_byId != null) _byId = {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }", @"
+    private Func<Ctx, int, Blog> _byId;
+    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    public Blog Get(int id) { if (_byId != null) _byId = GetQuery; return _byId(_db, id); }");
+    }
+
+    [Fact]
+    public async Task FactoryWithStaticAndOrdinaryCallers_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static Func<Ctx, int, Blog> Build() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    public Blog Get(int id) => Build()(_db, id);
+    private static readonly Blog First = Build()(new Ctx(), 1);", @"
+    private static readonly Func<Ctx, int, Blog> BuildQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    private static Func<Ctx, int, Blog> Build() => BuildQuery;
+    public Blog Get(int id) => Build()(_db, id);
+    private static readonly Blog First = Build()(new Ctx(), 1);");
+    }
+
+    [Fact]
+    public async Task StaticInitializerAboveTheMember_GetsNoFix()
+    {
+        // First's initializer runs before a field inserted below it, so it would call Build() while BuildQuery is null.
+        await VerifyNoFixAsync(@"
+    private static readonly Blog First = Build()(new Ctx(), 1);
+    private static Func<Ctx, int, Blog> Build() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    public Blog Get(int id) => Build()(_db, id);");
+    }
+
+    [Fact]
     public async Task NameInUse_PicksAnotherName()
     {
         await VerifyFixAsync(@"

@@ -142,6 +142,26 @@ class Repo
     private static Func<Ctx, int, Blog> Build(int unused) => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
     private static readonly Func<Ctx, int, Blog> ById = Build(0);
     public Blog Get(int id) => Build()(_db, id);")]
+    // A guard that tests the member is not null, or tests another member, is not a lazy cache.
+    [InlineData(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { if (_byId != null) _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"
+    private Func<Ctx, int, Blog> _byId;
+    private Func<Ctx, int, Blog> _other;
+    public Blog Get(int id) { if (_other == null) _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { if (_byId is null) { } else { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    // A private factory with any ordinary caller still compiles on every call, even if a static initializer calls it too.
+    [InlineData(@"
+    private static readonly Blog First = Build()(new Ctx(), 1);
+    private static Func<Ctx, int, Blog> Build() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    public Blog Get(int id) => Build()(_db, id);")]
+    // A Lazy built and read on every call.
+    [InlineData(@"public Blog Get(int id) => new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))).Value(_db, id);")]
+    [InlineData(@"public Blog Get(int id) { var lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return lazy.Value(_db, id); }")]
+    [InlineData(@"public Blog Get(int id) => new Lazy<Blog>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)).Value;")]
     public async Task CompiledOnEveryCall_Members_Reports(string members)
     {
         var name = members.Contains("CompileAsyncQuery") ? "CompileAsyncQuery" : "CompileQuery";
@@ -206,6 +226,22 @@ class Repo
     [InlineData(@"
     private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
     public Blog Get(string key, int id) => Cache.AddOrUpdate(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)), (_, old) => old)(_db, id);")]
+    // Null guards on the member itself.
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (this._byId == null) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId != null) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (!(_byId is not null) && id > 0) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    // A private factory called only from static initializers or a static constructor runs once.
+    [InlineData(@"
+    private static readonly Blog First = Build()(new Ctx(), 1);
+    private static Func<Ctx, int, Blog> Build() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"
+    private static readonly Blog First;
+    static Repo() { First = Build()(new Ctx(), 1); }
+    private static Func<Ctx, int, Blog> Build() { return EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }")]
+    // A Lazy kept in an instance field, or handed back to the caller.
+    [InlineData(@"private readonly Lazy<Func<Ctx, int, Blog>> _byId = new(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
+    [InlineData(@"public Lazy<Func<Ctx, int, Blog>> Make() => new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
+    [InlineData(@"public Blog Get(int id) { var lazy = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); Keep(lazy); return lazy.Value(_db, id); } private void Keep(object o) { }")]
     // Some other EF class.
     [InlineData(@"public Blog Get(int id) => Other.EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
     public async Task CachedOrUnknownLifetime_DoesNotReport(string members)
