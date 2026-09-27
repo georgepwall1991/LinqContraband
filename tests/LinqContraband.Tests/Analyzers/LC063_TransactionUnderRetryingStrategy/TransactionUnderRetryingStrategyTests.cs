@@ -395,6 +395,81 @@ static class DatabaseOptions
     }
 
     [Fact]
+    public async Task MethodGroupOnlyCapturedInsideStrategyLambda_Reports()
+    {
+        // Storing the method group does not run it under the strategy.
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => { Action later = SaveInTransaction; GC.KeepAlive(later); });",
+            extraMembers: @"
+    private void SaveInTransaction()
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        _db.SaveChanges();
+        tx.Commit();
+    }"));
+    }
+
+    [Fact]
+    public async Task CalleeChainUnderStrategy_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => Outer());",
+            extraMembers: @"
+    private void Outer()
+    {
+        Validate();
+        Inner();
+    }
+
+    private void Validate() { }
+
+    private void Inner()
+    {
+        using var tx = _db.Database.BeginTransaction();
+        _db.SaveChanges();
+        tx.Commit();
+    }"));
+    }
+
+    [Fact]
+    public async Task CalleeChainWithAnUnprotectedCaller_Reports()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => Outer());
+        Inner();",
+            extraMembers: @"
+    private void Outer() => Inner();
+
+    private void Inner()
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        _db.SaveChanges();
+        tx.Commit();
+    }"));
+    }
+
+    [Fact]
+    public async Task RecursiveCallersWithoutAStrategyEntry_Report()
+    {
+        // A cycle of callers proves nothing unless one of them is entered from the strategy.
+        await VerifyAsync(Wrap(
+            @"Ping(3);",
+            extraMembers: @"
+    private void Ping(int n) { if (n > 0) Pong(n - 1); }
+
+    private void Pong(int n)
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        tx.Commit();
+        Ping(n);
+        Pong(n - 1);
+    }"));
+    }
+
+    [Fact]
     public async Task ProjectResilientTransactionWrapper_NotReported()
     {
         await VerifyAsync(Wrap(

@@ -12,7 +12,7 @@ namespace LinqContraband.Analyzers.LC063_TransactionUnderRetryingStrategy;
 
 /// <summary>
 /// What one compilation says about retrying execution strategies: which context types are configured with one, whether a
-/// configuration exists that cannot be tied to a context type, and which methods run inside an execution strategy.
+/// configuration exists that cannot be tied to a context type.
 /// </summary>
 internal sealed class RetryingStrategyModel
 {
@@ -22,24 +22,20 @@ internal sealed class RetryingStrategyModel
     private static readonly RetryingStrategyModel Empty = new(
         new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default),
         null,
-        null,
-        new HashSet<ISymbol>(SymbolEqualityComparer.Default));
+        null);
 
     private readonly Dictionary<INamedTypeSymbol, Location> _configuredContexts;
     private readonly INamedTypeSymbol? _onlyContext;
     private readonly Location? _unattributedLocation;
-    private readonly HashSet<ISymbol> _calledFromStrategy;
 
     private RetryingStrategyModel(
         Dictionary<INamedTypeSymbol, Location> configuredContexts,
         INamedTypeSymbol? onlyContext,
-        Location? unattributedLocation,
-        HashSet<ISymbol> calledFromStrategy)
+        Location? unattributedLocation)
     {
         _configuredContexts = configuredContexts;
         _onlyContext = onlyContext;
         _unattributedLocation = unattributedLocation;
-        _calledFromStrategy = calledFromStrategy;
     }
 
     /// <summary>
@@ -64,13 +60,9 @@ internal sealed class RetryingStrategyModel
         return null;
     }
 
-    /// <summary>True when a lambda passed to an execution strategy calls <paramref name="method"/> or passes it as a method group.</summary>
-    public bool IsCalledFromStrategy(ISymbol method) => _calledFromStrategy.Contains(method.OriginalDefinition);
-
     public static RetryingStrategyModel Build(Compilation compilation, CancellationToken cancellationToken)
     {
         var configured = new Dictionary<INamedTypeSymbol, Location>(SymbolEqualityComparer.Default);
-        var calledFromStrategy = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         Location? unattributed = null;
 
         foreach (var tree in compilation.SyntaxTrees)
@@ -85,22 +77,9 @@ internal sealed class RetryingStrategyModel
             foreach (var invocation in tree.GetRoot(cancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 var name = GetInvokedName(invocation);
-                if (name is not ("EnableRetryOnFailure" or "ExecutionStrategy" or "Execute" or "ExecuteAsync" or
-                    "ExecuteInTransaction" or "ExecuteInTransactionAsync"))
-                {
-                    continue;
-                }
-
-                if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
-                    continue;
-
-                if (IsStrategyExecute(operation.TargetMethod))
-                {
-                    CollectCallees(operation, calledFromStrategy);
-                    continue;
-                }
-
-                if (!IsRetryingConfiguration(operation))
+                if (name is not ("EnableRetryOnFailure" or "ExecutionStrategy") ||
+                    semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation ||
+                    !IsRetryingConfiguration(operation))
                     continue;
 
                 var location = invocation.GetLocation();
@@ -120,7 +99,7 @@ internal sealed class RetryingStrategyModel
             return Empty;
 
         var onlyContext = unattributed != null ? FindOnlySourceContext(compilation, cancellationToken) : null;
-        return new RetryingStrategyModel(configured, onlyContext, unattributed, calledFromStrategy);
+        return new RetryingStrategyModel(configured, onlyContext, unattributed);
     }
 
     /// <summary>
@@ -153,6 +132,24 @@ internal sealed class RetryingStrategyModel
         return false;
     }
 
+    /// <summary>A method declared in source whose declaration mentions an execution strategy, such as a resilient-transaction helper.</summary>
+    public static bool IsProjectStrategyWrapper(IMethodSymbol method, CancellationToken cancellationToken)
+    {
+        foreach (var reference in (method.ReducedFrom ?? method).OriginalDefinition.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax(cancellationToken).ToString().IndexOf("ExecutionStrategy", StringComparison.Ordinal) >= 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>A strategy's Execute* method, or a project method that wraps one: a delegate passed to it runs under the strategy.</summary>
+    public static bool RunsDelegateUnderStrategy(IMethodSymbol method, CancellationToken cancellationToken)
+    {
+        return IsStrategyExecute(method) || IsProjectStrategyWrapper(method, cancellationToken);
+    }
+
     private static bool IsExecutionStrategyInterface(ITypeSymbol type)
     {
         return type.Name == "IExecutionStrategy" && type.ContainingNamespace?.ToDisplayString() == StorageNamespace;
@@ -167,49 +164,6 @@ internal sealed class RetryingStrategyModel
             SimpleNameSyntax simpleName => simpleName.Identifier.ValueText,
             _ => null
         };
-    }
-
-    /// <summary>
-    /// Records what runs under the strategy: calls inside a lambda passed as the delegate, and a method group passed as
-    /// the delegate. Anything else in the arguments (<c>strategy.Execute(BuildWork())</c>) runs before the strategy does.
-    /// </summary>
-    private static void CollectCallees(IInvocationOperation execute, HashSet<ISymbol> calledFromStrategy)
-    {
-        foreach (var argument in execute.Arguments)
-        {
-            var value = argument.Value;
-            while (value is IDelegateCreationOperation or IConversionOperation)
-            {
-                value = value switch
-                {
-                    IDelegateCreationOperation delegateCreation => delegateCreation.Target,
-                    IConversionOperation conversion => conversion.Operand,
-                    _ => value
-                };
-            }
-
-            switch (value)
-            {
-                case IMethodReferenceOperation methodReference:
-                    calledFromStrategy.Add(methodReference.Method.OriginalDefinition);
-                    break;
-                case IAnonymousFunctionOperation lambda:
-                    foreach (var operation in lambda.Body.Descendants())
-                    {
-                        switch (operation)
-                        {
-                            case IInvocationOperation invocation:
-                                calledFromStrategy.Add(invocation.TargetMethod.OriginalDefinition);
-                                break;
-                            case IMethodReferenceOperation reference:
-                                calledFromStrategy.Add(reference.Method.OriginalDefinition);
-                                break;
-                        }
-                    }
-
-                    break;
-            }
-        }
     }
 
     /// <summary>

@@ -66,11 +66,15 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
         var model = new Lazy<RetryingStrategyModel>(
             () => RetryingStrategyModel.Build(compilation, cancellationToken),
             LazyThreadSafetyMode.ExecutionAndPublication);
+        var callers = new StrategyCallers(compilation);
 
-        context.RegisterOperationAction(ctx => AnalyzeInvocation(ctx, model), OperationKind.Invocation);
+        context.RegisterOperationAction(ctx => AnalyzeInvocation(ctx, model, callers), OperationKind.Invocation);
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context, Lazy<RetryingStrategyModel> model)
+    private static void AnalyzeInvocation(
+        OperationAnalysisContext context,
+        Lazy<RetryingStrategyModel> model,
+        StrategyCallers callers)
     {
         var invocation = (IInvocationOperation)context.Operation;
         if (!TryGetTransactionContext(invocation, out var contextType))
@@ -84,7 +88,7 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
             return;
 
         var owner = FindOwningCallable(invocation, context.ContainingSymbol);
-        if (owner != null && model.Value.IsCalledFromStrategy(owner))
+        if (owner is IMethodSymbol ownerMethod && callers.RunsOnlyUnderStrategy(ownerMethod, context.CancellationToken))
             return;
 
         var location = invocation.Syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess }
@@ -167,22 +171,7 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
             if (value.Parent is not IArgumentOperation { Parent: IInvocationOperation call })
                 return true;
 
-            if (RetryingStrategyModel.IsStrategyExecute(call.TargetMethod) ||
-                IsProjectStrategyWrapper(call.TargetMethod, cancellationToken))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>A method declared in source whose declaration mentions an execution strategy, such as a resilient-transaction helper.</summary>
-    private static bool IsProjectStrategyWrapper(IMethodSymbol method, CancellationToken cancellationToken)
-    {
-        foreach (var reference in (method.ReducedFrom ?? method).OriginalDefinition.DeclaringSyntaxReferences)
-        {
-            if (reference.GetSyntax(cancellationToken).ToString().IndexOf("ExecutionStrategy", StringComparison.Ordinal) >= 0)
+            if (RetryingStrategyModel.RunsDelegateUnderStrategy(call.TargetMethod, cancellationToken))
                 return true;
         }
 
