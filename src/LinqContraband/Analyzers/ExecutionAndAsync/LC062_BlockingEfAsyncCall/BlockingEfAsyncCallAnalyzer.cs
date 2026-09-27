@@ -234,9 +234,11 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
             {
                 // Any other use of the local before the site (await t, Task.WhenAll(t, ...), t.Wait(),
                 // t.IsCompletedSuccessfully, handing it to a helper) may complete it or prove it complete.
+                // A zero-timeout poll (t.Wait(0)) is not reported and proves nothing, so it does not count.
                 case ILocalReferenceOperation reference when
                     SymbolEqualityComparer.Default.Equals(reference.Local, local) &&
-                    !IsAssignmentTarget(reference):
+                    !IsAssignmentTarget(reference) &&
+                    !IsZeroTimeoutPollOn(reference):
                     return false;
 
                 // An await between the assignment and the site may complete the task too.
@@ -250,6 +252,18 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
 
         value = assignment.Value;
         return true;
+    }
+
+    private static bool IsZeroTimeoutPollOn(ILocalReferenceOperation reference)
+    {
+        IOperation current = reference;
+        while (current.Parent is IConversionOperation conversion && ReferenceEquals(conversion.Operand, current))
+            current = conversion;
+
+        return current.Parent is IInvocationOperation { TargetMethod.Name: "Wait" } wait &&
+               ReferenceEquals(wait.Instance, current) &&
+               IsTask(wait.TargetMethod.ContainingType) &&
+               IsZeroTimeoutPoll(wait);
     }
 
     private static bool IsAssignmentTarget(ILocalReferenceOperation reference)

@@ -58,7 +58,7 @@ Reports `.Result` on `Task<T>` or `ValueTask<T>`, any `Task.Wait(...)` overload,
 
 ## When it stays quiet (non-goals)
 
-- A task already awaited, or proven complete, before the blocking access: `await task;`, `await Task.WhenAll(t1, t2);`, `task.Wait();` (which reports itself), or a check such as `task.IsCompletedSuccessfully ? task.Result : ...`. Any other use of the local before the access, and any `await` between the assignment and the access, count as possibly completing it.
+- A task already awaited, or proven complete, before the blocking access: `await task;`, `await Task.WhenAll(t1, t2);`, `task.Wait();` (which reports itself), or a check such as `task.IsCompletedSuccessfully ? task.Result : ...`. Any other use of the local before the access, and any `await` between the assignment and the access, count as possibly completing it; a zero-timeout poll such as `task.Wait(0)` does not, so a later `task.Result` still reports.
 - Tasks that do not come straight from EF Core: `Task.FromResult`, the application's own `...Async` methods, `Task.Run(() => db.Users.ToListAsync()).Result`, fields and properties that hold a task, and locals assigned more than once or copied from another local.
 - Queries over an in-memory collection wrapped with `AsQueryable()`: the EF Core async operators throw on those instead (LC060's case).
 - A task stored in a local outside the lambda that blocks on it.
@@ -73,7 +73,7 @@ No fix is offered where neither rewrite is provably safe:
 
 - A non-async lambda inside an async method, or a `lock` body: `await` is not allowed there, and the synchronous call would be LC008's finding.
 - A task stored in a local outside async code.
-- No `await` fix when a `ref struct` value, such as a `Span<T>` local or parameter, or a `ref` or `ref readonly` local, is used after the blocking access: it cannot live across an `await`.
+- No `await` fix when a `ref struct` value, such as a `Span<T>` local or parameter, or a `ref` or `ref readonly` local, is used after the blocking access, or anywhere inside a `ref struct`, where `this` can be read implicitly: such a value cannot live across an `await`.
 - No synchronous fix when the `CancellationToken` argument could have an effect, such as `ToListAsync(GetToken())` or `ToListAsync(new CancellationTokenSource().Token)`: dropping it would drop that call. Locals, parameters, field and property reads, `default` and `CancellationToken.None` are dropped.
 - `Wait(timeout)`, which returns whether the task finished.
 - Code inside a `try`, in the same member, with a catch that can see the `AggregateException` that `.Result` and `.Wait()` throw and the rewrites do not: a bare `catch`, `catch (Exception)`, `catch (SystemException)`, or a catch of `AggregateException` or one of its base types, with or without a `when` filter. A catch that cannot be an `AggregateException`, such as `catch (InvalidOperationException)` or `catch (DbUpdateException)`, keeps the fix.
@@ -83,7 +83,7 @@ No fix is offered where neither rewrite is provably safe:
 
 Comments between the task and the blocking access, as in `db.Users.ToListAsync() /* why */ .Result`, move after the new expression; a `//` comment keeps a line break after it.
 
-The fixer compiles the rewritten document and offers nothing when the rewrite would add an error or change the type of the value.
+The fixer compiles the rewritten document and offers nothing when the rewrite would add an error or change the type of the value. The synchronous call must bind to `System.Linq.Enumerable`, `System.Linq.Queryable` or a type from an EF Core assembly (an application context's override counts as the `DbContext` method it overrides), so a project's own helper in a `Microsoft.EntityFrameworkCore.*` namespace is never the target.
 
 ## Test Cases
 

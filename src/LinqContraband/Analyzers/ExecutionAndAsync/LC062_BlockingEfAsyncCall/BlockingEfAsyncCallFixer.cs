@@ -236,12 +236,18 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
     }
 
     /// <summary>
-    /// True when a ref-like value that exists before the site (a parameter, a local declared earlier, or <c>this</c>
-    /// in a ref struct), or a <c>ref</c> or <c>ref readonly</c> local declared earlier, is read after it: an inserted <c>await</c> would keep it live across the suspension point,
-    /// which the async rewriter rejects (CS4007, CS4012). LC008's helper covers locals; this adds the rest.
+    /// True when the site is in a ref struct, or when a ref-like parameter or local, or a <c>ref</c> or
+    /// <c>ref readonly</c> local, declared before the site is read after it: an inserted <c>await</c> would keep it
+    /// live across the suspension point, which the async rewriter rejects (CS4007, CS4012, CS9217). LC008's helper
+    /// covers ref-like locals; this adds the rest.
     /// </summary>
     private static bool WouldStrandRefLikeValue(SyntaxNode site, SemanticModel semanticModel, CancellationToken cancellationToken)
     {
+        // Inside a ref struct, `this` can be read implicitly (a bare field or method name), so any member of one is
+        // treated as keeping a ref-like value live.
+        if (semanticModel.GetEnclosingSymbol(site.SpanStart, cancellationToken)?.ContainingType is { IsRefLikeType: true })
+            return true;
+
         var body = site.Ancestors().FirstOrDefault(node =>
             node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or BaseMethodDeclarationSyntax or AccessorDeclarationSyntax);
         if (body == null)
@@ -251,12 +257,6 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         {
             if (node.SpanStart <= site.Span.End)
                 continue;
-
-            if (node is ThisExpressionSyntax &&
-                semanticModel.GetEnclosingSymbol(node.SpanStart, cancellationToken)?.ContainingType is { IsRefLikeType: true })
-            {
-                return true;
-            }
 
             if (node is not IdentifierNameSyntax identifier)
                 continue;
@@ -516,7 +516,13 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
                 .Select(parameter => parameter.RefKind + " " + parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
     }
 
-    /// <summary>The synchronous call must be EF Core's or LINQ's, not an application method that happens to share the name.</summary>
+    /// <summary>
+    /// The synchronous call must be EF Core's or LINQ's, not an application method that happens to share the name:
+    /// after following overrides (an application context's <c>SaveChanges</c> override counts as <c>DbContext</c>'s,
+    /// which the override checks cover), the method must be declared by <c>System.Linq.Enumerable</c>,
+    /// <c>System.Linq.Queryable</c>, or a type in an EF Core assembly. A project type in a
+    /// <c>Microsoft.EntityFrameworkCore.*</c> namespace does not count.
+    /// </summary>
     private static async Task<bool> BindsToEfOrLinqAsync(Document fixedDocument, SyntaxAnnotation marker, CancellationToken cancellationToken)
     {
         var newModel = await fixedDocument.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
@@ -532,8 +538,16 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         while (original.OverriddenMethod != null)
             original = original.OverriddenMethod;
 
-        var namespaceName = original.ContainingNamespace?.ToDisplayString() ?? "";
-        return namespaceName == "System.Linq" || namespaceName.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal);
+        var declaringType = original.ContainingType;
+        var compilation = newModel.Compilation;
+        if (SymbolEqualityComparer.Default.Equals(declaringType, compilation.GetTypeByMetadataName("System.Linq.Enumerable")) ||
+            SymbolEqualityComparer.Default.Equals(declaringType, compilation.GetTypeByMetadataName("System.Linq.Queryable")))
+        {
+            return true;
+        }
+
+        return declaringType?.ContainingAssembly?.Name is { } assemblyName &&
+               assemblyName.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal);
     }
 
     /// <summary>

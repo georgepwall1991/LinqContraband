@@ -115,6 +115,39 @@ public class Program
         Assert.Equal(expectedUnfixed, (await GetLc062Async(document)).Length);
     }
 
+    [Fact]
+    public async Task ProjectTypeInAnEfCoreNamespace_IsNotASynchronousTarget()
+    {
+        // The project's own ToList in a Microsoft.EntityFrameworkCore.* namespace binds better than Enumerable.ToList,
+        // but it is not EF Core's: the synchronous fix is withheld rather than calling it.
+        var source = Prelude.Replace("using Microsoft.EntityFrameworkCore;", "using Microsoft.EntityFrameworkCore;\nusing Microsoft.EntityFrameworkCore.Helpers;") + @"
+namespace Microsoft.EntityFrameworkCore.Helpers
+{
+    public static class QueryHelpers
+    {
+        public static List<T> ToList<T>(this IQueryable<T> source) => new List<T>();
+    }
+}
+
+public class Program
+{
+    public void Run(ShopContext db, CancellationToken ct)
+    {
+        var users = db.Users.ToListAsync(ct).Result;
+    }
+}
+";
+        var document = CreateDocument(source);
+        Assert.Equal(0, await CountErrorsAsync(document));
+
+        var diagnostic = Assert.Single(await GetLc062Async(document));
+        var actions = new List<CodeAction>();
+        await new BlockingEfAsyncCallFixer().RegisterCodeFixesAsync(
+            new CodeFixContext(document, diagnostic, (a, _) => actions.Add(a), CancellationToken.None));
+
+        Assert.Empty(actions);
+    }
+
     private static Document CreateDocument(string source)
     {
         var workspace = new AdhocWorkspace();

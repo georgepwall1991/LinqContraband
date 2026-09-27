@@ -16,6 +16,12 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 ";
 
+    /// <summary>
+    /// The fixer accepts a synchronous target only from an assembly named like EF Core's, so fixer tests compile the
+    /// mock below into an assembly with this name.
+    /// </summary>
+    internal const string MockAssemblyName = "Microsoft.EntityFrameworkCore.Lc062Mock";
+
     /// <summary>EF Core's async and sync APIs with the signatures EF Core 8 declares.</summary>
     internal const string EfMock = @"
 namespace Microsoft.EntityFrameworkCore
@@ -185,6 +191,8 @@ class Program
         @"{|#0:db.Database.MigrateAsync(ct).Wait()|};",
         @"{|#0:db.Database.MigrateAsync(ct).GetAwaiter().GetResult()|};",
         @"var transaction = {|#0:db.Database.BeginTransactionAsync(ct).Result|};",
+        // A zero-timeout poll is not reported and does not prove the task complete.
+        @"var task = db.Users.ToListAsync(); var polled = task.Wait(0); var users = {|#0:task.Result|};",
         @"var created = {|#0:db.Database.EnsureCreatedAsync().Result|};",
         @"var rows = {|#0:db.Database.ExecuteSqlRawAsync(""DELETE FROM Users"", ct).Result|};",
         @"var rows = {|#0:db.Database.ExecuteSqlRawAsync(""DELETE FROM Users WHERE Id = {0}"", id).Result|};",

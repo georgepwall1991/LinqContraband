@@ -13,9 +13,19 @@ namespace LinqContraband.Tests.Analyzers.LC062_BlockingEfAsyncCall;
 /// </summary>
 public class BlockingEfAsyncCallFixerTests
 {
+    /// <summary>Compiles the test project as <see cref="BlockingEfAsyncCallTests.MockAssemblyName"/>, the mock EF Core's assembly.</summary>
+    private sealed class MockEfCodeFixTest : CodeFixTest
+    {
+        public MockEfCodeFixTest()
+        {
+            SolutionTransforms.Add((solution, projectId) =>
+                solution.WithProjectAssemblyName(projectId, BlockingEfAsyncCallTests.MockAssemblyName));
+        }
+    }
+
     private static Task VerifyFixAsync(string before, string after, bool isAsync)
     {
-        return new CodeFixTest
+        return new MockEfCodeFixTest
         {
             TestCode = BlockingEfAsyncCallTests.Wrap(before, isAsync),
             FixedCode = BlockingEfAsyncCallTests.Wrap(after, isAsync)
@@ -25,7 +35,7 @@ public class BlockingEfAsyncCallFixerTests
     private static Task VerifyNoFixAsync(string code, bool isAsync)
     {
         var source = BlockingEfAsyncCallTests.Wrap(code, isAsync);
-        return new CodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+        return new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
     }
 
     [Theory]
@@ -134,7 +144,7 @@ class Program
 }
 ";
         var mock = BlockingEfAsyncCallTests.Usings + BlockingEfAsyncCallTests.EfMock;
-        var test = new CodeFixTest();
+        var test = new MockEfCodeFixTest();
         test.TestState.Sources.Add(before);
         test.TestState.Sources.Add(mock);
         test.FixedState.Sources.Add(after);
@@ -343,7 +353,7 @@ class Program
             .Replace("\nclass Program", "\n[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"Other\")]\nclass Program");
         Assert.Contains("InternalsVisibleTo", source);
 
-        await new CodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
     }
 
     [Fact]
@@ -362,9 +372,28 @@ class Program
         buffer[0] = count;
     }
 }
-" + BlockingEfAsyncCallTests.EfMock);
+" + BlockingEfAsyncCallTests.EfMock,
+            BlockingEfAsyncCallTests.MockAssemblyName);
 
         Assert.Equal(new[] { "Call Count instead of blocking" }, titles);
+    }
+
+    [Fact]
+    public async Task InsideARefStruct_GetsNoAwaitFix()
+    {
+        // `this` can be read implicitly in a ref struct, so no member of one gets the await fix.
+        var source = BlockingEfAsyncCallTests.Usings + @"
+ref struct Worker
+{
+    static async Task Run(ShopContext db)
+    {
+        var count = {|LC062:db.Users.CountAsync().Result|};
+        await Task.Yield();
+    }
+}
+" + BlockingEfAsyncCallTests.EfMock;
+
+        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
     }
 
     [Fact]
@@ -377,7 +406,7 @@ class Program
         var users = await db.Users.ToListAsync();
         await db.SaveChangesAsync();", isAsync: true);
 
-        await new CodeFixTest { TestCode = before, FixedCode = after, BatchFixedCode = after }.RunAsync();
+        await new MockEfCodeFixTest { TestCode = before, FixedCode = after, BatchFixedCode = after }.RunAsync();
     }
 
     [Fact]
@@ -386,11 +415,13 @@ class Program
         var asyncTitles = await CodeActionTitles.GetAsync(
             new BlockingEfAsyncCallAnalyzer(),
             new BlockingEfAsyncCallFixer(),
-            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;", isAsync: true));
+            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;", isAsync: true),
+            BlockingEfAsyncCallTests.MockAssemblyName);
         var syncTitles = await CodeActionTitles.GetAsync(
             new BlockingEfAsyncCallAnalyzer(),
             new BlockingEfAsyncCallFixer(),
-            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;"));
+            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;"),
+            BlockingEfAsyncCallTests.MockAssemblyName);
 
         Assert.Equal(new[] { "Await the task instead of blocking" }, asyncTitles);
         Assert.Equal(new[] { "Call ToList instead of blocking" }, syncTitles);
@@ -410,7 +441,7 @@ class Program
             var fixedSource = await ApplyFixAsync(BlockingEfAsyncCallTests.Wrap(shape.Replace("{|#0:", "").Replace("|}", ""), isAsync));
 
             // The verifier compiles the fixed document and fails on any compiler error or leftover LC062.
-            await new CodeFixTest
+            await new MockEfCodeFixTest
             {
                 TestCode = source,
                 FixedCode = fixedSource,
@@ -425,7 +456,7 @@ class Program
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
-        var project = workspace.AddProject("Test", Microsoft.CodeAnalysis.LanguageNames.CSharp)
+        var project = workspace.AddProject(BlockingEfAsyncCallTests.MockAssemblyName, Microsoft.CodeAnalysis.LanguageNames.CSharp)
             .WithCompilationOptions(new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary))
             .WithMetadataReferences(references);
         var document = project.AddDocument("Test.cs", source);

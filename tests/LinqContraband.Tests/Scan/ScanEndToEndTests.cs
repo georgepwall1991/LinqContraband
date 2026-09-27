@@ -271,6 +271,9 @@ public sealed class ScanEndToEndTests
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
                     <TargetFramework>net10.0</TargetFramework>
+                    <!-- The stand-in DbContext below lives in this project; LC062's synchronous fix only calls
+                         methods from an assembly named like EF Core's. -->
+                    <AssemblyName>Microsoft.EntityFrameworkCore.ScanFixture</AssemblyName>
                   </PropertyGroup>
                 </Project>
                 """);
