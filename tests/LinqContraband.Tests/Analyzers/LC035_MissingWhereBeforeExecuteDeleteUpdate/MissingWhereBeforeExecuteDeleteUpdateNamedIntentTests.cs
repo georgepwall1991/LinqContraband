@@ -23,6 +23,9 @@ namespace TestApp
     public sealed class Radius { public int Id { get; set; } }
     public sealed class Medium { public int Id { get; set; } }
     public sealed class Hero { public int Id { get; set; } }
+    public sealed class Iris { public int Id { get; set; } }
+    public sealed class Trellis { public int Id { get; set; } }
+    public sealed class Axis { public int Id { get; set; } }
     public sealed class Potato { public int Id { get; set; } }
     public sealed class Photo { public int Id { get; set; } }
     public sealed class Video { public int Id { get; set; } }
@@ -302,6 +305,24 @@ namespace TestApp
     public class RefreshUsersConsumer
     {
         public Task<int> ConsumeAsync(BlogDbContext db) => {|LC035:db.Users.ExecuteDeleteAsync()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task OnlySisAndXisTakeTheClassicalPlural()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearIrises(BlogDbContext db) => db.Set<Iris>().ExecuteDelete();
+        public int ClearTrellises(BlogDbContext db) => db.Set<Trellis>().ExecuteDelete();
+        public int ClearAxes(BlogDbContext db) => db.Set<Axis>().ExecuteDelete();
+        public int ClearIres(BlogDbContext db) => {|LC035:db.Set<Iris>().ExecuteDelete()|};
+        public int ClearAnalysises(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
+        public int ClearAxises(BlogDbContext db) => {|LC035:db.Set<Axis>().ExecuteDelete()|};
     }
 }";
 

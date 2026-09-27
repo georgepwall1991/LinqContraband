@@ -194,7 +194,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
     /// The accepted plural spellings of a name, matched on its last word: irregular and invariant
     /// words, then classical endings (<c>Analysis</c> to <c>Analyses</c>, <c>Leaf</c> to <c>Leaves</c>,
     /// <c>Medium</c> to <c>Media</c>, <c>Criterion</c> to <c>Criteria</c>, <c>Radius</c> to <c>Radii</c>),
-    /// alongside the regular English form except for <c>-is</c>.
+    /// alongside the regular English form except for <c>-sis</c> and <c>-xis</c>.
     /// </summary>
     private static List<string> Pluralize(string name)
     {
@@ -226,8 +226,9 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
             return plurals;
         }
 
-        // Analysis becomes Analyses only; Analysises is not a word.
-        if (name.EndsWith("is", StringComparison.Ordinal))
+        // Analysis becomes Analyses and Axis Axes, never Analysises. Other -is words are regular:
+        // Iris becomes Irises and Trellis Trellises.
+        if (name.EndsWith("sis", StringComparison.Ordinal) || name.EndsWith("xis", StringComparison.Ordinal))
         {
             plurals.Add(name.Substring(0, name.Length - 2) + "es");
             return plurals;
