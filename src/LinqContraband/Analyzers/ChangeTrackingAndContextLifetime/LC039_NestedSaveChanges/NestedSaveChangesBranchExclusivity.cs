@@ -163,8 +163,10 @@ public sealed partial class NestedSaveChangesAnalyzer
                 if (gotoStatement.Expression is not IdentifierNameSyntax labelName)
                     return Enumerable.Empty<int>();
 
+                // A label inside a lambda or local function belongs to that function, not to this switch.
                 var label = switchStatement.Sections
-                    .SelectMany(section => section.DescendantNodes())
+                    .SelectMany(section => section.DescendantNodes(node =>
+                        node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)))
                     .OfType<LabeledStatementSyntax>()
                     .FirstOrDefault(statement => statement.Identifier.ValueText == labelName.Identifier.ValueText);
                 if (label == null)
@@ -329,11 +331,13 @@ public sealed partial class NestedSaveChangesAnalyzer
                 var definitelyHandled = false;
                 foreach (var catchClause in tryStatement.Catches)
                 {
-                    if (!PossiblyReceives(catchClause, thrownType, semanticModel))
+                    var filter = GetConstantFilter(catchClause, semanticModel);
+                    if (filter == false || !PossiblyReceives(catchClause, thrownType, semanticModel))
                         continue;
 
                     handlers.Add(catchClause);
-                    if (catchClause.Filter == null && DefinitelyReceives(catchClause, thrownType, semanticModel))
+                    if ((catchClause.Filter == null || filter == true) &&
+                        DefinitelyReceives(catchClause, thrownType, semanticModel))
                     {
                         definitelyHandled = true;
                         break;
@@ -354,6 +358,19 @@ public sealed partial class NestedSaveChangesAnalyzer
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// The value of a compile-time constant catch filter: <c>when (false)</c> never enters the catch and
+        /// <c>when (true)</c> behaves like no filter. Null when there is no filter or it is not constant.
+        /// </summary>
+        private static bool? GetConstantFilter(CatchClauseSyntax catchClause, SemanticModel semanticModel)
+        {
+            if (catchClause.Filter == null)
+                return null;
+
+            var value = semanticModel.GetConstantValue(catchClause.Filter.FilterExpression);
+            return value.HasValue && value.Value is bool constant ? constant : null;
         }
 
         private static bool PossiblyReceives(CatchClauseSyntax catchClause, ITypeSymbol? thrownType, SemanticModel semanticModel)

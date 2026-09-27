@@ -875,4 +875,109 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SavesInSwitchSections_GotoLabelInOtherSectionsLocalFunction_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                db.SaveChanges();
+                goto Done;
+            case 1:
+                db.SaveChanges();
+                void Local()
+                {
+                    // Shadows the outer label (CS0158), as code being edited in the IDE may; the goto in case 0
+                    // still targets the label after the switch.
+                    {|CS0158:Done|}:
+                    Console.WriteLine();
+                }
+
+                Local();
+                break;
+        }
+
+        Done:
+        Console.WriteLine();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_ConstantFalseFilterRethrows_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException) when (false)
+        {
+            throw;
+        }
+        catch (InvalidOperationException)
+        {
+            Console.WriteLine();
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_ConstantTrueFilterResumes_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException) when (true)
+        {
+            Console.WriteLine();
+        }
+        catch
+        {
+            throw;
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
