@@ -142,6 +142,10 @@ class Repo
     private static Func<Ctx, int, Blog> Build(int unused) => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
     private static readonly Func<Ctx, int, Blog> ById = Build(0);
     public Blog Get(int id) => Build()(_db, id);")]
+    // A cache created in the method is thrown away after the call.
+    [InlineData(@"public Blog Get(string key, int id) => new ConcurrentDictionary<string, Func<Ctx, int, Blog>>().GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    [InlineData(@"public Blog Get(string key, int id) { var cache = new ConcurrentDictionary<string, Func<Ctx, int, Blog>>(); return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
+    [InlineData(@"public Blog Get(string key, int id) { ConcurrentDictionary<string, Func<Ctx, int, Blog>> cache; cache = new(); return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
     // A guard that tests the member is not null, or tests another member, is not a lazy cache.
     [InlineData(@"
     private Func<Ctx, int, Blog> _byId;
@@ -228,6 +232,14 @@ class Repo
     [InlineData(@"private static readonly Blog First = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
     [InlineData(@"public static Blog First { get; } = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);")]
     [InlineData(@"private static readonly int Count = EF.CompileQuery((Ctx c) => c.Blogs.Count()).Invoke(new Ctx());")]
+    // A cache passed in or copied from a field outlives the call.
+    [InlineData(@"public Blog Get(ConcurrentDictionary<string, Func<Ctx, int, Blog>> cache, string key, int id) => cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
+    [InlineData(@"
+    private static Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) => System.Threading.LazyInitializer.EnsureInitialized(ref _byId, () => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
     // AddOrUpdate's add factory runs once per key.
     [InlineData(@"
     private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();

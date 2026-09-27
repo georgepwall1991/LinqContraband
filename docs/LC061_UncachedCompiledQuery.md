@@ -55,27 +55,29 @@ Reports `Microsoft.EntityFrameworkCore.EF.CompileQuery` and `EF.CompileAsyncQuer
 - `??=` and `if (_query == null) _query = ...` lazy initialization.
 - A `Lazy<T>` kept in a field or property, returned or passed on. A `Lazy<T>` built and read on every call (`new Lazy<...>(() => EF.CompileQuery(...)).Value`, or a local only read for `.Value`) still reports.
 - Instance field and property initializers that store the delegate, and assignments in instance constructors. Whether the instance lives long enough to reuse the delegate (a singleton, or a scoped service built per request) is not known, so the rule does not guess.
-- Lambdas passed as the add-value factory of a cache that runs it once per key, when the compile call sits directly in that lambda rather than in a delegate nested inside it. The update factory of `AddOrUpdate` runs every time the key exists, and a lambda passed as the cached value itself is what the cache keeps, so both still report. The caches are: `GetOrAdd`, `AddOrUpdate`, `GetOrCreate`, `GetOrCreateAsync`, `LazyInitializer.EnsureInitialized` and `Lazy<T>`.
+- Lambdas passed as the add-value factory of a cache that runs it once per key and outlives the call (a field, property, parameter or injected service), when the compile call sits directly in that lambda rather than in a delegate nested inside it. A cache created in the method (`new ConcurrentDictionary<...>().GetOrAdd(...)`, or a local set from `new`) is thrown away after the call, so it reports. The update factory of `AddOrUpdate` runs every time the key exists, and a lambda passed as the cached value itself is what the cache keeps, so both still report. The caches are: `GetOrAdd`, `AddOrUpdate`, `GetOrCreate`, `GetOrCreateAsync`, `LazyInitializer.EnsureInitialized` and `Lazy<T>`.
 - Dictionary stores (`cache[key] = EF.CompileQuery(...)`) and the delegate passed to another method.
 - Factory lambdas that return the delegate (`() => EF.CompileQuery(...)`), and public, internal or protected methods that return it, because their callers decide how long it lives. A private factory is quiet as soon as one caller does anything other than invoke the result, such as initializing a static field.
 - A local that is stored, returned or passed on as well as invoked.
 
 ## Code Fix
 
-Moves the compile call into a `private static readonly` field declared just above the member, typed with the delegate the call returns (keeping nullable annotations), and uses the field where the call was:
+Moves the compile call into a `private static readonly` field declared as the first member of the type (after any compiled-query fields it already hoisted), typed with the delegate the call returns (keeping nullable annotations), and uses the field where the call was. Static field initializers run in source order, so a field at the top is set before any other static initializer runs, including one that reaches the member through another method:
 
 ```csharp
 // Before
 public Task<Blog?> Get(int id) =>
     EF.CompileAsyncQuery((BlogContext c, int i) => c.Blogs.FirstOrDefault(b => b.Id == i))(_db, id);
 
-// After
+// After (the field is the first member of the class)
 private static readonly Func<BlogContext, int, Task<Blog?>> GetQuery = EF.CompileAsyncQuery((BlogContext c, int i) => c.Blogs.FirstOrDefault(b => b.Id == i));
+
+// ...
 
 public Task<Blog?> Get(int id) => GetQuery(_db, id);
 ```
 
-The field is named after the member (`GetQuery`, then `GetQuery2` and so on when the name is taken). No fix is offered when the query lambda reads a local, a parameter of the method or the instance (a static field cannot see them; pass the value as a query parameter instead), when the delegate type uses a method type parameter, when an `#if`, `#elif`, `#else` or `#endif` directive sits directly above the member (the field could land in the wrong branch), when a static initializer above the member refers to it (initializers run in source order, so it would read the new field before it is set), when a static initializer or static constructor in another partial declaration of the type refers to it (the order across parts is not defined), or when the rewritten document would have more compiler errors than before.
+The field is named after the member (`GetQuery`, then `GetQuery2` and so on when the name is taken). No fix is offered when the query lambda reads a local, a parameter of the method or the instance (a static field cannot see them; pass the value as a query parameter instead), when it reads a static member of the type (its order against the new field is not known), when the delegate type uses a method type parameter, when an `#if`, `#elif`, `#else` or `#endif` directive sits directly above the member, when another partial declaration of the type has any static field or property initializer or static constructor (the order across parts is not defined), when the member and the top of the type are in different `#nullable` contexts, or when the rewritten document would have more compiler errors than before.
 
 ## Test Cases
 

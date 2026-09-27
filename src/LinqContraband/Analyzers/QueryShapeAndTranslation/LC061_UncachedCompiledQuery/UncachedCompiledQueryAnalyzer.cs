@@ -90,8 +90,8 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         if (RunsOnce(compile))
             return false;
 
-        if (IsInsideCacheFactory(compile, semanticModel, out var lazyCreation))
-            return lazyCreation != null && LazyIsBuiltPerCall(lazyCreation);
+        if (IsInsideCacheFactory(compile, semanticModel, out var cacheBuiltPerCall))
+            return cacheBuiltPerCall;
 
         var value = ClimbValue(compile);
         switch (value.Parent)
@@ -495,14 +495,15 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     /// <c>GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs every time the key
     /// exists), <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
     /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
-    /// For a Lazy, <paramref name="lazyCreation"/> is the <c>new Lazy</c> expression, whose own lifetime decides.
+    /// <paramref name="cacheBuiltPerCall"/> says whether the cache itself is built on every call (a Lazy read straight
+    /// away, or a dictionary created in the method), in which case the factory runs on every call too.
     /// </summary>
     private static bool IsInsideCacheFactory(
         SyntaxNode node,
         SemanticModel semanticModel,
-        out BaseObjectCreationExpressionSyntax? lazyCreation)
+        out bool cacheBuiltPerCall)
     {
-        lazyCreation = null;
+        cacheBuiltPerCall = false;
         var boundary = node.Ancestors()
             .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
         if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
@@ -513,14 +514,16 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
         switch (owner)
         {
-            case InvocationExpressionSyntax call:
-                return CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
-                       IsAddFactory(argument, argumentList, semanticModel);
+            case InvocationExpressionSyntax call
+                when CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
+                     IsAddFactory(argument, argumentList, semanticModel):
+                cacheBuiltPerCall = !RunsOnce(call) && CacheIsBuiltPerCall(call, semanticModel);
+                return true;
 
             case BaseObjectCreationExpressionSyntax creation
                 when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" } &&
                      IsAddFactory(argument, argumentList, semanticModel):
-                lazyCreation = creation;
+                cacheBuiltPerCall = LazyIsBuiltPerCall(creation);
                 return true;
 
             default:
@@ -551,6 +554,66 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// True when the cache a <c>GetOrAdd</c>-style call runs on is created in the method: <c>new
+    /// ConcurrentDictionary&lt;...&gt;().GetOrAdd(...)</c>, or a local assigned from <c>new</c>. A field, property,
+    /// parameter, injected service or anything else keeps the cache and stays quiet. For
+    /// <c>LazyInitializer.EnsureInitialized(ref target, ...)</c> the <c>ref</c> target is the cache.
+    /// </summary>
+    private static bool CacheIsBuiltPerCall(InvocationExpressionSyntax call, SemanticModel semanticModel)
+    {
+        if (call.Expression is not MemberAccessExpressionSyntax access)
+            return false;
+
+        var receiver = access.Expression;
+        if (semanticModel.GetSymbolInfo(receiver).Symbol is INamedTypeSymbol)
+        {
+            // A static call: the cache is its first argument (`ref _target`) or, for an extension method called as
+            // a static method, the `this` argument.
+            if (call.ArgumentList.Arguments.Count == 0)
+                return false;
+            receiver = call.ArgumentList.Arguments[0].Expression;
+        }
+
+        return IsCreatedInMethod(receiver, semanticModel);
+    }
+
+    private static bool IsCreatedInMethod(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        if (expression is BaseObjectCreationExpressionSyntax)
+            return true;
+
+        if (semanticModel.GetSymbolInfo(expression).Symbol is not ILocalSymbol local ||
+            GetEnclosingMember(expression) is not { } scope)
+        {
+            return false;
+        }
+
+        // A local counts as built per call when it is ever set from `new` in the member.
+        foreach (var node in scope.DescendantNodes())
+        {
+            ExpressionSyntax? value = node switch
+            {
+                VariableDeclaratorSyntax { Initializer.Value: var initial } declarator
+                    when declarator.Identifier.ValueText == local.Name => initial,
+                AssignmentExpressionSyntax { Left: IdentifierNameSyntax target } assignment
+                    when target.Identifier.ValueText == local.Name => assignment.Right,
+                _ => null
+            };
+
+            while (value is ParenthesizedExpressionSyntax inner)
+                value = inner.Expression;
+
+            if (value is BaseObjectCreationExpressionSyntax)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsOnlyReadForValue(string name, SyntaxNode declaration)

@@ -16,18 +16,18 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 
 /// <summary>
 /// Provides code fixes for LC061. Moves the <c>EF.CompileQuery</c>/<c>EF.CompileAsyncQuery</c> call into a
-/// <c>private static readonly</c> field declared just above the member, spelled with the delegate type the call
-/// returns, and uses the field where the call was.
+/// <c>private static readonly</c> field declared as the first member of the type, so it is set before any other
+/// static initializer runs (including ones that reach the member through other methods), spelled with the
+/// delegate type the call returns, and uses the field where the call was.
 /// </summary>
 /// <remarks>
 /// No fix is offered when the query reads a local, a parameter of the method or the instance (a static field cannot
-/// see them), when the call does not sit in a class, struct or record member, when the member's leading trivia holds
-/// an <c>#if</c>, <c>#elif</c>, <c>#else</c> or <c>#endif</c> (the field could land in the wrong branch), when a static
-/// field or property initializer above the member refers to it (initializers run in source order, so it would read
-/// the new field before it is set), when a static initializer or static constructor in another partial declaration of
-/// the type refers to it (the order across parts is not defined), or when the
-/// rewritten document has more
-/// compiler errors than before (for example a delegate type that uses a method type parameter).
+/// see them), when it reads a static member of the type (its order against the new field is not known), when the
+/// call does not sit in a class, struct or record member, when the member's leading trivia holds an <c>#if</c>,
+/// <c>#elif</c>, <c>#else</c> or <c>#endif</c>, when another partial declaration of the type has a static
+/// initializer or static constructor (the order across parts is not defined), when the member and the top of the
+/// type are in different nullable annotation contexts, or when the rewritten document has more compiler errors than
+/// before (for example a delegate type that uses a method type parameter).
 /// </remarks>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UncachedCompiledQueryFixer))]
 [Shared]
@@ -41,7 +41,11 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
     public override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(UncachedCompiledQueryAnalyzer.DiagnosticId);
 
-    public override FixAllProvider GetFixAllProvider() => LinqContrabandFixAllProvider.Instance;
+    // Every fix inserts its field at the top of the type, so the batch fixer's merged edits would collide. Fix-all
+    // applies the fixes one after another instead, each on the document the previous one produced.
+    public override FixAllProvider GetFixAllProvider() =>
+        FixAllProvider.Create((fixAllContext, document, diagnostics) =>
+            FixAllInDocumentAsync(document, diagnostics, fixAllContext.CancellationToken));
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
@@ -78,6 +82,51 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         }
     }
 
+    private static async Task<Document?> FixAllInDocumentAsync(
+        Document document,
+        ImmutableArray<Diagnostic> diagnostics,
+        CancellationToken cancellationToken)
+    {
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null)
+            return document;
+
+        var annotated = new Dictionary<SyntaxNode, SyntaxAnnotation>();
+        foreach (var diagnostic in diagnostics.OrderBy(diagnostic => diagnostic.Location.SourceSpan.Start))
+        {
+            var compile = root.FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true)
+                .FirstAncestorOrSelf<InvocationExpressionSyntax>();
+            if (compile != null && !annotated.ContainsKey(compile))
+                annotated.Add(compile, new SyntaxAnnotation("LinqContraband.LC061.FixAll"));
+        }
+
+        var annotations = annotated.Values.ToList();
+        document = document.WithSyntaxRoot(root.ReplaceNodes(
+            annotated.Keys,
+            (original, rewritten) => rewritten.WithAdditionalAnnotations(annotated[original])));
+
+        foreach (var annotation in annotations)
+        {
+            var currentRoot = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            if (currentRoot?.GetAnnotatedNodes(annotation).OfType<InvocationExpressionSyntax>().FirstOrDefault() is not { } compile ||
+                semanticModel == null ||
+                semanticModel.GetOperation(compile, cancellationToken) is not IInvocationOperation invocation ||
+                !UncachedCompiledQueryAnalyzer.IsCompileQuery(invocation.TargetMethod) ||
+                Hoist(currentRoot, compile, invocation, semanticModel) is not { } newRoot)
+            {
+                continue;
+            }
+
+            var newDocument = document.WithSyntaxRoot(newRoot);
+            var newModel = await newDocument.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            if (newModel != null && CountErrors(newModel, cancellationToken) <= CountErrors(semanticModel, cancellationToken))
+                document = newDocument;
+        }
+
+        return document;
+    }
+
     private static SyntaxNode? Hoist(
         SyntaxNode root,
         InvocationExpressionSyntax compile,
@@ -102,19 +151,26 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         if (member.GetLeadingTrivia().Any(IsConditionalDirective))
             return null;
 
-        // Static initializers run in source order: one above the new field that reaches this member would read the
-        // field before it is set.
-        // Across partial declarations the order is not defined, so any static initializer or static constructor in
-        // another part that reaches this member withholds the fix too.
-        var memberName = GetMemberName(member, type);
-        if (type.Members.TakeWhile(candidate => candidate != member).Any(candidate => IsStaticInitializerUsing(candidate, memberName)) ||
-            OtherPartRunsStaticCodeUsing(type, memberName, semanticModel))
+        // The field goes first in the type declaration, so it is set before every other static initializer in this
+        // part runs, whichever of them reaches the member (directly or through other methods). That only holds when
+        // its own initializer reads nothing else of the type, and when no other part of a partial type has static
+        // initialization, since the order across parts is not defined.
+        var typeSymbol = semanticModel.GetDeclaredSymbol(type);
+        if (typeSymbol == null ||
+            ReadsStaticMembersOf(typeSymbol, lambda, semanticModel) ||
+            OtherPartHasStaticInitialization(typeSymbol, type))
         {
             return null;
         }
 
+        var first = type.Members[0];
+        var nullableHere = semanticModel.GetNullableContext(member.SpanStart).AnnotationsEnabled();
+        var nullableAtTop = semanticModel.GetNullableContext(first.SpanStart).AnnotationsEnabled();
+        if (nullableHere != nullableAtTop)
+            return null;
+
         var name = ChooseName(type, member, compile, semanticModel);
-        var typeName = delegateType.ToMinimalDisplayString(semanticModel, member.SpanStart, TypeFormat);
+        var typeName = delegateType.ToMinimalDisplayString(semanticModel, first.SpanStart, TypeFormat);
         if (SyntaxFactory.ParseMemberDeclaration(
                 $"private static readonly {typeName} {name} = {compile.WithoutTrivia().ToFullString()};")
             is not FieldDeclarationSyntax field ||
@@ -124,53 +180,120 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         }
 
         var endOfLine = member.GetDocumentEndOfLine();
-        SplitLeadingTrivia(member.GetLeadingTrivia(), endOfLine, out var fieldLeading, out var memberLeading);
-        field = field.WithLeadingTrivia(fieldLeading).WithTrailingTrivia(endOfLine);
+        var indentation = GetIndentation(member.GetLeadingTrivia());
+        var leading = new List<SyntaxTrivia>();
+        if (indentation.IsKind(SyntaxKind.WhitespaceTrivia))
+            leading.Add(indentation);
 
-        var newMember = member
-            .ReplaceNode(compile, SyntaxFactory.IdentifierName(name).WithTriviaFrom(compile))
-            .WithLeadingTrivia(memberLeading);
-        var index = type.Members.IndexOf(member);
-        var members = type.Members.Replace(member, newMember).Insert(index, field);
-        return root.ReplaceNode(type, type.WithMembers(members));
+        var members = type.Members.Replace(member, member.ReplaceNode(compile, SyntaxFactory.IdentifierName(name).WithTriviaFrom(compile)));
+
+        // After compiled-query fields already hoisted to the top (they depend on nothing), else first.
+        var index = 0;
+        while (index < members.Count - 1 && IsHoistedCompiledQuery(members[index]))
+            index++;
+
+        if (index > 0)
+        {
+            leading.Insert(0, endOfLine);
+        }
+        else
+        {
+            var next = members[0];
+            members = members.Replace(next, next.WithLeadingTrivia(next.GetLeadingTrivia().Insert(0, endOfLine)));
+        }
+
+        field = field.WithLeadingTrivia(leading).WithTrailingTrivia(endOfLine);
+        return root.ReplaceNode(type, type.WithMembers(members.Insert(index, field)));
     }
 
-    private static bool OtherPartRunsStaticCodeUsing(TypeDeclarationSyntax type, string memberName, SemanticModel semanticModel)
+    private static bool IsHoistedCompiledQuery(MemberDeclarationSyntax candidate)
     {
-        if (semanticModel.GetDeclaredSymbol(type) is not { } typeSymbol)
-            return false;
+        return candidate is FieldDeclarationSyntax field &&
+               field.Modifiers.Any(SyntaxKind.StaticKeyword) &&
+               field.Modifiers.Any(SyntaxKind.ReadOnlyKeyword) &&
+               field.Declaration.Variables.Count == 1 &&
+               field.Declaration.Variables[0].Initializer?.Value is InvocationExpressionSyntax
+               {
+                   Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "CompileQuery" or "CompileAsyncQuery" },
+                   ArgumentList.Arguments: { Count: 1 } arguments
+               } &&
+               arguments[0].Expression is LambdaExpressionSyntax;
+    }
 
-        foreach (var reference in typeSymbol.DeclaringSyntaxReferences)
+    private static SyntaxTrivia GetIndentation(SyntaxTriviaList leading)
+    {
+        for (var i = leading.Count - 1; i >= 0; i--)
         {
-            if (reference.SyntaxTree == type.SyntaxTree && reference.Span == type.Span)
-                continue;
+            if (leading[i].IsKind(SyntaxKind.WhitespaceTrivia))
+                return leading[i];
+            if (!leading[i].IsKind(SyntaxKind.EndOfLineTrivia))
+                break;
+        }
 
-            if (reference.GetSyntax() is TypeDeclarationSyntax part &&
-                part.Members.Any(candidate => IsStaticInitializerUsing(candidate, memberName, includeStaticConstructor: true)))
+        return default;
+    }
+
+    /// <summary>
+    /// True when the query lambda reads a static field, property, event or method of the type (or a type nested in
+    /// it), whose initialization order relative to the new first field is not known.
+    /// </summary>
+    private static bool ReadsStaticMembersOf(INamedTypeSymbol type, LambdaExpressionSyntax lambda, SemanticModel semanticModel)
+    {
+        if (semanticModel.GetOperation(lambda) is not { } operation)
+            return true;
+
+        foreach (var descendant in operation.DescendantsAndSelf())
+        {
+            ISymbol? target = descendant switch
             {
+                IMemberReferenceOperation reference => reference.Member,
+                IInvocationOperation call => call.TargetMethod,
+                _ => null
+            };
+
+            if (target is { IsStatic: true } && IsWithin(target.ContainingType, type))
                 return true;
-            }
         }
 
         return false;
     }
 
-    private static bool IsStaticInitializerUsing(
-        MemberDeclarationSyntax candidate,
-        string memberName,
-        bool includeStaticConstructor = false)
+    private static bool IsWithin(INamedTypeSymbol? candidate, INamedTypeSymbol type)
     {
-        SyntaxNode? initializer = candidate switch
+        for (var current = candidate; current != null; current = current.ContainingType)
         {
-            FieldDeclarationSyntax field when field.Modifiers.Any(SyntaxKind.StaticKeyword) => field.Declaration,
-            PropertyDeclarationSyntax { Initializer: { } value } property when property.Modifiers.Any(SyntaxKind.StaticKeyword) => value,
-            ConstructorDeclarationSyntax constructor
-                when includeStaticConstructor && constructor.Modifiers.Any(SyntaxKind.StaticKeyword) => constructor,
-            _ => null
-        };
+            if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, type.OriginalDefinition))
+                return true;
+        }
 
-        return initializer != null &&
-               initializer.DescendantNodes().OfType<SimpleNameSyntax>().Any(name => name.Identifier.ValueText == memberName);
+        return false;
+    }
+
+    /// <summary>True when another partial declaration of the type has a static field or property initializer or a static constructor.</summary>
+    private static bool OtherPartHasStaticInitialization(INamedTypeSymbol type, TypeDeclarationSyntax declaration)
+    {
+        foreach (var reference in type.DeclaringSyntaxReferences)
+        {
+            if (reference.SyntaxTree == declaration.SyntaxTree && reference.Span == declaration.Span)
+                continue;
+
+            if (reference.GetSyntax() is TypeDeclarationSyntax part && part.Members.Any(IsStaticInitialization))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsStaticInitialization(MemberDeclarationSyntax candidate)
+    {
+        return candidate switch
+        {
+            FieldDeclarationSyntax field => field.Modifiers.Any(SyntaxKind.StaticKeyword) &&
+                                            field.Declaration.Variables.Any(variable => variable.Initializer != null),
+            PropertyDeclarationSyntax { Initializer: not null } property => property.Modifiers.Any(SyntaxKind.StaticKeyword),
+            ConstructorDeclarationSyntax constructor => constructor.Modifiers.Any(SyntaxKind.StaticKeyword),
+            _ => false
+        };
     }
 
     private static bool IsConditionalDirective(SyntaxTrivia trivia)
@@ -180,42 +303,6 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
                trivia.IsKind(SyntaxKind.ElseDirectiveTrivia) ||
                trivia.IsKind(SyntaxKind.EndIfDirectiveTrivia) ||
                trivia.IsKind(SyntaxKind.DisabledTextTrivia);
-    }
-
-    /// <summary>
-    /// The field takes the member's leading blank lines, directives and indentation; comments (and documentation
-    /// comments) stay on the member, which gets a blank line to separate it from the field.
-    /// </summary>
-    private static void SplitLeadingTrivia(
-        SyntaxTriviaList leading,
-        SyntaxTrivia endOfLine,
-        out SyntaxTriviaList fieldLeading,
-        out SyntaxTriviaList memberLeading)
-    {
-        var split = leading.Count;
-        for (var i = 0; i < leading.Count; i++)
-        {
-            if (leading[i].IsKind(SyntaxKind.SingleLineCommentTrivia) ||
-                leading[i].IsKind(SyntaxKind.MultiLineCommentTrivia) ||
-                leading[i].IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) ||
-                leading[i].IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia))
-            {
-                split = i;
-                break;
-            }
-        }
-
-        var before = leading.Take(split).ToList();
-        var indentation = before.Count > 0 && before[before.Count - 1].IsKind(SyntaxKind.WhitespaceTrivia)
-            ? before[before.Count - 1]
-            : default;
-
-        fieldLeading = SyntaxFactory.TriviaList(before);
-        var rest = new List<SyntaxTrivia> { endOfLine };
-        if (indentation.IsKind(SyntaxKind.WhitespaceTrivia))
-            rest.Add(indentation);
-        rest.AddRange(leading.Skip(split));
-        memberLeading = SyntaxFactory.TriviaList(rest);
     }
 
     /// <summary>
