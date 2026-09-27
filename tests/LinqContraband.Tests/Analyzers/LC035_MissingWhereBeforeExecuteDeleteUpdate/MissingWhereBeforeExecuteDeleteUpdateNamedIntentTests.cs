@@ -11,12 +11,18 @@ namespace TestApp
     public sealed class MentionEntity { public int Id { get; set; } }
     public sealed class Session { public int Id { get; set; } }
     public sealed class Category { public int Id { get; set; } }
+    public sealed class Address { public int Id { get; set; } }
+    public sealed class Status { public int Id { get; set; } }
+    public sealed class User { public int Id { get; set; } }
 
     public class BlogDbContext : DbContext
     {
         public DbSet<ActivityLogEntity> ActivityLog { get; set; }
         public DbSet<Session> Sessions { get; set; }
         public DbSet<Category> Categories { get; set; }
+        public DbSet<Address> Addresses { get; set; }
+        public DbSet<Status> StatusRows { get; set; }
+        public DbSet<User> Users { get; set; }
     }
 ";
 
@@ -96,6 +102,69 @@ namespace TestApp
     {
         public int HandleAsync(BlogDbContext db) => 0;
         public int Other(BlogDbContext db) => {|LC035:db.Categories.ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AllFollowedByTheTableOrAWholeSetNoun_DoesNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int DeleteAllUsers(BlogDbContext db) => db.Users.ExecuteDelete();
+        public int RemoveAllRecords(BlogDbContext db) => db.Users.ExecuteDelete();
+        public int ResetAllStatuses(BlogDbContext db) => db.StatusRows.ExecuteUpdate();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AllFollowedByASubset_StillTriggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int DeleteAllInactiveUsers(BlogDbContext db) => {|LC035:db.Users.ExecuteDelete()|};
+        public int ClearAllExpiredSessions(BlogDbContext db) => {|LC035:db.Sessions.ExecuteDelete()|};
+        public int DeleteAllUserData(BlogDbContext db) => {|LC035:db.Users.ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SingularEntityEndingInS_IsNotReadAsPlural()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearAddress(BlogDbContext db) => {|LC035:db.Addresses.ExecuteDelete()|};
+        public int ClearStatus(BlogDbContext db) => {|LC035:db.StatusRows.ExecuteDelete()|};
+        public int ClearAddresses(BlogDbContext db) => db.Addresses.ExecuteDelete();
+        public int PurgeStatuses(BlogDbContext db) => db.StatusRows.ExecuteDelete();
+        public int WipeAddresses(BlogDbContext db) => db.Set<Address>().ExecuteDelete();
+        public int WipeAddress(BlogDbContext db) => {|LC035:db.Set<Address>().ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncSuffix_IsIgnored()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public Task<int> ClearCategoriesAsync(BlogDbContext db) => db.Categories.ExecuteDeleteAsync();
+        public Task<int> ClearAllDataAsync(BlogDbContext db) => db.Users.ExecuteDeleteAsync();
+        public Task<int> ClearCategoryAsync(BlogDbContext db) => {|LC035:db.Categories.ExecuteDeleteAsync()|};
     }
 }";
 

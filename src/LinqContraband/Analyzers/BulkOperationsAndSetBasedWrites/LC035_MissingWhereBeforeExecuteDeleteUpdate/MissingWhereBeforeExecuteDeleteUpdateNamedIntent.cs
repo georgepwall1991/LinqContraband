@@ -20,6 +20,12 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         "Clear", "Delete", "Remove", "Purge", "Truncate", "Wipe", "Reset"
     };
 
+    // Nouns that name everything rather than a subset: ClearAllData, DeleteAllRows.
+    private static readonly HashSet<string> WholeSetNouns = new(StringComparer.Ordinal)
+    {
+        "Data", "Rows", "Records", "Entries", "Items", "Entities", "Tables"
+    };
+
     private static readonly HashSet<string> GenericEntryPointNames = new(StringComparer.Ordinal)
     {
         "Handle", "HandleAsync", "Execute", "ExecuteAsync", "Run", "RunAsync",
@@ -34,10 +40,12 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
     /// <summary>
     /// A method whose name says it empties the table means the whole-table bulk operation on purpose:
     /// Moonglade's <c>ClearAllData()</c>, or <c>ClearActivityLogsCommandHandler.HandleAsync</c> running
-    /// <c>db.ActivityLog.ExecuteDeleteAsync()</c>. The name must either pair a clearing verb with
-    /// <c>All</c> (<c>ClearAllData</c>, <c>DeleteAllUsers</c>) or be a clearing verb followed by the
-    /// plural of the entity or set (<c>ClearMentions</c> over <c>MentionEntity</c>). <c>ClearUserSession</c>
-    /// over <c>Sessions</c> does not qualify.
+    /// <c>db.ActivityLog.ExecuteDeleteAsync()</c>. After dropping a trailing <c>Async</c>, the name must
+    /// either be a clearing verb, <c>All</c> and then the table or a whole-set noun (<c>ClearAllData</c>,
+    /// <c>DeleteAllUsers</c>), or a clearing verb followed by the table (<c>ClearMentions</c> over
+    /// <c>MentionEntity</c>). The table is the plural of the entity or the set's property name.
+    /// <c>DeleteAllInactiveUsers</c>, <c>ClearUserSession</c> over <c>Sessions</c> and <c>ClearAddress</c>
+    /// over <c>Addresses</c> do not qualify.
     /// </summary>
     private static bool IsNamedWholeTableOperation(IInvocationOperation invocation)
     {
@@ -64,21 +72,25 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
     private static bool NameSaysWholeTable(string name, List<string> tableNames)
     {
         var words = SplitWords(name);
+        if (words.Count > 0 && words[words.Count - 1] == "Async")
+            words.RemoveAt(words.Count - 1);
+
         if (words.Count < 2)
             return false;
 
-        // ClearAllData, DeleteAllSessions: a clearing verb, then All, then what is cleared.
+        // ClearAllData, DeleteAllSessions: a clearing verb, then All, then the whole set.
+        // DeleteAllInactiveUsers names a subset and does not count.
         for (var i = 0; i + 2 < words.Count; i++)
         {
-            if (AllVerbs.Contains(words[i]) && words[i + 1] == "All")
+            if (!AllVerbs.Contains(words[i]) || words[i + 1] != "All")
+                continue;
+
+            var set = string.Concat(words.Skip(i + 2));
+            if (WholeSetNouns.Contains(set) || NamesTable(set, tableNames))
                 return true;
         }
 
-        if (!ClearVerbs.Contains(words[0]))
-            return false;
-
-        var rest = string.Concat(words.Skip(1));
-        return tableNames.Any(tableName => MatchesPlural(rest, tableName));
+        return ClearVerbs.Contains(words[0]) && NamesTable(string.Concat(words.Skip(1)), tableNames);
     }
 
     private static IEnumerable<string> GetIntentNames(SyntaxNode node)
@@ -120,36 +132,58 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         }
     }
 
+    /// <summary>
+    /// Names that mean the whole table: the plural of the entity (minus an <c>Entity</c> suffix), and the
+    /// DbSet property name. The property name counts as is only when it differs from the entity name,
+    /// since <c>DbSet&lt;Address&gt; Address</c> is singular; its plural always counts.
+    /// </summary>
     private static IEnumerable<string> GetTableNames(IInvocationOperation invocation)
     {
+        var entityNames = new List<string>();
         if (invocation.TargetMethod.TypeArguments.FirstOrDefault() is { } entityType)
         {
             var entityName = entityType.Name;
-            yield return entityName;
+            entityNames.Add(entityName);
             if (entityName.Length > "Entity".Length && entityName.EndsWith("Entity", StringComparison.Ordinal))
-                yield return entityName.Substring(0, entityName.Length - "Entity".Length);
+                entityNames.Add(entityName.Substring(0, entityName.Length - "Entity".Length));
         }
+
+        foreach (var entityName in entityNames)
+            yield return Pluralize(entityName);
 
         var current = invocation.GetInvocationReceiver()?.UnwrapConversions();
         while (current is IInvocationOperation chained && chained.GetInvocationReceiver() is { } receiver)
             current = receiver.UnwrapConversions();
 
         if (current is IPropertyReferenceOperation property && property.Type.IsDbSet())
-            yield return property.Property.Name;
+        {
+            var setName = property.Property.Name;
+            if (!entityNames.Any(entityName => string.Equals(entityName, setName, StringComparison.OrdinalIgnoreCase)))
+                yield return setName;
+            yield return Pluralize(setName);
+        }
     }
 
-    private static bool MatchesPlural(string rest, string tableName)
+    private static bool NamesTable(string words, List<string> tableNames) =>
+        tableNames.Any(tableName => string.Equals(words, tableName, StringComparison.OrdinalIgnoreCase));
+
+    private static string Pluralize(string name)
     {
-        if (string.Equals(rest, tableName, StringComparison.OrdinalIgnoreCase))
-            return tableName.EndsWith("s", StringComparison.Ordinal);
+        if (name.Length == 0)
+            return name;
 
-        if (string.Equals(rest, tableName + "s", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(rest, tableName + "es", StringComparison.OrdinalIgnoreCase))
-            return true;
+        if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !IsVowel(name[name.Length - 2]))
+            return name.Substring(0, name.Length - 1) + "ies";
 
-        return tableName.EndsWith("y", StringComparison.Ordinal) &&
-               string.Equals(rest, tableName.Substring(0, tableName.Length - 1) + "ies", StringComparison.OrdinalIgnoreCase);
+        if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
+            name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
+            name.EndsWith("sh", StringComparison.Ordinal))
+            return name + "es";
+
+        return name + "s";
     }
+
+    private static bool IsVowel(char c) => "aeiouAEIOU".IndexOf(c) >= 0;
 
     private static List<string> SplitWords(string name)
     {
