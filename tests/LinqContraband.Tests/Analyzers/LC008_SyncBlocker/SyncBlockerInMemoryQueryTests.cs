@@ -573,19 +573,39 @@ class Program
     [Fact]
     public async Task TestInnocent_LibraryHelperOverInMemoryQuery_NoDiagnostic()
     {
-        // SimpleIdServer: an extension in a referenced project (no source) that takes the in-memory
-        // query as its second argument and returns a query.
+        // An extension in a referenced project (no source) that takes the in-memory query as its second
+        // argument and returns a query. The receiver is abstract and self-referencing, but its members and
+        // virtual methods only expose inert types; a sealed carrier with inert methods is also fine.
         await RunWithLibraryAsync(@"
 class Program
 {
     static List<User> BuildHierarchy(List<User> users) => users;
 
+    async Task<List<User>> Main(ScimNode node, List<User> list)
+    {
+        await Task.Delay(1);
+        var x = node.EvaluateNodes(BuildHierarchy(list).AsQueryable(), false).ToList();
+        var y = new ScimAttributeNode { Name = ""emails"" }.EvaluateNodes(list.AsQueryable(), true, ""Children"").ToList();
+        var z = ScimLibrary.Narrow(list.AsQueryable(), new ScimFilter { Path = ""emails"" }).ToList();
+        return x.Concat(y).Concat(z).ToList();
+    }
+}
+");
+    }
+
+    [Fact]
+    public async Task TestCrime_LibraryHelperWithRealScimExpressionShape_StillTriggers()
+    {
+        // SimpleIdServer's real SCIMExpression is abstract with `abstract object Clone()` and
+        // `abstract ICollection<SCIMRepresentationAttribute> BuildEmptyAttributes()`. An app subclass could
+        // return db.Users from either, so the helper is not proven in memory and this LC008 comes back.
+        await RunWithLibraryAsync(@"
+class Program
+{
     async Task<List<User>> Main(ScimExpression scimFilter, List<User> list)
     {
         await Task.Delay(1);
-        var x = scimFilter.EvaluateAttributes(BuildHierarchy(list).AsQueryable(), false).ToList();
-        var y = new ScimAttributeExpression { Name = ""emails"" }.EvaluateAttributes(list.AsQueryable(), true, ""Children"").ToList();
-        return x.Concat(y).ToList();
+        return {|LC008:scimFilter.EvaluateAttributes(list.AsQueryable(), false).ToList()|};
     }
 }
 ");
@@ -619,6 +639,9 @@ class Program
     [InlineData("{|LC008:ScimLibrary.Apply(list.AsQueryable(), q => db.Users).ToList()|}")]
     // Even a predicate could run db.Users instead of filtering.
     [InlineData("{|LC008:ScimLibrary.Where(list.AsQueryable(), u => u.Id > 0).ToList()|}")]
+    // An unsealed library class whose virtual or abstract method an app subclass can implement to return db.Users.
+    [InlineData("{|LC008:ScimLibrary.FromSource(list.AsQueryable(), userSource).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.FromQuerySource(list.AsQueryable(), querySource).ToList()|}")]
     // A library class whose member can carry a query: an IQueryable property, or an object field on a base type.
     [InlineData("{|LC008:ScimLibrary.Pick(list.AsQueryable(), new QueryBox<User> { Query = db.Users }).ToList()|}")]
     [InlineData("{|LC008:ScimLibrary.WithHolder(list.AsQueryable(), new StateHolder()).ToList()|}")]
@@ -643,7 +666,7 @@ class UserRepository { public MyDbContext Db { get; set; } }
 class Program
 {
     async Task<object> Main(ScimExpression scimFilter, List<User> list, IEnumerable<User> sequence, MyDbContext db,
-        UserRepository repository, IUserSource<User> source)
+        UserRepository repository, IUserSource<User> source, Source<User> userSource, QuerySource<User> querySource)
     {
         await Task.Delay(1);
         var x = " + call + @";
@@ -771,9 +794,22 @@ using System.Linq;
 
 namespace ScimLib
 {
-    // Shaped like SimpleIdServer's SCIMExpression: abstract, self-referencing, only inert members.
-    public abstract class ScimExpression { public ScimExpression Parent { get; set; } public int Depth; }
-    public sealed class ScimAttributeExpression : ScimExpression { public string Name { get; set; } = """"; public ScimExpression Child { get; set; } }
+    // SimpleIdServer's real SCIMExpression shape.
+    public sealed class ScimAttribute { public string Name { get; set; } = """"; }
+    public abstract class ScimExpression : ICloneable
+    {
+        public abstract object Clone();
+        public abstract ICollection<ScimAttribute> BuildEmptyAttributes();
+    }
+
+    // Abstract and self-referencing, but every member and virtual method exposes only inert types.
+    public abstract class ScimNode { public ScimNode Parent { get; set; } public int Depth; public abstract string Describe(); public virtual bool TryGetDepth(out int depth) { depth = Depth; return true; } }
+    public sealed class ScimAttributeNode : ScimNode { public string Name { get; set; } = """"; public ScimNode Child { get; set; } public override string Describe() => Name; }
+    public sealed class ScimFilter { public string Path { get; set; } = """"; public string Describe() => Path; public int Count() => 1; public override string ToString() => Path; }
+
+    // An app subclass can implement these to return db.Users.
+    public class Source<T> { public virtual IQueryable<T> GetQuery() => Enumerable.Empty<T>().AsQueryable(); }
+    public abstract class QuerySource<T> { public abstract IQueryable<T> GetQuery(); }
     public sealed class QueryBox<T> { public IQueryable<T> Query { get; set; } }
     public class StateBase { protected object State; }
     public sealed class StateHolder : StateBase { public int Id { get; set; } }
@@ -782,6 +818,10 @@ namespace ScimLib
 
     public static class ScimLibrary
     {
+        public static IQueryable<T> EvaluateNodes<T>(this ScimNode node, IQueryable<T> source, bool isStrict, string propertyName = ""Children"") => source;
+        public static IQueryable<T> Narrow<T>(IQueryable<T> source, ScimFilter filter) => source;
+        public static IQueryable<T> FromSource<T>(IQueryable<T> fallback, Source<T> source) => source.GetQuery() ?? fallback;
+        public static IQueryable<T> FromQuerySource<T>(IQueryable<T> fallback, QuerySource<T> source) => source.GetQuery() ?? fallback;
         public static IQueryable<T> EvaluateAttributes<T>(this ScimExpression expression, IQueryable<T> attributes, bool isStrict, string propertyName = ""Children"") => attributes;
         public static IQueryable<T> FromContext<T>(IQueryable<T> source, object context) => source;
         public static IQueryable<T> Apply<T>(IQueryable<T> source, Func<IQueryable<T>, IQueryable<T>> step) => step(source);

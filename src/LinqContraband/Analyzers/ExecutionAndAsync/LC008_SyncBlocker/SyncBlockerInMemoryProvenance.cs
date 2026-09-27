@@ -291,7 +291,8 @@ public sealed partial class SyncBlockerAnalyzer
         /// <c>System</c> struct (<c>Guid</c>, <c>DateTime</c>, ..., generic ones only when every type argument is
         /// inert); or a class or struct from an assembly that neither is this project nor reaches EF Core, whose
         /// instance fields and properties (base types included, to <see cref="MaxInertMemberDepth"/> levels) are
-        /// all inert too, such as SimpleIdServer's <c>SCIMExpression</c>. A member typed as a query or sequence,
+        /// all inert too, and whose non-private methods return (and pass by ref/out) only inert types, since an app
+        /// subclass can implement a virtual or abstract one. A member typed as a query or sequence,
         /// <c>object</c>, <c>dynamic</c>, a delegate, an <c>Expression</c>, a type parameter or an interface
         /// could carry <c>db.Users</c> (a <c>QueryBox&lt;T&gt;</c> with an <c>IQueryable&lt;T&gt;</c> property), and so
         /// could a delegate argument, so they block the proof, as do a <c>DbContext</c> and any type of this project.
@@ -332,7 +333,7 @@ public sealed partial class SyncBlockerAnalyzer
                 ReferencesEntityFramework(assembly))
                 return false;
 
-            // A type already being checked higher up (SCIMExpression.Child) is judged by that check.
+            // A type already being checked higher up (Expression.Child) is judged by that check.
             if (!visiting.Add(named))
                 return true;
 
@@ -354,15 +355,35 @@ public sealed partial class SyncBlockerAnalyzer
                         if (member.IsStatic)
                             continue;
 
-                        var memberType = member switch
+                        switch (member)
                         {
-                            IFieldSymbol field => field.Type,
-                            IPropertySymbol property => property.Type,
-                            _ => null
-                        };
+                            case IFieldSymbol field:
+                                if (!IsInertType(field.Type, depth + 1, visiting))
+                                    return false;
+                                break;
 
-                        if (memberType != null && !IsInertType(memberType, depth + 1, visiting))
-                            return false;
+                            case IPropertySymbol property:
+                                if (!IsInertType(property.Type, depth + 1, visiting))
+                                    return false;
+                                break;
+
+                            // A method the helper can call hands back its result and ref/out values. On an
+                            // unsealed type a virtual or abstract one may be implemented by an app subclass
+                            // (Source<T>.GetQuery() returning db.Users), so its declared types must be inert.
+                            case IMethodSymbol { MethodKind: MethodKind.Ordinary } method
+                                when method.DeclaredAccessibility != Accessibility.Private:
+                                if (!method.ReturnsVoid && !IsInertType(method.ReturnType, depth + 1, visiting))
+                                    return false;
+
+                                foreach (var parameter in method.Parameters)
+                                {
+                                    if (parameter.RefKind is RefKind.Ref or RefKind.Out &&
+                                        !IsInertType(parameter.Type, depth + 1, visiting))
+                                        return false;
+                                }
+
+                                break;
+                        }
                     }
                 }
 
