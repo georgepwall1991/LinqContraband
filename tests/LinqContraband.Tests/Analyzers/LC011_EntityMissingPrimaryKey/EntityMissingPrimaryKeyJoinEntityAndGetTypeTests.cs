@@ -88,10 +88,13 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         await VerifyWithReferencedBuilderAsync(test);
     }
 
-    [Fact]
-    public async Task TestCrime_UsingEntityFromNonEfCoreAssemblyInEfCoreNamespace_ShouldTrigger()
+    [Theory]
+    [InlineData("Contoso.ModelBuilding")]
+    [InlineData("Microsoft.EntityFrameworkCore.Extensions")]
+    public async Task TestCrime_UsingEntityFromNonEfCoreAssemblyInEfCoreNamespace_ShouldTrigger(string assemblyName)
     {
-        // The EF Core namespace is not enough: the declaring assembly must be EF Core's.
+        // The EF Core namespace is not enough: the declaring assembly must be EF Core's own, not one
+        // whose name merely starts with it.
         var test = Usings + SemanticMockAttributes + @"
         public DbSet<Post> Posts { get; set; }
         public DbSet<PostTag> {|LC011:PostTags|} { get; set; }
@@ -103,7 +106,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
     }
 " + ManyToManyMock;
 
-        await VerifyWithReferencedBuilderAsync(test, assemblyName: "Contoso.ModelBuilding");
+        await VerifyWithReferencedBuilderAsync(test, assemblyName);
     }
 
     [Fact]

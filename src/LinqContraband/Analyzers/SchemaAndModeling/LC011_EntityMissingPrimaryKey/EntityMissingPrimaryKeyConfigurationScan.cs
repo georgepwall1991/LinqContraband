@@ -62,13 +62,15 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
     }
 
     // The namespace alone is not enough: a project can declare its own method inside
-    // Microsoft.EntityFrameworkCore. The method must also come from a referenced EF Core assembly.
+    // Microsoft.EntityFrameworkCore. The method must also come from the referenced core EF Core
+    // assembly, which is where EF Core declares UsingEntity; a name prefix would admit third-party
+    // packages such as Microsoft.EntityFrameworkCore.Extensions.
     private static bool IsDeclaredByEntityFrameworkCore(ISymbol method, IAssemblySymbol compilationAssembly)
     {
         var assembly = method.ContainingAssembly;
         if (assembly == null ||
             SymbolEqualityComparer.Default.Equals(assembly, compilationAssembly) ||
-            !assembly.Name.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal))
+            !string.Equals(assembly.Name, "Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal))
         {
             return false;
         }
