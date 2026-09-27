@@ -7,13 +7,13 @@ namespace LinqContraband.Sample.Samples.LC024_GroupByNonTranslatable;
 /// </summary>
 /// <remarks>
 ///     <para>
-///         <strong>The Crime:</strong> Accessing group elements in a <c>GroupBy().Select()</c> projection
-///         using non-aggregate methods like <c>g.ToList()</c>, <c>g.Where()</c>, or <c>g.First()</c>.
+///         <strong>The Crime:</strong> Handing the group to something EF Core cannot translate in a
+///         <c>GroupBy().Select()</c> projection, such as a local helper method.
 ///     </para>
 ///     <para>
-///         <strong>Why it's bad:</strong> EF Core can only translate <c>g.Key</c> and aggregate functions
-///         (<c>Count</c>, <c>Sum</c>, <c>Average</c>, <c>Min</c>, <c>Max</c>) to SQL. Any other access to group
-///         elements forces client-side evaluation or throws.
+///         <strong>Why it's bad:</strong> EF Core translates <c>g.Key</c>, aggregates and (from EF Core 8)
+///         element operators such as <c>g.First()</c> or <c>g.ToList()</c>. A helper method that receives the
+///         group cannot be translated, so the query throws at runtime.
 ///     </para>
 ///     <para>
 ///         <strong>The Fix:</strong> Use only <c>g.Key</c> and aggregate functions in GroupBy projections.
@@ -28,10 +28,10 @@ public class GroupByNonTranslatableSample
     {
         Console.WriteLine("Testing LC024...");
 
-        // VIOLATION: g.ToList() cannot be translated to SQL
+        // VIOLATION: a local helper that receives the group cannot be translated to SQL
         var badResult = orders
             .GroupBy(o => o.Id)
-            .Select(g => new { Key = g.Key, Items = g.ToList() })
+            .Select(g => new { Key = g.Key, Summary = Summarize(g) })
             .ToList();
 
         // CORRECT: Only Key and aggregate functions
@@ -40,4 +40,6 @@ public class GroupByNonTranslatableSample
             .Select(g => new { Key = g.Key, Count = g.Count() })
             .ToList();
     }
+
+    private static string Summarize(IEnumerable<Order> orders) => string.Join(",", orders.Select(o => o.Id));
 }
