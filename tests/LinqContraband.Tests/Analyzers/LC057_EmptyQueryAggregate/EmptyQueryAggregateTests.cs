@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC057_EmptyQueryAggregate;
 
-public class EmptyQueryAggregateTests
+public partial class EmptyQueryAggregateTests
 {
     private const string Usings = @"
 using System;
@@ -22,6 +22,7 @@ namespace Microsoft.EntityFrameworkCore
     public class DbContext
     {
         public DbSet<TEntity> Set<TEntity>() where TEntity : class => null;
+        public Infrastructure.DatabaseFacade Database { get; } = new Infrastructure.DatabaseFacade();
     }
 
     public abstract class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
@@ -38,6 +39,7 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) where T : class => source;
         public static Task<bool> AnyAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<int> CountAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
+        public static Task<long> LongCountAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<TSource> MaxAsync<TSource>(this IQueryable<TSource> source, CancellationToken cancellationToken = default) => null;
         public static Task<TResult> MaxAsync<TSource, TResult>(this IQueryable<TSource> source, Expression<Func<TSource, TResult>> selector, CancellationToken cancellationToken = default) => null;
@@ -53,6 +55,17 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<double?> AverageAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, int?>> selector, CancellationToken cancellationToken = default) => null;
         public static Task<decimal> SumAsync<TSource>(this IQueryable<TSource> source, Expression<Func<TSource, decimal>> selector, CancellationToken cancellationToken = default) => null;
     }
+
+    public static class RelationalDatabaseFacadeExtensions
+    {
+        public static IQueryable<TResult> SqlQuery<TResult>(this Infrastructure.DatabaseFacade databaseFacade, FormattableString sql) => null;
+        public static IQueryable<TResult> SqlQueryRaw<TResult>(this Infrastructure.DatabaseFacade databaseFacade, string sql, params object[] parameters) => null;
+    }
+}
+
+namespace Microsoft.EntityFrameworkCore.Infrastructure
+{
+    public class DatabaseFacade { }
 }
 
 public class Product
