@@ -685,6 +685,58 @@ class CacheOptionsBuilder
     }
 
     [Fact]
+    public async Task LocalFunctionOnlyCalledInsideStrategyLambda_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() =>
+        {
+            void Save()
+            {
+                using var tx = db.Database.BeginTransaction();
+                tx.Commit();
+            }
+
+            Save();
+        });"));
+    }
+
+    [Fact]
+    public async Task LocalFunctionEscapingTheStrategyLambda_Reports()
+    {
+        await VerifyAsync(Wrap(
+            @"Action escaped = null;
+        var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() =>
+        {
+            void Save()
+            {
+                using var tx = db.Database.{|LC063:BeginTransaction|}();
+                tx.Commit();
+            }
+
+            escaped = Save;
+        });
+        escaped();"));
+    }
+
+    [Fact]
+    public async Task LambdaHandedToAnotherMethodInsideStrategyLambda_Reports()
+    {
+        // Task.Run's delegate runs on its own schedule, not as part of the strategy's operation.
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() =>
+        {
+            Task.Run(() =>
+            {
+                using var tx = db.Database.{|LC063:BeginTransaction|}();
+                tx.Commit();
+            });
+        });"));
+    }
+
+    [Fact]
     public async Task ProjectResilientTransactionWrapper_NotReported()
     {
         await VerifyAsync(Wrap(

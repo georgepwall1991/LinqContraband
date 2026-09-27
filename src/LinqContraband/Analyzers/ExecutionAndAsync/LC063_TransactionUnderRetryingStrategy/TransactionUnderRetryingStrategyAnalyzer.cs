@@ -158,7 +158,9 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
     /// True when the transaction starts inside a lambda that runs under an execution strategy: one handed to a strategy's
     /// Execute* method (directly, or to a project method that forwards that delegate to one), or one invoked in place
     /// or through a local whose every use is a call made under a strategy. A lambda whose invocation cannot be
-    /// determined (stored in a field, passed on through a local, reassigned) counts as protected, conservatively.
+    /// determined (stored in a field, passed on through a local, reassigned) counts as protected, conservatively. The walk
+    /// stops at a local function and at a lambda handed to any other method: those run where they are called, so an
+    /// enclosing strategy lambda proves nothing about them.
     /// </summary>
     private static bool IsInsideStrategy(IOperation operation, Compilation compilation, CancellationToken cancellationToken)
     {
@@ -172,6 +174,11 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
 
         for (var current = operation.Parent; current != null; current = current.Parent)
         {
+            // A local function runs wherever it is called, which may be outside an enclosing strategy lambda (it can
+            // escape as a method group). Stop here; the caller judges it through StrategyCallers like any method.
+            if (current is ILocalFunctionOperation)
+                return false;
+
             if (current is not IAnonymousFunctionOperation lambda)
                 continue;
 
@@ -189,8 +196,9 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
                     if (RetryingStrategyModel.RunsDelegateUnderStrategy(call.TargetMethod, argument.Parameter, compilation, cancellationToken))
                         return true;
 
-                    // Handed to another method (Task.Run, a callback): it runs there, outside any strategy.
-                    continue;
+                    // Handed to another method (Task.Run, a callback): it runs there, not as part of any enclosing
+                    // strategy lambda.
+                    return false;
 
                 case IVariableInitializerOperation { Parent: IVariableDeclaratorOperation declarator }:
                     return LocalInvocationsRunUnderStrategy(declarator.Symbol, value, compilation, depth, cancellationToken);
