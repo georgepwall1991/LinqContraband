@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LC060 reports EF Core async operators (`ToListAsync`, `FirstOrDefaultAsync`, `CountAsync`, `AnyAsync`, `SumAsync`, `ToDictionaryAsync`, `ForEachAsync`, `LoadAsync`, `AsAsyncEnumerable` and the rest of `EntityFrameworkQueryableExtensions`) on a query built with `AsQueryable()` over a list, array or other in-memory collection. That query is an `EnumerableQuery<T>`, which does not implement `IAsyncEnumerable<T>`, so every such call throws `InvalidOperationException` at run time (dotnet/efcore#35666). It follows `Queryable` operators, EF Core's `AsNoTracking`/`Include`/`TagWith`, locals whose every write is in memory, and non-overridable helpers in the same project. It stays quiet on `DbSet` queries, `AsQueryable()` over something already queryable, `IQueryable` and `IEnumerable` parameters and fields, MockQueryable's `BuildMock()`, and collections that implement `IAsyncEnumerable<T>`. The fix replaces `await q.ToListAsync(ct)` with `q.ToList()`, dropping the `await` and the cancellation token. LC060 joins the `critical` preset.
+
 ### Fixed
 
 - LC001, LC004, LC016, LC020 and LC022 recognise more queries that run on LINQ to Objects and stay quiet on them: `AsQueryable()` over a value typed as `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>` or `IReadOnlySet<T>` (no EF query type implements these), and over the result of a `System.Linq.Enumerable` operator such as `Select` or `Where` when every sequence it enumerates, including each sequence a `SelectMany` collection selector returns, is itself in memory (`_orders.Select(...)` over a `List<T>`). Enumerable operators are lazy, so `db.Users.AsEnumerable().Where(...).AsQueryable()` and operators over a bare `IEnumerable<T>` still report, as does `AsEnumerable()`, `Cast<T>()` or `OfType<T>()` over anything not proven in memory.

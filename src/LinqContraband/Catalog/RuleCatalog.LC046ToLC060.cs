@@ -217,6 +217,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/ChangeTrackingAndContextLifetime/LC059_DisposedContextConnection",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC060",
+                slug: "LC060_AsyncOnInMemoryQuery",
+                title: "EF Core async operator on an in-memory query",
+                category: "Reliability",
+                domain: "Execution & Async",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "AsyncOnInMemoryQueryAnalyzer",
+                fixerTypeName: "AsyncOnInMemoryQueryFixer",
+                documentationPath: "docs/LC060_AsyncOnInMemoryQuery.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC060_AsyncOnInMemoryQuery",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }
