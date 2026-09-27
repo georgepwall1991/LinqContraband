@@ -144,14 +144,16 @@ Methods from EF Core, its providers and the provider plugins it knows are truste
 dotnet_code_quality.LC001.trusted_namespaces = MyCompany.Translators, NodaTime
 ```
 
-Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...) or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
+Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...), over a value typed as `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>` or `IReadOnlySet<T>` (no EF query type implements them), over the result of a `System.Linq.Enumerable` operator such as `Select` or `Where` whose every input sequence, and every sequence a `SelectMany` collection selector returns, is itself in memory, or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
 
 ```csharp
 var users = new List<User> { ... }.AsQueryable().BuildMock();
 var adults = users.Where(u => IsAdult(u)); // no LC001: LINQ to Objects
 ```
 
-A source the analyzer cannot prove in-memory still reports: an `IQueryable` parameter, field or property, a `DbSet`, `AsQueryable()` over an `IEnumerable<T>` (which may be a `DbSet` at runtime), or a local that is assigned more than once.
+A source the analyzer cannot prove in-memory still reports: an `IQueryable` parameter, field or property, a `DbSet`, `AsQueryable()` over an `IEnumerable<T>` (which may be a `DbSet` at runtime) or over an `Enumerable` operator whose source is not proven in memory (operators are lazy, so `db.Users.AsEnumerable().Where(...).AsQueryable()` still enumerates the EF query), or a local that is assigned more than once.
+
+LC001 only reports a method that ends up inside an expression tree. A method called in a delegate lambda that runs before the query is built, such as SimpleIdServer's `_representations.Select(r => Enrich(r)).AsQueryable().Where(...)` (`Enumerable.Select` takes a `Func`), is ordinary code and stays quiet. A delegate lambda nested inside a query lambda (`db.Users.Where(u => u.Tags.Any(t => Matches(t, u.Name)))`) is part of the expression tree and still reports.
 
 ## Scope
 

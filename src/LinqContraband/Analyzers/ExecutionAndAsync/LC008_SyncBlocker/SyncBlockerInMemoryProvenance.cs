@@ -17,7 +17,7 @@ public sealed partial class SyncBlockerAnalyzer
     /// every write in its method (each must be in-memory-rooted or composed from the same local)
     /// and follows calls to non-overridable source helpers whose returned query is composed only
     /// from one <c>IQueryable</c> parameter, continuing with that call's argument. Anything else
-    /// (a parameter, field, property, <c>DbSet</c>, or an unfollowable helper) is not proven.
+    /// (a parameter, field, property, <c>DbSet</c>, or a helper whose body it cannot see) is not proven.
     /// </summary>
     private sealed class InMemoryQueryProvenance
     {
@@ -70,8 +70,7 @@ public sealed partial class SyncBlockerAnalyzer
                                 continue;
                             }
 
-                            return IsConcreteInMemorySequence(receiver?.Type) ||
-                                   IsNonEntitySequence(receiver?.Type);
+                            return InMemoryQueryableProvenance.IsInMemorySequenceSource(receiver, IsNonEntitySequence);
                         }
 
                         if (!invocation.Type.IsIQueryable())
@@ -87,6 +86,8 @@ public sealed partial class SyncBlockerAnalyzer
                             continue;
                         }
 
+                        // A helper whose body is not visible (a referenced project or package) is not trusted: it can
+                        // return static or injected query state whatever it is handed.
                         return false;
                     }
 
@@ -343,19 +344,14 @@ public sealed partial class SyncBlockerAnalyzer
             return null;
         }
 
-        private static bool IsOwnedSourceMethod(IMethodSymbol method)
+        /// <summary>
+        /// Declared in this compilation. A helper from a referenced project has syntax references when the
+        /// IDE loads that project as a compilation reference, but it is metadata in a command-line build, so
+        /// both are treated as library helpers.
+        /// </summary>
+        private bool IsOwnedSourceMethod(IMethodSymbol method)
         {
-            return method.OriginalDefinition.DeclaringSyntaxReferences.Length > 0;
-        }
-
-        private static bool IsConcreteInMemorySequence(ITypeSymbol? type)
-        {
-            return type switch
-            {
-                IArrayTypeSymbol => true,
-                INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } named => !named.IsIQueryable(),
-                _ => false
-            };
+            return method.OriginalDefinition.DeclaringSyntaxReferences.Any(r => compilation.ContainsSyntaxTree(r.SyntaxTree));
         }
 
         /// <summary>
@@ -364,7 +360,7 @@ public sealed partial class SyncBlockerAnalyzer
         /// project or its references exposes a <c>DbSet&lt;T&gt;</c>, it is an in-memory sequence, such as
         /// VirtoCommerce's <c>AllRegisteredSettings.AsQueryable()</c>.
         /// </summary>
-        private bool IsNonEntitySequence(ITypeSymbol? type)
+        private bool IsNonEntitySequence(ITypeSymbol type)
         {
             if (type is not INamedTypeSymbol { TypeKind: TypeKind.Interface } named || named.IsIQueryable())
                 return false;
