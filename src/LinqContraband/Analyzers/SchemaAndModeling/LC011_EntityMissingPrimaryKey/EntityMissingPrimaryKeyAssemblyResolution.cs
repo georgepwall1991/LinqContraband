@@ -56,6 +56,24 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         if (IsGetExecutingAssemblyCall(expression, dbContextType, compilationModel, cancellationToken))
             return true;
 
+        // GetType().Assembly inside the context: the context's own assembly. GetType() returns the
+        // runtime type, so for an abstract context it is some derived type that may live in another
+        // assembly; only a concrete context is taken to be instantiated as itself. An abstract
+        // context falls back to the unknown-assembly behavior.
+        if (expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Assembly" } getTypeAccess &&
+            getTypeAccess.Expression is InvocationExpressionSyntax { ArgumentList.Arguments.Count: 0 } getTypeCall &&
+            getTypeCall.Expression switch
+            {
+                IdentifierNameSyntax { Identifier.ValueText: "GetType" } => true,
+                MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name.Identifier.ValueText: "GetType" } => true,
+                _ => false
+            } &&
+            !dbContextType.IsAbstract &&
+            !HasSourceGetTypeMethod(dbContextType))
+        {
+            return true;
+        }
+
         if (expression is IdentifierNameSyntax identifier)
         {
             if (TryResolveLocalCurrentAssembly(identifier, dbContextType, compilationModel, cancellationToken, visitedExpressions, out var localIsCurrentAssembly))
@@ -73,6 +91,17 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 compilationModel,
                 cancellationToken,
                 visitedExpressions);
+        }
+
+        return false;
+    }
+
+    private static bool HasSourceGetTypeMethod(INamedTypeSymbol dbContextType)
+    {
+        for (var currentType = dbContextType; currentType != null; currentType = currentType.BaseType)
+        {
+            if (currentType.GetMembers("GetType").Any(member => member.DeclaringSyntaxReferences.Length > 0))
+                return true;
         }
 
         return false;
