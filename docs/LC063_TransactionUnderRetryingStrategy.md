@@ -61,7 +61,7 @@ The code inside the delegate can run more than once, so keep work that must happ
 ## When it stays quiet (non-goals)
 
 - The transaction starts inside a delegate passed to the strategy's `Execute`, `ExecuteAsync`, `ExecuteInTransaction` or `ExecuteInTransactionAsync`, or to a method in the project that mentions an execution strategy (such as a `ResilientTransaction` helper).
-- The transaction starts in a method or local function that some delegate passed to an execution strategy calls, or passes as a method group. The rule does not check that every caller does this.
+- The transaction starts in a method or local function that a lambda passed to an execution strategy calls, or that is passed to the strategy directly as a method group. The rule does not check that every caller does this. A helper that only builds the delegate, as in `strategy.Execute(BuildWork())`, runs before the strategy and is still reported.
 - The transaction starts inside a lambda the code stores (`Func<Task> work = async () => ...`), which may be handed to a strategy later.
 - Retries are turned off: `EnableRetryOnFailure(0)`, `maxRetryCount: 0`, a strategy created with a constant retry count of 0, or a strategy that does not derive from `ExecutionStrategy` (such as `NonRetryingExecutionStrategy`).
 - The context's static type is `DbContext`, an interface, or a context with no retrying configuration in this project. Configuration in another project, and retries switched on by a library (for example .NET Aspire's `AddSqlServerDbContext`), are not seen.
@@ -84,7 +84,7 @@ await strategy.ExecuteAsync(async () =>
 
 The delegate is `async` and awaited when the moved code awaits; otherwise the fix uses `strategy.Execute(() => { ... })`. Comments above the transaction stay above the strategy. The fix adds `using Microsoft.EntityFrameworkCore;` when the file needs it for `Execute`/`ExecuteAsync`, and picks another name when `strategy` is taken.
 
-There is no fix when the moved code contains `return`, `yield`, `goto` or a label, when the context is not a local, parameter, field, auto-property or `this`, for `UseTransaction`, for the static `RelationalDatabaseFacadeExtensions.BeginTransaction(...)` form, for a transaction that is not owned by a using, or for a using with several resources. The fixer compiles the result and offers nothing when the rewrite would add an error, which also covers `ref`/`out` parameters used in the moved code, `break`/`continue` out of the block, and locals that are no longer definitely assigned after it.
+There is no fix when the moved code contains `return`, `yield`, `goto` or a label, when the context receiver could change between the two reads the fix makes (anything other than `this`, a `readonly` field, a get-only auto-property, or a parameter or local the method never writes), for `UseTransaction`, for the static `RelationalDatabaseFacadeExtensions.BeginTransaction(...)` form, for a transaction that is not owned by a using, or for a using with several resources. The fixer compiles the result and offers nothing when the rewrite would add an error, which also covers `ref`/`out` parameters used in the moved code, `break`/`continue` out of the block, and locals that are no longer definitely assigned after it.
 
 ## Test Cases
 

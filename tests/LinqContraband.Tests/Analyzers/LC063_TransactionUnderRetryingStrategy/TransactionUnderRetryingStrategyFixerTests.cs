@@ -184,6 +184,22 @@ public class TransactionUnderRetryingStrategyFixerTests
     }
 
     [Fact]
+    public async Task UnwrittenLocalAndGetOnlyAutoProperty_AreFixed()
+    {
+        await VerifyFixAsync(@"
+        var local = Stable;
+        using var tx = local.Database.{|LC063:BeginTransaction|}();
+        tx.Commit();", @"
+        var local = Stable;
+        var strategy = local.Database.CreateExecutionStrategy();
+        strategy.Execute(() =>
+        {
+            using var tx = local.Database.BeginTransaction();
+            tx.Commit();
+        });", extraMembers: "    public AppDb Stable { get; } = new AppDb();");
+    }
+
+    [Fact]
     public async Task FixAll_FixesEveryTransaction()
     {
         var before = Wrap(@"
@@ -232,13 +248,25 @@ public class TransactionUnderRetryingStrategyFixerTests
     [InlineData(@"if (ct.CanBeCanceled) using (var tx = db.Database.{|LC063:BeginTransaction|}()) { tx.Commit(); }")]
     // The context expression is re-evaluated for CreateExecutionStrategy(), so it has to be stable.
     [InlineData(@"using var tx = Fresh.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    // A receiver that can be reassigned could name another context by the time the delegate runs.
+    [InlineData(@"using var tx = _mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    [InlineData(@"using var tx = this._mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    [InlineData(@"using var tx = Settable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    [InlineData(@"if (ct.CanBeCanceled) db = new AppDb(); using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    [InlineData(@"var local = db; using var tx = local.Database.{|LC063:BeginTransaction|}(); tx.Commit(); local = null;")]
+    [InlineData(@"var local = db; Swap(ref local); using var tx = local.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    [InlineData(@"var local = db; (local, _) = (db, 1); using var tx = local.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     // The moved code breaks out of the loop around it; inside a lambda that does not compile.
     [InlineData(@"while (true) { using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit(); break; }")]
     // A local assigned inside the moved code and read after it is not definitely assigned any more.
     [InlineData(@"int saved; using (var tx = db.Database.{|LC063:BeginTransaction|}()) { saved = db.SaveChanges(); tx.Commit(); } Console.WriteLine(saved);")]
     public async Task UnsupportedShape_NoFix(string code)
     {
-        await VerifyNoFixAsync(code, extraMembers: "private AppDb Fresh => new AppDb();");
+        await VerifyNoFixAsync(code, extraMembers: @"
+    private AppDb Fresh => new AppDb();
+    private AppDb _mutable = new AppDb();
+    public AppDb Settable { get; set; } = new AppDb();
+    private static void Swap(ref AppDb context) { }");
     }
 
     [Fact]

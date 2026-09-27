@@ -376,6 +376,25 @@ static class DatabaseOptions
     }
 
     [Fact]
+    public async Task HelperEvaluatedBeforeExecute_Reports()
+    {
+        // BuildWork() runs before the strategy does; only the delegate it returns runs under the strategy.
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(BuildWork());
+        await strategy.ExecuteAsync(() => { var work = BuildAsyncWork(); return work(); });",
+            extraMembers: @"
+    private Action BuildWork()
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        tx.Commit();
+        return () => _db.SaveChanges();
+    }
+
+    private Func<Task> BuildAsyncWork() => () => _db.SaveChangesAsync();"));
+    }
+
+    [Fact]
     public async Task ProjectResilientTransactionWrapper_NotReported()
     {
         await VerifyAsync(Wrap(

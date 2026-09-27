@@ -24,7 +24,8 @@ namespace LinqContraband.Analyzers.LC063_TransactionUnderRetryingStrategy;
 /// </summary>
 /// <remarks>
 /// Only the simple shape gets a fix: a <c>BeginTransaction</c>/<c>BeginTransactionAsync</c> call on
-/// <c>ctx.Database</c> (where <c>ctx</c> is a local, parameter, field or <c>this</c>) that initializes the single local
+/// <c>ctx.Database</c> (where <c>ctx</c> is <c>this</c>, a readonly field, a get-only auto-property, or a parameter or
+/// local the method never writes) that initializes the single local
 /// of a using declaration or using statement directly inside a block, with no <c>return</c>, <c>yield</c>, label or
 /// <c>goto</c> in the moved code. The fixer compiles the rewritten document and only offers a rewrite that adds no
 /// errors, which also rules out moved code that uses <c>ref</c>/<c>out</c> parameters, ref-like locals, jumps out of
@@ -191,8 +192,9 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
         return new RewritePlan(block, block.WithStatements(SyntaxFactory.List(statements)), isAsync);
     }
 
-    // A local, parameter, field, auto-property or this: evaluating it again for CreateExecutionStrategy() gives the
-    // same context and has no side effects.
+    // The fix reads the context twice (CreateExecutionStrategy() before the transaction, BeginTransaction inside the
+    // delegate), so the receiver must not be able to change in between: this, a readonly field, a get-only
+    // auto-property, or a parameter or non-ref local that the method never writes after declaring it.
     private static bool IsStableContext(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken cancellationToken)
     {
         if (expression is ThisExpressionSyntax)
@@ -201,16 +203,76 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
         if (expression is not (IdentifierNameSyntax or MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name: IdentifierNameSyntax }))
             return false;
 
-        switch (semanticModel.GetSymbolInfo(expression, cancellationToken).Symbol)
+        var symbol = semanticModel.GetSymbolInfo(expression, cancellationToken).Symbol;
+        switch (symbol)
         {
             case ILocalSymbol local:
-                return local.RefKind == RefKind.None;
-            case IParameterSymbol:
-            case IFieldSymbol:
-                return true;
+                return local.RefKind == RefKind.None && !IsWrittenInMember(expression, local, semanticModel, cancellationToken);
+            case IParameterSymbol parameter:
+                return parameter.RefKind == RefKind.None && !IsWrittenInMember(expression, parameter, semanticModel, cancellationToken);
+            case IFieldSymbol field:
+                return field.IsReadOnly || field.IsConst;
             case IPropertySymbol property:
-                return property.ContainingType.GetMembers().Any(member =>
-                    member is IFieldSymbol field && SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property));
+                return property.SetMethod == null &&
+                       property.ContainingType.GetMembers().Any(member =>
+                           member is IFieldSymbol field && SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property));
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// True when anything in the enclosing member (or the top-level statements) assigns, increments, deconstructs into,
+    /// or passes by <c>ref</c>/<c>out</c> the given local or parameter.
+    /// </summary>
+    private static bool IsWrittenInMember(
+        ExpressionSyntax expression,
+        ISymbol symbol,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var scope = (SyntaxNode?)expression.Ancestors()
+                        .OfType<MemberDeclarationSyntax>()
+                        .FirstOrDefault(member => member is not GlobalStatementSyntax)
+                    ?? expression.SyntaxTree.GetRoot(cancellationToken);
+
+        foreach (var name in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (name.Identifier.ValueText != symbol.Name ||
+                !SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(name, cancellationToken).Symbol, symbol))
+            {
+                continue;
+            }
+
+            if (IsWritePosition(name))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsWritePosition(ExpressionSyntax name)
+    {
+        ExpressionSyntax current = name;
+        while (current.Parent is ParenthesizedExpressionSyntax parenthesized)
+            current = parenthesized;
+
+        switch (current.Parent)
+        {
+            case AssignmentExpressionSyntax assignment when assignment.Left == current:
+            case PrefixUnaryExpressionSyntax prefix
+                when prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression):
+            case PostfixUnaryExpressionSyntax:
+            case RefExpressionSyntax:
+            case ArgumentSyntax argument when !argument.RefKindKeyword.IsKind(SyntaxKind.None) &&
+                                              !argument.RefKindKeyword.IsKind(SyntaxKind.InKeyword):
+                return true;
+            case ArgumentSyntax { Parent: TupleExpressionSyntax tuple }:
+                // (db, other) = (a, b): a tuple on the left of an assignment writes its elements.
+                SyntaxNode outer = tuple;
+                while (outer.Parent is ArgumentSyntax { Parent: TupleExpressionSyntax nested })
+                    outer = nested;
+                return outer.Parent is AssignmentExpressionSyntax deconstruction && deconstruction.Left == outer;
             default:
                 return false;
         }

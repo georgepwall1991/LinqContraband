@@ -169,21 +169,45 @@ internal sealed class RetryingStrategyModel
         };
     }
 
+    /// <summary>
+    /// Records what runs under the strategy: calls inside a lambda passed as the delegate, and a method group passed as
+    /// the delegate. Anything else in the arguments (<c>strategy.Execute(BuildWork())</c>) runs before the strategy does.
+    /// </summary>
     private static void CollectCallees(IInvocationOperation execute, HashSet<ISymbol> calledFromStrategy)
     {
         foreach (var argument in execute.Arguments)
         {
-            foreach (var operation in argument.Value.DescendantsAndSelf())
+            var value = argument.Value;
+            while (value is IDelegateCreationOperation or IConversionOperation)
             {
-                switch (operation)
+                value = value switch
                 {
-                    case IInvocationOperation invocation:
-                        calledFromStrategy.Add(invocation.TargetMethod.OriginalDefinition);
-                        break;
-                    case IMethodReferenceOperation methodReference:
-                        calledFromStrategy.Add(methodReference.Method.OriginalDefinition);
-                        break;
-                }
+                    IDelegateCreationOperation delegateCreation => delegateCreation.Target,
+                    IConversionOperation conversion => conversion.Operand,
+                    _ => value
+                };
+            }
+
+            switch (value)
+            {
+                case IMethodReferenceOperation methodReference:
+                    calledFromStrategy.Add(methodReference.Method.OriginalDefinition);
+                    break;
+                case IAnonymousFunctionOperation lambda:
+                    foreach (var operation in lambda.Body.Descendants())
+                    {
+                        switch (operation)
+                        {
+                            case IInvocationOperation invocation:
+                                calledFromStrategy.Add(invocation.TargetMethod.OriginalDefinition);
+                                break;
+                            case IMethodReferenceOperation reference:
+                                calledFromStrategy.Add(reference.Method.OriginalDefinition);
+                                break;
+                        }
+                    }
+
+                    break;
             }
         }
     }
