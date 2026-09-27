@@ -69,11 +69,11 @@ public class BlockingEfAsyncCallFixerTests
         @"var users = {|LC062:db.Users.ToListAsync(ct).Result|};",
         @"var users = db.Users.ToList();")]
     [InlineData(
-        @"{|LC062:db.SaveChangesAsync().Wait()|};",
-        @"db.SaveChanges();")]
+        @"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.SaveChangesAsync().Wait()|};",
+        @"var sealedDb = new SealedShopContext(); sealedDb.SaveChanges();")]
     [InlineData(
-        @"var saved = {|LC062:db.SaveChangesAsync(true, ct).Result|};",
-        @"var saved = db.SaveChanges(true);")]
+        @"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync(true, ct).Result|};",
+        @"var internalDb = new InternalShopContext(); var saved = internalDb.SaveChanges(true);")]
     [InlineData(
         @"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, ct).GetAwaiter().GetResult()|};",
         @"var user = db.Users.FirstOrDefault(x => x.Id == id);")]
@@ -81,17 +81,8 @@ public class BlockingEfAsyncCallFixerTests
         @"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, cancellationToken: ct).Result|};",
         @"var user = db.Users.FirstOrDefault(x => x.Id == id);")]
     [InlineData(
-        @"var user = {|LC062:db.Users.FindAsync(id).Result|};",
-        @"var user = db.Users.Find(id);")]
-    [InlineData(
-        @"var user = {|LC062:db.Users.FindAsync(new object[] { id }, ct).AsTask().Result|};",
-        @"var user = db.Users.Find(new object[] { id });")]
-    [InlineData(
         @"{|LC062:db.Database.MigrateAsync(ct).GetAwaiter().GetResult()|};",
         @"db.Database.Migrate();")]
-    [InlineData(
-        @"var transaction = {|LC062:db.Database.BeginTransactionAsync(ct).Result|};",
-        @"var transaction = db.Database.BeginTransaction();")]
     [InlineData(
         @"var rows = {|LC062:db.Database.ExecuteSqlRawAsync(""DELETE FROM Users"", ct).Result|};",
         @"var rows = db.Database.ExecuteSqlRaw(""DELETE FROM Users"");")]
@@ -103,11 +94,8 @@ public class BlockingEfAsyncCallFixerTests
         @"var rows = {|LC062:db.Users.Where(x => x.Id > id).ExecuteDeleteAsync(ct).Result|};",
         @"var rows = db.Users.Where(x => x.Id > id).ExecuteDelete();")]
     [InlineData(
-        @"var entry = {|LC062:db.Users.AddAsync(new User(), ct).Result|};",
-        @"var entry = db.Users.Add(new User());")]
-    [InlineData(
-        @"{|LC062:db.AddRangeAsync(new User(), new User()).Wait()|};",
-        @"db.AddRange(new User(), new User());")]
+        @"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.AddRangeAsync(new User(), new User()).Wait()|};",
+        @"var sealedDb = new SealedShopContext(); sealedDb.AddRange(new User(), new User());")]
     [InlineData(
         @"var count = {|LC062:db.Users.ToListAsync().Result|}.Count;",
         @"var count = db.Users.ToList().Count;")]
@@ -190,8 +178,8 @@ class Program
         @"var saved = await db.SaveChangesAsync() /* sync entry point */;",
         true)]
     [InlineData(
-        @"var user = {|LC062:db.Users.FindAsync(id) /* key */ .AsTask().Result|};",
-        @"var user = db.Users.Find(id) /* key */;",
+        @"var user = {|LC062:db.Users.FirstOrDefaultAsync(ct) /* first */ .ConfigureAwait(false).GetAwaiter().GetResult()|};",
+        @"var user = db.Users.FirstOrDefault() /* first */;",
         false)]
     public async Task CommentsBeforeTheBlockingAccess_AreKept(string before, string after, bool isAsync)
     {
@@ -264,6 +252,61 @@ class Program
             @"var full = new FullyAuditedContext(); var saved = {|LC062:full.SaveChangesAsync().Result|};",
             @"var full = new FullyAuditedContext(); var saved = full.SaveChanges();",
             isAsync: false);
+    }
+
+    [Theory]
+    // A sealed context that overrides only the async save.
+    [InlineData(@"var sealedAudited = new SealedAuditedContext(); var saved = {|LC062:sealedAudited.SaveChangesAsync().Result|};")]
+    // Public unsealed receivers: another assembly can derive from them and override only the async method.
+    [InlineData(@"{|LC062:db.SaveChangesAsync().Wait()|};")]
+    [InlineData(@"var saved = {|LC062:db.SaveChangesAsync(true, ct).Result|};")]
+    [InlineData(@"var user = {|LC062:db.Users.FindAsync(id).Result|};")]
+    [InlineData(@"var user = {|LC062:db.Users.FindAsync(new object[] { id }, ct).AsTask().Result|};")]
+    [InlineData(@"var entry = {|LC062:db.Users.AddAsync(new User(), ct).Result|};")]
+    [InlineData(@"var transaction = {|LC062:db.Database.BeginTransactionAsync(ct).Result|};")]
+    public async Task ReceiverOpenToOverrides_OffersNoSynchronousFix(string code)
+    {
+        await VerifyNoFixAsync(code, isAsync: false);
+    }
+
+    [Theory]
+    [InlineData(@"var saved = {|LC062:db.SaveChangesAsync().Result|};", @"var saved = await db.SaveChangesAsync();")]
+    [InlineData(@"var user = {|LC062:db.Users.FindAsync(id).Result|};", @"var user = await db.Users.FindAsync(id);")]
+    public async Task ReceiverOpenToOverrides_StillAwaitsInAsyncCode(string before, string after)
+    {
+        await VerifyFixAsync(before, after, isAsync: true);
+    }
+
+    [Fact]
+    public async Task InternalContext_WithInternalsVisibleTo_OffersNoSynchronousFix()
+    {
+        var source = BlockingEfAsyncCallTests.Wrap(
+                @"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync().Result|};")
+            .Replace("\nclass Program", "\n[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"Other\")]\nclass Program");
+        Assert.Contains("InternalsVisibleTo", source);
+
+        await new CodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+    }
+
+    [Fact]
+    public async Task RefLikeParameterReadAfterTheCall_GetsNoAwaitFix()
+    {
+        // Ref-like parameters cannot appear in async code (CS4012), so this site gets the synchronous fix, never await.
+        var titles = await CodeActionTitles.GetAsync(
+            new BlockingEfAsyncCallAnalyzer(),
+            new BlockingEfAsyncCallFixer(),
+            BlockingEfAsyncCallTests.Usings + @"
+class Program
+{
+    void Fill(System.Span<int> buffer, SealedShopContext db)
+    {
+        var count = db.Users.CountAsync().Result;
+        buffer[0] = count;
+    }
+}
+" + BlockingEfAsyncCallTests.EfMock);
+
+        Assert.Equal(new[] { "Call Count instead of blocking" }, titles);
     }
 
     [Fact]

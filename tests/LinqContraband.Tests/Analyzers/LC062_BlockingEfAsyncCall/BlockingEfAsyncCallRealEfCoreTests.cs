@@ -24,7 +24,7 @@ using Microsoft.EntityFrameworkCore;
 
 public class User { public int Id { get; set; } public string Name { get; set; } = """"; }
 
-public class ShopContext : DbContext
+public sealed class ShopContext : DbContext
 {
     public DbSet<User> Users => Set<User>();
 }
@@ -72,9 +72,9 @@ public class Program
     }
 
     [Theory]
-    [InlineData(false, "ToList", "ExecuteSqlRaw(\"DELETE FROM Users\")", "Find(new object[] { id })")]
-    [InlineData(true, "await db.Users.ToListAsync(ct)", "await db.Database.MigrateAsync(ct)", "await db.SaveChangesAsync(ct).ConfigureAwait(false)")]
-    public async Task EveryFix_CompilesAgainstEfCore(bool isAsync, params string[] expectedFragments)
+    [InlineData(false, 5, "ToList", "ExecuteSqlRaw(\"DELETE FROM Users\")", "db.SaveChanges()", "db.AddRange(new User(), new User())")]
+    [InlineData(true, 0, "await db.Users.ToListAsync(ct)", "await db.Database.MigrateAsync(ct)", "await db.SaveChangesAsync(ct).ConfigureAwait(false)")]
+    public async Task EveryFix_CompilesAgainstEfCore(bool isAsync, int expectedUnfixed, params string[] expectedFragments)
     {
         var document = CreateDocument(Source(isAsync));
         var errorsBefore = await CountErrorsAsync(document);
@@ -109,8 +109,10 @@ public class Program
         foreach (var fragment in expectedFragments)
             Assert.True(text.Contains(fragment, StringComparison.Ordinal), text);
 
-        // Every EF Core family has a synchronous counterpart or await, so nothing is left.
-        Assert.Empty(await GetLc062Async(document));
+        // Async code awaits every call. Synchronous code leaves the DbSet and DatabaseFacade calls (FindAsync twice,
+        // AddAsync, BeginTransactionAsync, EnsureCreatedAsync): those public unsealed types can be subclassed elsewhere
+        // with only the async method overridden, so the synchronous rewrite is withheld.
+        Assert.Equal(expectedUnfixed, (await GetLc062Async(document)).Length);
     }
 
     private static Document CreateDocument(string source)

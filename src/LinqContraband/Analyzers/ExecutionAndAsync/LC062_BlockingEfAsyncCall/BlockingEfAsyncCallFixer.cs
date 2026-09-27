@@ -63,7 +63,8 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
 
             // In async code: await the task.
             if (!SyncBlockerFixer.IsInvalidAwaitContext(site) &&
-                !SyncBlockerFixer.WouldStrandRefStructLocal(site, semanticModel, cancellationToken))
+                !SyncBlockerFixer.WouldStrandRefStructLocal(site, semanticModel, cancellationToken) &&
+                !WouldStrandRefLikeValue(site, semanticModel, cancellationToken))
             {
                 var awaitMarker = new SyntaxAnnotation();
                 var awaitedDraft = await CreateAwaitFixAsync(document, site, taskExpression, awaitMarker, cancellationToken).ConfigureAwait(false);
@@ -225,6 +226,45 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
                 .WithAdditionalAnnotations(Formatter.Annotation, marker));
 
         return await FormatAsync(editor.GetChangedDocument(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// True when a ref-like value that exists before the site (a parameter, a local declared earlier, or <c>this</c>
+    /// in a ref struct) is read after it: an inserted <c>await</c> would keep it live across the suspension point,
+    /// which the async rewriter rejects (CS4007, CS4012). LC008's helper covers locals; this adds the rest.
+    /// </summary>
+    private static bool WouldStrandRefLikeValue(SyntaxNode site, SemanticModel semanticModel, CancellationToken cancellationToken)
+    {
+        var body = site.Ancestors().FirstOrDefault(node =>
+            node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or BaseMethodDeclarationSyntax or AccessorDeclarationSyntax);
+        if (body == null)
+            return false;
+
+        foreach (var node in body.DescendantNodes())
+        {
+            if (node.SpanStart <= site.Span.End)
+                continue;
+
+            if (node is ThisExpressionSyntax &&
+                semanticModel.GetEnclosingSymbol(node.SpanStart, cancellationToken)?.ContainingType is { IsRefLikeType: true })
+            {
+                return true;
+            }
+
+            if (node is not IdentifierNameSyntax identifier)
+                continue;
+
+            switch (semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol)
+            {
+                case IParameterSymbol { Type.IsRefLikeType: true }:
+                    return true;
+                case ILocalSymbol { Type.IsRefLikeType: true } local
+                    when local.DeclaringSyntaxReferences.Any(reference => reference.Span.Start < site.SpanStart):
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -414,9 +454,10 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
     }
 
     /// <summary>
-    /// True when the call resolves to an application override of the async method, or when the receiver's static
-    /// type, or a type in this compilation derived from it, overrides the async method at a more derived level than
-    /// the synchronous one: the synchronous call would then skip that override. Overloads count together, because
+    /// True when the call resolves to an application override of the async method, when the receiver's static type
+    /// is unsealed and another assembly could derive from it (a public context, <c>DbContext</c>, <c>DbSet&lt;T&gt;</c>),
+    /// or when the receiver's type, or a type in this compilation derived from it, overrides the async method at a
+    /// more derived level than the synchronous one: the synchronous call could then skip an override. Overloads count together, because
     /// <c>SaveChangesAsync(CancellationToken)</c> calls the overridable <c>SaveChangesAsync(bool, CancellationToken)</c>.
     /// </summary>
     private static bool BypassesAsyncOverride(
@@ -435,9 +476,14 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         if (!SyncOverriddenNoLessDerived(receiverType, asyncName, syncName))
             return true;
 
-        // A variable of a base type can hold a derived context declared in this project.
         if (receiverType.IsSealed)
             return false;
+
+        // An unsealed type another assembly can derive from may hold an object that overrides only the async method.
+        if (!IsClosedToOtherAssemblies(receiverType, compilation))
+            return true;
+
+        // A variable of a base type can hold a derived context declared in this project.
 
         foreach (var symbol in compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type, cancellationToken))
         {
@@ -450,6 +496,28 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// True when no other assembly can derive from <paramref name="type"/>: it is declared in this compilation, it or
+    /// a containing type is private or internal, and the assembly grants no <c>InternalsVisibleTo</c>.
+    /// </summary>
+    private static bool IsClosedToOtherAssemblies(INamedTypeSymbol type, Compilation compilation)
+    {
+        if (!SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, compilation.Assembly))
+            return false;
+
+        var hidden = false;
+        for (var current = type; current != null; current = current.ContainingType)
+        {
+            if (current.DeclaredAccessibility is Accessibility.Private or Accessibility.Internal or Accessibility.ProtectedAndInternal)
+                hidden = true;
+        }
+
+        return hidden &&
+               !compilation.Assembly.GetAttributes().Any(attribute =>
+                   attribute.AttributeClass is { Name: "InternalsVisibleToAttribute" } attributeClass &&
+                   attributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices");
     }
 
     /// <summary>

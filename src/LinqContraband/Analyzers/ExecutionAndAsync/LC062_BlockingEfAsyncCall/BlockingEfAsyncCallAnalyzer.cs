@@ -71,9 +71,12 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
         if (method.IsStatic || invocation.Instance == null)
             return;
 
-        // task.Wait(), with or without a timeout or token: every overload blocks.
+        // task.Wait(), with or without a timeout or token, blocks; Wait(0) and Wait(TimeSpan.Zero) only poll.
         if (method.Name == "Wait" && IsTask(method.ContainingType))
         {
+            if (IsZeroTimeoutPoll(invocation))
+                return;
+
             Report(context, invocation, invocation.Instance, ".Wait()");
             return;
         }
@@ -90,6 +93,28 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
         {
             Report(context, invocation, awaitable, ".GetAwaiter().GetResult()");
         }
+    }
+
+    private static bool IsZeroTimeoutPoll(IInvocationOperation wait)
+    {
+        foreach (var argument in wait.Arguments)
+        {
+            if (argument.Parameter?.Name is not ("millisecondsTimeout" or "timeout"))
+                continue;
+
+            var value = argument.Value.UnwrapConversions();
+            if (value.ConstantValue is { HasValue: true, Value: int milliseconds } && milliseconds == 0)
+                return true;
+
+            if (value is IFieldReferenceOperation { Field: { Name: "Zero", IsStatic: true } field } &&
+                field.ContainingType is { Name: "TimeSpan" } timeSpan &&
+                timeSpan.ContainingNamespace?.ToDisplayString() == "System")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void Report(OperationAnalysisContext context, IOperation site, IOperation taskExpression, string blockingText)

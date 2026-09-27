@@ -112,9 +112,24 @@ public class AuditedContext : Microsoft.EntityFrameworkCore.DbContext
 }
 
 // Overrides both saves.
-public class FullyAuditedContext : Microsoft.EntityFrameworkCore.DbContext
+public sealed class FullyAuditedContext : Microsoft.EntityFrameworkCore.DbContext
 {
     public override int SaveChanges() => base.SaveChanges();
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
+}
+
+public sealed class SealedShopContext : Microsoft.EntityFrameworkCore.DbContext
+{
+    public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; }
+}
+
+internal class InternalShopContext : Microsoft.EntityFrameworkCore.DbContext
+{
+}
+
+// Sealed, but overrides only the async save.
+public sealed class SealedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
+{
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
 }
 
@@ -200,6 +215,23 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(
             Wrap(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(5))|};"),
             Reported());
+    }
+
+    [Theory]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(0);")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(TimeSpan.Zero);")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(millisecondsTimeout: 0);")]
+    public async Task ZeroTimeoutWait_OnlyPolls_DoesNotReport(string body)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(body));
+    }
+
+    [Theory]
+    [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(1)|};")]
+    [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromMilliseconds(1))|};")]
+    public async Task NonZeroTimeoutWait_Reports(string body)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());
     }
 
     [Fact]
