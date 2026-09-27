@@ -283,57 +283,95 @@ public sealed partial class SyncBlockerAnalyzer
             return provenQuery;
         }
 
+        private const int MaxInertMemberDepth = 3;
+        private const int MaxReferencedAssemblies = 256;
+
         /// <summary>
-        /// An argument that cannot give a library helper a way to reach EF: a primitive, string, enum or
-        /// <c>System</c> struct (<c>Guid</c>, <c>CancellationToken</c>, ..., generic ones only when every type argument is inert); a delegate or expression whose
-        /// result is inert, such as a <c>Func&lt;T, bool&gt;</c> predicate; or a class from a referenced
-        /// assembly that does not itself reference EF Core, such as SimpleIdServer's <c>SCIMExpression</c>.
-        /// A <c>DbContext</c>, a repository or other class of this project, an EF-aware library's class, an
-        /// interface or <c>object</c> could return a database query, so they block the proof.
+        /// An argument that cannot give a library helper a way to reach EF: a primitive, string or enum; a
+        /// <c>System</c> struct (<c>Guid</c>, <c>DateTime</c>, ..., generic ones only when every type argument is
+        /// inert); or a class or struct from an assembly that neither is this project nor reaches EF Core, whose
+        /// instance fields and properties (base types included, to <see cref="MaxInertMemberDepth"/> levels) are
+        /// all inert too, such as SimpleIdServer's <c>SCIMExpression</c>. A member typed as a query or sequence,
+        /// <c>object</c>, <c>dynamic</c>, a delegate, an <c>Expression</c>, a type parameter or an interface
+        /// could carry <c>db.Users</c> (a <c>QueryBox&lt;T&gt;</c> with an <c>IQueryable&lt;T&gt;</c> property), and so
+        /// could a delegate argument, so they block the proof, as do a <c>DbContext</c> and any type of this project.
         /// </summary>
         private bool IsInertArgumentType(ITypeSymbol type, int depth)
         {
-            if (depth > 4)
+            return IsInertType(type, depth, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+        }
+
+        private bool IsInertType(ITypeSymbol type, int depth, HashSet<ITypeSymbol> visiting)
+        {
+            if (type.SpecialType == SpecialType.System_Object ||
+                type.TypeKind is TypeKind.Dynamic or TypeKind.TypeParameter or TypeKind.Error or TypeKind.Delegate or TypeKind.Interface ||
+                type.IsDbContext() || type.IsIQueryable())
                 return false;
 
-            if (type.SpecialType == SpecialType.System_Object || type.IsDbContext())
-                return false;
-
-            if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum)
+            if (type.SpecialType == SpecialType.System_String || type.TypeKind == TypeKind.Enum)
                 return true;
 
-            if (type is not INamedTypeSymbol named)
+            if (type.SpecialType != SpecialType.None)
+                return type.IsValueType;
+
+            if (type is not INamedTypeSymbol named || IsSequence(named) || IsLinqExpression(named))
                 return false;
 
             if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
-                return IsInertArgumentType(named.TypeArguments[0], depth + 1);
+                return IsInertType(named.TypeArguments[0], depth, visiting);
 
-            if (named.TypeKind == TypeKind.Delegate)
-                return named.DelegateInvokeMethod is { } invoke &&
-                       (invoke.ReturnsVoid || IsInertArgumentType(invoke.ReturnType, depth + 1));
+            if (named.TypeKind == TypeKind.Struct && IsInSystemNamespace(named))
+                return named.TypeArguments.All(t => IsInertType(t, depth, visiting));
 
-            if (IsLinqExpression(named))
-                return named.IsGenericType &&
-                       named.TypeArguments[0] is INamedTypeSymbol { TypeKind: TypeKind.Delegate } lambda &&
-                       IsInertArgumentType(lambda, depth + 1);
-
-            switch (named.TypeKind)
-            {
-                case TypeKind.Struct:
-                    // A generic System struct (KeyValuePair, ValueTuple, ...) is only as inert as what it carries.
-                    if (IsInSystemNamespace(named))
-                        return named.TypeArguments.All(t => IsInertArgumentType(t, depth + 1));
-                    break;
-                case TypeKind.Class:
-                    break;
-                default:
-                    return false;
-            }
+            if (named.TypeKind is not (TypeKind.Class or TypeKind.Struct))
+                return false;
 
             var assembly = named.ContainingAssembly;
-            return assembly != null &&
-                   !SymbolEqualityComparer.Default.Equals(assembly, compilation.Assembly) &&
-                   !ReferencesEntityFramework(assembly);
+            if (assembly == null ||
+                SymbolEqualityComparer.Default.Equals(assembly, compilation.Assembly) ||
+                ReferencesEntityFramework(assembly))
+                return false;
+
+            // A type already being checked higher up (SCIMExpression.Child) is judged by that check.
+            if (!visiting.Add(named))
+                return true;
+
+            try
+            {
+                if (depth >= MaxInertMemberDepth)
+                    return false;
+
+                for (var current = named; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(current, named) &&
+                        (current.ContainingAssembly == null ||
+                         SymbolEqualityComparer.Default.Equals(current.ContainingAssembly, compilation.Assembly) ||
+                         ReferencesEntityFramework(current.ContainingAssembly)))
+                        return false;
+
+                    foreach (var member in current.GetMembers())
+                    {
+                        if (member.IsStatic)
+                            continue;
+
+                        var memberType = member switch
+                        {
+                            IFieldSymbol field => field.Type,
+                            IPropertySymbol property => property.Type,
+                            _ => null
+                        };
+
+                        if (memberType != null && !IsInertType(memberType, depth + 1, visiting))
+                            return false;
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                visiting.Remove(named);
+            }
         }
 
         private static bool IsLinqExpression(INamedTypeSymbol type)
@@ -358,13 +396,73 @@ public sealed partial class SyncBlockerAnalyzer
             new(SymbolEqualityComparer.Default);
 
         /// <summary>
-        /// Whether the assembly is EF Core itself or references it, and so could build a query on its own.
+        /// Whether the assembly could build an EF query on its own: it is EF Core, or EF Core is reachable
+        /// through its references, followed transitively (a facade over EF Core counts). A reference that
+        /// cannot be resolved, or a graph larger than <see cref="MaxReferencedAssemblies"/>, is not trusted.
+        /// Framework assemblies (<c>System.*</c>, <c>netstandard</c>, ...) never reference EF Core and are not
+        /// followed.
         /// </summary>
         private bool ReferencesEntityFramework(IAssemblySymbol assembly)
         {
-            return efAwareAssemblies.GetOrAdd(assembly, static a =>
-                IsEntityFrameworkAssemblyName(a.Identity.Name) ||
-                a.Modules.Any(m => m.ReferencedAssemblies.Any(r => IsEntityFrameworkAssemblyName(r.Name))));
+            return efAwareAssemblies.GetOrAdd(assembly, static root =>
+            {
+                var visited = new HashSet<IAssemblySymbol>(SymbolEqualityComparer.Default) { root };
+                var pending = new Stack<IAssemblySymbol>();
+                pending.Push(root);
+                while (pending.Count > 0)
+                {
+                    var current = pending.Pop();
+                    if (IsEntityFrameworkAssemblyName(current.Identity.Name))
+                        return true;
+
+                    foreach (var module in current.Modules)
+                    {
+                        var identities = module.ReferencedAssemblies;
+                        var symbols = module.ReferencedAssemblySymbols;
+                        if (identities.Length != symbols.Length)
+                            return true;
+
+                        for (var i = 0; i < symbols.Length; i++)
+                        {
+                            var name = identities[i].Name;
+                            if (IsEntityFrameworkAssemblyName(name))
+                                return true;
+
+                            if (IsFrameworkAssemblyName(name))
+                                continue;
+
+                            var referenced = symbols[i];
+                            if (referenced == null || IsUnresolved(referenced))
+                                return true;
+
+                            if (!visited.Add(referenced))
+                                continue;
+
+                            if (visited.Count > MaxReferencedAssemblies)
+                                return true;
+
+                            pending.Push(referenced);
+                        }
+                    }
+                }
+
+                return false;
+            });
+        }
+
+        /// <summary>
+        /// Roslyn stands in for a reference it cannot resolve with an empty assembly symbol.
+        /// </summary>
+        private static bool IsUnresolved(IAssemblySymbol assembly)
+        {
+            return assembly.Modules.All(m => !m.GlobalNamespace.GetMembers().Any());
+        }
+
+        private static bool IsFrameworkAssemblyName(string name)
+        {
+            return name is "System" or "mscorlib" or "netstandard" or "WindowsBase" or "Microsoft.CSharp" or "Microsoft.VisualBasic" ||
+                   name.StartsWith("System.", System.StringComparison.Ordinal) ||
+                   name.StartsWith("Microsoft.Win32.", System.StringComparison.Ordinal);
         }
 
         private static bool IsEntityFrameworkAssemblyName(string name)

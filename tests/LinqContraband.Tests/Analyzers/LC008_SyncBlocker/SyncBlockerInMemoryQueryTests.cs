@@ -584,7 +584,8 @@ class Program
     {
         await Task.Delay(1);
         var x = scimFilter.EvaluateAttributes(BuildHierarchy(list).AsQueryable(), false).ToList();
-        return x;
+        var y = new ScimAttributeExpression { Name = ""emails"" }.EvaluateAttributes(list.AsQueryable(), true, ""Children"").ToList();
+        return x.Concat(y).ToList();
     }
 }
 ");
@@ -593,14 +594,15 @@ class Program
     [Fact]
     public async Task TestInnocent_LibraryHelperWithInertArguments_NoDiagnostic()
     {
-        // A predicate, a library options object, an enum and a nullable value cannot hand the helper an EF query.
+        // A string, a library options object with only primitive members, an enum, a nullable value and System
+        // structs of inert values cannot hand the helper an EF query.
         await RunWithLibraryAsync(@"
 class Program
 {
     async Task<List<User>> Main(List<User> list)
     {
         await Task.Delay(1);
-        var x = ScimLibrary.Filter(list.AsQueryable(), u => u.Id > 0, new ScimOptions(), StringComparison.Ordinal, 10).ToList();
+        var x = ScimLibrary.Filter(list.AsQueryable(), ""displayName"", new ScimOptions(), StringComparison.Ordinal, 10).ToList();
         var y = ScimLibrary.WithStamp(list.AsQueryable(), new KeyValuePair<string, DateTime>(""at"", DateTime.UtcNow), (1, Guid.Empty)).ToList();
         return x.Concat(y).ToList();
     }
@@ -615,6 +617,11 @@ class Program
     [InlineData("{|LC008:ScimLibrary.FromContext(list.AsQueryable(), db).ToList()|}")]
     // A callback could return an EF query.
     [InlineData("{|LC008:ScimLibrary.Apply(list.AsQueryable(), q => db.Users).ToList()|}")]
+    // Even a predicate could run db.Users instead of filtering.
+    [InlineData("{|LC008:ScimLibrary.Where(list.AsQueryable(), u => u.Id > 0).ToList()|}")]
+    // A library class whose member can carry a query: an IQueryable property, or an object field on a base type.
+    [InlineData("{|LC008:ScimLibrary.Pick(list.AsQueryable(), new QueryBox<User> { Query = db.Users }).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.WithHolder(list.AsQueryable(), new StateHolder()).ToList()|}")]
     // A sequence argument that may be a DbSet.
     [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), sequence).ToList()|}")]
     // An object of this project (a repository) could return an EF query.
@@ -684,7 +691,8 @@ class Program
         await Task.Delay(1);
         var direct = {|LC008:EfHelpers.Reload(list.AsQueryable()).ToList()|};
         var referencing = {|LC008:DataHelpers.Reload(list.AsQueryable(), false).ToList()|};
-        return (direct, referencing);
+        var throughFacade = {|LC008:FacadeClientHelpers.Reload(list.AsQueryable()).ToList()|};
+        return (direct, referencing, throughFacade);
     }
 }
 " + MockNamespace
@@ -721,6 +729,24 @@ namespace DataLib
 
         test.TestState.AdditionalProjects.Add("Microsoft.EntityFrameworkCore.Stub", efCore);
         test.TestState.AdditionalProjects.Add("DataLib", dataLib);
+
+        // FacadeClient references only DataLib, which references EF Core: reachable transitively.
+        var facadeClient = new Microsoft.CodeAnalysis.Testing.ProjectState(
+            "FacadeClient", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/client/", "cs");
+        facadeClient.Sources.Add(("/client/FacadeClientHelpers.cs", @"
+using System.Linq;
+
+namespace DataLib
+{
+    public static class FacadeClientHelpers
+    {
+        public static IQueryable<T> Reload<T>(IQueryable<T> source) => DataHelpers.Reload(source, false);
+    }
+}
+"));
+        facadeClient.AdditionalProjectReferences.Add("DataLib");
+        test.TestState.AdditionalProjects.Add("FacadeClient", facadeClient);
+        test.TestState.AdditionalProjectReferences.Add("FacadeClient");
         test.TestState.AdditionalProjectReferences.Add("Microsoft.EntityFrameworkCore.Stub");
         test.TestState.AdditionalProjectReferences.Add("DataLib");
 
@@ -745,7 +771,12 @@ using System.Linq;
 
 namespace ScimLib
 {
-    public class ScimExpression { }
+    // Shaped like SimpleIdServer's SCIMExpression: abstract, self-referencing, only inert members.
+    public abstract class ScimExpression { public ScimExpression Parent { get; set; } public int Depth; }
+    public sealed class ScimAttributeExpression : ScimExpression { public string Name { get; set; } = """"; public ScimExpression Child { get; set; } }
+    public sealed class QueryBox<T> { public IQueryable<T> Query { get; set; } }
+    public class StateBase { protected object State; }
+    public sealed class StateHolder : StateBase { public int Id { get; set; } }
     public sealed class ScimOptions { public bool Strict { get; set; } }
     public interface IUserSource<T> { IQueryable<T> Query(); }
 
@@ -760,7 +791,10 @@ namespace ScimLib
         public static IQueryable<T> WithTuple<T, TState>(IQueryable<T> source, (int, TState) state) => source;
         public static IQueryable<T> WithStamp<T>(IQueryable<T> source, KeyValuePair<string, DateTime> stamp, (int, Guid) key) => source;
         public static IQueryable<T> WithSource<T>(IQueryable<T> source, IUserSource<T> other) => source;
-        public static IQueryable<T> Filter<T>(IQueryable<T> source, Func<T, bool> predicate, ScimOptions options, StringComparison comparison, int? limit) => source;
+        public static IQueryable<T> Filter<T>(IQueryable<T> source, string attribute, ScimOptions options, StringComparison comparison, int? limit) => source;
+        public static IQueryable<T> Where<T>(IQueryable<T> source, Func<T, bool> predicate) => source;
+        public static IQueryable<T> Pick<T>(IQueryable<T> source, QueryBox<T> box) => box.Query ?? source;
+        public static IQueryable<T> WithHolder<T>(IQueryable<T> source, StateHolder holder) => source;
         public static IQueryable<int> Load(int count) => Enumerable.Range(0, count).AsQueryable();
     }
 }
