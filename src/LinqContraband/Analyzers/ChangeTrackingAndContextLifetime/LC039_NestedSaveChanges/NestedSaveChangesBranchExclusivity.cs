@@ -10,7 +10,13 @@ public sealed partial class NestedSaveChangesAnalyzer
 {
     private sealed partial class AnalysisState
     {
-        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right)
+        /// <summary>
+        /// Whether <paramref name="left"/> and <paramref name="right"/> can never both run in one call. Switch sections
+        /// stop counting as exclusive once the switch holds a <c>goto</c>, which can carry control between them. A try
+        /// block and its catch are exclusive only as whole branches: part of the try block may run before the catch, so
+        /// callers asking whether something definitely did not run pass <paramref name="tryCatchIsExclusive"/> false.
+        /// </summary>
+        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right, bool tryCatchIsExclusive = true)
         {
             foreach (var ifStatement in left.AncestorsAndSelf().OfType<IfStatementSyntax>())
             {
@@ -30,7 +36,7 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             foreach (var switchStatement in left.AncestorsAndSelf().OfType<SwitchStatementSyntax>())
             {
-                if (!switchStatement.Span.Contains(right.SpanStart))
+                if (!switchStatement.Span.Contains(right.SpanStart) || ContainsGoto(switchStatement))
                     continue;
 
                 var leftSection = GetContainingSwitchSection(switchStatement, left);
@@ -60,6 +66,9 @@ public sealed partial class NestedSaveChangesAnalyzer
                 }
             }
 
+            if (!tryCatchIsExclusive)
+                return false;
+
             // SaveChanges in try and catch branches are mutually exclusive; finally is not exclusive.
             foreach (var tryStatement in left.AncestorsAndSelf().OfType<TryStatementSyntax>())
             {
@@ -78,6 +87,14 @@ public sealed partial class NestedSaveChangesAnalyzer
             }
 
             return false;
+        }
+
+        private static bool ContainsGoto(SwitchStatementSyntax switchStatement)
+        {
+            return switchStatement.Sections
+                .SelectMany(section => section.Statements)
+                .SelectMany(statement => statement.DescendantNodesAndSelf())
+                .Any(node => node is GotoStatementSyntax);
         }
 
         /// <summary>
@@ -187,15 +204,58 @@ public sealed partial class NestedSaveChangesAnalyzer
                     continue;
                 }
 
-                var receiver = tryStatement.Catches.FirstOrDefault(catchClause =>
-                    catchClause.Filter == null && DefinitelyReceives(catchClause, thrownType, semanticModel));
-                if (receiver == null)
+                // Every clause that could receive the throw, filtered or not, up to the first unfiltered one that
+                // definitely does, is a possible handler. The throw is caught only when every possible handler can
+                // resume; if any of them returns or throws on, the path may leave the method and LC039 stays quiet.
+                var handlers = new List<CatchClauseSyntax>();
+                var definitelyHandled = false;
+                foreach (var catchClause in tryStatement.Catches)
+                {
+                    if (!PossiblyReceives(catchClause, thrownType, semanticModel))
+                        continue;
+
+                    handlers.Add(catchClause);
+                    if (catchClause.Filter == null && DefinitelyReceives(catchClause, thrownType, semanticModel))
+                    {
+                        definitelyHandled = true;
+                        break;
+                    }
+                }
+
+                if (handlers.Count == 0)
                     continue;
 
                 if (container.Span.Contains(tryStatement.Span))
                     return false;
 
-                return MayContinueAfter(receiver.Block, right, thrownType, semanticModel);
+                if (!handlers.All(handler => MayContinueAfter(handler.Block, right, thrownType, semanticModel)))
+                    return false;
+
+                if (definitelyHandled)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool PossiblyReceives(CatchClauseSyntax catchClause, ITypeSymbol? thrownType, SemanticModel semanticModel)
+        {
+            if (catchClause.Declaration == null || thrownType == null)
+                return true;
+
+            var catchType = semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
+            if (catchType == null)
+                return true;
+
+            return InheritsFromOrEquals(thrownType, catchType) || InheritsFromOrEquals(catchType, thrownType);
+        }
+
+        private static bool InheritsFromOrEquals(ITypeSymbol type, ITypeSymbol baseType)
+        {
+            for (var current = type; current != null; current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, baseType))
+                    return true;
             }
 
             return false;
@@ -216,13 +276,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                 return true;
             }
 
-            for (var type = thrownType; type != null; type = type.BaseType)
-            {
-                if (SymbolEqualityComparer.Default.Equals(type, catchType))
-                    return true;
-            }
-
-            return false;
+            return thrownType != null && InheritsFromOrEquals(thrownType, catchType);
         }
 
         private static bool IsInFinallyAround(SyntaxNode left, SyntaxNode right)

@@ -670,4 +670,124 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TransactionBoundaryInSwitchSectionReachedByGotoCase_SeparatesSaves()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        switch (mode)
+        {
+            case 1:
+                db.Database.BeginTransaction();
+                goto case 2;
+            case 2:
+                db.SaveChanges();
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TransactionBoundaryInExclusiveSwitchSection_DoesNotSeparateSaves()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        switch (mode)
+        {
+            case 1:
+                db.Database.BeginTransaction();
+                break;
+            case 2:
+                {|LC039:db.SaveChanges()|};
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_FilteredCatchRethrowsBeforeResumingCatch_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag, bool retry)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException) when (retry)
+        {
+            throw;
+        }
+        catch (InvalidOperationException)
+        {
+            Console.WriteLine();
+        }
+
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_FilteredAndUnfilteredCatchesResume_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag, bool retry)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException) when (retry)
+        {
+            Console.WriteLine();
+        }
+        catch (InvalidOperationException)
+        {
+            Console.WriteLine();
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
