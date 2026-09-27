@@ -290,6 +290,11 @@ class Program
     [InlineData(@"CancellationToken GetToken() => ct; var users = {|LC062:db.Users.ToListAsync(GetToken()).Result|};")]
     [InlineData(@"var users = {|LC062:db.Users.ToListAsync(new CancellationTokenSource().Token).Result|};")]
     [InlineData(@"var sources = new CancellationTokenSource[1]; var users = {|LC062:db.Users.ToListAsync(sources[0].Token).Result|};")]
+    // A property read runs code: CancellationTokenSource.Token throws once the source is disposed.
+    [InlineData(@"var source = new CancellationTokenSource(); var users = {|LC062:db.Users.ToListAsync(source.Token).Result|};")]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(Helpers.CurrentToken).Result|};")]
+    // A field read through another member access is not a plain field read.
+    [InlineData(@"var holders = new[] { new TokenHolder() }; var users = {|LC062:db.Users.ToListAsync(holders[0].Token).Result|};")]
     public async Task TokenArgumentWithSideEffects_OffersNoSynchronousFix(string code)
     {
         await VerifyNoFixAsync(code, isAsync: false);
@@ -298,7 +303,10 @@ class Program
     [Theory]
     [InlineData(@"var users = {|LC062:db.Users.ToListAsync(CancellationToken.None).Result|};", @"var users = db.Users.ToList();")]
     [InlineData(@"var users = {|LC062:db.Users.ToListAsync(default).Result|};", @"var users = db.Users.ToList();")]
-    [InlineData(@"var source = new CancellationTokenSource(); var users = {|LC062:db.Users.ToListAsync(source.Token).Result|};", @"var source = new CancellationTokenSource(); var users = db.Users.ToList();")]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(ct).Result|};", @"var users = db.Users.ToList();")]
+    [InlineData(@"var token = ct; var users = {|LC062:db.Users.ToListAsync(token).Result|};", @"var token = ct; var users = db.Users.ToList();")]
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(Helpers.ShutdownToken).Result|};", @"var users = db.Users.ToList();")]
+    [InlineData(@"var holder = new TokenHolder(); var users = {|LC062:db.Users.ToListAsync(holder.Token).Result|};", @"var holder = new TokenHolder(); var users = db.Users.ToList();")]
     public async Task TokenArgumentWithoutSideEffects_KeepsTheSynchronousFix(string before, string after)
     {
         await VerifyFixAsync(before, after, isAsync: false);

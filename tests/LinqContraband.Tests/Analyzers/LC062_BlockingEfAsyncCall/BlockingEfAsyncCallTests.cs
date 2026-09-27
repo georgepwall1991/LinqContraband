@@ -157,6 +157,13 @@ public sealed class PairedAuditedContext : Microsoft.EntityFrameworkCore.DbConte
 public static class Helpers
 {
     public static Task<int> GetNumberAsync() => Task.FromResult(1);
+    public static CancellationToken ShutdownToken;
+    public static CancellationToken CurrentToken => default;
+}
+
+public class TokenHolder
+{
+    public CancellationToken Token;
 }
 ";
 
@@ -259,6 +266,26 @@ class Program
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromMilliseconds(1))|};")]
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(new TimeSpan(1))|};")]
     public async Task NonZeroTimeoutWait_Reports(string body)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());
+    }
+
+    [Theory]
+    // The poll or completion check guards the true branch, where .Result cannot block.
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0)) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(TimeSpan.Zero)) { users = task.Result; }")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.IsCompleted) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var users = task.Wait(0) ? task.Result : null;")]
+    public async Task ResultGuardedByAPollOrCompletionCheck_DoesNotReport(string body)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(body));
+    }
+
+    [Theory]
+    // The false branch, or code after the if, is not guarded.
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0)) { } else users = {|#0:task.Result|};")]
+    [InlineData(@"var task = db.Users.ToListAsync(); if (task.Wait(0)) { } var users = {|#0:task.Result|};")]
+    public async Task ResultOutsideThePollsTrueBranch_Reports(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());
     }

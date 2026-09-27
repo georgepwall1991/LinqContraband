@@ -443,8 +443,9 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
 
     /// <summary>
     /// True when every explicit <c>CancellationToken</c> argument can be dropped without losing an effect: a local, a
-    /// parameter, <c>this</c>, a field or property read on one of those (or static), <c>default</c> or a constant.
-    /// A call such as <c>ToListAsync(GetToken())</c> would lose the call.
+    /// parameter, a static field or a field of <c>this</c>, a local or a parameter, <c>default</c>, a constant, or
+    /// <c>CancellationToken.None</c>. A call such as <c>ToListAsync(GetToken())</c> would lose the call, and a
+    /// property read such as <c>source.Token</c> can run code (it throws once the source is disposed).
     /// </summary>
     private static bool TokenArgumentsAreSideEffectFree(IInvocationOperation efInvocation)
     {
@@ -464,16 +465,17 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
     {
         switch (operation?.UnwrapConversions())
         {
-            case null:
-                return true;
-            case ILocalReferenceOperation or IParameterReferenceOperation or IInstanceReferenceOperation or IDefaultValueOperation:
+            case ILocalReferenceOperation or IParameterReferenceOperation or IDefaultValueOperation:
                 return true;
             case { ConstantValue.HasValue: true }:
                 return true;
             case IFieldReferenceOperation field:
-                return IsSideEffectFree(field.Instance);
-            case IPropertyReferenceOperation { Arguments.Length: 0 } property:
-                return IsSideEffectFree(property.Instance);
+                return field.Instance?.UnwrapConversions() is null
+                    or IInstanceReferenceOperation
+                    or ILocalReferenceOperation
+                    or IParameterReferenceOperation;
+            case IPropertyReferenceOperation { Instance: null, Property: { Name: "None", IsStatic: true } property }:
+                return IsCancellationToken(property.ContainingType);
             default:
                 return false;
         }

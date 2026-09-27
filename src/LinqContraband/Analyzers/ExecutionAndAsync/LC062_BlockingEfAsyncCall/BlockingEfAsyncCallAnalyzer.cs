@@ -234,11 +234,12 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
             {
                 // Any other use of the local before the site (await t, Task.WhenAll(t, ...), t.Wait(),
                 // t.IsCompletedSuccessfully, handing it to a helper) may complete it or prove it complete.
-                // A zero-timeout poll (t.Wait(0)) is not reported and proves nothing, so it does not count.
+                // A zero-timeout poll (t.Wait(0)) is not reported and proves nothing, so it does not count, unless it
+                // is the condition of an `if` whose true branch holds the site.
                 case ILocalReferenceOperation reference when
                     SymbolEqualityComparer.Default.Equals(reference.Local, local) &&
                     !IsAssignmentTarget(reference) &&
-                    !IsZeroTimeoutPollOn(reference):
+                    (!IsZeroTimeoutPollOn(reference, out var poll) || GuardsSite(poll, site)):
                     return false;
 
                 // An await between the assignment and the site may complete the task too.
@@ -254,16 +255,35 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
-    private static bool IsZeroTimeoutPollOn(ILocalReferenceOperation reference)
+    private static bool IsZeroTimeoutPollOn(ILocalReferenceOperation reference, out IInvocationOperation poll)
     {
+        poll = null!;
         IOperation current = reference;
         while (current.Parent is IConversionOperation conversion && ReferenceEquals(conversion.Operand, current))
             current = conversion;
 
-        return current.Parent is IInvocationOperation { TargetMethod.Name: "Wait" } wait &&
-               ReferenceEquals(wait.Instance, current) &&
-               IsTask(wait.TargetMethod.ContainingType) &&
-               IsZeroTimeoutPoll(wait);
+        if (current.Parent is not IInvocationOperation { TargetMethod.Name: "Wait" } wait ||
+            !ReferenceEquals(wait.Instance, current) ||
+            !IsTask(wait.TargetMethod.ContainingType) ||
+            !IsZeroTimeoutPoll(wait))
+        {
+            return false;
+        }
+
+        poll = wait;
+        return true;
+    }
+
+    /// <summary>True when <paramref name="poll"/> is the condition of an <c>if</c> or <c>?:</c> whose true branch holds the site.</summary>
+    private static bool GuardsSite(IInvocationOperation poll, IOperation site)
+    {
+        IOperation condition = poll;
+        while (condition.Parent is IConversionOperation conversion && ReferenceEquals(conversion.Operand, condition))
+            condition = conversion;
+
+        return condition.Parent is IConditionalOperation { WhenTrue: { } whenTrue } conditional &&
+               ReferenceEquals(conditional.Condition, condition) &&
+               whenTrue.Syntax.Span.Contains(site.Syntax.Span);
     }
 
     private static bool IsAssignmentTarget(ILocalReferenceOperation reference)
