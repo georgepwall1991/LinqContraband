@@ -790,4 +790,89 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SavesInSwitchSections_GotoLabelOutsideSwitch_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                db.SaveChanges();
+                goto Done;
+            case 1:
+                db.SaveChanges();
+                break;
+        }
+
+        Done:
+        Console.WriteLine();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SavesInSwitchSections_GotoLabelInSameSection_DoNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode, bool again)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                Retry:
+                db.SaveChanges();
+                if (again)
+                {
+                    again = false;
+                    goto Retry;
+                }
+
+                break;
+            case 1:
+                db.SaveChanges();
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SavesInSwitchSections_GotoCaseIntoOtherSection_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(int mode)
+    {
+        var db = new TestApp.AppDbContext();
+        switch (mode)
+        {
+            case 0:
+                db.SaveChanges();
+                goto case 1;
+            case 1:
+                {|LC039:db.SaveChanges()|};
+                break;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

@@ -24,8 +24,8 @@ public sealed partial class NestedSaveChangesAnalyzer
                     continue;
 
                 if (LeavesMethodBefore(boundary.Syntax, current.Syntax, boundary.Root.SemanticModel) ||
-                    AreMutuallyExclusiveBranches(boundary.Syntax, current.Syntax, tryCatchIsExclusive: false) ||
-                    AreMutuallyExclusiveBranches(previous.Syntax, boundary.Syntax, tryCatchIsExclusive: false))
+                    AreMutuallyExclusiveBranches(boundary.Syntax, current.Syntax, boundary.Root.SemanticModel, tryCatchIsExclusive: false) ||
+                    AreMutuallyExclusiveBranches(previous.Syntax, boundary.Syntax, boundary.Root.SemanticModel, tryCatchIsExclusive: false))
                 {
                     continue;
                 }

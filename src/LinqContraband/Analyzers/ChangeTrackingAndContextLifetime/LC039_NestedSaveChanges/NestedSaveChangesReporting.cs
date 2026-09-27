@@ -46,7 +46,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                         var previousIndex = i - 1;
                         while (previousIndex >= 0 &&
                                (LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax, saves[previousIndex].Root.SemanticModel) ||
-                                AreMutuallyExclusiveBranches(saves[previousIndex].Syntax, current.Syntax)))
+                                AreMutuallyExclusiveBranches(saves[previousIndex].Syntax, current.Syntax, current.Root.SemanticModel)))
                             previousIndex--;
                         if (previousIndex < 0)
                             continue;

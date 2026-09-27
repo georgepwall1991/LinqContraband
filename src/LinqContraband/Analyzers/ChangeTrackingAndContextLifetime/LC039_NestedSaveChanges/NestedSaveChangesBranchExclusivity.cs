@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,13 +11,15 @@ public sealed partial class NestedSaveChangesAnalyzer
 {
     private sealed partial class AnalysisState
     {
+        private static readonly ConditionalWeakTable<SwitchStatementSyntax, bool[,]> SwitchSectionReachability = new();
+
         /// <summary>
-        /// Whether <paramref name="left"/> and <paramref name="right"/> can never both run in one call. Switch sections
-        /// stop counting as exclusive once the switch holds a <c>goto</c>, which can carry control between them. A try
+        /// Whether <paramref name="left"/> and <paramref name="right"/> can never both run in one call. Two switch
+        /// sections stop counting as exclusive when a <c>goto</c> can carry control from one to the other. A try
         /// block and its catch are exclusive only as whole branches: part of the try block may run before the catch, so
         /// callers asking whether something definitely did not run pass <paramref name="tryCatchIsExclusive"/> false.
         /// </summary>
-        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right, bool tryCatchIsExclusive = true)
+        private static bool AreMutuallyExclusiveBranches(SyntaxNode left, SyntaxNode right, SemanticModel? semanticModel, bool tryCatchIsExclusive = true)
         {
             foreach (var ifStatement in left.AncestorsAndSelf().OfType<IfStatementSyntax>())
             {
@@ -36,7 +39,7 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             foreach (var switchStatement in left.AncestorsAndSelf().OfType<SwitchStatementSyntax>())
             {
-                if (!switchStatement.Span.Contains(right.SpanStart) || ContainsGoto(switchStatement))
+                if (!switchStatement.Span.Contains(right.SpanStart))
                     continue;
 
                 var leftSection = GetContainingSwitchSection(switchStatement, left);
@@ -44,7 +47,8 @@ public sealed partial class NestedSaveChangesAnalyzer
 
                 if (leftSection != null &&
                     rightSection != null &&
-                    leftSection != rightSection)
+                    leftSection != rightSection &&
+                    !AreJoinedByGoto(switchStatement, leftSection, rightSection, semanticModel))
                 {
                     return true;
                 }
@@ -89,12 +93,126 @@ public sealed partial class NestedSaveChangesAnalyzer
             return false;
         }
 
-        private static bool ContainsGoto(SwitchStatementSyntax switchStatement)
+        /// <summary>
+        /// <c>case 0: save; goto case 1; case 1: save; break;</c> runs both saves. Sections are joined when a goto in one
+        /// can carry control to the other, directly or through further sections.
+        /// </summary>
+        private static bool AreJoinedByGoto(SwitchStatementSyntax switchStatement, SwitchSectionSyntax left, SwitchSectionSyntax right, SemanticModel? semanticModel)
         {
-            return switchStatement.Sections
-                .SelectMany(section => section.Statements)
-                .SelectMany(statement => statement.DescendantNodesAndSelf())
-                .Any(node => node is GotoStatementSyntax);
+            var reachability = SwitchSectionReachability.GetValue(
+                switchStatement,
+                statement => BuildSectionReachability(statement, semanticModel));
+            var leftIndex = switchStatement.Sections.IndexOf(left);
+            var rightIndex = switchStatement.Sections.IndexOf(right);
+
+            return reachability[leftIndex, rightIndex] || reachability[rightIndex, leftIndex];
+        }
+
+        private static bool[,] BuildSectionReachability(SwitchStatementSyntax switchStatement, SemanticModel? semanticModel)
+        {
+            var sections = switchStatement.Sections;
+            var count = sections.Count;
+            var reachable = new bool[count, count];
+
+            for (var from = 0; from < count; from++)
+            {
+                var gotos = sections[from].Statements
+                    .SelectMany(statement => statement.DescendantNodesAndSelf(node =>
+                        node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)))
+                    .OfType<GotoStatementSyntax>();
+
+                foreach (var gotoStatement in gotos)
+                {
+                    foreach (var to in GetGotoTargets(switchStatement, gotoStatement, semanticModel))
+                    {
+                        if (to != from)
+                            reachable[from, to] = true;
+                    }
+                }
+            }
+
+            for (var via = 0; via < count; via++)
+            {
+                for (var from = 0; from < count; from++)
+                {
+                    if (!reachable[from, via])
+                        continue;
+
+                    for (var to = 0; to < count; to++)
+                    {
+                        if (reachable[via, to])
+                            reachable[from, to] = true;
+                    }
+                }
+            }
+
+            return reachable;
+        }
+
+        /// <summary>
+        /// The sections of <paramref name="switchStatement"/> a goto can land in. <c>goto case</c> and
+        /// <c>goto default</c> belong to their nearest switch; an unresolved target joins every section. A labelled goto
+        /// lands in the section holding its label, or nowhere in this switch when the label is outside it.
+        /// </summary>
+        private static IEnumerable<int> GetGotoTargets(SwitchStatementSyntax switchStatement, GotoStatementSyntax gotoStatement, SemanticModel? semanticModel)
+        {
+            var sections = switchStatement.Sections;
+
+            if (gotoStatement.IsKind(SyntaxKind.GotoStatement))
+            {
+                if (gotoStatement.Expression is not IdentifierNameSyntax labelName)
+                    return Enumerable.Empty<int>();
+
+                var label = switchStatement.Sections
+                    .SelectMany(section => section.DescendantNodes())
+                    .OfType<LabeledStatementSyntax>()
+                    .FirstOrDefault(statement => statement.Identifier.ValueText == labelName.Identifier.ValueText);
+                if (label == null)
+                    return Enumerable.Empty<int>();
+
+                return new[] { sections.IndexOf(GetContainingSwitchSection(switchStatement, label)!) };
+            }
+
+            if (gotoStatement.FirstAncestorOrSelf<SwitchStatementSyntax>() != switchStatement)
+                return Enumerable.Empty<int>();
+
+            if (gotoStatement.IsKind(SyntaxKind.GotoDefaultStatement))
+            {
+                var defaultIndex = IndexOfSection(sections, section => section.Labels.Any(label => label is DefaultSwitchLabelSyntax));
+                return defaultIndex >= 0 ? new[] { defaultIndex } : Enumerable.Range(0, sections.Count);
+            }
+
+            if (gotoStatement.Expression == null ||
+                semanticModel == null ||
+                gotoStatement.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return Enumerable.Range(0, sections.Count);
+            }
+
+            var target = semanticModel.GetConstantValue(gotoStatement.Expression);
+            if (!target.HasValue)
+                return Enumerable.Range(0, sections.Count);
+
+            var caseIndex = IndexOfSection(sections, section => section.Labels
+                .OfType<CaseSwitchLabelSyntax>()
+                .Any(label =>
+                {
+                    var value = semanticModel.GetConstantValue(label.Value);
+                    return value.HasValue && Equals(value.Value, target.Value);
+                }));
+
+            return caseIndex >= 0 ? new[] { caseIndex } : Enumerable.Range(0, sections.Count);
+        }
+
+        private static int IndexOfSection(SyntaxList<SwitchSectionSyntax> sections, System.Func<SwitchSectionSyntax, bool> predicate)
+        {
+            for (var i = 0; i < sections.Count; i++)
+            {
+                if (predicate(sections[i]))
+                    return i;
+            }
+
+            return -1;
         }
 
         /// <summary>
