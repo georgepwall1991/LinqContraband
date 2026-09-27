@@ -14,14 +14,13 @@ internal static class CodeActionTitles
     public static async Task<IReadOnlyList<string>> GetAsync(
         DiagnosticAnalyzer analyzer,
         CodeFixProvider fixer,
-        string source,
-        string projectName = "Test")
+        string source)
     {
         using var workspace = new AdhocWorkspace();
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path));
-        var project = workspace.AddProject(projectName, LanguageNames.CSharp)
+        var project = workspace.AddProject("Test", LanguageNames.CSharp)
             .WithCompilationOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
             .WithMetadataReferences(references);
         var document = project.AddDocument("Test.cs", source);

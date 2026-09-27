@@ -16,12 +16,6 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 ";
 
-    /// <summary>
-    /// The fixer accepts a synchronous target only from an assembly named like EF Core's, so fixer tests compile the
-    /// mock below into an assembly with this name.
-    /// </summary>
-    internal const string MockAssemblyName = "Microsoft.EntityFrameworkCore.Lc062Mock";
-
     /// <summary>EF Core's async and sync APIs with the signatures EF Core 8 declares.</summary>
     internal const string EfMock = @"
 namespace Microsoft.EntityFrameworkCore
@@ -111,59 +105,15 @@ public class ShopContext : Microsoft.EntityFrameworkCore.DbContext
     public Task<List<User>> LoadUsersAsync() => null;
 }
 
-// Overrides the async save only: a synchronous SaveChanges() would skip the override.
+// Overrides the async save only.
 public class AuditedContext : Microsoft.EntityFrameworkCore.DbContext
 {
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
 }
 
-// Overrides both saves.
-public sealed class FullyAuditedContext : Microsoft.EntityFrameworkCore.DbContext
-{
-    public override int SaveChanges() => base.SaveChanges();
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
-}
-
-public sealed class SealedShopContext : Microsoft.EntityFrameworkCore.DbContext
-{
-    public Microsoft.EntityFrameworkCore.DbSet<User> Users { get; set; }
-}
-
-internal class InternalShopContext : Microsoft.EntityFrameworkCore.DbContext
-{
-}
-
-// Sealed, but overrides only the async save.
-public sealed class SealedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
-{
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
-}
-
-// Overrides SaveChangesAsync(bool, CancellationToken) but only the parameterless SaveChanges():
-// SaveChanges(true) would skip the async override.
-public sealed class MismatchedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
-{
-    public override int SaveChanges() => base.SaveChanges();
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) => base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-}
-
-// Overrides the (bool) overload on both sides.
-public sealed class PairedAuditedContext : Microsoft.EntityFrameworkCore.DbContext
-{
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) => base.SaveChanges(acceptAllChangesOnSuccess);
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) => base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-}
-
 public static class Helpers
 {
     public static Task<int> GetNumberAsync() => Task.FromResult(1);
-    public static CancellationToken ShutdownToken;
-    public static CancellationToken CurrentToken => default;
-}
-
-public class TokenHolder
-{
-    public CancellationToken Token;
 }
 ";
 

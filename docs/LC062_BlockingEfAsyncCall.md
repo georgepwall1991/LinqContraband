@@ -66,26 +66,19 @@ Reports `.Result` on `Task<T>` or `ValueTask<T>`, any `Task.Wait(...)` overload,
 
 ## Code Fix
 
-- In an `async` method, lambda or local function, the blocking access becomes `await` on the task: `db.Users.ToListAsync().Result` becomes `await db.Users.ToListAsync()`, `db.SaveChangesAsync().Wait()` becomes `await db.SaveChangesAsync()`, and `task.Result` becomes `await task`. A member access on the result gets parentheses: `(await db.Users.ToListAsync()).Count`.
-- In code that is not async, a direct call becomes its synchronous counterpart: `ToListAsync().Result` becomes `ToList()`, `AddRangeAsync(...).Wait()` becomes `AddRange(...)`. A `CancellationToken` argument is dropped, because the synchronous method takes none, and `using System.Linq;` is added when `ToList` and the other `Enumerable` terminals need it.
+In an `async` method, lambda or local function, the blocking access becomes `await` on the task: `db.Users.ToListAsync().Result` becomes `await db.Users.ToListAsync()`, `db.SaveChangesAsync().Wait()` becomes `await db.SaveChangesAsync()`, and `task.Result` becomes `await task`. A member access on the result gets parentheses: `(await db.Users.ToListAsync()).Count`. Comments between the task and the blocking access, as in `db.Users.ToListAsync() /* why */ .Result`, move after the new expression; a `//` comment keeps a line break after it.
 
-No fix is offered where neither rewrite is provably safe:
+There is no synchronous fix (`ToListAsync().Result` to `ToList()`), because it cannot be proven to do the same thing: a `SaveChangesInterceptor` or `DbCommandInterceptor` that implements only the async callbacks, an application override of only the async method (auditing, soft delete), and the evaluation of arguments the synchronous method does not take all run only on the async path, and the fixer cannot see which interceptors are registered. In code that cannot be async, call the synchronous method yourself once you have checked those.
 
-- No synchronous fix for `SaveChangesAsync`, any overload: a `SaveChangesInterceptor` that implements only `SavingChangesAsync`, or a `SaveChangesAsync` override (auditing, soft delete), runs only on the async path, so `SaveChanges()` would skip it, and the fixer cannot see which interceptors are registered. In async code it is still awaited.
+No fix is offered:
 
-- A non-async lambda inside an async method, or a `lock` body: `await` is not allowed there, and the synchronous call would be LC008's finding.
-- A task stored in a local outside async code.
-- No `await` fix when a `ref struct` value, such as a `Span<T>` local or parameter, or a `ref` or `ref readonly` local, is used after the blocking access, or anywhere inside a `ref struct`, where `this` can be read implicitly: such a value cannot live across an `await`.
-- No synchronous fix when the `CancellationToken` argument could have an effect, such as `ToListAsync(GetToken())` or `ToListAsync(source.Token)`: dropping it would drop that call or property read (`CancellationTokenSource.Token` throws once the source is disposed). Only locals, parameters, fields (static, or on `this`, a local or a parameter), `default`, constants and `CancellationToken.None` are dropped.
-- `Wait(timeout)`, which returns whether the task finished.
-- Code inside a `try`, in the same member, with a catch that can see the `AggregateException` that `.Result` and `.Wait()` throw and the rewrites do not: a bare `catch`, `catch (Exception)`, `catch (SystemException)`, or a catch of `AggregateException` or one of its base types, with or without a `when` filter. A catch that cannot be an `AggregateException`, such as `catch (InvalidOperationException)` or `catch (DbUpdateException)`, keeps the fix.
-- An operation with no synchronous counterpart, such as `ForEachAsync`, and the static form `EntityFrameworkQueryableExtensions.ToListAsync(query)`.
-- No synchronous fix unless the receiver's type is closed to other assemblies: `sealed`, or declared (or nested) `internal` or `private` in a project without `InternalsVisibleTo`. A public unsealed type, including `DbContext`, `DbSet<T>` and `DatabaseFacade` themselves, may hold an object from another assembly that overrides only the async method, and the synchronous call would skip that override. So `FindAsync`, `AddAsync` and the `Database` methods get only the `await` fix.
-- No synchronous fix when the application overrides the async method but not the synchronous one, as a context that overrides `AddRangeAsync` and inherits `AddRange` does: `AddRange()` would skip the override. This applies to the receiver's own type and to any type in the project derived from it, since a `DbContext` variable can hold such a context. Overloads are matched by signature: every overridden async overload needs an override of the synchronous overload with the same parameters minus the token, at the same level or deeper, so an override of `FindAsync(object[], CancellationToken)` needs an override of `Find(object[])`. The rewritten call must also bind to that matching overload. The walk runs through every application type, whatever its namespace, and stops at EF Core's own types, found by their assembly. The `await` fix is unaffected.
+- Outside async code, including a non-async lambda inside an async method, and inside a `lock` body, where `await` is not allowed.
+- Inside the `try` block of a `try` statement, in the same member, that has any catch clause, typed, untyped or filtered: `.Result` and `.Wait()` throw `AggregateException` and `await` does not, so the rewrite can change which handler runs. A `try` with only a `finally` keeps the fix.
+- When a `ref struct` value, such as a `Span<T>` local, or a `ref` or `ref readonly` local, is used after the blocking access, or anywhere inside a `ref struct`, where `this` can be read implicitly: such a value cannot live across an `await`.
+- For `Wait(timeout)`, which returns whether the task finished.
+- When a preprocessor directive (`#pragma`, `#if`, `#nullable`, ...) sits inside the blocking expression.
 
-A preprocessor directive (`#pragma`, `#if`, `#nullable`, ...) inside the blocking expression withholds both fixes. Comments between the task and the blocking access, as in `db.Users.ToListAsync() /* why */ .Result`, move after the new expression; a `//` comment keeps a line break after it.
-
-The fixer compiles the rewritten document and offers nothing when the rewrite would add an error or change the type of the value. The synchronous call must bind to `System.Linq.Enumerable`, `System.Linq.Queryable` or a type from an EF Core assembly (an application context's override counts as the `DbContext` method it overrides), so a project's own helper in a `Microsoft.EntityFrameworkCore.*` namespace is never the target.
+The fixer compiles the rewritten document and offers nothing when the rewrite would add an error or change the type of the value.
 
 ## Test Cases
 

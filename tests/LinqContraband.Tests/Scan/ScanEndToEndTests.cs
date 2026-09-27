@@ -256,8 +256,8 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
-    /// <c>--fix</c> never turns a blocking <c>SaveChangesAsync</c> into <c>SaveChanges</c> in synchronous code: a
-    /// <c>SaveChangesAsync</c> override or an async-only interceptor would be skipped. Plain, overriding and
+    /// <c>--fix</c> leaves LC062's blocking calls in synchronous code alone: the only fix is <c>await</c> in async
+    /// code, because a synchronous rewrite could skip an async-only override or interceptor. Plain, overriding and
     /// <c>catch</c>-wrapped saves all keep their call.
     /// </summary>
     [Fact]
@@ -270,9 +270,6 @@ public sealed class ScanEndToEndTests
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
                     <TargetFramework>net10.0</TargetFramework>
-                    <!-- The stand-in DbContext below lives in this project; LC062's synchronous fix only calls
-                         methods from an assembly named like EF Core's. -->
-                    <AssemblyName>Microsoft.EntityFrameworkCore.ScanFixture</AssemblyName>
                   </PropertyGroup>
                 </Project>
                 """);

@@ -10,7 +10,7 @@ namespace LinqContraband.Tests.Analyzers.LC062_BlockingEfAsyncCall;
 
 /// <summary>
 /// Runs LC062 and its fixes against the real EF Core 8 assemblies (copied to efcore/ by the test project), so the
-/// API identification and the synchronous counterparts are checked against EF Core's own signatures, not mocks.
+/// API identification and the await fix are checked against EF Core's own signatures, not mocks.
 /// </summary>
 public class BlockingEfAsyncCallRealEfCoreTests
 {
@@ -72,7 +72,7 @@ public class Program
     }
 
     [Theory]
-    [InlineData(false, 6, "ToList", "ExecuteSqlRaw(\"DELETE FROM Users\")", "db.AddRange(new User(), new User())")]
+    [InlineData(false, 15)]
     [InlineData(true, 0, "await db.Users.ToListAsync(ct)", "await db.Database.MigrateAsync(ct)", "await db.SaveChangesAsync(ct).ConfigureAwait(false)")]
     public async Task EveryFix_CompilesAgainstEfCore(bool isAsync, int expectedUnfixed, params string[] expectedFragments)
     {
@@ -109,44 +109,8 @@ public class Program
         foreach (var fragment in expectedFragments)
             Assert.True(text.Contains(fragment, StringComparison.Ordinal), text);
 
-        // Async code awaits every call. Synchronous code leaves the DbSet and DatabaseFacade calls (FindAsync twice,
-        // AddAsync, BeginTransactionAsync, EnsureCreatedAsync): those public unsealed types can be subclassed elsewhere
-        // with only the async method overridden, so the synchronous rewrite is withheld. SaveChangesAsync is left too:
-        // interceptors and overrides may run only on the async path.
+        // Async code awaits every call; synchronous code gets no fix, so all 15 stay reported.
         Assert.Equal(expectedUnfixed, (await GetLc062Async(document)).Length);
-    }
-
-    [Fact]
-    public async Task ProjectTypeInAnEfCoreNamespace_IsNotASynchronousTarget()
-    {
-        // The project's own ToList in a Microsoft.EntityFrameworkCore.* namespace binds better than Enumerable.ToList,
-        // but it is not EF Core's: the synchronous fix is withheld rather than calling it.
-        var source = Prelude.Replace("using Microsoft.EntityFrameworkCore;", "using Microsoft.EntityFrameworkCore;\nusing Microsoft.EntityFrameworkCore.Helpers;") + @"
-namespace Microsoft.EntityFrameworkCore.Helpers
-{
-    public static class QueryHelpers
-    {
-        public static List<T> ToList<T>(this IQueryable<T> source) => new List<T>();
-    }
-}
-
-public class Program
-{
-    public void Run(ShopContext db, CancellationToken ct)
-    {
-        var users = db.Users.ToListAsync(ct).Result;
-    }
-}
-";
-        var document = CreateDocument(source);
-        Assert.Equal(0, await CountErrorsAsync(document));
-
-        var diagnostic = Assert.Single(await GetLc062Async(document));
-        var actions = new List<CodeAction>();
-        await new BlockingEfAsyncCallFixer().RegisterCodeFixesAsync(
-            new CodeFixContext(document, diagnostic, (a, _) => actions.Add(a), CancellationToken.None));
-
-        Assert.Empty(actions);
     }
 
     private static Document CreateDocument(string source)

@@ -13,19 +13,9 @@ namespace LinqContraband.Tests.Analyzers.LC062_BlockingEfAsyncCall;
 /// </summary>
 public class BlockingEfAsyncCallFixerTests
 {
-    /// <summary>Compiles the test project as <see cref="BlockingEfAsyncCallTests.MockAssemblyName"/>, the mock EF Core's assembly.</summary>
-    private sealed class MockEfCodeFixTest : CodeFixTest
-    {
-        public MockEfCodeFixTest()
-        {
-            SolutionTransforms.Add((solution, projectId) =>
-                solution.WithProjectAssemblyName(projectId, BlockingEfAsyncCallTests.MockAssemblyName));
-        }
-    }
-
     private static Task VerifyFixAsync(string before, string after, bool isAsync)
     {
-        return new MockEfCodeFixTest
+        return new CodeFixTest
         {
             TestCode = BlockingEfAsyncCallTests.Wrap(before, isAsync),
             FixedCode = BlockingEfAsyncCallTests.Wrap(after, isAsync)
@@ -35,7 +25,7 @@ public class BlockingEfAsyncCallFixerTests
     private static Task VerifyNoFixAsync(string code, bool isAsync)
     {
         var source = BlockingEfAsyncCallTests.Wrap(code, isAsync);
-        return new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+        return new CodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
     }
 
     [Theory]
@@ -75,228 +65,86 @@ public class BlockingEfAsyncCallFixerTests
     }
 
     [Theory]
-    [InlineData(
-        @"var users = {|LC062:db.Users.ToListAsync(ct).Result|};",
-        @"var users = db.Users.ToList();")]
-    [InlineData(
-        @"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, ct).GetAwaiter().GetResult()|};",
-        @"var user = db.Users.FirstOrDefault(x => x.Id == id);")]
-    [InlineData(
-        @"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, cancellationToken: ct).Result|};",
-        @"var user = db.Users.FirstOrDefault(x => x.Id == id);")]
-    [InlineData(
-        @"{|LC062:db.Database.MigrateAsync(ct).GetAwaiter().GetResult()|};",
-        @"db.Database.Migrate();")]
-    [InlineData(
-        @"var rows = {|LC062:db.Database.ExecuteSqlRawAsync(""DELETE FROM Users"", ct).Result|};",
-        @"var rows = db.Database.ExecuteSqlRaw(""DELETE FROM Users"");")]
-    // The token here is an element of the params array, not the token parameter: it stays.
-    [InlineData(
-        @"var rows = {|LC062:db.Database.ExecuteSqlRawAsync(""SELECT {0}, {1}"", id, ct).Result|};",
-        @"var rows = db.Database.ExecuteSqlRaw(""SELECT {0}, {1}"", id, ct);")]
-    [InlineData(
-        @"var rows = {|LC062:db.Users.Where(x => x.Id > id).ExecuteDeleteAsync(ct).Result|};",
-        @"var rows = db.Users.Where(x => x.Id > id).ExecuteDelete();")]
-    [InlineData(
-        @"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.AddRangeAsync(new User(), new User()).Wait()|};",
-        @"var sealedDb = new SealedShopContext(); sealedDb.AddRange(new User(), new User());")]
-    [InlineData(
-        @"var count = {|LC062:db.Users.ToListAsync().Result|}.Count;",
-        @"var count = db.Users.ToList().Count;")]
-    [InlineData(
-        @"Func<List<User>> load = () => {|LC062:db.Users.ToListAsync().Result|};",
-        @"Func<List<User>> load = () => db.Users.ToList();")]
-    public async Task OutsideAsyncCode_CallsTheSynchronousMethod(string before, string after)
+    // Outside async code there is no fix: a synchronous rewrite cannot be proven equivalent, because async-only
+    // interceptors (SaveChangesInterceptor, DbCommandInterceptor), async-only overrides and the evaluation of the
+    // dropped arguments can all differ.
+    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(ct).Result|};")]
+    [InlineData(@"var user = {|LC062:db.Users.FirstOrDefaultAsync(x => x.Id == id, ct).GetAwaiter().GetResult()|};")]
+    [InlineData(@"{|LC062:db.Database.MigrateAsync(ct).GetAwaiter().GetResult()|};")]
+    [InlineData(@"var rows = {|LC062:db.Database.ExecuteSqlRawAsync(""DELETE FROM Users"", ct).Result|};")]
+    [InlineData(@"var rows = {|LC062:db.Users.Where(x => x.Id > id).ExecuteDeleteAsync(ct).Result|};")]
+    [InlineData(@"{|LC062:db.AddRangeAsync(new User(), new User()).Wait()|};")]
+    [InlineData(@"{|LC062:db.SaveChangesAsync().Wait()|};")]
+    [InlineData(@"var saved = {|LC062:audited.SaveChangesAsync(true, ct).Result|};")]
+    [InlineData(@"var user = {|LC062:db.Users.FindAsync(id).Result|};")]
+    [InlineData(@"Func<List<User>> load = () => {|LC062:db.Users.ToListAsync().Result|};")]
+    public async Task OutsideAsyncCode_OffersNoFix(string code)
     {
-        await VerifyFixAsync(before, after, isAsync: false);
-    }
-
-    [Fact]
-    public async Task SynchronousFix_AddsSystemLinq()
-    {
-        const string before = @"using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-
-class Program
-{
-    void Run(ShopContext db)
-    {
-        var users = {|LC062:db.Users.ToListAsync().Result|};
-    }
-}
-";
-        const string after = @"using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-
-class Program
-{
-    void Run(ShopContext db)
-    {
-        var users = db.Users.ToList();
-    }
-}
-";
-        var mock = BlockingEfAsyncCallTests.Usings + BlockingEfAsyncCallTests.EfMock;
-        var test = new MockEfCodeFixTest();
-        test.TestState.Sources.Add(before);
-        test.TestState.Sources.Add(mock);
-        test.FixedState.Sources.Add(after);
-        test.FixedState.Sources.Add(mock);
-        await test.RunAsync();
+        await VerifyNoFixAsync(code, isAsync: false);
     }
 
     [Theory]
     // A sync lambda in an async method: await is not allowed there, and the synchronous call is LC008's finding.
-    [InlineData(@"Func<List<User>> load = () => {|LC062:db.Users.ToListAsync().Result|};", true)]
-    // No await inside a lock, and the synchronous call would be LC008's finding.
-    [InlineData(@"lock (this) { var n = {|LC062:db.Users.CountAsync().Result|}; }", true)]
-    // A stored task outside async code: nothing to rewrite the declaration to.
-    [InlineData(@"var task = db.Users.ToListAsync(ct); var users = {|LC062:task.Result|};", false)]
+    [InlineData(@"Func<List<User>> load = () => {|LC062:db.Users.ToListAsync().Result|};")]
+    // No await inside a lock.
+    [InlineData(@"lock (this) { var n = {|LC062:db.Users.CountAsync().Result|}; }")]
     // Wait with a timeout returns whether the task finished.
-    [InlineData(@"var done = {|LC062:db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(5))|};", true)]
-    [InlineData(@"var done = {|LC062:db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(5))|};", false)]
-    // The catch relies on the AggregateException that .Result throws.
-    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (AggregateException) { }", true)]
-    [InlineData(@"try { {|LC062:db.SaveChangesAsync().Wait()|}; } catch (AggregateException) { }", false)]
-    // No synchronous ForEach on IQueryable.
-    [InlineData(@"{|LC062:db.Users.ForEachAsync(u => { }).Wait()|};", false)]
-    // The static form has no synchronous twin in EntityFrameworkQueryableExtensions.
-    [InlineData(@"var users = {|LC062:EntityFrameworkQueryableExtensions.ToListAsync(db.Users).Result|};", false)]
-    public async Task NoSafeRewrite_OffersNoFix(string code, bool isAsync)
+    [InlineData(@"var done = {|LC062:db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(5))|};")]
+    public async Task NoSafeRewrite_OffersNoFix(string code)
     {
-        await VerifyNoFixAsync(code, isAsync);
+        await VerifyNoFixAsync(code, isAsync: true);
     }
 
     [Theory]
     [InlineData(
         @"var users = {|LC062:db.Users.ToListAsync() /* rationale */ .Result|};",
-        @"var users = await db.Users.ToListAsync() /* rationale */;",
-        true)]
-    [InlineData(
-        @"var users = {|LC062:db.Users.ToListAsync() /* rationale */ .Result|};",
-        @"var users = db.Users.ToList() /* rationale */;",
-        false)]
+        @"var users = await db.Users.ToListAsync() /* rationale */;")]
     [InlineData(
         @"var saved = {|LC062:db.SaveChangesAsync().GetAwaiter() /* sync entry point */ .GetResult()|};",
-        @"var saved = await db.SaveChangesAsync() /* sync entry point */;",
-        true)]
-    [InlineData(
-        @"var user = {|LC062:db.Users.FirstOrDefaultAsync(ct) /* first */ .ConfigureAwait(false).GetAwaiter().GetResult()|};",
-        @"var user = db.Users.FirstOrDefault() /* first */;",
-        false)]
-    public async Task CommentsBeforeTheBlockingAccess_AreKept(string before, string after, bool isAsync)
+        @"var saved = await db.SaveChangesAsync() /* sync entry point */;")]
+    public async Task CommentsBeforeTheBlockingAccess_AreKept(string before, string after)
     {
-        await VerifyFixAsync(before, after, isAsync);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task SingleLineCommentBeforeTheBlockingAccess_IsKeptOnItsOwnLine(bool isAsync)
-    {
-        var fixedCall = isAsync ? "await db.Users.ToListAsync()" : "db.Users.ToList()";
-        await VerifyFixAsync(
-            "var users = {|LC062:db.Users.ToListAsync() // rationale\n            .Result|};",
-            "var users = " + fixedCall + " // rationale\n;",
-            isAsync);
-    }
-
-    [Theory]
-    // Each of these catches can observe the AggregateException that .Result and .Wait() throw.
-    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (Exception ex) when (ex is AggregateException) { }", true)]
-    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (Exception ex) when (ex is AggregateException) { }", false)]
-    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch { }", true)]
-    [InlineData(@"try { {|LC062:db.SaveChangesAsync().Wait()|}; } catch { }", false)]
-    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (SystemException) { }", false)]
-    [InlineData(@"try { try { var users = {|LC062:db.Users.ToListAsync().Result|}; } finally { } } catch (Exception) { }", true)]
-    public async Task CatchThatCanObserveAggregateException_OffersNoFix(string code, bool isAsync)
-    {
-        await VerifyNoFixAsync(code, isAsync);
-    }
-
-    [Theory]
-    [InlineData(
-        @"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (InvalidOperationException) { }",
-        @"try { var users = await db.Users.ToListAsync(); } catch (InvalidOperationException) { }",
-        true)]
-    [InlineData(
-        @"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (InvalidOperationException) { }",
-        @"try { var users = db.Users.ToList(); } catch (InvalidOperationException) { }",
-        false)]
-    public async Task CatchThatCannotBeAnAggregateException_KeepsTheFix(string before, string after, bool isAsync)
-    {
-        await VerifyFixAsync(before, after, isAsync);
-    }
-
-    [Theory]
-    // AuditedContext overrides SaveChangesAsync but inherits SaveChanges: the sync call would skip the override.
-    [InlineData(@"var saved = {|LC062:audited.SaveChangesAsync().Result|};")]
-    [InlineData(@"{|LC062:audited.SaveChangesAsync(ct).Wait()|};")]
-    // A DbContext variable can hold an AuditedContext, which this compilation declares.
-    [InlineData(@"Microsoft.EntityFrameworkCore.DbContext context = audited; var saved = {|LC062:context.SaveChangesAsync().Result|};")]
-    public async Task AsyncOverrideWithoutSyncOverride_OffersNoSynchronousFix(string code)
-    {
-        await VerifyNoFixAsync(code, isAsync: false);
+        await VerifyFixAsync(before, after, isAsync: true);
     }
 
     [Fact]
-    public async Task AsyncOverrideWithoutSyncOverride_StillAwaitsInAsyncCode()
+    public async Task SingleLineCommentBeforeTheBlockingAccess_IsKeptOnItsOwnLine()
     {
         await VerifyFixAsync(
-            @"var saved = {|LC062:audited.SaveChangesAsync().Result|};",
-            @"var saved = await audited.SaveChangesAsync();",
+            "var users = {|LC062:db.Users.ToListAsync() // rationale\n            .Result|};",
+            "var users = await db.Users.ToListAsync() // rationale\n;",
             isAsync: true);
     }
 
     [Theory]
-    // A SaveChangesInterceptor that implements only SavingChangesAsync, or a SaveChangesAsync override, runs only on
-    // the async path, and interceptor registration is not visible to the fixer: SaveChangesAsync never gets the
-    // synchronous fix, even on a sealed or internal context or one that overrides both saves.
-    [InlineData(@"var sealedDb = new SealedShopContext(); {|LC062:sealedDb.SaveChangesAsync().Wait()|};")]
-    [InlineData(@"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync(true, ct).Result|};")]
-    [InlineData(@"var full = new FullyAuditedContext(); var saved = {|LC062:full.SaveChangesAsync().Result|};")]
-    [InlineData(@"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(true, ct).Result|};")]
-    [InlineData(@"var paired = new PairedAuditedContext(); var saved = {|LC062:paired.SaveChangesAsync(ct).Result|};")]
-    public async Task SaveChangesAsync_NeverGetsTheSynchronousFix(string code)
+    // .Result and .Wait() throw AggregateException and await does not, so any catch clause may pick a different
+    // handler after the rewrite, whatever it catches.
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (AggregateException) { }")]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (Exception ex) when (ex is AggregateException) { }")]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch { }")]
+    [InlineData(@"try { {|LC062:db.SaveChangesAsync().Wait()|}; } catch (SystemException) { }")]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (InvalidOperationException) { }")]
+    [InlineData(@"try { try { var users = {|LC062:db.Users.ToListAsync().Result|}; } finally { } } catch (Exception) { }")]
+    public async Task InsideATryWithACatch_OffersNoFix(string code)
     {
-        await VerifyNoFixAsync(code, isAsync: false);
+        await VerifyNoFixAsync(code, isAsync: true);
+    }
+
+    [Fact]
+    public async Task InsideATryWithOnlyAFinally_KeepsTheAwaitFix()
+    {
+        await VerifyFixAsync(
+            @"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } finally { }",
+            @"try { var users = await db.Users.ToListAsync(); } finally { }",
+            isAsync: true);
     }
 
     [Theory]
-    // Overrides are matched by signature: SaveChanges() does not cover SaveChangesAsync(bool, CancellationToken).
-    [InlineData(@"var mismatched = new MismatchedAuditedContext(); var saved = {|LC062:mismatched.SaveChangesAsync(true, ct).Result|};")]
-    [InlineData(@"var mismatched = new MismatchedAuditedContext(); var saved = {|LC062:mismatched.SaveChangesAsync(ct).Result|};")]
-    public async Task AsyncOverloadOverriddenWithoutItsSyncOverload_OffersNoSynchronousFix(string code)
+    [InlineData(@"var saved = {|LC062:audited.SaveChangesAsync().Result|};", @"var saved = await audited.SaveChangesAsync();")]
+    [InlineData(@"var saved = {|LC062:db.SaveChangesAsync(true, ct).Result|};", @"var saved = await db.SaveChangesAsync(true, ct);")]
+    public async Task OverriddenOrInterceptedSaves_AreAwaited(string before, string after)
     {
-        await VerifyNoFixAsync(code, isAsync: false);
-    }
-
-    [Theory]
-    // Dropping the token argument would drop the call or allocation that produces it.
-    [InlineData(@"CancellationToken GetToken() => ct; var users = {|LC062:db.Users.ToListAsync(GetToken()).Result|};")]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(new CancellationTokenSource().Token).Result|};")]
-    [InlineData(@"var sources = new CancellationTokenSource[1]; var users = {|LC062:db.Users.ToListAsync(sources[0].Token).Result|};")]
-    // A property read runs code: CancellationTokenSource.Token throws once the source is disposed.
-    [InlineData(@"var source = new CancellationTokenSource(); var users = {|LC062:db.Users.ToListAsync(source.Token).Result|};")]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(Helpers.CurrentToken).Result|};")]
-    // A field read through another member access is not a plain field read.
-    [InlineData(@"var holders = new[] { new TokenHolder() }; var users = {|LC062:db.Users.ToListAsync(holders[0].Token).Result|};")]
-    public async Task TokenArgumentWithSideEffects_OffersNoSynchronousFix(string code)
-    {
-        await VerifyNoFixAsync(code, isAsync: false);
-    }
-
-    [Theory]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(CancellationToken.None).Result|};", @"var users = db.Users.ToList();")]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(default).Result|};", @"var users = db.Users.ToList();")]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(ct).Result|};", @"var users = db.Users.ToList();")]
-    [InlineData(@"var token = ct; var users = {|LC062:db.Users.ToListAsync(token).Result|};", @"var token = ct; var users = db.Users.ToList();")]
-    [InlineData(@"var users = {|LC062:db.Users.ToListAsync(Helpers.ShutdownToken).Result|};", @"var users = db.Users.ToList();")]
-    [InlineData(@"var holder = new TokenHolder(); var users = {|LC062:db.Users.ToListAsync(holder.Token).Result|};", @"var holder = new TokenHolder(); var users = db.Users.ToList();")]
-    public async Task TokenArgumentWithoutSideEffects_KeepsTheSynchronousFix(string before, string after)
-    {
-        await VerifyFixAsync(before, after, isAsync: false);
+        await VerifyFixAsync(before, after, isAsync: true);
     }
 
     [Theory]
@@ -317,86 +165,25 @@ class Program
             isAsync: true);
     }
 
-    [Theory]
-    // A sealed context that overrides only the async save.
-    [InlineData(@"var sealedAudited = new SealedAuditedContext(); var saved = {|LC062:sealedAudited.SaveChangesAsync().Result|};")]
-    // Public unsealed receivers: another assembly can derive from them and override only the async method.
-    [InlineData(@"{|LC062:db.SaveChangesAsync().Wait()|};")]
-    [InlineData(@"var saved = {|LC062:db.SaveChangesAsync(true, ct).Result|};")]
-    [InlineData(@"var user = {|LC062:db.Users.FindAsync(id).Result|};")]
-    [InlineData(@"var user = {|LC062:db.Users.FindAsync(new object[] { id }, ct).AsTask().Result|};")]
-    [InlineData(@"var entry = {|LC062:db.Users.AddAsync(new User(), ct).Result|};")]
-    [InlineData(@"var transaction = {|LC062:db.Database.BeginTransactionAsync(ct).Result|};")]
-    public async Task ReceiverOpenToOverrides_OffersNoSynchronousFix(string code)
-    {
-        await VerifyNoFixAsync(code, isAsync: false);
-    }
-
-    [Theory]
-    [InlineData(@"var saved = {|LC062:db.SaveChangesAsync().Result|};", @"var saved = await db.SaveChangesAsync();")]
-    [InlineData(@"var user = {|LC062:db.Users.FindAsync(id).Result|};", @"var user = await db.Users.FindAsync(id);")]
-    public async Task ReceiverOpenToOverrides_StillAwaitsInAsyncCode(string before, string after)
-    {
-        await VerifyFixAsync(before, after, isAsync: true);
-    }
-
     [Fact]
-    public async Task InternalContext_WithInternalsVisibleTo_OffersNoSynchronousFix()
+    public async Task RefLikeParameterReadAfterTheCall_GetsNoFix()
     {
-        var source = BlockingEfAsyncCallTests.Wrap(
-                @"var internalDb = new InternalShopContext(); var saved = {|LC062:internalDb.SaveChangesAsync().Result|};")
-            .Replace("\nclass Program", "\n[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"Other\")]\nclass Program");
-        Assert.Contains("InternalsVisibleTo", source);
-
-        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
-    }
-
-    [Fact]
-    public async Task RefLikeParameterReadAfterTheCall_GetsNoAwaitFix()
-    {
-        // Ref-like parameters cannot appear in async code (CS4012), so this site gets the synchronous fix, never await.
+        // Ref-like parameters cannot appear in async code (CS4012), so this site is in a synchronous method: no fix.
         var titles = await CodeActionTitles.GetAsync(
             new BlockingEfAsyncCallAnalyzer(),
             new BlockingEfAsyncCallFixer(),
             BlockingEfAsyncCallTests.Usings + @"
 class Program
 {
-    void Fill(System.Span<int> buffer, SealedShopContext db)
+    void Fill(System.Span<int> buffer, ShopContext db)
     {
         var count = db.Users.CountAsync().Result;
         buffer[0] = count;
     }
 }
-" + BlockingEfAsyncCallTests.EfMock,
-            BlockingEfAsyncCallTests.MockAssemblyName);
+" + BlockingEfAsyncCallTests.EfMock);
 
-        Assert.Equal(new[] { "Call Count instead of blocking" }, titles);
-    }
-
-    [Fact]
-    public async Task ContextInAnEfCoreNamedNamespace_IsStillCheckedForOverrides()
-    {
-        // The override walk stops at EF Core's own types, found by assembly: an application context in a
-        // Microsoft.EntityFrameworkCore.* namespace that overrides only the async save gets no synchronous fix.
-        var source = BlockingEfAsyncCallTests.Usings + @"
-class Program
-{
-    void Run(Microsoft.EntityFrameworkCore.Custom.CustomAuditedContext custom)
-    {
-        var saved = {|LC062:custom.SaveChangesAsync().Result|};
-    }
-}
-
-namespace Microsoft.EntityFrameworkCore.Custom
-{
-    public sealed class CustomAuditedContext : DbContext
-    {
-        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
-    }
-}
-" + BlockingEfAsyncCallTests.EfMock;
-
-        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+        Assert.Empty(titles);
     }
 
     [Fact]
@@ -426,7 +213,7 @@ ref struct Worker
 }
 " + BlockingEfAsyncCallTests.EfMock;
 
-        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+        await new CodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
     }
 
     [Fact]
@@ -439,7 +226,7 @@ ref struct Worker
         var users = await db.Users.ToListAsync();
         await db.SaveChangesAsync();", isAsync: true);
 
-        await new MockEfCodeFixTest { TestCode = before, FixedCode = after, BatchFixedCode = after }.RunAsync();
+        await new CodeFixTest { TestCode = before, FixedCode = after, BatchFixedCode = after }.RunAsync();
     }
 
     [Fact]
@@ -448,16 +235,14 @@ ref struct Worker
         var asyncTitles = await CodeActionTitles.GetAsync(
             new BlockingEfAsyncCallAnalyzer(),
             new BlockingEfAsyncCallFixer(),
-            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;", isAsync: true),
-            BlockingEfAsyncCallTests.MockAssemblyName);
+            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;", isAsync: true));
         var syncTitles = await CodeActionTitles.GetAsync(
             new BlockingEfAsyncCallAnalyzer(),
             new BlockingEfAsyncCallFixer(),
-            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;"),
-            BlockingEfAsyncCallTests.MockAssemblyName);
+            BlockingEfAsyncCallTests.Wrap(@"var users = db.Users.ToListAsync().Result;"));
 
         Assert.Equal(new[] { "Await the task instead of blocking" }, asyncTitles);
-        Assert.Equal(new[] { "Call ToList instead of blocking" }, syncTitles);
+        Assert.Empty(syncTitles);
     }
 
     /// <summary>
@@ -474,7 +259,7 @@ ref struct Worker
             var fixedSource = await ApplyFixAsync(BlockingEfAsyncCallTests.Wrap(shape.Replace("{|#0:", "").Replace("|}", ""), isAsync));
 
             // The verifier compiles the fixed document and fails on any compiler error or leftover LC062.
-            await new MockEfCodeFixTest
+            await new CodeFixTest
             {
                 TestCode = source,
                 FixedCode = fixedSource,
@@ -489,7 +274,7 @@ ref struct Worker
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
-        var project = workspace.AddProject(BlockingEfAsyncCallTests.MockAssemblyName, Microsoft.CodeAnalysis.LanguageNames.CSharp)
+        var project = workspace.AddProject("Test", Microsoft.CodeAnalysis.LanguageNames.CSharp)
             .WithCompilationOptions(new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary))
             .WithMetadataReferences(references);
         var document = project.AddDocument("Test.cs", source);
