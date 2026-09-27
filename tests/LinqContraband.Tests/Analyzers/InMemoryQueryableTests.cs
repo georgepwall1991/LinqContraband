@@ -60,7 +60,9 @@ public class Tests
     [InlineData("var q = from o in list.AsQueryable() where IsBig(o) select o;")]
     // SimpleIdServer: an Enumerable operator's result is a LINQ-to-Objects iterator, never a DbSet.
     [InlineData("var q = _orders.Select(r => Enrich(r)).AsQueryable().Where(r => IsBig(r));")]
-    [InlineData("var q = sequence.Where(o => o.Id > 0).OrderBy(o => o.Id).AsQueryable().Where(o => IsBig(o));")]
+    [InlineData("var q = list.Where(o => o.Id > 0).OrderBy(o => o.Id).AsQueryable().Where(o => IsBig(o));")]
+    [InlineData("var q = array.Concat(list).Cast<Order>().AsQueryable().Where(o => IsBig(o));")]
+    [InlineData("var filtered = list.Where(o => o.Id > 0); var q = filtered.AsQueryable().Where(o => IsBig(o));")]
     // No EF query type implements the mutable or read-only collection interfaces.
     [InlineData("var q = collection.AsQueryable().Where(o => IsBig(o));")]
     [InlineData("var q = readOnlyList.AsQueryable().Where(o => IsBig(o));")]
@@ -77,6 +79,11 @@ public class Tests
     [InlineData("var q = queryable.AsEnumerable().AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     [InlineData("var q = sequence.Cast<Order>().AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     [InlineData("var q = sequence.OfType<Order>().AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    // Enumerable operators are lazy: over a query or a bare IEnumerable they still enumerate that source.
+    [InlineData("var q = queryable.AsEnumerable().Where(o => o.Id > 0).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    [InlineData("var q = sequence.Where(o => o.Id > 0).OrderBy(o => o.Id).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    [InlineData("var q = list.Concat(queryable).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    [InlineData("var filtered = queryable.AsEnumerable().Select(o => o); var q = filtered.AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     // An element operator can return a stored sequence, which may be a DbSet.
     [InlineData("var q = sequences.First().AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     // A delegate lambda nested in the query's expression tree is still translated.
@@ -94,6 +101,23 @@ public class Tests
     [Fact]
     public Task LC016_AsEnumerableOverQueryAsQueryable_StillReports() =>
         LC016.VerifyAnalyzerAsync(Code("var q = queryable.AsEnumerable().AsQueryable().Where(o => o.Placed < {|LC016:DateTime.Now|});"));
+
+    [Fact]
+    public Task LC016_EnumerableOperatorOverQueryAsQueryable_StillReports() =>
+        LC016.VerifyAnalyzerAsync(Code("var q = queryable.AsEnumerable().Where(o => o.Id > 0).AsQueryable().Where(o => o.Placed < {|LC016:DateTime.Now|});"));
+
+    [Fact]
+    public Task LC020_EnumerableOperatorOverQueryAsQueryable_StillReports() =>
+        LC020.VerifyAnalyzerAsync(Code(
+            "var q = queryable.AsEnumerable().Select(o => o).AsQueryable().Where(o => {|LC020:o.Name.Contains(\"a\", StringComparison.OrdinalIgnoreCase)|});"));
+
+    [Fact]
+    public Task LC022_EnumerableOperatorOverQueryAsQueryable_StillReports() =>
+        LC022.VerifyAnalyzerAsync(Code("var q = queryable.AsEnumerable().Where(o => o.Id > 0).AsQueryable().Select(o => {|LC022:o.Children.ToList()|});"));
+
+    [Fact]
+    public Task LC004_EnumerableOperatorOverQueryAsQueryable_StillReports() =>
+        LC004.VerifyAnalyzerAsync(Code("var q = queryable.AsEnumerable().Where(o => o.Id > 1).AsQueryable(); Consume({|LC004:q|});"));
 
     [Fact]
     public Task LC016_QueryableParameter_StillReports() =>

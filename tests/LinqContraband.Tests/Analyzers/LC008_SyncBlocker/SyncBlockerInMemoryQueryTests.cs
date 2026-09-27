@@ -497,7 +497,7 @@ class Program
         var test = Usings + @"
 class Program
 {
-    async Task<List<User>> Main(IEnumerable<User> users)
+    async Task<List<User>> Main(List<User> users)
     {
         await Task.Delay(1);
         return users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList();
@@ -519,6 +519,30 @@ class Program
     {
         await Task.Delay(1);
         return {|LC008:db.Users.AsEnumerable().AsQueryable().ToList()|};
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // Enumerable operators are lazy: the iterator still enumerates the EF query.
+    [InlineData("{|LC008:db.Users.AsEnumerable().Where(u => u.Id > 0).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:db.Users.AsEnumerable().Select(u => u).OrderBy(u => u.Id).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // A bare IEnumerable<User> may be a DbSet at run time.
+    [InlineData("{|LC008:users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // Every sequence an operator enumerates counts, not only its source.
+    [InlineData("{|LC008:list.Concat(db.Users).AsQueryable().ToList()|}")]
+    public async Task TestCrime_EnumerableOperatorOverUnprovenSource_StillTriggers(string call)
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(MyDbContext db, IEnumerable<User> users, List<User> list)
+    {
+        await Task.Delay(1);
+        return " + call + @";
     }
 }
 " + MockNamespace;
@@ -563,6 +587,23 @@ class Program
 ");
     }
 
+    [Fact]
+    public async Task TestInnocent_LibraryHelperWithInertArguments_NoDiagnostic()
+    {
+        // A predicate, a library options object, an enum and a nullable value cannot hand the helper an EF query.
+        await RunWithLibraryAsync(@"
+class Program
+{
+    async Task<List<User>> Main(List<User> list)
+    {
+        await Task.Delay(1);
+        var x = ScimLibrary.Filter(list.AsQueryable(), u => u.Id > 0, new ScimOptions(), StringComparison.Ordinal, 10).ToList();
+        return x;
+    }
+}
+");
+    }
+
     [Theory]
     // The query argument is the EF set.
     [InlineData("{|LC008:scimFilter.EvaluateAttributes(db.Users, false).ToList()|}")]
@@ -572,14 +613,23 @@ class Program
     [InlineData("{|LC008:ScimLibrary.Apply(list.AsQueryable(), q => db.Users).ToList()|}")]
     // A sequence argument that may be a DbSet.
     [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), sequence).ToList()|}")]
+    // An object of this project (a repository) could return an EF query.
+    [InlineData("{|LC008:ScimLibrary.WithState(list.AsQueryable(), repository).ToList()|}")]
+    // So could anything behind an interface or object.
+    [InlineData("{|LC008:ScimLibrary.WithSource(list.AsQueryable(), source).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.WithState(list.AsQueryable(), (object)repository).ToList()|}")]
+    // An Enumerable operator over the DbSet is not in memory.
+    [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), db.Users.AsEnumerable().Where(u => u.Id > 0)).ToList()|}")]
     // No query argument at all.
     [InlineData("{|LC008:ScimLibrary.Load(list.Count).ToList()|}")]
     public async Task TestCrime_LibraryHelperWithUnprovenInput_StillTriggers(string call)
     {
         await RunWithLibraryAsync(@"
+class UserRepository { public MyDbContext Db { get; set; } }
 class Program
 {
-    async Task<object> Main(ScimExpression scimFilter, List<User> list, IEnumerable<User> sequence, MyDbContext db)
+    async Task<object> Main(ScimExpression scimFilter, List<User> list, IEnumerable<User> sequence, MyDbContext db,
+        UserRepository repository, IUserSource<User> source)
     {
         await Task.Delay(1);
         var x = " + call + @";
@@ -608,6 +658,8 @@ using System.Linq;
 namespace ScimLib
 {
     public class ScimExpression { }
+    public sealed class ScimOptions { public bool Strict { get; set; } }
+    public interface IUserSource<T> { IQueryable<T> Query(); }
 
     public static class ScimLibrary
     {
@@ -615,6 +667,9 @@ namespace ScimLib
         public static IQueryable<T> FromContext<T>(IQueryable<T> source, object context) => source;
         public static IQueryable<T> Apply<T>(IQueryable<T> source, Func<IQueryable<T>, IQueryable<T>> step) => step(source);
         public static IQueryable<T> Merge<T>(IQueryable<T> source, IEnumerable<T> more) => source.Concat(more);
+        public static IQueryable<T> WithState<T>(IQueryable<T> source, object state) => source;
+        public static IQueryable<T> WithSource<T>(IQueryable<T> source, IUserSource<T> other) => source;
+        public static IQueryable<T> Filter<T>(IQueryable<T> source, Func<T, bool> predicate, ScimOptions options, StringComparison comparison, int? limit) => source;
         public static IQueryable<int> Load(int count) => Enumerable.Range(0, count).AsQueryable();
     }
 }

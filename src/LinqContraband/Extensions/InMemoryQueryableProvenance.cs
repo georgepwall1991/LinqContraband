@@ -1,3 +1,4 @@
+using System;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -84,20 +85,105 @@ public static class InMemoryQueryableProvenance
     /// queryable (<c>List&lt;T&gt;</c>, <c>HashSet&lt;T&gt;</c>, ...); a value statically typed as one of the
     /// collection interfaces no EF query type implements (<c>ICollection&lt;T&gt;</c>, <c>IList&lt;T&gt;</c>,
     /// <c>IReadOnlyCollection&lt;T&gt;</c>, <c>IReadOnlyList&lt;T&gt;</c>, <c>ISet&lt;T&gt;</c>, <c>IReadOnlySet&lt;T&gt;</c>);
-    /// or the sequence returned by a <c>System.Linq.Enumerable</c> operator, which is always a LINQ-to-Objects
-    /// iterator. <c>AsEnumerable</c>, <c>Cast</c> and <c>OfType</c> are excluded because they can hand back
-    /// their source unchanged, and a bare <c>IEnumerable&lt;T&gt;</c> may be a <c>DbSet</c> at run time, in
-    /// which case <c>AsQueryable()</c> returns the EF query itself.
+    /// a local with a single write that is one of these; or the sequence returned by a
+    /// <c>System.Linq.Enumerable</c> operator whose every sequence input is itself proven here. Enumerable
+    /// operators are lazy, so <c>db.Users.AsEnumerable().Where(...)</c> still enumerates the EF query, and
+    /// <c>AsEnumerable</c>, <c>Cast</c> and <c>OfType</c> can hand back their source (possibly a <c>DbSet</c>)
+    /// unchanged. A bare <c>IEnumerable&lt;T&gt;</c> may be a <c>DbSet</c> at run time, in which case
+    /// <c>AsQueryable()</c> returns the EF query itself.
     /// </summary>
-    public static bool IsInMemorySequenceSource(IOperation? sequence)
+    /// <param name="isInMemoryLeafType">
+    /// An extra proof for a leaf the walk cannot follow, judged by its static type (LC008 accepts
+    /// interface-typed sequences of non-entity types).
+    /// </param>
+    public static bool IsInMemorySequenceSource(IOperation? sequence, Func<ITypeSymbol, bool>? isInMemoryLeafType = null)
     {
-        var type = sequence?.Type;
-        if (type == null || type.IsIQueryable())
+        return IsInMemorySequenceSource(sequence, isInMemoryLeafType, 0);
+    }
+
+    private static bool IsInMemorySequenceSource(IOperation? sequence, Func<ITypeSymbol, bool>? isInMemoryLeafType, int depth)
+    {
+        if (depth >= MaxDepth)
             return false;
 
-        return IsConcreteInMemorySequence(type) ||
-               IsNonQueryCollectionInterface(type) ||
-               sequence is IInvocationOperation invocation && IsEnumerableOperatorResult(invocation);
+        sequence = sequence?.UnwrapConversions();
+        var type = sequence?.Type;
+        if (sequence == null || type == null || type.IsIQueryable())
+            return false;
+
+        if (IsConcreteInMemorySequence(type) || IsNonQueryCollectionInterface(type))
+            return true;
+
+        switch (sequence)
+        {
+            case IInvocationOperation invocation when IsEnumerableOperator(invocation.TargetMethod):
+                return AreSequenceInputsInMemory(invocation, isInMemoryLeafType, depth);
+
+            case ILocalReferenceOperation localReference:
+            {
+                var root = localReference.FindOwningExecutableRoot();
+                if (root != null &&
+                    LocalAssignmentCache.GetAssignments(root, localReference.Local).Count == 1 &&
+                    LocalAssignmentCache.TryGetSingleAssignedValueBefore(
+                        root,
+                        localReference.Local,
+                        localReference.Syntax.SpanStart,
+                        out var value) &&
+                    IsInMemorySequenceSource(value, isInMemoryLeafType, depth + 1))
+                    return true;
+
+                break;
+            }
+        }
+
+        return isInMemoryLeafType?.Invoke(type) == true;
+    }
+
+    /// <summary>
+    /// A <c>System.Linq.Enumerable</c> operator that returns a sequence (Select, Where, Concat, AsEnumerable,
+    /// ...). Element operators such as <c>First()</c> are excluded: they can return a stored sequence, which
+    /// may be a <c>DbSet</c>.
+    /// </summary>
+    private static bool IsEnumerableOperator(IMethodSymbol targetMethod)
+    {
+        var method = targetMethod.ReducedFrom ?? targetMethod;
+        if (method.ContainingType is not { Name: "Enumerable" } containingType ||
+            containingType.ContainingNamespace?.ToDisplayString() != "System.Linq")
+            return false;
+
+        return method.OriginalDefinition.ReturnType is INamedTypeSymbol returnType &&
+               (returnType.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T ||
+                returnType.OriginalDefinition is { Name: "IOrderedEnumerable", Arity: 1 } ordered &&
+                ordered.ContainingNamespace?.ToDisplayString() == "System.Linq");
+    }
+
+    /// <summary>
+    /// Every sequence the operator enumerates (its source, and the second sequence of Concat, Join, Union,
+    /// Zip, ...) must itself be in memory, because the operator's iterator enumerates them lazily. An
+    /// operator with no sequence input (Range, Repeat, Empty) builds its own.
+    /// </summary>
+    private static bool AreSequenceInputsInMemory(
+        IInvocationOperation invocation,
+        Func<ITypeSymbol, bool>? isInMemoryLeafType,
+        int depth)
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            var parameterType = argument.Parameter?.Type;
+            if (parameterType == null || !IsEnumerableParameter(parameterType))
+                continue;
+
+            if (!IsInMemorySequenceSource(argument.Value, isInMemoryLeafType, depth + 1))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsEnumerableParameter(ITypeSymbol type)
+    {
+        return type.SpecialType == SpecialType.System_Collections_IEnumerable ||
+               type.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T;
     }
 
     private static bool IsConcreteInMemorySequence(ITypeSymbol type)
@@ -127,22 +213,6 @@ public static class InMemoryQueryableProvenance
 
         return definition.Name is "ISet" or "IReadOnlySet" &&
                definition.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic";
-    }
-
-    private static bool IsEnumerableOperatorResult(IInvocationOperation invocation)
-    {
-        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        if (method.Name is "AsEnumerable" or "Cast" or "OfType" ||
-            method.ContainingType is not { Name: "Enumerable" } containingType ||
-            containingType.ContainingNamespace?.ToDisplayString() != "System.Linq")
-            return false;
-
-        // Only operators that build a new sequence (Select, Where, Concat, ...); element operators such as
-        // First() can return a stored sequence, which may be a DbSet.
-        return method.OriginalDefinition.ReturnType is INamedTypeSymbol returnType &&
-               (returnType.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T ||
-                returnType.OriginalDefinition is { Name: "IOrderedEnumerable", Arity: 1 } ordered &&
-                ordered.ContainingNamespace?.ToDisplayString() == "System.Linq");
     }
 
     private static IOperation Unwrap(IOperation operation)

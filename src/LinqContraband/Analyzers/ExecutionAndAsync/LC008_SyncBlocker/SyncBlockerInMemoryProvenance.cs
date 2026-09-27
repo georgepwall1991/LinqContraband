@@ -71,8 +71,7 @@ public sealed partial class SyncBlockerAnalyzer
                                 continue;
                             }
 
-                            return InMemoryQueryableProvenance.IsInMemorySequenceSource(receiver) ||
-                                   IsNonEntitySequence(receiver?.Type);
+                            return InMemoryQueryableProvenance.IsInMemorySequenceSource(receiver, IsNonEntitySequence);
                         }
 
                         if (!invocation.Type.IsIQueryable())
@@ -225,8 +224,8 @@ public sealed partial class SyncBlockerAnalyzer
         /// A static or extension helper without source (a referenced project or package, such as
         /// SimpleIdServer's <c>scimFilter.EvaluateAttributes(attributes.AsQueryable(), false)</c>) that
         /// returns a query. It is proven when at least one argument is a query proven in-memory, every other
-        /// sequence argument is an in-memory sequence, and no argument is a <c>DbContext</c>, a delegate
-        /// or a <c>params</c> array. The helper cannot reach EF through what it is given.
+        /// sequence argument is an in-memory sequence, and every other argument is inert (see
+        /// <see cref="IsInertArgumentType"/>): nothing it is given can hand it an EF query.
         /// </summary>
         private bool WalkLibraryHelperCall(
             IInvocationOperation invocation,
@@ -261,17 +260,107 @@ public sealed partial class SyncBlockerAnalyzer
                     continue;
                 }
 
-                // A DbContext, or a callback that could hand back an EF query, reaches the database.
-                if (type.IsDbContext() || type.TypeKind == TypeKind.Delegate)
-                    return false;
+                if (type.SpecialType != SpecialType.System_String && IsSequence(type))
+                {
+                    if (!InMemoryQueryableProvenance.IsInMemorySequenceSource(value, IsNonEntitySequence))
+                        return false;
 
-                if (type.SpecialType != SpecialType.System_String &&
-                    IsSequence(type) &&
-                    !InMemoryQueryableProvenance.IsInMemorySequenceSource(value))
+                    continue;
+                }
+
+                if (!IsInertArgumentType(type, 0))
                     return false;
             }
 
             return provenQuery;
+        }
+
+        /// <summary>
+        /// An argument that cannot give a library helper a way to reach EF: a primitive, string, enum or
+        /// <c>System</c> struct (<c>Guid</c>, <c>CancellationToken</c>, ...); a delegate or expression whose
+        /// result is inert, such as a <c>Func&lt;T, bool&gt;</c> predicate; or a class from a referenced
+        /// assembly that does not itself reference EF Core, such as SimpleIdServer's <c>SCIMExpression</c>.
+        /// A <c>DbContext</c>, a repository or other class of this project, an EF-aware library's class, an
+        /// interface or <c>object</c> could return a database query, so they block the proof.
+        /// </summary>
+        private bool IsInertArgumentType(ITypeSymbol type, int depth)
+        {
+            if (depth > 4)
+                return false;
+
+            if (type.SpecialType == SpecialType.System_Object || type.IsDbContext())
+                return false;
+
+            if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum)
+                return true;
+
+            if (type is not INamedTypeSymbol named)
+                return false;
+
+            if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                return IsInertArgumentType(named.TypeArguments[0], depth + 1);
+
+            if (named.TypeKind == TypeKind.Delegate)
+                return named.DelegateInvokeMethod is { } invoke &&
+                       (invoke.ReturnsVoid || IsInertArgumentType(invoke.ReturnType, depth + 1));
+
+            if (IsLinqExpression(named))
+                return named.IsGenericType &&
+                       named.TypeArguments[0] is INamedTypeSymbol { TypeKind: TypeKind.Delegate } lambda &&
+                       IsInertArgumentType(lambda, depth + 1);
+
+            switch (named.TypeKind)
+            {
+                case TypeKind.Struct:
+                    if (IsInSystemNamespace(named))
+                        return true;
+                    break;
+                case TypeKind.Class:
+                    break;
+                default:
+                    return false;
+            }
+
+            var assembly = named.ContainingAssembly;
+            return assembly != null &&
+                   !SymbolEqualityComparer.Default.Equals(assembly, compilation.Assembly) &&
+                   !ReferencesEntityFramework(assembly);
+        }
+
+        private static bool IsLinqExpression(INamedTypeSymbol type)
+        {
+            for (var current = type; current != null; current = current.BaseType)
+            {
+                if (current.Name == "Expression" &&
+                    current.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsInSystemNamespace(INamedTypeSymbol type)
+        {
+            var ns = type.ContainingNamespace?.ToDisplayString();
+            return ns != null && (ns == "System" || ns.StartsWith("System.", System.StringComparison.Ordinal));
+        }
+
+        private readonly ConcurrentDictionary<IAssemblySymbol, bool> efAwareAssemblies =
+            new(SymbolEqualityComparer.Default);
+
+        /// <summary>
+        /// Whether the assembly is EF Core itself or references it, and so could build a query on its own.
+        /// </summary>
+        private bool ReferencesEntityFramework(IAssemblySymbol assembly)
+        {
+            return efAwareAssemblies.GetOrAdd(assembly, static a =>
+                IsEntityFrameworkAssemblyName(a.Identity.Name) ||
+                a.Modules.Any(m => m.ReferencedAssemblies.Any(r => IsEntityFrameworkAssemblyName(r.Name))));
+        }
+
+        private static bool IsEntityFrameworkAssemblyName(string name)
+        {
+            return name.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal);
         }
 
         private static bool IsSequence(ITypeSymbol type)
@@ -425,7 +514,7 @@ public sealed partial class SyncBlockerAnalyzer
         /// project or its references exposes a <c>DbSet&lt;T&gt;</c>, it is an in-memory sequence, such as
         /// VirtoCommerce's <c>AllRegisteredSettings.AsQueryable()</c>.
         /// </summary>
-        private bool IsNonEntitySequence(ITypeSymbol? type)
+        private bool IsNonEntitySequence(ITypeSymbol type)
         {
             if (type is not INamedTypeSymbol { TypeKind: TypeKind.Interface } named || named.IsIQueryable())
                 return false;
