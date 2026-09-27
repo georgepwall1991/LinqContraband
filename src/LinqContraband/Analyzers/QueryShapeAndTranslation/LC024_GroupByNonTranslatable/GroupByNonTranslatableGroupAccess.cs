@@ -13,6 +13,14 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     private static readonly ImmutableHashSet<string> TranslatableGroupOperators = ImmutableHashSet.Create(
         "Where", "Select", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Distinct");
 
+    // EF Core 8+ translates element accessors and group sub-sequences in a GroupBy projection
+    // (ROW_NUMBER / a correlated join); checked against EF Core 8 and 9 on SQLite, where
+    // g.First(), g.OrderBy(s).FirstOrDefault(), g.Where(p) and g.ToList() all produce SQL.
+    // SimpleIdServer FormBuilder's "latest per group" (GroupBy(...).Select(g => g.OrderByDescending(v).First())) relies on it.
+    private static readonly ImmutableHashSet<string> GroupProjectionTerminals = ImmutableHashSet.Create(
+        "First", "FirstOrDefault", "Last", "LastOrDefault", "Single", "SingleOrDefault",
+        "ElementAt", "ElementAtOrDefault", "ToList", "ToArray");
+
     private static bool IsAllowedAggregateMethod(string methodName)
     {
         return methodName is "Count" or "LongCount" or "Sum" or "Average" or "Min" or "Max" or "Any" or "All"
@@ -26,13 +34,15 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     // g.Where(p).Count() and g.Select(s).Sum(), but a chain that terminates in a non-aggregate
     // (a bare g.Where(p), a materializer g.Select(s).ToList(), or an element accessor
     // g.OrderBy(s).First()) still returns a sub-sequence or materializes and must be reported.
-    private static bool IsTranslatableGroupAccess(IInvocationOperation invocation, IParameterSymbol groupParam)
+    private static bool IsTranslatableGroupAccess(IInvocationOperation invocation, IParameterSymbol groupParam, bool groupProjections)
     {
-        if (!RootsAtGroupParam(invocation.GetInvocationReceiver(), groupParam))
+        if (!RootsAtGroupParam(invocation.GetInvocationReceiver(), groupParam, groupProjections))
             return false;
 
-        var terminal = FindOutermostGroupChainInvocation(invocation);
-        if (!IsAllowedAggregateMethod(terminal.TargetMethod.Name) ||
+        var terminal = FindOutermostGroupChainInvocation(invocation, groupProjections);
+        if (!(IsAllowedAggregateMethod(terminal.TargetMethod.Name) ||
+              groupProjections && (GroupProjectionTerminals.Contains(terminal.TargetMethod.Name) ||
+                                   TranslatableGroupOperators.Contains(terminal.TargetMethod.Name))) ||
             !IsKnownAggregateContainingType(terminal.TargetMethod.ContainingType))
         {
             return false;
@@ -43,20 +53,20 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         // deliberately conservative: the chain is exempt only when its lambda bodies are
         // invocation-free (member access, comparisons, arithmetic). ANY method call inside a
         // predicate/selector keeps the chain reported. The terminal subtree contains every lambda in the chain.
-        return !ChainHasLambdaInvocation(terminal, groupParam);
+        return !ChainHasLambdaInvocation(terminal, groupParam, groupProjections);
     }
 
     // True when the group-chain subtree contains an invocation that is NOT one of the chain's own
     // translatable group operators rooted at the grouping parameter.
-    private static bool ChainHasLambdaInvocation(IInvocationOperation terminal, IParameterSymbol groupParam)
+    private static bool ChainHasLambdaInvocation(IInvocationOperation terminal, IParameterSymbol groupParam, bool groupProjections)
     {
         foreach (var descendant in GetAllOperations(terminal).OfType<IInvocationOperation>())
         {
             if (IsTranslatableScalarConversion(descendant.TargetMethod))
                 continue;
 
-            if (!IsGroupChainMethod(descendant.TargetMethod) ||
-                !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam))
+            if (!IsGroupChainMethod(descendant.TargetMethod, groupProjections) ||
+                !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam, groupProjections))
             {
                 return true;
             }
@@ -78,11 +88,11 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     // An invocation that only sees the group through translatable aggregates, such as
     // `Convert.ToBoolean(g.Min(...))` or `Math.Round(g.Average(...))`, works on the aggregate's
     // scalar result, not on the group's elements.
-    private static bool ReferencesGroupOnlyThroughAggregates(IInvocationOperation invocation, IParameterSymbol groupParam)
+    private static bool ReferencesGroupOnlyThroughAggregates(IInvocationOperation invocation, IParameterSymbol groupParam, bool groupProjections)
     {
         var aggregates = GetAllOperations(invocation)
             .OfType<IInvocationOperation>()
-            .Where(candidate => !ReferenceEquals(candidate, invocation) && IsTranslatableGroupAccess(candidate, groupParam))
+            .Where(candidate => !ReferenceEquals(candidate, invocation) && IsTranslatableGroupAccess(candidate, groupParam, groupProjections))
             .ToList();
 
         foreach (var reference in GetAllOperations(invocation).OfType<IParameterReferenceOperation>())
@@ -97,7 +107,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         return true;
     }
 
-    private static bool RootsAtGroupParam(IOperation? receiver, IParameterSymbol groupParam)
+    private static bool RootsAtGroupParam(IOperation? receiver, IParameterSymbol groupParam, bool groupProjections)
     {
         var current = receiver;
         while (current != null)
@@ -106,7 +116,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
             if (current is IParameterReferenceOperation parameterReference)
                 return SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, groupParam);
 
-            if (current is IInvocationOperation chained && IsGroupChainMethod(chained.TargetMethod))
+            if (current is IInvocationOperation chained && IsGroupChainMethod(chained.TargetMethod, groupProjections))
             {
                 current = chained.GetInvocationReceiver();
                 continue;
@@ -118,7 +128,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         return false;
     }
 
-    private static IInvocationOperation FindOutermostGroupChainInvocation(IInvocationOperation invocation)
+    private static IInvocationOperation FindOutermostGroupChainInvocation(IInvocationOperation invocation, bool groupProjections)
     {
         var outermost = invocation;
         while (true)
@@ -128,7 +138,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
                 parent = parent.Parent;
 
             if (parent is IInvocationOperation parentInvocation &&
-                IsGroupChainMethod(parentInvocation.TargetMethod) &&
+                IsGroupChainMethod(parentInvocation.TargetMethod, groupProjections) &&
                 ReferenceEquals(parentInvocation.GetInvocationReceiver()?.UnwrapConversions(), outermost))
             {
                 outermost = parentInvocation;
@@ -139,9 +149,10 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         }
     }
 
-    private static bool IsGroupChainMethod(IMethodSymbol method)
+    private static bool IsGroupChainMethod(IMethodSymbol method, bool groupProjections)
     {
-        return (IsAllowedAggregateMethod(method.Name) || TranslatableGroupOperators.Contains(method.Name)) &&
+        return (IsAllowedAggregateMethod(method.Name) || TranslatableGroupOperators.Contains(method.Name) ||
+                groupProjections && GroupProjectionTerminals.Contains(method.Name)) &&
                IsKnownAggregateContainingType(method.ContainingType);
     }
 

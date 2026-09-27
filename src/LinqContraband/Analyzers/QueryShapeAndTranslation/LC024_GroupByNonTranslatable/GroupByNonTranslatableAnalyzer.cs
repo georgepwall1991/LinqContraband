@@ -75,7 +75,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
             if (lambda.Symbol.Parameters.Length == 0) continue;
             var groupParam = lambda.Symbol.Parameters[0];
 
-            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, context);
+            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, TranslatesGroupProjections(context.Compilation), context);
         }
     }
 
@@ -90,8 +90,19 @@ public sealed partial class GroupByNonTranslatableAnalyzer : DiagnosticAnalyzer
             if (lambda.Symbol.Parameters.Length < 2) continue;
             var groupParam = lambda.Symbol.Parameters[1];
 
-            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, context);
+            CheckOperationForNonTranslatableAccess(lambda.Body, groupParam, TranslatesGroupProjections(context.Compilation), context);
         }
+    }
+
+    /// <summary>
+    /// EF Core 8 and later (checked on 8 and 9) translate element accessors (<c>g.First()</c>) and group sub-sequences
+    /// (<c>g.Where(p)</c>, <c>g.ToList()</c>) in a GroupBy projection. Older EF Core, or a
+    /// compilation where the EF Core version cannot be read, keeps the conservative behavior.
+    /// </summary>
+    private static bool TranslatesGroupProjections(Compilation compilation)
+    {
+        var dbContext = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext");
+        return dbContext?.ContainingAssembly.Identity.Version.Major >= 8;
     }
 
     private static System.Collections.Generic.IEnumerable<IAnonymousFunctionOperation> GetAnonymousFunctionArguments(

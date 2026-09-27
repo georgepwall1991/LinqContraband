@@ -11,17 +11,18 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     private static void CheckOperationForNonTranslatableAccess(
         IOperation operation,
         IParameterSymbol groupParam,
+        bool groupProjections,
         OperationAnalysisContext context)
     {
         foreach (var invocation in GetAllOperations(operation).OfType<IInvocationOperation>())
         {
-            if (IsTranslatableGroupAccess(invocation, groupParam))
+            if (IsTranslatableGroupAccess(invocation, groupParam, groupProjections))
                 continue;
 
             if (!invocation.ReferencesParameter(groupParam))
                 continue;
 
-            if (ReferencesGroupOnlyThroughAggregates(invocation, groupParam))
+            if (ReferencesGroupOnlyThroughAggregates(invocation, groupParam, groupProjections))
                 continue;
 
             ReportNonTranslatableAccess(context, invocation.Syntax, invocation.TargetMethod.Name);
@@ -43,7 +44,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
                 if (usage is IArgumentOperation argOp && argOp.Parent is IInvocationOperation aggInvocation)
                 {
-                    if (IsTranslatableGroupAccess(aggInvocation, groupParam))
+                    if (IsTranslatableGroupAccess(aggInvocation, groupParam, groupProjections))
                         continue;
 
                     ReportNonTranslatableAccess(context, aggInvocation.Syntax, aggInvocation.TargetMethod.Name);
@@ -52,7 +53,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
                 if (usage is IInvocationOperation directInvocation)
                 {
-                    if (IsTranslatableGroupAccess(directInvocation, groupParam))
+                    if (IsTranslatableGroupAccess(directInvocation, groupParam, groupProjections))
                         continue;
 
                     ReportNonTranslatableAccess(context, directInvocation.Syntax, directInvocation.TargetMethod.Name);
