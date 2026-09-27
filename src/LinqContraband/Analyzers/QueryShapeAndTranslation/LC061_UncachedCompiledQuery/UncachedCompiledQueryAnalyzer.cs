@@ -228,7 +228,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// A store to a field or property of <c>this</c> from an ordinary method or accessor, not guarded by an
+    /// A store to a field or property of <c>this</c> (or <c>base</c>) from an ordinary method or accessor, not guarded by an
     /// <c>if</c> whose condition implies the member is null in the branch that holds the store. Constructors and
     /// <c>init</c> accessors are a non-goal: whether the instance lives long enough to reuse the delegate is not known.
     /// </summary>
@@ -238,7 +238,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         SemanticModel semanticModel)
     {
         var target = assignment.Left;
-        if (target is MemberAccessExpressionSyntax access && access.Expression is not ThisExpressionSyntax)
+        if (target is MemberAccessExpressionSyntax access && access.Expression is not (ThisExpressionSyntax or BaseExpressionSyntax))
             return false;
         if (target is not (IdentifierNameSyntax or MemberAccessExpressionSyntax))
             return false;
@@ -332,7 +332,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             case ParenthesizedExpressionSyntax parenthesized:
                 return IsMember(parenthesized.Expression, member, semanticModel);
             case IdentifierNameSyntax:
-            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax }:
+            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax }:
                 return SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(expression).Symbol, member);
             default:
                 return false;
@@ -514,8 +514,8 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     /// <c>HybridCache.GetOrCreateAsync</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c>
     /// constructor, matched by symbol. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
     /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
-    /// <paramref name="cacheBuiltPerCall"/> says whether the cache itself is built on every call (a Lazy read straight
-    /// away, or a dictionary created in the method), in which case the factory runs on every call too.
+    /// <paramref name="cacheBuiltPerCall"/> says whether the cache itself may not outlive the call (it is not kept in
+    /// a field, property or parameter), in which case the factory may run on every call too.
     /// </summary>
     private static bool IsInsideCacheFactory(
         SyntaxNode node,
@@ -536,14 +536,14 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             case InvocationExpressionSyntax call
                 when IsCacheFactoryMethod(semanticModel.GetSymbolInfo(call).Symbol as IMethodSymbol) &&
                      IsAddFactory(argument, argumentList, semanticModel):
-                cacheBuiltPerCall = !RunsOnce(call) && CacheIsBuiltPerCall(call, semanticModel);
+                cacheBuiltPerCall = !RunsOnce(call) && !CacheIsKept(call, semanticModel);
                 return true;
 
             case BaseObjectCreationExpressionSyntax creation
                 when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol lazyType &&
                      LazyTypes.Contains(GetMetadataName(lazyType.OriginalDefinition)) &&
                      IsAddFactory(argument, argumentList, semanticModel):
-                cacheBuiltPerCall = LazyIsBuiltPerCall(creation);
+                cacheBuiltPerCall = !RunsOnce(creation) && !LazyIsStored(creation, semanticModel);
                 return true;
 
             default:
@@ -552,24 +552,23 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// True when a <c>Lazy&lt;T&gt;</c> is built and read on every call instead of kept: its <c>.Value</c> read
-    /// straight away, or a local whose every use reads <c>.Value</c>. A Lazy stored in a field or property, passed
-    /// on, returned or built in run-once code (a static initializer or constructor) stays quiet.
+    /// True when the new <c>Lazy</c>/<c>AsyncLazy</c> goes straight into a field or property: a field or property
+    /// initializer, or an assignment (<c>=</c> or <c>??=</c>) to one. Any other use (<c>.Value</c>,
+    /// <c>.GetValueAsync()</c>, <c>.Task</c>, a local, an argument or a return) may build it on every call.
     /// </summary>
-    private static bool LazyIsBuiltPerCall(BaseObjectCreationExpressionSyntax creation)
+    private static bool LazyIsStored(BaseObjectCreationExpressionSyntax creation, SemanticModel semanticModel)
     {
-        if (RunsOnce(creation))
-            return false;
-
         var value = ClimbValue(creation);
         switch (value.Parent)
         {
-            case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Value" } access when access.Expression == value:
+            case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent.Parent: BaseFieldDeclarationSyntax } }:
+            case EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax }:
                 return true;
 
-            case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
-                when declarator.Parent?.Parent is LocalDeclarationStatementSyntax:
-                return IsOnlyReadForValue(declarator.Identifier.ValueText, declarator);
+            case AssignmentExpressionSyntax assignment
+                when assignment.Right == value &&
+                     (assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression)):
+                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false };
 
             default:
                 return false;
@@ -577,88 +576,51 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// True when the cache a <c>GetOrAdd</c>-style call runs on is created in the method: <c>new
-    /// ConcurrentDictionary&lt;...&gt;().GetOrAdd(...)</c>, or a local assigned from <c>new</c>. A field, property,
-    /// parameter, injected service or anything else keeps the cache and stays quiet. For
-    /// <c>LazyInitializer.EnsureInitialized(ref target, ...)</c> the <c>ref</c> target is the cache.
+    /// True when the cache a known cache API runs on is kept beyond the call. The receiver of
+    /// <c>GetOrAdd</c>/<c>GetOrCreate</c>/<c>GetOrCreateAsync</c> must be a field, property or parameter (an injected
+    /// service); the <c>ref</c> target of <c>LazyInitializer.EnsureInitialized</c> and
+    /// <c>ImmutableInterlocked.GetOrAdd</c> must be a field or a <c>ref</c> parameter. A local, a new instance or any
+    /// other expression may not outlive the call.
     /// </summary>
-    private static bool CacheIsBuiltPerCall(InvocationExpressionSyntax call, SemanticModel semanticModel)
+    private static bool CacheIsKept(InvocationExpressionSyntax call, SemanticModel semanticModel)
     {
-        if (call.Expression is not MemberAccessExpressionSyntax access)
+        if (semanticModel.GetSymbolInfo(call).Symbol is not IMethodSymbol method)
             return false;
 
-        var receiver = access.Expression;
-        if (semanticModel.GetSymbolInfo(receiver).Symbol is INamedTypeSymbol)
-        {
-            // A static call: the cache is its first argument (`ref _target`) or, for an extension method called as
-            // a static method, the `this` argument.
-            if (call.ArgumentList.Arguments.Count == 0)
-                return false;
-            receiver = call.ArgumentList.Arguments[0].Expression;
-        }
+        // An instance method, or an extension method called as one: the receiver is the cache.
+        if (!method.IsStatic || method.MethodKind == MethodKind.ReducedExtension)
+            return call.Expression is MemberAccessExpressionSyntax access && IsKeptReceiver(access.Expression, semanticModel);
 
-        return IsCreatedInMethod(receiver, semanticModel);
+        if (call.ArgumentList.Arguments.Count == 0)
+            return false;
+
+        var first = call.ArgumentList.Arguments[0];
+        return first.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
+            ? IsKeptRefTarget(first.Expression, semanticModel)
+            : IsKeptReceiver(first.Expression, semanticModel);
     }
 
-    private static bool IsCreatedInMethod(ExpressionSyntax expression, SemanticModel semanticModel)
+    private static bool IsKeptReceiver(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false } or IParameterSymbol;
+    }
+
+    private static bool IsKeptRefTarget(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol switch
+        {
+            IFieldSymbol => true,
+            IParameterSymbol parameter => parameter.RefKind == RefKind.Ref,
+            _ => false
+        };
+    }
+
+    private static ExpressionSyntax StripParentheses(ExpressionSyntax expression)
     {
         while (expression is ParenthesizedExpressionSyntax parenthesized)
             expression = parenthesized.Expression;
 
-        if (expression is BaseObjectCreationExpressionSyntax)
-            return true;
-
-        if (semanticModel.GetSymbolInfo(expression).Symbol is not ILocalSymbol local ||
-            GetEnclosingMember(expression) is not { } scope)
-        {
-            return false;
-        }
-
-        // A local counts as built per call when it is ever set from `new` in the member.
-        foreach (var node in scope.DescendantNodes())
-        {
-            ExpressionSyntax? value = node switch
-            {
-                VariableDeclaratorSyntax { Initializer.Value: var initial } declarator
-                    when declarator.Identifier.ValueText == local.Name => initial,
-                AssignmentExpressionSyntax { Left: IdentifierNameSyntax target } assignment
-                    when target.Identifier.ValueText == local.Name => assignment.Right,
-                _ => null
-            };
-
-            while (value is ParenthesizedExpressionSyntax inner)
-                value = inner.Expression;
-
-            if (value is BaseObjectCreationExpressionSyntax)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsOnlyReadForValue(string name, SyntaxNode declaration)
-    {
-        var scope = GetEnclosingMember(declaration);
-        if (scope == null)
-            return false;
-
-        var read = false;
-        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
-        {
-            if (identifier.Identifier.ValueText != name)
-                continue;
-
-            if (IsMemberName(identifier) ||
-                identifier.Parent is not MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Value" } access ||
-                access.Expression != identifier)
-            {
-                return false;
-            }
-
-            read = true;
-        }
-
-        return read;
+        return expression;
     }
 
     /// <summary>

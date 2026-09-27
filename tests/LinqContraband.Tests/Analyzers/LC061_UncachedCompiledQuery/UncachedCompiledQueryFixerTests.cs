@@ -312,6 +312,49 @@ public class UncachedCompiledQueryFixerTests
         }.RunAsync();
     }
 
+    [Theory]
+    // Cache and Lazy shapes that report because the cache is not kept in a field, property or parameter.
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }", @"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => GetQuery)(_db, id); }")]
+    [InlineData(@"
+    public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return System.Threading.LazyInitializer.EnsureInitialized(ref q, () => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }", @"
+    public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return System.Threading.LazyInitializer.EnsureInitialized(ref q, () => GetQuery)(_db, id); }")]
+    [InlineData(@"
+    public Lazy<Func<Ctx, int, Blog>> Get() => new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));", @"
+    public Lazy<Func<Ctx, int, Blog>> Get() => new Lazy<Func<Ctx, int, Blog>>(() => GetQuery);")]
+    public async Task CacheNotKept_Hoists(string before, string after)
+    {
+        await VerifyFixAsync(before, @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", after);
+    }
+
+    [Fact]
+    public async Task AsyncLazyBuiltPerCall_Hoists()
+    {
+        await new CodeFixTest
+        {
+            TestCode = WrapMembers(@"
+    public Task<Blog> Get(int id) => new Nito.AsyncEx.AsyncLazy<Blog>(() => {|LC061:EF.CompileAsyncQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)).Task;") + UncachedCompiledQueryTests.AsyncLazyMocks,
+            FixedCode = WrapFixed(@"    private static readonly Func<Ctx, int, Task<Blog>> GetQuery = EF.CompileAsyncQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", @"
+    public Task<Blog> Get(int id) => new Nito.AsyncEx.AsyncLazy<Blog>(() => GetQuery(_db, id)).Task;") + UncachedCompiledQueryTests.AsyncLazyMocks
+        }.RunAsync();
+    }
+
+    [Fact]
+    public async Task StoreThroughBase_Hoists()
+    {
+        await new CodeFixTest
+        {
+            TestCode = UncachedCompiledQueryTests.WrapDerived(@"
+    public Blog Get(int id) { base._query = {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return base._query(_db, id); }"),
+            FixedCode = UncachedCompiledQueryTests.WrapDerived(@"
+    public Blog Get(int id) { base._query = GetQuery; return base._query(_db, id); }").Replace(
+                "class Repo : RepoBase\n{\n", "class Repo : RepoBase\n{\n    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));\n\n")
+        }.RunAsync();
+    }
+
     [Fact]
     public async Task NameInUse_PicksAnotherName()
     {

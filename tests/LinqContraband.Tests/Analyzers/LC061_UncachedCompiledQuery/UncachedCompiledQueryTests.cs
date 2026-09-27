@@ -150,6 +150,13 @@ class Repo
     [InlineData(@"
     private static readonly Lazy<Blog> First = new(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1));
     private sealed class Lazy<T> { private readonly Func<T> _valueFactory; public Lazy(Func<T> valueFactory) => _valueFactory = valueFactory; public T Value => _valueFactory(); }")]
+    // A cache or Lazy that is not kept in a field, property or parameter may not outlive the call.
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
+    [InlineData(@"public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return System.Threading.LazyInitializer.EnsureInitialized(ref q, () => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
+    [InlineData(@"public Lazy<Func<Ctx, int, Blog>> Make() => new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
+    [InlineData(@"public Blog Get(int id) { var lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); Keep(lazy); return lazy.Value(_db, id); } private void Keep(object o) { }")]
     // A cache created in the method is thrown away after the call.
     [InlineData(@"public Blog Get(string key, int id) => new ConcurrentDictionary<string, Func<Ctx, int, Blog>>().GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
     [InlineData(@"public Blog Get(string key, int id) { var cache = new ConcurrentDictionary<string, Func<Ctx, int, Blog>>(); return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
@@ -245,14 +252,15 @@ class Repo
     private static readonly ConcurrentDictionary<string, Blog> Cache = new();
     public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id));")]
     [InlineData(@"private static readonly Lazy<Blog> First = new(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1));")]
-    // A cache passed in or copied from a field outlives the call.
+    // A cache in a field or passed in outlives the call.
     [InlineData(@"public Blog Get(ConcurrentDictionary<string, Func<Ctx, int, Blog>> cache, string key, int id) => cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
-    [InlineData(@"
-    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
-    public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
     [InlineData(@"
     private static Func<Ctx, int, Blog> _byId;
     public Blog Get(int id) => System.Threading.LazyInitializer.EnsureInitialized(ref _byId, () => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    [InlineData(@"public Blog Get(ref Func<Ctx, int, Blog> q, int id) => System.Threading.LazyInitializer.EnsureInitialized(ref q, () => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    // A Lazy assigned to a field or property from a method, with = or ??=.
+    [InlineData(@"private Lazy<Func<Ctx, int, Blog>> _lazy; public Blog Get(int id) { _lazy ??= new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }")]
+    [InlineData(@"public Lazy<Func<Ctx, int, Blog>> ById { get; set; } public void Init() { ById = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
     // AddOrUpdate's add factory runs once per key.
     [InlineData(@"
     private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
@@ -273,15 +281,69 @@ class Repo
     private static readonly Blog First;
     static Repo() { First = Build()(new Ctx(), 1); }
     private static Func<Ctx, int, Blog> Build() { return EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }")]
-    // A Lazy kept in an instance field, or handed back to the caller.
+    // A Lazy kept in an instance field.
     [InlineData(@"private readonly Lazy<Func<Ctx, int, Blog>> _byId = new(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
-    [InlineData(@"public Lazy<Func<Ctx, int, Blog>> Make() => new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
-    [InlineData(@"public Blog Get(int id) { var lazy = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); Keep(lazy); return lazy.Value(_db, id); } private void Keep(object o) { }")]
     // Some other EF class.
     [InlineData(@"public Blog Get(int id) => Other.EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
     public async Task CachedOrUnknownLifetime_DoesNotReport(string members)
     {
         await VerifyCS.VerifyAnalyzerAsync(WrapMembers(members));
+    }
+
+    internal const string AsyncLazyMocks = @"
+namespace Microsoft.VisualStudio.Threading
+{
+    public class AsyncLazy<T>
+    {
+        public AsyncLazy(System.Func<System.Threading.Tasks.Task<T>> valueFactory, object joinableTaskFactory = null) { }
+        public System.Threading.Tasks.Task<T> GetValueAsync() => null;
+    }
+}
+
+namespace Nito.AsyncEx
+{
+    public class AsyncLazy<T>
+    {
+        public AsyncLazy(System.Func<System.Threading.Tasks.Task<T>> factory) { }
+        public System.Threading.Tasks.Task<T> Task => null;
+    }
+}
+";
+
+    [Theory]
+    [InlineData(@"public Task<Blog> Get(int id) => new Microsoft.VisualStudio.Threading.AsyncLazy<Blog>(() => {|#0:EF.CompileAsyncQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)).GetValueAsync();")]
+    [InlineData(@"public Task<Blog> Get(int id) => new Nito.AsyncEx.AsyncLazy<Blog>(() => {|#0:EF.CompileAsyncQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)).Task;")]
+    public async Task AsyncLazyBuiltPerCall_Reports(string members)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(WrapMembers(members) + AsyncLazyMocks,
+            VerifyCS.Diagnostic().WithLocation(0).WithArguments("CompileAsyncQuery"));
+    }
+
+    [Theory]
+    [InlineData(@"private static readonly Microsoft.VisualStudio.Threading.AsyncLazy<Blog> First = new(() => EF.CompileAsyncQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1));")]
+    [InlineData(@"private readonly Nito.AsyncEx.AsyncLazy<Blog> _first = new(() => EF.CompileAsyncQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1));")]
+    public async Task AsyncLazyInAField_DoesNotReport(string members)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(WrapMembers(members) + AsyncLazyMocks);
+    }
+
+    internal static string WrapDerived(string members) =>
+        WrapMembers(members).Replace("class Repo\n{", "class Repo : RepoBase\n{") +
+        "class RepoBase { protected Func<Ctx, int, Blog> _query; }\n";
+
+    [Fact]
+    public async Task StoreThroughBase_Reports()
+    {
+        await VerifyCS.VerifyAnalyzerAsync(
+            WrapDerived(@"public Blog Get(int id) { base._query = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return base._query(_db, id); }"),
+            VerifyCS.Diagnostic().WithLocation(0).WithArguments("CompileQuery"));
+    }
+
+    [Fact]
+    public async Task NullGuardedStoreThroughBase_DoesNotReport()
+    {
+        await VerifyCS.VerifyAnalyzerAsync(
+            WrapDerived(@"public Blog Get(int id) { if (base._query == null) base._query = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return base._query(_db, id); }"));
     }
 
     [Fact]
