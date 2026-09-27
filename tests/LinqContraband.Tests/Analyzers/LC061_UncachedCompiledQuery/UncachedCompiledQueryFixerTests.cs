@@ -325,6 +325,16 @@ public class UncachedCompiledQueryFixerTests
     [InlineData(@"
     public Lazy<Func<Ctx, int, Blog>> Get() => new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));", @"
     public Lazy<Func<Ctx, int, Blog>> Get() => new Lazy<Func<Ctx, int, Blog>>(() => GetQuery);")]
+    [InlineData(@"
+    private static ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache => new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);", @"
+    private static ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache => new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => GetQuery)(_db, id);")]
+    [InlineData(@"
+    private Lazy<Func<Ctx, int, Blog>> _lazy;
+    public Blog Get(int id) { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); return _lazy.Value(_db, id); }", @"
+    private Lazy<Func<Ctx, int, Blog>> _lazy;
+    public Blog Get(int id) { _lazy = new Lazy<Func<Ctx, int, Blog>>(() => GetQuery); return _lazy.Value(_db, id); }")]
     public async Task CacheNotKept_Hoists(string before, string after)
     {
         await VerifyFixAsync(before, @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", after);

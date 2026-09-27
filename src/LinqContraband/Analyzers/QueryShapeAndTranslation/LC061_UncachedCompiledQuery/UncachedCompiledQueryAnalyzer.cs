@@ -552,8 +552,9 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// True when the new <c>Lazy</c>/<c>AsyncLazy</c> goes straight into a field or property: a field or property
-    /// initializer, or an assignment (<c>=</c> or <c>??=</c>) to one. Any other use (<c>.Value</c>,
+    /// True when the new <c>Lazy</c>/<c>AsyncLazy</c> goes straight into a field or property and is kept there: a field
+    /// or property initializer, or an assignment to one that the rule would accept for a compiled query (<c>??=</c>, a
+    /// null guard, a constructor or a static member). Any other use (<c>.Value</c>,
     /// <c>.GetValueAsync()</c>, <c>.Task</c>, a local, an argument or a return) may build it on every call.
     /// </summary>
     private static bool LazyIsStored(BaseObjectCreationExpressionSyntax creation, SemanticModel semanticModel)
@@ -565,10 +566,13 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             case EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax }:
                 return true;
 
+            // Judged like a compiled query stored the same way: `??=`, a null guard, a constructor or a static
+            // member keeps it; an unguarded store from an ordinary method replaces it on every call.
             case AssignmentExpressionSyntax assignment
                 when assignment.Right == value &&
                      (assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression)):
-                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false };
+                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false } &&
+                       !AssignmentCompilesOnEveryCall(assignment, semanticModel);
 
             default:
                 return false;
@@ -577,7 +581,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// True when the cache a known cache API runs on is kept beyond the call. The receiver of
-    /// <c>GetOrAdd</c>/<c>GetOrCreate</c>/<c>GetOrCreateAsync</c> must be a field, property or parameter (an injected
+    /// <c>GetOrAdd</c>/<c>GetOrCreate</c>/<c>GetOrCreateAsync</c> must be a field, auto-property or parameter (an injected
     /// service); the <c>ref</c> target of <c>LazyInitializer.EnsureInitialized</c> and
     /// <c>ImmutableInterlocked.GetOrAdd</c> must be a field or a <c>ref</c> parameter. A local, a new instance or any
     /// other expression may not outlive the call.
@@ -602,7 +606,34 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     private static bool IsKeptReceiver(ExpressionSyntax expression, SemanticModel semanticModel)
     {
-        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol is IFieldSymbol or IPropertySymbol { IsIndexer: false } or IParameterSymbol;
+        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol switch
+        {
+            IFieldSymbol or IParameterSymbol => true,
+            IPropertySymbol { IsIndexer: false } property => HasNoGetterBody(property),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// True for an auto-property, an abstract or interface property, or one declared outside the source: its getter
+    /// has no body that could build a new cache on every read (<c>Cache =&gt; new()</c>).
+    /// </summary>
+    private static bool HasNoGetterBody(IPropertySymbol property)
+    {
+        foreach (var reference in property.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is not PropertyDeclarationSyntax declaration)
+                return false;
+
+            if (declaration.ExpressionBody != null ||
+                declaration.AccessorList?.Accessors.Any(accessor =>
+                    accessor.IsKind(SyntaxKind.GetAccessorDeclaration) && (accessor.Body != null || accessor.ExpressionBody != null)) == true)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsKeptRefTarget(ExpressionSyntax expression, SemanticModel semanticModel)
