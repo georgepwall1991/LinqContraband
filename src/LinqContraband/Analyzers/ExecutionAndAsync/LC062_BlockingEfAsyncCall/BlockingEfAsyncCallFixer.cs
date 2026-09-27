@@ -53,6 +53,8 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
             var site = FindSite(root, diagnostic.Location.SourceSpan);
             if (site == null || !TryGetTaskExpression(site, out var taskExpression, out var producesValue)) continue;
             if (IsInsideAggregateExceptionCatch(site, semanticModel, cancellationToken)) continue;
+            // Neither rewrite keeps a #pragma, #if or other directive inside the replaced expression.
+            if (ContainsDirective(site)) continue;
 
             var siteOperation = semanticModel.GetOperation(site, cancellationToken);
             if (siteOperation == null) continue;
@@ -116,6 +118,12 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
                 CodeAction.Create($"Call {syncName} instead of blocking", _ => Task.FromResult(synchronous), nameof(BlockingEfAsyncCallFixer)),
                 diagnostic);
         }
+    }
+
+    private static bool ContainsDirective(ExpressionSyntax site)
+    {
+        return site.DescendantTrivia(site.Span).Any(trivia =>
+            trivia.HasStructure || trivia.IsDirective || trivia.IsKind(SyntaxKind.DisabledTextTrivia));
     }
 
     private static ExpressionSyntax? FindSite(SyntaxNode root, Microsoft.CodeAnalysis.Text.TextSpan span)
@@ -662,11 +670,16 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         return false;
     }
 
+    /// <summary>
+    /// A type EF Core itself ships, where the override walk stops: declared in an assembly named
+    /// <c>Microsoft.EntityFrameworkCore*</c> and read from metadata, so an application type in a
+    /// <c>Microsoft.EntityFrameworkCore.*</c> namespace is still walked.
+    /// </summary>
     private static bool IsEfCoreType(INamedTypeSymbol type)
     {
-        var namespaceName = type.ContainingNamespace?.ToDisplayString() ?? "";
-        return namespaceName == "Microsoft.EntityFrameworkCore" ||
-               namespaceName.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal);
+        return type.DeclaringSyntaxReferences.IsEmpty &&
+               type.ContainingAssembly?.Name is { } assemblyName &&
+               assemblyName.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal);
     }
 
     private static async Task<Document> WithoutMarkerAsync(Document document, SyntaxAnnotation marker, CancellationToken cancellationToken)

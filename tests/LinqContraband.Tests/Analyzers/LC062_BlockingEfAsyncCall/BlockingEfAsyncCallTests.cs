@@ -254,6 +254,7 @@ class Program
     [InlineData(@"var done = db.SaveChangesAsync().Wait(default(TimeSpan));")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(timeout: default);")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(new TimeSpan());")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(new TimeSpan(0));")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(default(int));")]
     [InlineData(@"const int NoWait = 0; var done = db.SaveChangesAsync().Wait(NoWait);")]
     public async Task ZeroTimeoutWait_OnlyPolls_DoesNotReport(string body)

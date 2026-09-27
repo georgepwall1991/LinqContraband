@@ -387,6 +387,44 @@ class Program
     }
 
     [Fact]
+    public async Task ContextInAnEfCoreNamedNamespace_IsStillCheckedForOverrides()
+    {
+        // The override walk stops at EF Core's own types, found by assembly: an application context in a
+        // Microsoft.EntityFrameworkCore.* namespace that overrides only the async save gets no synchronous fix.
+        var source = BlockingEfAsyncCallTests.Usings + @"
+class Program
+{
+    void Run(Microsoft.EntityFrameworkCore.Custom.CustomAuditedContext custom)
+    {
+        var saved = {|LC062:custom.SaveChangesAsync().Result|};
+    }
+}
+
+namespace Microsoft.EntityFrameworkCore.Custom
+{
+    public sealed class CustomAuditedContext : DbContext
+    {
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
+    }
+}
+" + BlockingEfAsyncCallTests.EfMock;
+
+        await new MockEfCodeFixTest { TestCode = source, FixedCode = source }.RunAsync();
+    }
+
+    [Fact]
+    public async Task DirectiveInsideTheBlockingExpression_OffersNoFix()
+    {
+        var code = @"var users = {|LC062:db.Users.ToListAsync()
+#pragma warning disable CS0618
+            .Result|};
+#pragma warning restore CS0618";
+
+        await VerifyNoFixAsync(code, isAsync: true);
+        await VerifyNoFixAsync(code, isAsync: false);
+    }
+
+    [Fact]
     public async Task InsideARefStruct_GetsNoAwaitFix()
     {
         // `this` can be read implicitly in a ref struct, so no member of one gets the await fix.

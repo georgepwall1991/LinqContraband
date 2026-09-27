@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -106,9 +107,11 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
             if (value.ConstantValue is { HasValue: true, Value: int milliseconds } && milliseconds == 0)
                 return true;
 
-            // default, default(int), default(TimeSpan) and new TimeSpan() are all a zero timeout.
+            // default, default(int), default(TimeSpan), new TimeSpan() and new TimeSpan(0) are all a zero timeout.
             if (value is IDefaultValueOperation ||
-                value is IObjectCreationOperation { Arguments.Length: 0, Initializer: null, Type: { } created } && IsTimeSpan(created))
+                value is IObjectCreationOperation { Initializer: null, Type: { } created } creation &&
+                IsTimeSpan(created) &&
+                creation.Arguments.All(timeSpanArgument => IsConstantZero(timeSpanArgument.Value)))
             {
                 return true;
             }
@@ -118,6 +121,12 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsConstantZero(IOperation value)
+    {
+        return value.UnwrapConversions().ConstantValue is { HasValue: true, Value: int or long } constant &&
+               System.Convert.ToInt64(constant.Value, System.Globalization.CultureInfo.InvariantCulture) == 0;
     }
 
     private static bool IsTimeSpan(ITypeSymbol type)
