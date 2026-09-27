@@ -295,7 +295,7 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
     {
         return candidate switch
         {
-            FieldDeclarationSyntax field => field.Modifiers.Any(SyntaxKind.StaticKeyword) &&
+            BaseFieldDeclarationSyntax field => field.Modifiers.Any(SyntaxKind.StaticKeyword) &&
                                             field.Declaration.Variables.Any(variable => variable.Initializer != null),
             PropertyDeclarationSyntax { Initializer: not null } property => property.Modifiers.Any(SyntaxKind.StaticKeyword),
             ConstructorDeclarationSyntax constructor => constructor.Modifiers.Any(SyntaxKind.StaticKeyword),

@@ -245,6 +245,7 @@ public class UncachedCompiledQueryFixerTests
     [InlineData("partial class Repo { private static readonly Blog First = Build()(new Ctx(), 1); }")]
     [InlineData("partial class Repo { private static readonly int Unrelated = 3; }")]
     [InlineData("partial class Repo { private static readonly Blog First; static Repo() { First = Build()(new Ctx(), 1); } }")]
+    [InlineData("partial class Repo { private static event System.Func<Ctx, int, Blog> Built = (c, i) => Build()(c, i); private static Blog Raise() => Built(new Ctx(), 1); }")]
     public async Task StaticCodeInAnotherPart_GetsNoFix(string otherPart)
     {
         var test = new CodeFixTest();
