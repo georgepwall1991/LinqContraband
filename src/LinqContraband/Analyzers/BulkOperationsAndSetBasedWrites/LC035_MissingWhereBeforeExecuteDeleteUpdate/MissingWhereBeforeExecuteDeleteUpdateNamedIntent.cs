@@ -83,9 +83,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
     private static bool NameSaysWholeTable(string name, List<string> tableNames)
     {
-        var words = SplitWords(name);
-        if (words.Count > 0 && words[words.Count - 1] == "Async")
-            words.RemoveAt(words.Count - 1);
+        var words = StripAsync(SplitWords(name));
 
         if (words.Count < 2)
             return false;
@@ -103,6 +101,11 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         return ClearVerbs.Contains(words[0]) && NamesTable(string.Concat(words.Skip(1)), tableNames);
     }
 
+    /// <summary>
+    /// The nearest named callable decides. Only a bare one-word name such as <c>Truncate()</c> or
+    /// <c>Clear()</c> says nothing about which rows, so the enclosing callable's name is read instead;
+    /// <c>DeleteAllInactiveUsers()</c> inside <c>ClearUsers()</c> decides alone.
+    /// </summary>
     private static IEnumerable<string> GetIntentNames(SyntaxNode node)
     {
         foreach (var ancestor in node.Ancestors())
@@ -110,8 +113,13 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
             switch (ancestor)
             {
                 case LocalFunctionStatementSyntax localFunction:
-                    yield return localFunction.Identifier.ValueText;
+                {
+                    var localName = localFunction.Identifier.ValueText;
+                    yield return localName;
+                    if (StripAsync(SplitWords(localName)).Count > 1)
+                        yield break;
                     break;
+                }
                 case MethodDeclarationSyntax method:
                 {
                     var methodName = method.Identifier.ValueText;
@@ -159,7 +167,10 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         }
 
         foreach (var entityName in entityNames)
-            yield return Pluralize(entityName);
+        {
+            foreach (var plural in Pluralize(entityName))
+                yield return plural;
+        }
 
         var current = invocation.GetInvocationReceiver()?.UnwrapConversions();
         while (current is IInvocationOperation chained && chained.GetInvocationReceiver() is { } receiver)
@@ -170,40 +181,81 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
             var setName = property.Property.Name;
             if (!entityNames.Any(entityName => string.Equals(entityName, setName, StringComparison.OrdinalIgnoreCase)))
                 yield return setName;
-            yield return Pluralize(setName);
+            foreach (var plural in Pluralize(setName))
+                yield return plural;
         }
     }
 
     private static bool NamesTable(string words, List<string> tableNames) =>
         tableNames.Any(tableName => string.Equals(words, tableName, StringComparison.OrdinalIgnoreCase));
 
-    private static string Pluralize(string name)
+    /// <summary>
+    /// The accepted plural spellings of a name, matched on its last word: irregular and invariant
+    /// words, then classical endings (<c>Analysis</c> to <c>Analyses</c>, <c>Leaf</c> to <c>Leaves</c>,
+    /// <c>Medium</c> to <c>Media</c>, <c>Criterion</c> to <c>Criteria</c>, <c>Radius</c> to <c>Radii</c>),
+    /// alongside the regular English form except for <c>-is</c>.
+    /// </summary>
+    private static List<string> Pluralize(string name)
     {
+        var plurals = new List<string>();
         if (name.Length == 0)
-            return name;
+            return plurals;
 
-        // Match on the last word, so SalesPerson becomes SalesPeople and TvSeries stays TvSeries.
         foreach (var invariant in InvariantPlurals)
         {
             if (EndsWithWord(name, invariant))
-                return name;
+            {
+                plurals.Add(name);
+                return plurals;
+            }
         }
 
         foreach (var (singular, plural) in IrregularPlurals)
         {
             if (EndsWithWord(name, singular))
-                return name.Substring(0, name.Length - singular.Length) + plural;
+            {
+                plurals.Add(name.Substring(0, name.Length - singular.Length) + plural);
+                return plurals;
+            }
         }
 
         if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !IsVowel(name[name.Length - 2]))
-            return name.Substring(0, name.Length - 1) + "ies";
+        {
+            plurals.Add(name.Substring(0, name.Length - 1) + "ies");
+            return plurals;
+        }
+
+        // Analysis becomes Analyses only; Analysises is not a word.
+        if (name.EndsWith("is", StringComparison.Ordinal))
+        {
+            plurals.Add(name.Substring(0, name.Length - 2) + "es");
+            return plurals;
+        }
+
+        if (name.EndsWith("us", StringComparison.Ordinal))
+            plurals.Add(name.Substring(0, name.Length - 2) + "i");
+        else if (name.EndsWith("um", StringComparison.Ordinal) || name.EndsWith("on", StringComparison.Ordinal))
+            plurals.Add(name.Substring(0, name.Length - 2) + "a");
+        else if (name.EndsWith("fe", StringComparison.Ordinal))
+            plurals.Add(name.Substring(0, name.Length - 2) + "ves");
+        else if (name.EndsWith("f", StringComparison.Ordinal) && !name.EndsWith("ff", StringComparison.Ordinal))
+            plurals.Add(name.Substring(0, name.Length - 1) + "ves");
 
         if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
             name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
             name.EndsWith("sh", StringComparison.Ordinal))
-            return name + "es";
+            plurals.Add(name + "es");
+        else
+            plurals.Add(name + "s");
 
-        return name + "s";
+        return plurals;
+    }
+
+    private static List<string> StripAsync(List<string> words)
+    {
+        if (words.Count > 0 && words[words.Count - 1] == "Async")
+            words.RemoveAt(words.Count - 1);
+        return words;
     }
 
     private static bool EndsWithWord(string name, string word) =>

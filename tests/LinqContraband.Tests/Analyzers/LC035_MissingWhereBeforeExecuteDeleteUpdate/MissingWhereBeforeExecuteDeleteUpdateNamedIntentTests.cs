@@ -17,6 +17,11 @@ namespace TestApp
     public sealed class Person { public int Id { get; set; } }
     public sealed class SalesPerson { public int Id { get; set; } }
     public sealed class Series { public int Id { get; set; } }
+    public sealed class Analysis { public int Id { get; set; } }
+    public sealed class Leaf { public int Id { get; set; } }
+    public sealed class Criterion { public int Id { get; set; } }
+    public sealed class Radius { public int Id { get; set; } }
+    public sealed class Medium { public int Id { get; set; } }
 
     public class BlogDbContext : DbContext
     {
@@ -206,6 +211,52 @@ namespace TestApp
         public int DeleteAllPeople(BlogDbContext db) => db.Set<Person>().ExecuteDelete();
         public int ClearPerson(BlogDbContext db) => {|LC035:db.Set<Person>().ExecuteDelete()|};
         public int ClearPersons(BlogDbContext db) => {|LC035:db.Set<Person>().ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NestedLocalFunctionWithItsOwnName_Decides()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearUsers(BlogDbContext db)
+        {
+            int DeleteAllInactiveUsers() => {|LC035:db.Users.ExecuteDelete()|};
+            int Clear() => db.Users.ExecuteDelete();
+            Task<int> TruncateAsync() => db.Users.ExecuteDeleteAsync();
+            return DeleteAllInactiveUsers() + Clear();
+        }
+
+        public int RefreshUsers(BlogDbContext db)
+        {
+            int ClearUsers() => db.Users.ExecuteDelete();
+            return ClearUsers();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ClassicalPlurals_DoNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearAnalyses(BlogDbContext db) => db.Set<Analysis>().ExecuteDelete();
+        public int ClearLeaves(BlogDbContext db) => db.Set<Leaf>().ExecuteDelete();
+        public int ClearLeafs(BlogDbContext db) => db.Set<Leaf>().ExecuteDelete();
+        public int ClearCriteria(BlogDbContext db) => db.Set<Criterion>().ExecuteDelete();
+        public int ClearRadii(BlogDbContext db) => db.Set<Radius>().ExecuteDelete();
+        public int ClearMedia(BlogDbContext db) => db.Set<Medium>().ExecuteDelete();
+        public int ClearAnalysis(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
+        public int ClearAnalysises(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
+        public int ClearRadius(BlogDbContext db) => {|LC035:db.Set<Radius>().ExecuteDelete()|};
     }
 }";
 
