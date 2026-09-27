@@ -43,7 +43,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                         // later save, never precedes it; compare with the nearest earlier save that can.
                         var previousIndex = i - 1;
                         while (previousIndex >= 0 &&
-                               (LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax) ||
+                               (LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax, saves[previousIndex].Root.SemanticModel) ||
                                 AreMutuallyExclusiveBranches(saves[previousIndex].Syntax, current.Syntax)))
                             previousIndex--;
                         if (previousIndex < 0)
