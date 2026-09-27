@@ -144,7 +144,7 @@ Methods from EF Core, its providers and the provider plugins it knows are truste
 dotnet_code_quality.LC001.trusted_namespaces = MyCompany.Translators, NodaTime
 ```
 
-Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...), over a value typed as `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>` or `IReadOnlySet<T>` (no EF query type implements them), over the result of a `System.Linq.Enumerable` operator such as `Select` or `Where` whose every input sequence is itself in memory, or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
+Queries built over an in-memory collection run on LINQ to Objects, so LC001 stays quiet when the chain provably starts at `AsQueryable()` over an array or concrete collection (`List<T>`, `HashSet<T>`, ...), over a value typed as `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>` or `IReadOnlySet<T>` (no EF query type implements them), over the result of a `System.Linq.Enumerable` operator such as `Select` or `Where` whose every input sequence, and every sequence a `SelectMany` or join selector returns, is itself in memory, or at `new EnumerableQuery<T>(...)`. This is the shape unit tests, in-memory repositories and MockQueryable-style fakes use:
 
 ```csharp
 var users = new List<User> { ... }.AsQueryable().BuildMock();

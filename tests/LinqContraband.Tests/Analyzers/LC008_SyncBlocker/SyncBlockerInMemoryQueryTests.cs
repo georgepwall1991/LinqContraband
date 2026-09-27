@@ -532,6 +532,9 @@ class Program
     [InlineData("{|LC008:db.Users.AsEnumerable().Select(u => u).OrderBy(u => u.Id).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
     // A bare IEnumerable<User> may be a DbSet at run time.
     [InlineData("{|LC008:users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // A SelectMany selector that returns the DbSet enumerates it.
+    [InlineData("{|LC008:list.SelectMany(_ => db.Users).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:list.SelectMany(u => { return users; }).AsQueryable().ToList()|}")]
     // Every sequence an operator enumerates counts, not only its source.
     [InlineData("{|LC008:list.Concat(db.Users).AsQueryable().ToList()|}")]
     public async Task TestCrime_EnumerableOperatorOverUnprovenSource_StillTriggers(string call)
@@ -598,7 +601,8 @@ class Program
     {
         await Task.Delay(1);
         var x = ScimLibrary.Filter(list.AsQueryable(), u => u.Id > 0, new ScimOptions(), StringComparison.Ordinal, 10).ToList();
-        return x;
+        var y = ScimLibrary.WithStamp(list.AsQueryable(), new KeyValuePair<string, DateTime>(""at"", DateTime.UtcNow), (1, Guid.Empty)).ToList();
+        return x.Concat(y).ToList();
     }
 }
 ");
@@ -618,6 +622,9 @@ class Program
     // So could anything behind an interface or object.
     [InlineData("{|LC008:ScimLibrary.WithSource(list.AsQueryable(), source).ToList()|}")]
     [InlineData("{|LC008:ScimLibrary.WithState(list.AsQueryable(), (object)repository).ToList()|}")]
+    // A System struct carrying a query is not inert.
+    [InlineData("{|LC008:ScimLibrary.WithPair(list.AsQueryable(), new KeyValuePair<string, IQueryable<User>>(\"users\", db.Users)).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.WithTuple(list.AsQueryable(), (1, repository)).ToList()|}")]
     // An Enumerable operator over the DbSet is not in memory.
     [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), db.Users.AsEnumerable().Where(u => u.Id > 0)).ToList()|}")]
     // No query argument at all.
@@ -668,6 +675,9 @@ namespace ScimLib
         public static IQueryable<T> Apply<T>(IQueryable<T> source, Func<IQueryable<T>, IQueryable<T>> step) => step(source);
         public static IQueryable<T> Merge<T>(IQueryable<T> source, IEnumerable<T> more) => source.Concat(more);
         public static IQueryable<T> WithState<T>(IQueryable<T> source, object state) => source;
+        public static IQueryable<T> WithPair<T>(IQueryable<T> source, KeyValuePair<string, IQueryable<T>> pair) => source;
+        public static IQueryable<T> WithTuple<T, TState>(IQueryable<T> source, (int, TState) state) => source;
+        public static IQueryable<T> WithStamp<T>(IQueryable<T> source, KeyValuePair<string, DateTime> stamp, (int, Guid) key) => source;
         public static IQueryable<T> WithSource<T>(IQueryable<T> source, IUserSource<T> other) => source;
         public static IQueryable<T> Filter<T>(IQueryable<T> source, Func<T, bool> predicate, ScimOptions options, StringComparison comparison, int? limit) => source;
         public static IQueryable<int> Load(int count) => Enumerable.Range(0, count).AsQueryable();

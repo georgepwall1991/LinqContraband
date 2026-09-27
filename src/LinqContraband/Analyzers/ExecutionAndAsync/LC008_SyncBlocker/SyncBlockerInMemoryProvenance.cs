@@ -277,7 +277,7 @@ public sealed partial class SyncBlockerAnalyzer
 
         /// <summary>
         /// An argument that cannot give a library helper a way to reach EF: a primitive, string, enum or
-        /// <c>System</c> struct (<c>Guid</c>, <c>CancellationToken</c>, ...); a delegate or expression whose
+        /// <c>System</c> struct (<c>Guid</c>, <c>CancellationToken</c>, ..., generic ones only when every type argument is inert); a delegate or expression whose
         /// result is inert, such as a <c>Func&lt;T, bool&gt;</c> predicate; or a class from a referenced
         /// assembly that does not itself reference EF Core, such as SimpleIdServer's <c>SCIMExpression</c>.
         /// A <c>DbContext</c>, a repository or other class of this project, an EF-aware library's class, an
@@ -312,8 +312,9 @@ public sealed partial class SyncBlockerAnalyzer
             switch (named.TypeKind)
             {
                 case TypeKind.Struct:
+                    // A generic System struct (KeyValuePair, ValueTuple, ...) is only as inert as what it carries.
                     if (IsInSystemNamespace(named))
-                        return true;
+                        return named.TypeArguments.All(t => IsInertArgumentType(t, depth + 1));
                     break;
                 case TypeKind.Class:
                     break;

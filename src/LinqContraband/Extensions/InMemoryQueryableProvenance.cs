@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -160,7 +161,10 @@ public static class InMemoryQueryableProvenance
     /// <summary>
     /// Every sequence the operator enumerates (its source, and the second sequence of Concat, Join, Union,
     /// Zip, ...) must itself be in memory, because the operator's iterator enumerates them lazily. An
-    /// operator with no sequence input (Range, Repeat, Empty) builds its own.
+    /// operator with no sequence input (Range, Repeat, Empty) builds its own. A selector that returns a
+    /// sequence (SelectMany's collection selector, a Join or GroupJoin result selector, ...) counts too:
+    /// <c>list.SelectMany(_ =&gt; db.Users)</c> enumerates the EF query, so each sequence the lambda returns
+    /// must be proven in memory, and a selector that is not a lambda is not followed.
     /// </summary>
     private static bool AreSequenceInputsInMemory(
         IInvocationOperation invocation,
@@ -170,14 +174,77 @@ public static class InMemoryQueryableProvenance
         foreach (var argument in invocation.Arguments)
         {
             var parameterType = argument.Parameter?.Type;
-            if (parameterType == null || !IsEnumerableParameter(parameterType))
+            if (parameterType == null)
                 continue;
 
-            if (!IsInMemorySequenceSource(argument.Value, isInMemoryLeafType, depth + 1))
+            if (IsEnumerableParameter(parameterType))
+            {
+                if (!IsInMemorySequenceSource(argument.Value, isInMemoryLeafType, depth + 1))
+                    return false;
+
+                continue;
+            }
+
+            if (parameterType is INamedTypeSymbol { TypeKind: TypeKind.Delegate, DelegateInvokeMethod: { } invoke } &&
+                !invoke.ReturnsVoid &&
+                IsSequenceType(invoke.ReturnType) &&
+                !AreReturnedSequencesInMemory(argument.Value, isInMemoryLeafType, depth))
                 return false;
         }
 
         return true;
+    }
+
+    private static bool AreReturnedSequencesInMemory(
+        IOperation selector,
+        Func<ITypeSymbol, bool>? isInMemoryLeafType,
+        int depth)
+    {
+        var current = selector.UnwrapConversions();
+        if (current is IDelegateCreationOperation creation)
+            current = creation.Target.UnwrapConversions();
+
+        if (current is not IAnonymousFunctionOperation lambda)
+            return false;
+
+        var returned = false;
+        foreach (var operation in lambda.Body.Descendants())
+        {
+            if (operation is not IReturnOperation { Kind: OperationKind.Return } returnOperation ||
+                !IsDirectlyInLambda(returnOperation, lambda))
+                continue;
+
+            if (!IsInMemorySequenceSource(returnOperation.ReturnedValue, isInMemoryLeafType, depth + 1))
+                return false;
+
+            returned = true;
+        }
+
+        return returned;
+    }
+
+    private static bool IsDirectlyInLambda(IOperation operation, IAnonymousFunctionOperation lambda)
+    {
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current == lambda)
+                return true;
+
+            if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
+                return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsSequenceType(ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        return type is IArrayTypeSymbol ||
+               IsEnumerableParameter(type) ||
+               type.AllInterfaces.Any(i => i.SpecialType == SpecialType.System_Collections_IEnumerable);
     }
 
     private static bool IsEnumerableParameter(ITypeSymbol type)

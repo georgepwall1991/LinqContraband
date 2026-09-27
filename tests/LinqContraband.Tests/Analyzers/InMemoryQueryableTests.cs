@@ -63,6 +63,8 @@ public class Tests
     [InlineData("var q = list.Where(o => o.Id > 0).OrderBy(o => o.Id).AsQueryable().Where(o => IsBig(o));")]
     [InlineData("var q = array.Concat(list).Cast<Order>().AsQueryable().Where(o => IsBig(o));")]
     [InlineData("var filtered = list.Where(o => o.Id > 0); var q = filtered.AsQueryable().Where(o => IsBig(o));")]
+    // A selector that returns an in-memory sequence keeps the result in memory.
+    [InlineData("var q = list.SelectMany(o => o.Children).AsQueryable().Where(o => IsBig(o));")]
     // No EF query type implements the mutable or read-only collection interfaces.
     [InlineData("var q = collection.AsQueryable().Where(o => IsBig(o));")]
     [InlineData("var q = readOnlyList.AsQueryable().Where(o => IsBig(o));")]
@@ -84,6 +86,10 @@ public class Tests
     [InlineData("var q = sequence.Where(o => o.Id > 0).OrderBy(o => o.Id).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     [InlineData("var q = list.Concat(queryable).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     [InlineData("var filtered = queryable.AsEnumerable().Select(o => o); var q = filtered.AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    // A selector that returns a query or an unproven sequence is enumerated by the operator.
+    [InlineData("var q = list.SelectMany(_ => queryable).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    [InlineData("var q = list.SelectMany(o => sequence, (o, c) => c).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
+    [InlineData("var q = list.GroupJoin(array, o => o.Id, c => c.Id, (o, cs) => cs).SelectMany(cs => cs).AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     // An element operator can return a stored sequence, which may be a DbSet.
     [InlineData("var q = sequences.First().AsQueryable().Where(o => {|LC001:IsBig(o)|});")]
     // A delegate lambda nested in the query's expression tree is still translated.
