@@ -68,6 +68,8 @@ The code inside the delegate can run more than once, so keep work that must happ
 - `UseTransaction(null)`, which clears the transaction.
 - `TransactionScope` is not tracked.
 
+**Known false positive:** a method called from a lambda that is first stored in a local and then handed to the strategy (`Action work = () => Save(); strategy.Execute(work);`) reports, because the call to `Save` sits in a lambda that is not itself the strategy's argument. Pass the lambda inline (`strategy.Execute(() => Save())`) instead.
+
 ## Code Fix
 
 For the simple shape, the fix moves the transaction into the execution strategy. When the transaction is the single local of a `using` or `await using` declaration directly inside a block, the declaration and the rest of the block move into the delegate. When it is owned by a `using` statement directly inside a block, that statement moves:
