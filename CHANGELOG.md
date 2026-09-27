@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LC061 reports `EF.CompileQuery` and `EF.CompileAsyncQuery` calls that compile the query again on every call: the delegate invoked straight away, kept in a local that is only invoked, returned from an expression-bodied property or getter, returned from a private factory whose callers only invoke it, or stored on `this` from an ordinary method. Compiling on every call costs more than the ordinary LINQ query, which at least hits EF Core's query cache; the EF Core docs keep compiled queries in a `static readonly` field. It stays quiet on static fields and properties, static constructors and top-level statements, instance field initializers and constructors, `??=` and null-guarded lazy stores, `GetOrAdd`/`GetOrCreate`/`Lazy<T>` factories, dictionary stores, factory lambdas and non-private factory methods. The fix moves the call into a `private static readonly` field typed with the delegate it returns, and is withheld when the query lambda reads a local, a parameter or the instance.
+
 ## [5.15.0] - 2026-09-25
 
 ### Fixed

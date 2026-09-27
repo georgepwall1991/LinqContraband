@@ -253,3 +253,6 @@ indent_size = 2
 
 # LC059: Disposed Context Connection - disposing the connection from GetDbConnection() breaks later operations on the DbContext
 # dotnet_diagnostic.LC059.severity = warning
+
+# LC061: Uncached Compiled Query - EF.CompileQuery/CompileAsyncQuery compiled on every call instead of stored in a static readonly field
+# dotnet_diagnostic.LC061.severity = warning

@@ -1,0 +1,209 @@
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
+    LinqContraband.Analyzers.LC061_UncachedCompiledQuery.UncachedCompiledQueryAnalyzer>;
+
+namespace LinqContraband.Tests.Analyzers.LC061_UncachedCompiledQuery;
+
+public class UncachedCompiledQueryTests
+{
+    private const string Usings = @"
+using System;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+";
+
+    internal const string EfMock = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    using System;
+    using System.Linq.Expressions;
+    using System.Threading.Tasks;
+
+    public class DbContext { }
+
+    public static class EF
+    {
+        public static Func<TContext, TResult> CompileQuery<TContext, TResult>(Expression<Func<TContext, TResult>> queryExpression)
+            where TContext : DbContext => null;
+
+        public static Func<TContext, TParam1, TResult> CompileQuery<TContext, TParam1, TResult>(Expression<Func<TContext, TParam1, TResult>> queryExpression)
+            where TContext : DbContext => null;
+
+        public static Func<TContext, Task<TResult>> CompileAsyncQuery<TContext, TResult>(Expression<Func<TContext, TResult>> queryExpression)
+            where TContext : DbContext => null;
+
+        public static Func<TContext, TParam1, Task<TResult>> CompileAsyncQuery<TContext, TParam1, TResult>(Expression<Func<TContext, TParam1, TResult>> queryExpression)
+            where TContext : DbContext => null;
+    }
+}
+
+namespace Other
+{
+    using System;
+    using System.Linq.Expressions;
+
+    public static class EF
+    {
+        public static Func<TContext, TParam1, TResult> CompileQuery<TContext, TParam1, TResult>(Expression<Func<TContext, TParam1, TResult>> queryExpression) => null;
+    }
+}
+
+public class Blog
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+}
+
+public class Ctx : Microsoft.EntityFrameworkCore.DbContext
+{
+    public IQueryable<Blog> Blogs { get; set; }
+}
+";
+
+    /// <summary>Wraps class members in <c>class Repo</c>, which holds a context in <c>_db</c>.</summary>
+    internal static string WrapMembers(string members) => Usings + @"
+class Repo
+{
+    private readonly Ctx _db = new Ctx();
+" + members + @"
+}
+" + EfMock;
+
+    /// <summary>Wraps statements in <c>Repo.Run(int id)</c>.</summary>
+    internal static string Wrap(string body) => WrapMembers(@"
+    object Run(int id)
+    {
+" + body + @"
+    }");
+
+    [Theory]
+    // Invoked directly.
+    [InlineData(@"return {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
+    [InlineData(@"return {|#0:EF.CompileAsyncQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
+    [InlineData(@"return {|#0:EF.CompileQuery|}((Ctx c) => c.Blogs.Count())(_db);")]
+    [InlineData(@"return {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)).Invoke(_db, id);")]
+    [InlineData(@"return ({|#0:Microsoft.EntityFrameworkCore.EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    // Assigned to a local that is only invoked.
+    [InlineData(@"var query = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return query(_db, id);")]
+    [InlineData(@"Func<Ctx, int, Blog> query = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return query.Invoke(_db, id);")]
+    [InlineData(@"Func<Ctx, int, Blog> query; query = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return query(_db, id);")]
+    // Inside a lambda or a local function in the method.
+    [InlineData(@"return Enumerable.Range(0, id).Select(i => {|#0:EF.CompileQuery|}((Ctx c, int x) => c.Blogs.First(b => b.Id == x))(_db, i)).ToList();")]
+    [InlineData(@"Blog Load(int x) => {|#0:EF.CompileQuery|}((Ctx c, int y) => c.Blogs.First(b => b.Id == y))(_db, x); return Load(id);")]
+    public async Task CompiledOnEveryCall_Reports(string body)
+    {
+        var name = body.Contains("CompileAsyncQuery") ? "CompileAsyncQuery" : "CompileQuery";
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(body), VerifyCS.Diagnostic().WithLocation(0).WithArguments(name));
+    }
+
+    [Theory]
+    // Expression-bodied members run on every call.
+    [InlineData(@"public Task<Blog> Get(int id) => {|#0:EF.CompileAsyncQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
+    [InlineData(@"public static Func<Ctx, int, Blog> ById => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"public static Func<Ctx, int, Blog> ById { get { return {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } }")]
+    [InlineData(@"public Repo(int id) { var blog = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id); }")]
+    // A private factory whose every caller invokes the result straight away.
+    [InlineData(@"
+    private static Func<Ctx, int, Blog> Build() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    public Blog Get(int id) => Build()(_db, id);")]
+    // Stored on the instance from an ordinary method, so every call compiles again.
+    [InlineData(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    public async Task CompiledOnEveryCall_Members_Reports(string members)
+    {
+        var name = members.Contains("CompileAsyncQuery") ? "CompileAsyncQuery" : "CompileQuery";
+        await VerifyCS.VerifyAnalyzerAsync(WrapMembers(members), VerifyCS.Diagnostic().WithLocation(0).WithArguments(name));
+    }
+
+    [Theory]
+    // The documented pattern: a static readonly field.
+    [InlineData(@"private static readonly Func<Ctx, int, Blog> ById = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"private static readonly Func<Ctx, int, Task<Blog>> ById = EF.CompileAsyncQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"public static Func<Ctx, int, Blog> ById { get; } = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    // Assigned to a static member, in a static constructor or lazily.
+    [InlineData(@"private static readonly Func<Ctx, int, Blog> ById; static Repo() { ById = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }")]
+    [InlineData(@"private static Func<Ctx, int, Blog> _byId; public Blog Get(int id) { _byId ??= EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private static Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId == null) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    // Instance fields and properties: whether the instance lives long is not known (non-goal).
+    [InlineData(@"private readonly Func<Ctx, int, Blog> _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"public Func<Ctx, int, Blog> ById { get; } = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"private readonly Func<Ctx, int, Blog> _byId; public Repo() { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { _byId ??= EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId is null) { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    // Lazy and static caches: the factory runs once (per key).
+    [InlineData(@"private static readonly Lazy<Func<Ctx, int, Blog>> ById = new Lazy<Func<Ctx, int, Blog>>(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
+    [InlineData(@"private static readonly Lazy<Func<Ctx, int, Blog>> ById = new(() => { var q = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return q; });")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => { var q = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return q; })(_db, id);")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public void Add(string key) { Cache[key] = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public void Add(string key) { Cache.TryAdd(key, EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
+    // A factory lambda: whoever calls it decides how long the delegate lives.
+    [InlineData(@"private static readonly Func<Func<Ctx, int, Blog>> Factory = () => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    // A factory method used to initialise a static field, or one callers may cache.
+    [InlineData(@"
+    private static readonly Func<Ctx, int, Blog> ById = Build();
+    private static Func<Ctx, int, Blog> Build() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"
+    private static readonly Func<Ctx, int, Blog> ById;
+    static Repo() { ById = Build(); }
+    private static Func<Ctx, int, Blog> Build() { return EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }
+    public Blog Get(int id) => Build()(_db, id);")]
+    [InlineData(@"public static Func<Ctx, int, Blog> Build() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    [InlineData(@"private static Func<Ctx, int, Blog> Build() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));")]
+    // A local that escapes (returned, stored or passed on).
+    [InlineData(@"private static Func<Ctx, int, Blog> _byId; public void Init() { var q = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); _byId = q; }")]
+    [InlineData(@"public void Init(Action<Func<Ctx, int, Blog>> register) { var q = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); register(q); }")]
+    // Passed straight to another method.
+    [InlineData(@"public void Init(Action<Func<Ctx, int, Blog>> register) { register(EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); }")]
+    // A static constructor runs once.
+    [InlineData(@"private static readonly Blog First; static Repo() { First = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1); }")]
+    // Some other EF class.
+    [InlineData(@"public Blog Get(int id) => Other.EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);")]
+    public async Task CachedOrUnknownLifetime_DoesNotReport(string members)
+    {
+        await VerifyCS.VerifyAnalyzerAsync(WrapMembers(members));
+    }
+
+    [Fact]
+    public async Task TopLevelStatements_DoNotReport()
+    {
+        var code = Usings + @"
+var blog = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1);
+Console.WriteLine(blog.Id);
+" + EfMock;
+        await new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC061_UncachedCompiledQuery.UncachedCompiledQueryAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestState = { Sources = { code }, OutputKind = Microsoft.CodeAnalysis.OutputKind.ConsoleApplication }
+        }.RunAsync();
+    }
+
+    [Fact]
+    public async Task StaticCompiledQueriesClass_DoesNotReport()
+    {
+        var code = Usings + @"
+static class Queries
+{
+    public static readonly Func<Ctx, int, Blog> ById = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+}
+
+class Repo
+{
+    private readonly Ctx _db = new Ctx();
+    public Blog Get(int id) => Queries.ById(_db, id);
+}
+" + EfMock;
+        await VerifyCS.VerifyAnalyzerAsync(code);
+    }
+}
