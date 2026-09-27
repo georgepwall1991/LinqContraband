@@ -225,7 +225,9 @@ public sealed partial class SyncBlockerAnalyzer
         /// SimpleIdServer's <c>scimFilter.EvaluateAttributes(attributes.AsQueryable(), false)</c>) that
         /// returns a query. It is proven when at least one argument is a query proven in-memory, every other
         /// sequence argument is an in-memory sequence, and every other argument is inert (see
-        /// <see cref="IsInertArgumentType"/>): nothing it is given can hand it an EF query.
+        /// <see cref="IsInertArgumentType"/>): nothing it is given can hand it an EF query. The helper itself
+        /// must not be able to start one: a helper from EF Core or from an assembly that references it, or one
+        /// declared in this project whose body the walk cannot see, is not followed.
         /// </summary>
         private bool WalkLibraryHelperCall(
             IInvocationOperation invocation,
@@ -235,6 +237,12 @@ public sealed partial class SyncBlockerAnalyzer
             int depth)
         {
             if (invocation.Instance != null)
+                return false;
+
+            var helperAssembly = invocation.TargetMethod.ContainingAssembly;
+            if (helperAssembly == null ||
+                SymbolEqualityComparer.Default.Equals(helperAssembly, compilation.Assembly) ||
+                ReferencesEntityFramework(helperAssembly))
                 return false;
 
             var provenQuery = false;

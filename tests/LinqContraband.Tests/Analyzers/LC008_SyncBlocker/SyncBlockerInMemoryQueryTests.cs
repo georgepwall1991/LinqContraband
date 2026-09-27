@@ -646,6 +646,87 @@ class Program
 ");
     }
 
+    [Fact]
+    public async Task TestInnocent_SelectResultSelectorReturningDbSet_NoDiagnostic()
+    {
+        // Select, Join and GroupJoin result selectors only yield their value: the DbSets are elements of an
+        // in-memory sequence and are never enumerated by the operator.
+        var test = Usings + @"
+class Program
+{
+    async Task<object> Main(MyDbContext db, List<User> list)
+    {
+        await Task.Delay(1);
+        var selected = list.Select(_ => db.Users).AsQueryable().ToList();
+        var joined = list.Join(list, a => a.Id, b => b.Id, (a, b) => db.Users).AsQueryable().ToList();
+        var grouped = list.GroupJoin(list, a => a.Id, b => b.Id, (a, bs) => db.Users).AsQueryable().Count();
+        return (selected, joined, grouped);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_LibraryHelperFromEfAwareAssembly_StillTriggers()
+    {
+        // A helper in a library that references EF Core can start an EF query itself, whatever it is given.
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC008_SyncBlocker.SyncBlockerAnalyzer,
+            Microsoft.CodeAnalysis.Testing.DefaultVerifier>
+        {
+            TestCode = Usings + @"using DataLib;
+class Program
+{
+    async Task<object> Main(List<User> list)
+    {
+        await Task.Delay(1);
+        var direct = {|LC008:EfHelpers.Reload(list.AsQueryable()).ToList()|};
+        var referencing = {|LC008:DataHelpers.Reload(list.AsQueryable(), false).ToList()|};
+        return (direct, referencing);
+    }
+}
+" + MockNamespace
+        };
+
+        var efCore = new Microsoft.CodeAnalysis.Testing.ProjectState(
+            "Microsoft.EntityFrameworkCore.Stub", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/ef/", "cs");
+        efCore.Sources.Add(("/ef/EfHelpers.cs", @"
+using System.Linq;
+
+namespace DataLib
+{
+    public static class EfHelpers
+    {
+        public static IQueryable<T> Reload<T>(IQueryable<T> source) => source;
+    }
+}
+"));
+
+        var dataLib = new Microsoft.CodeAnalysis.Testing.ProjectState(
+            "DataLib", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/data/", "cs");
+        dataLib.Sources.Add(("/data/DataHelpers.cs", @"
+using System.Linq;
+
+namespace DataLib
+{
+    public static class DataHelpers
+    {
+        public static IQueryable<T> Reload<T>(IQueryable<T> source, bool tracked) => EfHelpers.Reload(source);
+    }
+}
+"));
+        dataLib.AdditionalProjectReferences.Add("Microsoft.EntityFrameworkCore.Stub");
+
+        test.TestState.AdditionalProjects.Add("Microsoft.EntityFrameworkCore.Stub", efCore);
+        test.TestState.AdditionalProjects.Add("DataLib", dataLib);
+        test.TestState.AdditionalProjectReferences.Add("Microsoft.EntityFrameworkCore.Stub");
+        test.TestState.AdditionalProjectReferences.Add("DataLib");
+
+        await test.RunAsync();
+    }
+
     private static async Task RunWithLibraryAsync(string code)
     {
         var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<

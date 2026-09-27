@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -161,10 +160,11 @@ public static class InMemoryQueryableProvenance
     /// <summary>
     /// Every sequence the operator enumerates (its source, and the second sequence of Concat, Join, Union,
     /// Zip, ...) must itself be in memory, because the operator's iterator enumerates them lazily. An
-    /// operator with no sequence input (Range, Repeat, Empty) builds its own. A selector that returns a
-    /// sequence (SelectMany's collection selector, a Join or GroupJoin result selector, ...) counts too:
-    /// <c>list.SelectMany(_ =&gt; db.Users)</c> enumerates the EF query, so each sequence the lambda returns
-    /// must be proven in memory, and a selector that is not a lambda is not followed.
+    /// operator with no sequence input (Range, Repeat, Empty) builds its own. SelectMany's collection
+    /// selector counts too: <c>list.SelectMany(_ =&gt; db.Users)</c> enumerates the EF query, so each sequence
+    /// the lambda returns must be proven in memory, and a selector that is not a lambda is not followed.
+    /// Other selectors (Select, a Join or GroupJoin result selector, SelectMany's result selector) only
+    /// yield their value, so a sequence they return is an element and is not enumerated.
     /// </summary>
     private static bool AreSequenceInputsInMemory(
         IInvocationOperation invocation,
@@ -185,9 +185,7 @@ public static class InMemoryQueryableProvenance
                 continue;
             }
 
-            if (parameterType is INamedTypeSymbol { TypeKind: TypeKind.Delegate, DelegateInvokeMethod: { } invoke } &&
-                !invoke.ReturnsVoid &&
-                IsSequenceType(invoke.ReturnType) &&
+            if (IsEnumeratedSelector(invocation.TargetMethod, argument.Parameter!) &&
                 !AreReturnedSequencesInMemory(argument.Value, isInMemoryLeafType, depth))
                 return false;
         }
@@ -237,14 +235,16 @@ public static class InMemoryQueryableProvenance
         return false;
     }
 
-    private static bool IsSequenceType(ITypeSymbol type)
+    /// <summary>
+    /// SelectMany's <c>selector</c> or <c>collectionSelector</c>: the delegate whose returned sequence the
+    /// operator flattens, and so enumerates.
+    /// </summary>
+    private static bool IsEnumeratedSelector(IMethodSymbol targetMethod, IParameterSymbol parameter)
     {
-        if (type.SpecialType == SpecialType.System_String)
-            return false;
-
-        return type is IArrayTypeSymbol ||
-               IsEnumerableParameter(type) ||
-               type.AllInterfaces.Any(i => i.SpecialType == SpecialType.System_Collections_IEnumerable);
+        var method = targetMethod.ReducedFrom ?? targetMethod;
+        return method.Name == "SelectMany" &&
+               parameter.Name is "selector" or "collectionSelector" &&
+               parameter.Type.TypeKind == TypeKind.Delegate;
     }
 
     private static bool IsEnumerableParameter(ITypeSymbol type)
