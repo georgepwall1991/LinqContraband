@@ -284,4 +284,27 @@ namespace TestApp
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task AsyncEntryPoints_AreReadByTypeName()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class ClearUsersConsumer
+    {
+        public Task<int> ConsumeAsync(BlogDbContext db) => db.Users.ExecuteDeleteAsync();
+    }
+
+    public class PurgeSessionsJob
+    {
+        public Task<int> PerformAsync(BlogDbContext db) => db.Sessions.ExecuteDeleteAsync();
+    }
+
+    public class RefreshUsersConsumer
+    {
+        public Task<int> ConsumeAsync(BlogDbContext db) => {|LC035:db.Users.ExecuteDeleteAsync()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

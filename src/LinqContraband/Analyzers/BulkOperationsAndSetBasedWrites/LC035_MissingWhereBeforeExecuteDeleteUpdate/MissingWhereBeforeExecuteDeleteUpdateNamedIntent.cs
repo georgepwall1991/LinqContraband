@@ -38,10 +38,11 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         "Series", "Species", "Sheep", "Fish", "Deer", "News", "Data"
     };
 
+    // Each name also matches with an Async suffix (IsGenericEntryPoint), so ConsumeAsync counts.
     private static readonly HashSet<string> GenericEntryPointNames = new(StringComparer.Ordinal)
     {
         "Handle", "HandleAsync", "Execute", "ExecuteAsync", "Run", "RunAsync",
-        "Invoke", "InvokeAsync", "Consume", "Process", "ProcessAsync"
+        "Invoke", "InvokeAsync", "Consume", "Process", "ProcessAsync", "Perform"
     };
 
     private static readonly string[] HandlerTypeSuffixes =
@@ -123,7 +124,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
                 case MethodDeclarationSyntax method:
                 {
                     var methodName = method.Identifier.ValueText;
-                    if (!GenericEntryPointNames.Contains(methodName))
+                    if (!IsGenericEntryPoint(methodName))
                     {
                         yield return methodName;
                         yield break;
@@ -254,6 +255,11 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
         return plurals;
     }
+
+    private static bool IsGenericEntryPoint(string methodName) =>
+        GenericEntryPointNames.Contains(methodName) ||
+        (methodName.Length > "Async".Length && methodName.EndsWith("Async", StringComparison.Ordinal) &&
+         GenericEntryPointNames.Contains(methodName.Substring(0, methodName.Length - "Async".Length)));
 
     private static List<string> StripAsync(List<string> words)
     {
