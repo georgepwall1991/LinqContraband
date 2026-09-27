@@ -47,17 +47,18 @@ internal sealed class RetryingStrategyModel
 
     /// <summary>
     /// The location of the retrying configuration that applies to <paramref name="contextType"/>, or null when none
-    /// provably does.
+    /// provably does. A registration or <c>DbContextOptionsBuilder&lt;T&gt;</c> chain configures only its exact type;
+    /// an <c>OnConfiguring</c> override also runs for every derived context that does not replace it.
     /// </summary>
     public Location? FindConfiguration(ITypeSymbol contextType)
     {
+        if (contextType is INamedTypeSymbol named && _configuredContexts.TryGetValue(named, out var exact))
+            return exact;
+
         for (var current = contextType as INamedTypeSymbol; current != null; current = current.BaseType)
         {
-            if (_configuredContexts.TryGetValue(current, out var location) ||
-                _configuredDefinitions.TryGetValue(current.OriginalDefinition, out location))
-            {
+            if (_configuredDefinitions.TryGetValue(current.OriginalDefinition, out var location))
                 return location;
-            }
         }
 
         if (_unattributedLocation != null &&
@@ -147,8 +148,8 @@ internal sealed class RetryingStrategyModel
 
     /// <summary>
     /// True when a delegate bound to <paramref name="parameter"/> of <paramref name="method"/> runs under an execution
-    /// strategy: <paramref name="method"/> is a strategy's Execute* method, or a source method that hands that parameter
-    /// (or a lambda that invokes it) to a strategy's Execute* call.
+    /// strategy: <paramref name="parameter"/> is the <c>operation</c> or <c>verifySucceeded</c> delegate of a strategy's
+    /// Execute* method, or a source method hands that parameter (or a lambda that invokes it) to one.
     /// </summary>
     public static bool RunsDelegateUnderStrategy(
         IMethodSymbol method,
@@ -156,10 +157,44 @@ internal sealed class RetryingStrategyModel
         Compilation compilation,
         CancellationToken cancellationToken)
     {
+        if (parameter == null)
+            return false;
+
         if (IsStrategyExecute(method))
+            return IsStrategyDelegateParameter(method, parameter);
+
+        return IsStrategyWrapperParameter(method, parameter, compilation, cancellationToken);
+    }
+
+    /// <summary>
+    /// The strategy runs its <c>operation</c> and <c>verifySucceeded</c> delegates. <c>state</c> (and the
+    /// <c>context</c> of <c>ExecuteInTransaction</c>) is only passed through, so a delegate given as state runs
+    /// wherever the operation later invokes it.
+    /// </summary>
+    private static bool IsStrategyDelegateParameter(IMethodSymbol method, IParameterSymbol parameter)
+    {
+        if (parameter.Name is "operation" or "verifySucceeded")
             return true;
 
-        return parameter != null && IsStrategyWrapperParameter(method, parameter, compilation, cancellationToken);
+        if (parameter.Name is "state" or "context" ||
+            parameter.Type is not INamedTypeSymbol { TypeKind: TypeKind.Delegate, DelegateInvokeMethod: { } invoke } ||
+            invoke.Parameters.Length == 0)
+        {
+            return false;
+        }
+
+        // Unknown parameter names: the strategy's own delegates take the DbContext or the state first.
+        var first = invoke.Parameters[0].Type;
+        if (first.IsDbContext())
+            return true;
+
+        foreach (var other in method.Parameters)
+        {
+            if (other.Name == "state" && SymbolEqualityComparer.Default.Equals(other.Type, first))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsStrategyWrapperParameter(
@@ -241,8 +276,9 @@ internal sealed class RetryingStrategyModel
         while (value.Parent is IDelegateCreationOperation or IConversionOperation)
             value = value.Parent;
 
-        return value.Parent is IArgumentOperation { Parent: IInvocationOperation execute } &&
-               IsStrategyExecute(execute.TargetMethod);
+        return value.Parent is IArgumentOperation { Parent: IInvocationOperation execute, Parameter: { } parameter } &&
+               IsStrategyExecute(execute.TargetMethod) &&
+               IsStrategyDelegateParameter(execute.TargetMethod, parameter);
     }
 
     private static IOperation? EnclosingFunction(IOperation operation)

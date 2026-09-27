@@ -55,6 +55,7 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static void Execute(this IExecutionStrategy strategy, Action operation) { }
         public static TResult Execute<TResult>(this IExecutionStrategy strategy, Func<TResult> operation) => default;
+        public static void Execute<TState>(this IExecutionStrategy strategy, TState state, Action<TState> operation) { }
         public static Task ExecuteAsync(this IExecutionStrategy strategy, Func<Task> operation) => Task.CompletedTask;
         public static Task<TResult> ExecuteAsync<TResult>(this IExecutionStrategy strategy, Func<Task<TResult>> operation) => null;
         public static void ExecuteInTransaction(this IExecutionStrategy strategy, Action operation, Func<bool> verifySucceeded) { }
@@ -300,13 +301,48 @@ class CustomRetryingStrategy : ExecutionStrategy
     }
 
     [Fact]
-    public async Task DerivedFromConfiguredContext_Reports()
+    public async Task DerivedFromRegisteredContext_NotReported()
     {
+        // AddDbContext<AppDb> configures AppDb's options only; a derived context is registered (or not) on its own.
         await VerifyAsync(Wrap(
-            @"using var tx = derived.Database.{|LC063:BeginTransaction|}(); tx.Commit();",
+            @"using var tx = derived.Database.BeginTransaction(); tx.Commit();",
             extraMembers: "private readonly DerivedAppDb derived = new DerivedAppDb();") + @"
 public class DerivedAppDb : AppDb { }
 ");
+    }
+
+    [Fact]
+    public async Task DerivedFromOptionsBuilderContext_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"using var tx = derived.Database.BeginTransaction(); tx.Commit();",
+            configuration: @"
+static class Registration
+{
+    public static object Options() => new DbContextOptionsBuilder<AppDb>().UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure()).Options;
+}
+",
+            extraMembers: "private readonly DerivedAppDb derived = new DerivedAppDb();") + @"
+public class DerivedAppDb : AppDb { }
+");
+    }
+
+    [Fact]
+    public async Task DerivedFromOnConfiguringContext_Reports()
+    {
+        // An inherited OnConfiguring override runs for the derived context too.
+        await VerifyAsync(Wrap(
+            @"using var tx = derived.Database.{|LC063:BeginTransaction|}(); tx.Commit();",
+            configuration: @"
+public class RetryingBaseDb : DbContext
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure());
+}
+
+public class DerivedDb : RetryingBaseDb { }
+",
+            extraMembers: "private readonly DerivedDb derived = new DerivedDb();"));
     }
 
     [Fact]
@@ -733,6 +769,31 @@ class CacheOptionsBuilder
                 using var tx = db.Database.{|LC063:BeginTransaction|}();
                 tx.Commit();
             });
+        });"));
+    }
+
+    [Fact]
+    public async Task DelegatePassedAsStrategyState_Reports()
+    {
+        // The strategy runs only its operation; the state lambda runs whenever the operation invokes it.
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute<Action>(() =>
+        {
+            using var tx = db.Database.{|LC063:BeginTransaction|}();
+            tx.Commit();
+        }, s => s());"));
+    }
+
+    [Fact]
+    public async Task OperationOfAStateOverload_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(db, context =>
+        {
+            using var tx = context.Database.BeginTransaction();
+            tx.Commit();
         });"));
     }
 
