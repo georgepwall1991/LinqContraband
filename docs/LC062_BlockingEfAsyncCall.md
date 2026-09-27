@@ -73,9 +73,11 @@ No fix is offered where neither rewrite is provably safe:
 - A non-async lambda inside an async method, or a `lock` body: `await` is not allowed there, and the synchronous call would be LC008's finding.
 - A task stored in a local outside async code.
 - `Wait(timeout)`, which returns whether the task finished.
-- Code inside a `try` that catches `AggregateException`, which `.Result` and `.Wait()` throw and the rewrites do not.
+- Code inside a `try`, in the same member, with a catch that can see the `AggregateException` that `.Result` and `.Wait()` throw and the rewrites do not: a bare `catch`, `catch (Exception)`, `catch (SystemException)`, or a catch of `AggregateException` or one of its base types, with or without a `when` filter. A catch that cannot be an `AggregateException`, such as `catch (InvalidOperationException)` or `catch (DbUpdateException)`, keeps the fix.
 - An operation with no synchronous counterpart, such as `ForEachAsync`, and the static form `EntityFrameworkQueryableExtensions.ToListAsync(query)`.
 - No synchronous fix when the application overrides the async method but not the synchronous one, as a context that audits in `SaveChangesAsync` and inherits `SaveChanges` does: `SaveChanges()` would skip the override. This applies to the receiver's own type and to any type in the project derived from it, since a `DbContext` variable can hold such a context. It is offered when the synchronous method is overridden at the same level or deeper. The `await` fix is unaffected. Overrides in another assembly are not seen.
+
+Comments between the task and the blocking access, as in `db.Users.ToListAsync() /* why */ .Result`, move after the new expression; a `//` comment keeps a line break after it.
 
 The fixer compiles the rewritten document and offers nothing when the rewrite would add an error or change the type of the value.
 

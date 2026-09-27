@@ -177,6 +177,67 @@ class Program
     }
 
     [Theory]
+    [InlineData(
+        @"var users = {|LC062:db.Users.ToListAsync() /* rationale */ .Result|};",
+        @"var users = await db.Users.ToListAsync() /* rationale */;",
+        true)]
+    [InlineData(
+        @"var users = {|LC062:db.Users.ToListAsync() /* rationale */ .Result|};",
+        @"var users = db.Users.ToList() /* rationale */;",
+        false)]
+    [InlineData(
+        @"var saved = {|LC062:db.SaveChangesAsync().GetAwaiter() /* sync entry point */ .GetResult()|};",
+        @"var saved = await db.SaveChangesAsync() /* sync entry point */;",
+        true)]
+    [InlineData(
+        @"var user = {|LC062:db.Users.FindAsync(id) /* key */ .AsTask().Result|};",
+        @"var user = db.Users.Find(id) /* key */;",
+        false)]
+    public async Task CommentsBeforeTheBlockingAccess_AreKept(string before, string after, bool isAsync)
+    {
+        await VerifyFixAsync(before, after, isAsync);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SingleLineCommentBeforeTheBlockingAccess_IsKeptOnItsOwnLine(bool isAsync)
+    {
+        var fixedCall = isAsync ? "await db.Users.ToListAsync()" : "db.Users.ToList()";
+        await VerifyFixAsync(
+            "var users = {|LC062:db.Users.ToListAsync() // rationale\n            .Result|};",
+            "var users = " + fixedCall + " // rationale\n;",
+            isAsync);
+    }
+
+    [Theory]
+    // Each of these catches can observe the AggregateException that .Result and .Wait() throw.
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (Exception ex) when (ex is AggregateException) { }", true)]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (Exception ex) when (ex is AggregateException) { }", false)]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch { }", true)]
+    [InlineData(@"try { {|LC062:db.SaveChangesAsync().Wait()|}; } catch { }", false)]
+    [InlineData(@"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (SystemException) { }", false)]
+    [InlineData(@"try { try { var users = {|LC062:db.Users.ToListAsync().Result|}; } finally { } } catch (Exception) { }", true)]
+    public async Task CatchThatCanObserveAggregateException_OffersNoFix(string code, bool isAsync)
+    {
+        await VerifyNoFixAsync(code, isAsync);
+    }
+
+    [Theory]
+    [InlineData(
+        @"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (InvalidOperationException) { }",
+        @"try { var users = await db.Users.ToListAsync(); } catch (InvalidOperationException) { }",
+        true)]
+    [InlineData(
+        @"try { var users = {|LC062:db.Users.ToListAsync().Result|}; } catch (InvalidOperationException) { }",
+        @"try { var users = db.Users.ToList(); } catch (InvalidOperationException) { }",
+        false)]
+    public async Task CatchThatCannotBeAnAggregateException_KeepsTheFix(string before, string after, bool isAsync)
+    {
+        await VerifyFixAsync(before, after, isAsync);
+    }
+
+    [Theory]
     // AuditedContext overrides SaveChangesAsync but inherits SaveChanges: the sync call would skip the override.
     [InlineData(@"var saved = {|LC062:audited.SaveChangesAsync().Result|};")]
     [InlineData(@"{|LC062:audited.SaveChangesAsync(ct).Wait()|};")]

@@ -256,8 +256,10 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
-    /// <c>--fix</c> turns LC062's blocking call into the synchronous method only where that runs the same code: a
-    /// context that overrides <c>SaveChangesAsync</c> but inherits <c>SaveChanges</c> keeps its call, and its finding.
+    /// <c>--fix</c> turns LC062's blocking call into the synchronous method only where that runs the same code and
+    /// throws the same exceptions: a context that overrides <c>SaveChangesAsync</c> but inherits <c>SaveChanges</c>
+    /// keeps its call, as does a call inside a <c>catch</c> that can see the <c>AggregateException</c>. A comment
+    /// before <c>.Wait()</c> survives the fix.
     /// </summary>
     [Fact]
     public void Fix_LeavesBlockingCallsOnOverriddenAsyncSavesAlone()
@@ -309,12 +311,25 @@ public sealed class ScanEndToEndTests
                 {
                     public static void SavePlain(PlainContext db)
                     {
-                        db.SaveChangesAsync().Wait();
+                        db.SaveChangesAsync() /* startup path */ .Wait();
                     }
 
                     public static void SaveAudited(AuditedContext db)
                     {
                         db.SaveChangesAsync().Wait();
+                    }
+
+                    public static bool TrySave(PlainContext db)
+                    {
+                        try
+                        {
+                            db.SaveChangesAsync().Wait();
+                            return true;
+                        }
+                        catch
+                        {
+                            return false;
+                        }
                     }
                 }
                 """;
@@ -331,12 +346,12 @@ public sealed class ScanEndToEndTests
                     """
                         public static void SavePlain(PlainContext db)
                         {
-                            db.SaveChangesAsync().Wait();
+                            db.SaveChangesAsync() /* startup path */ .Wait();
                     """,
                     """
                         public static void SavePlain(PlainContext db)
                         {
-                            db.SaveChanges();
+                            db.SaveChanges() /* startup path */;
                     """),
                 fixedSaves);
             Assert.True(output.Contains("LC062", StringComparison.Ordinal), transcript);

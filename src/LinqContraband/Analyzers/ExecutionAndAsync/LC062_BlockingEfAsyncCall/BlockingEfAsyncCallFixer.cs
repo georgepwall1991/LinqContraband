@@ -161,21 +161,42 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         }
     }
 
-    /// <summary><c>.Result</c> and <c>.Wait()</c> wrap failures in <c>AggregateException</c>; await and the sync API do not.</summary>
+    /// <summary>
+    /// <c>.Result</c> and <c>.Wait()</c> wrap failures in <c>AggregateException</c>; await and the sync API do not.
+    /// True when a <c>try</c> around the site, in the same member, has a catch that can observe that exception: an
+    /// untyped <c>catch</c>, <c>catch (Exception)</c>, <c>catch (SystemException)</c>, or a catch of
+    /// <c>AggregateException</c> or one of its base types, with or without a filter.
+    /// </summary>
     private static bool IsInsideAggregateExceptionCatch(SyntaxNode site, SemanticModel semanticModel, CancellationToken cancellationToken)
     {
-        foreach (var tryStatement in site.Ancestors().OfType<TryStatementSyntax>())
+        var aggregate = semanticModel.Compilation.GetTypeByMetadataName("System.AggregateException");
+
+        foreach (var ancestor in site.Ancestors())
         {
-            if (!tryStatement.Block.Span.Contains(site.Span))
+            if (ancestor is MemberDeclarationSyntax)
+                break;
+
+            if (ancestor is not TryStatementSyntax tryStatement || !tryStatement.Block.Span.Contains(site.Span))
                 continue;
 
             foreach (var catchClause in tryStatement.Catches)
             {
-                if (catchClause.Declaration?.Type is { } type &&
-                    semanticModel.GetTypeInfo(type, cancellationToken).Type is { Name: "AggregateException" } caught &&
+                if (catchClause.Declaration?.Type is not { } type)
+                    return true;
+
+                if (semanticModel.GetTypeInfo(type, cancellationToken).Type is not INamedTypeSymbol caught)
+                    return true;
+
+                if (caught.Name is "Exception" or "SystemException" &&
                     caught.ContainingNamespace?.ToDisplayString() == "System")
                 {
                     return true;
+                }
+
+                for (var current = aggregate; current != null; current = current.BaseType)
+                {
+                    if (SymbolEqualityComparer.Default.Equals(current, caught))
+                        return true;
                 }
             }
         }
@@ -199,10 +220,49 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         editor.ReplaceNode(
             site,
             replacement
-                .WithTriviaFrom(site)
+                .WithLeadingTrivia(site.GetLeadingTrivia())
+                .WithTrailingTrivia(KeepComments(site, taskExpression).AddRange(site.GetTrailingTrivia()))
                 .WithAdditionalAnnotations(Formatter.Annotation, marker));
 
         return await FormatAsync(editor.GetChangedDocument(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The comments the rewrite would drop: those after <paramref name="kept"/> inside <paramref name="site"/>, as in
+    /// <c>db.Users.ToListAsync() /* why */ .Result</c>. They move after the new expression, each followed by a line
+    /// break when it is a single-line comment, so it cannot swallow the rest of the line.
+    /// </summary>
+    private static SyntaxTriviaList KeepComments(ExpressionSyntax site, SyntaxNode kept)
+    {
+        var comments = new System.Collections.Generic.List<SyntaxTrivia>();
+        var lastToken = site.GetLastToken();
+
+        void Add(SyntaxTriviaList trivia)
+        {
+            foreach (var item in trivia)
+            {
+                if (!item.IsKind(SyntaxKind.SingleLineCommentTrivia) && !item.IsKind(SyntaxKind.MultiLineCommentTrivia))
+                    continue;
+
+                comments.Add(SyntaxFactory.Space);
+                comments.Add(item);
+                if (item.IsKind(SyntaxKind.SingleLineCommentTrivia))
+                    comments.Add(SyntaxFactory.ElasticCarriageReturnLineFeed);
+            }
+        }
+
+        Add(kept.GetLastToken().TrailingTrivia);
+        foreach (var token in site.DescendantTokens())
+        {
+            if (token.SpanStart < kept.Span.End)
+                continue;
+
+            Add(token.LeadingTrivia);
+            if (token != lastToken)
+                Add(token.TrailingTrivia);
+        }
+
+        return SyntaxFactory.TriviaList(comments);
     }
 
     private static bool NeedsParentheses(ExpressionSyntax site)
@@ -279,7 +339,8 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
         var syncInvocation = efSyntax
             .WithExpression(memberAccess.WithName(SyntaxFactory.IdentifierName(syncName).WithTriviaFrom(memberAccess.Name)))
             .WithArgumentList(efSyntax.ArgumentList.WithArguments(arguments))
-            .WithTriviaFrom(site)
+            .WithLeadingTrivia(site.GetLeadingTrivia())
+            .WithTrailingTrivia(KeepComments(site, efSyntax).AddRange(site.GetTrailingTrivia()))
             .WithAdditionalAnnotations(Formatter.Annotation, marker);
 
         var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
