@@ -571,112 +571,6 @@ class Program
     }
 
     [Fact]
-    public async Task TestInnocent_LibraryHelperOverInMemoryQuery_NoDiagnostic()
-    {
-        // An extension in a referenced project (no source) that takes the in-memory query as its second
-        // argument and returns a query. The receiver is abstract and self-referencing, but its members and
-        // virtual methods only expose inert types; a sealed carrier with inert methods is also fine.
-        await RunWithLibraryAsync(@"
-class Program
-{
-    static List<User> BuildHierarchy(List<User> users) => users;
-
-    async Task<List<User>> Main(ScimNode node, List<User> list)
-    {
-        await Task.Delay(1);
-        var x = node.EvaluateNodes(BuildHierarchy(list).AsQueryable(), false).ToList();
-        var y = new ScimAttributeNode { Name = ""emails"" }.EvaluateNodes(list.AsQueryable(), true, ""Children"").ToList();
-        var z = ScimLibrary.Narrow(list.AsQueryable(), new ScimFilter { Path = ""emails"" }).ToList();
-        return x.Concat(y).Concat(z).ToList();
-    }
-}
-");
-    }
-
-    [Fact]
-    public async Task TestCrime_LibraryHelperWithRealScimExpressionShape_StillTriggers()
-    {
-        // SimpleIdServer's real SCIMExpression is abstract with `abstract object Clone()` and
-        // `abstract ICollection<SCIMRepresentationAttribute> BuildEmptyAttributes()`. An app subclass could
-        // return db.Users from either, so the helper is not proven in memory and this LC008 comes back.
-        await RunWithLibraryAsync(@"
-class Program
-{
-    async Task<List<User>> Main(ScimExpression scimFilter, List<User> list)
-    {
-        await Task.Delay(1);
-        return {|LC008:scimFilter.EvaluateAttributes(list.AsQueryable(), false).ToList()|};
-    }
-}
-");
-    }
-
-    [Fact]
-    public async Task TestInnocent_LibraryHelperWithInertArguments_NoDiagnostic()
-    {
-        // A string, a library options object with only primitive members, an enum, a nullable value and System
-        // structs of inert values cannot hand the helper an EF query.
-        await RunWithLibraryAsync(@"
-class Program
-{
-    async Task<List<User>> Main(List<User> list)
-    {
-        await Task.Delay(1);
-        var x = ScimLibrary.Filter(list.AsQueryable(), ""displayName"", new ScimOptions(), StringComparison.Ordinal, 10).ToList();
-        var y = ScimLibrary.WithStamp(list.AsQueryable(), new KeyValuePair<string, DateTime>(""at"", DateTime.UtcNow), (1, Guid.Empty)).ToList();
-        return x.Concat(y).ToList();
-    }
-}
-");
-    }
-
-    [Theory]
-    // The query argument is the EF set.
-    [InlineData("{|LC008:scimFilter.EvaluateAttributes(db.Users, false).ToList()|}")]
-    // The helper is handed the DbContext.
-    [InlineData("{|LC008:ScimLibrary.FromContext(list.AsQueryable(), db).ToList()|}")]
-    // A callback could return an EF query.
-    [InlineData("{|LC008:ScimLibrary.Apply(list.AsQueryable(), q => db.Users).ToList()|}")]
-    // Even a predicate could run db.Users instead of filtering.
-    [InlineData("{|LC008:ScimLibrary.Where(list.AsQueryable(), u => u.Id > 0).ToList()|}")]
-    // An unsealed library class whose virtual or abstract method an app subclass can implement to return db.Users.
-    [InlineData("{|LC008:ScimLibrary.FromSource(list.AsQueryable(), userSource).ToList()|}")]
-    [InlineData("{|LC008:ScimLibrary.FromQuerySource(list.AsQueryable(), querySource).ToList()|}")]
-    // A library class whose member can carry a query: an IQueryable property, or an object field on a base type.
-    [InlineData("{|LC008:ScimLibrary.Pick(list.AsQueryable(), new QueryBox<User> { Query = db.Users }).ToList()|}")]
-    [InlineData("{|LC008:ScimLibrary.WithHolder(list.AsQueryable(), new StateHolder()).ToList()|}")]
-    // A sequence argument that may be a DbSet.
-    [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), sequence).ToList()|}")]
-    // An object of this project (a repository) could return an EF query.
-    [InlineData("{|LC008:ScimLibrary.WithState(list.AsQueryable(), repository).ToList()|}")]
-    // So could anything behind an interface or object.
-    [InlineData("{|LC008:ScimLibrary.WithSource(list.AsQueryable(), source).ToList()|}")]
-    [InlineData("{|LC008:ScimLibrary.WithState(list.AsQueryable(), (object)repository).ToList()|}")]
-    // A System struct carrying a query is not inert.
-    [InlineData("{|LC008:ScimLibrary.WithPair(list.AsQueryable(), new KeyValuePair<string, IQueryable<User>>(\"users\", db.Users)).ToList()|}")]
-    [InlineData("{|LC008:ScimLibrary.WithTuple(list.AsQueryable(), (1, repository)).ToList()|}")]
-    // An Enumerable operator over the DbSet is not in memory.
-    [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), db.Users.AsEnumerable().Where(u => u.Id > 0)).ToList()|}")]
-    // No query argument at all.
-    [InlineData("{|LC008:ScimLibrary.Load(list.Count).ToList()|}")]
-    public async Task TestCrime_LibraryHelperWithUnprovenInput_StillTriggers(string call)
-    {
-        await RunWithLibraryAsync(@"
-class UserRepository { public MyDbContext Db { get; set; } }
-class Program
-{
-    async Task<object> Main(ScimExpression scimFilter, List<User> list, IEnumerable<User> sequence, MyDbContext db,
-        UserRepository repository, IUserSource<User> source, Source<User> userSource, QuerySource<User> querySource)
-    {
-        await Task.Delay(1);
-        var x = " + call + @";
-        return x;
-    }
-}
-");
-    }
-
-    [Fact]
     public async Task TestInnocent_SelectResultSelectorReturningDbSet_NoDiagnostic()
     {
         // Select, Join and GroupJoin result selectors only yield their value: the DbSets are elements of an
@@ -699,143 +593,64 @@ class Program
     }
 
     [Fact]
-    public async Task TestCrime_LibraryHelperFromEfAwareAssembly_StillTriggers()
+    public async Task TestInnocent_AppendSequenceElement_NoDiagnostic()
     {
-        // A helper in a library that references EF Core can start an EF query itself, whatever it is given.
+        // Append's element is a value, not a sequence the operator reads, even when it is typed IEnumerable<User>.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<IEnumerable<User>>> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return new List<IEnumerable<User>>().Append(db.Users).Prepend(db.Users).AsQueryable().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // SimpleIdServer's shape: the helper's body is not visible, so it could return static or injected query
+    // state whatever it is handed. Opaque library helpers are never trusted.
+    [InlineData("{|LC008:scimFilter.EvaluateAttributes(list.AsQueryable(), false).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.Filter(list.AsQueryable(), \"emails\").ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.Filter(db.Users, \"emails\").ToList()|}")]
+    public async Task TestCrime_OpaqueLibraryHelper_StillTriggers(string call)
+    {
         var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
             LinqContraband.Analyzers.LC008_SyncBlocker.SyncBlockerAnalyzer,
             Microsoft.CodeAnalysis.Testing.DefaultVerifier>
         {
-            TestCode = Usings + @"using DataLib;
+            TestCode = Usings + @"using ScimLib;
 class Program
 {
-    async Task<object> Main(List<User> list)
+    async Task<List<User>> Main(ScimExpression scimFilter, List<User> list, MyDbContext db)
     {
         await Task.Delay(1);
-        var direct = {|LC008:EfHelpers.Reload(list.AsQueryable()).ToList()|};
-        var referencing = {|LC008:DataHelpers.Reload(list.AsQueryable(), false).ToList()|};
-        var throughFacade = {|LC008:FacadeClientHelpers.Reload(list.AsQueryable()).ToList()|};
-        return (direct, referencing, throughFacade);
+        return " + call + @";
     }
 }
 " + MockNamespace
         };
 
-        var efCore = new Microsoft.CodeAnalysis.Testing.ProjectState(
-            "Microsoft.EntityFrameworkCore.Stub", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/ef/", "cs");
-        efCore.Sources.Add(("/ef/EfHelpers.cs", @"
-using System.Linq;
-
-namespace DataLib
-{
-    public static class EfHelpers
-    {
-        public static IQueryable<T> Reload<T>(IQueryable<T> source) => source;
-    }
-}
-"));
-
-        var dataLib = new Microsoft.CodeAnalysis.Testing.ProjectState(
-            "DataLib", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/data/", "cs");
-        dataLib.Sources.Add(("/data/DataHelpers.cs", @"
-using System.Linq;
-
-namespace DataLib
-{
-    public static class DataHelpers
-    {
-        public static IQueryable<T> Reload<T>(IQueryable<T> source, bool tracked) => EfHelpers.Reload(source);
-    }
-}
-"));
-        dataLib.AdditionalProjectReferences.Add("Microsoft.EntityFrameworkCore.Stub");
-
-        test.TestState.AdditionalProjects.Add("Microsoft.EntityFrameworkCore.Stub", efCore);
-        test.TestState.AdditionalProjects.Add("DataLib", dataLib);
-
-        // FacadeClient references only DataLib, which references EF Core: reachable transitively.
-        var facadeClient = new Microsoft.CodeAnalysis.Testing.ProjectState(
-            "FacadeClient", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/client/", "cs");
-        facadeClient.Sources.Add(("/client/FacadeClientHelpers.cs", @"
-using System.Linq;
-
-namespace DataLib
-{
-    public static class FacadeClientHelpers
-    {
-        public static IQueryable<T> Reload<T>(IQueryable<T> source) => DataHelpers.Reload(source, false);
-    }
-}
-"));
-        facadeClient.AdditionalProjectReferences.Add("DataLib");
-        test.TestState.AdditionalProjects.Add("FacadeClient", facadeClient);
-        test.TestState.AdditionalProjectReferences.Add("FacadeClient");
-        test.TestState.AdditionalProjectReferences.Add("Microsoft.EntityFrameworkCore.Stub");
-        test.TestState.AdditionalProjectReferences.Add("DataLib");
-
-        await test.RunAsync();
-    }
-
-    private static async Task RunWithLibraryAsync(string code)
-    {
-        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
-            LinqContraband.Analyzers.LC008_SyncBlocker.SyncBlockerAnalyzer,
-            Microsoft.CodeAnalysis.Testing.DefaultVerifier>
-        {
-            TestCode = Usings + "using ScimLib;\n" + code + MockNamespace
-        };
-
         var library = new Microsoft.CodeAnalysis.Testing.ProjectState(
             "ScimLib", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/scim/", "cs");
         library.Sources.Add(("/scim/Scim.cs", @"
-using System;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace ScimLib
 {
-    // SimpleIdServer's real SCIMExpression shape.
-    public sealed class ScimAttribute { public string Name { get; set; } = """"; }
-    public abstract class ScimExpression : ICloneable
-    {
-        public abstract object Clone();
-        public abstract ICollection<ScimAttribute> BuildEmptyAttributes();
-    }
-
-    // Abstract and self-referencing, but every member and virtual method exposes only inert types.
-    public abstract class ScimNode { public ScimNode Parent { get; set; } public int Depth; public abstract string Describe(); public virtual bool TryGetDepth(out int depth) { depth = Depth; return true; } }
-    public sealed class ScimAttributeNode : ScimNode { public string Name { get; set; } = """"; public ScimNode Child { get; set; } public override string Describe() => Name; }
-    public sealed class ScimFilter { public string Path { get; set; } = """"; public string Describe() => Path; public int Count() => 1; public override string ToString() => Path; }
-
-    // An app subclass can implement these to return db.Users.
-    public class Source<T> { public virtual IQueryable<T> GetQuery() => Enumerable.Empty<T>().AsQueryable(); }
-    public abstract class QuerySource<T> { public abstract IQueryable<T> GetQuery(); }
-    public sealed class QueryBox<T> { public IQueryable<T> Query { get; set; } }
-    public class StateBase { protected object State; }
-    public sealed class StateHolder : StateBase { public int Id { get; set; } }
-    public sealed class ScimOptions { public bool Strict { get; set; } }
-    public interface IUserSource<T> { IQueryable<T> Query(); }
+    public sealed class ScimExpression { }
 
     public static class ScimLibrary
     {
-        public static IQueryable<T> EvaluateNodes<T>(this ScimNode node, IQueryable<T> source, bool isStrict, string propertyName = ""Children"") => source;
-        public static IQueryable<T> Narrow<T>(IQueryable<T> source, ScimFilter filter) => source;
-        public static IQueryable<T> FromSource<T>(IQueryable<T> fallback, Source<T> source) => source.GetQuery() ?? fallback;
-        public static IQueryable<T> FromQuerySource<T>(IQueryable<T> fallback, QuerySource<T> source) => source.GetQuery() ?? fallback;
-        public static IQueryable<T> EvaluateAttributes<T>(this ScimExpression expression, IQueryable<T> attributes, bool isStrict, string propertyName = ""Children"") => attributes;
-        public static IQueryable<T> FromContext<T>(IQueryable<T> source, object context) => source;
-        public static IQueryable<T> Apply<T>(IQueryable<T> source, Func<IQueryable<T>, IQueryable<T>> step) => step(source);
-        public static IQueryable<T> Merge<T>(IQueryable<T> source, IEnumerable<T> more) => source.Concat(more);
-        public static IQueryable<T> WithState<T>(IQueryable<T> source, object state) => source;
-        public static IQueryable<T> WithPair<T>(IQueryable<T> source, KeyValuePair<string, IQueryable<T>> pair) => source;
-        public static IQueryable<T> WithTuple<T, TState>(IQueryable<T> source, (int, TState) state) => source;
-        public static IQueryable<T> WithStamp<T>(IQueryable<T> source, KeyValuePair<string, DateTime> stamp, (int, Guid) key) => source;
-        public static IQueryable<T> WithSource<T>(IQueryable<T> source, IUserSource<T> other) => source;
-        public static IQueryable<T> Filter<T>(IQueryable<T> source, string attribute, ScimOptions options, StringComparison comparison, int? limit) => source;
-        public static IQueryable<T> Where<T>(IQueryable<T> source, Func<T, bool> predicate) => source;
-        public static IQueryable<T> Pick<T>(IQueryable<T> source, QueryBox<T> box) => box.Query ?? source;
-        public static IQueryable<T> WithHolder<T>(IQueryable<T> source, StateHolder holder) => source;
-        public static IQueryable<int> Load(int count) => Enumerable.Range(0, count).AsQueryable();
+        public static object Injected;
+
+        public static IQueryable<T> EvaluateAttributes<T>(this ScimExpression expression, IQueryable<T> attributes, bool isStrict) =>
+            Injected as IQueryable<T> ?? attributes;
+
+        public static IQueryable<T> Filter<T>(IQueryable<T> source, string attribute) => source;
     }
 }
 "));

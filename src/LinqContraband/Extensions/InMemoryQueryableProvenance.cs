@@ -177,7 +177,7 @@ public static class InMemoryQueryableProvenance
             if (parameterType == null)
                 continue;
 
-            if (IsEnumerableParameter(parameterType))
+            if (IsSequenceInputParameter(argument.Parameter!))
             {
                 if (!IsInMemorySequenceSource(argument.Value, isInMemoryLeafType, depth + 1))
                     return false;
@@ -247,10 +247,21 @@ public static class InMemoryQueryableProvenance
                parameter.Type.TypeKind == TypeKind.Delegate;
     }
 
-    private static bool IsEnumerableParameter(ITypeSymbol type)
+    /// <summary>
+    /// A sequence the operator reads, judged by the operator's generic definition: a parameter declared
+    /// as <c>IEnumerable</c> or as <c>IEnumerable&lt;TSource&gt;</c> over one of the operator's own type
+    /// parameters (source, inner, second, ...). <c>Append</c>'s and <c>Prepend</c>'s <c>TSource element</c>
+    /// is a value even when <c>TSource</c> is substituted with <c>IEnumerable&lt;User&gt;</c>.
+    /// </summary>
+    private static bool IsSequenceInputParameter(IParameterSymbol parameter)
     {
-        return type.SpecialType == SpecialType.System_Collections_IEnumerable ||
-               type.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T;
+        var type = parameter.OriginalDefinition.Type;
+        if (type.SpecialType == SpecialType.System_Collections_IEnumerable)
+            return true;
+
+        return type is INamedTypeSymbol { Arity: 1 } named &&
+               named.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T &&
+               named.TypeArguments[0] is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method };
     }
 
     private static bool IsConcreteInMemorySequence(ITypeSymbol type)
