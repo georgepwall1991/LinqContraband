@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using LinqContraband.Catalog;
@@ -80,7 +81,7 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
         if (!TryGetTransactionContext(invocation, out var contextType))
             return;
 
-        if (IsInsideStrategy(invocation, context.CancellationToken))
+        if (IsInsideStrategy(invocation, context.Compilation, context.CancellationToken))
             return;
 
         var configuration = model.Value.FindConfiguration(contextType);
@@ -154,11 +155,21 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
     }
 
     /// <summary>
-    /// True when the transaction starts inside a lambda handed to an execution strategy (directly, or to a method in this
-    /// project that wraps one), or inside a lambda the code stores rather than calls in place.
+    /// True when the transaction starts inside a lambda that runs under an execution strategy: one handed to a strategy's
+    /// Execute* method (directly, or to a project method that forwards that delegate to one), or one invoked in place
+    /// or through a local whose every use is a call made under a strategy. A lambda whose invocation cannot be
+    /// determined (stored in a field, passed on through a local, reassigned) counts as protected, conservatively.
     /// </summary>
-    private static bool IsInsideStrategy(IOperation operation, CancellationToken cancellationToken)
+    private static bool IsInsideStrategy(IOperation operation, Compilation compilation, CancellationToken cancellationToken)
     {
+        return IsInsideStrategy(operation, compilation, 0, cancellationToken);
+    }
+
+    private static bool IsInsideStrategy(IOperation operation, Compilation compilation, int depth, CancellationToken cancellationToken)
+    {
+        if (depth > 8)
+            return true;
+
         for (var current = operation.Parent; current != null; current = current.Parent)
         {
             if (current is not IAnonymousFunctionOperation lambda)
@@ -168,14 +179,87 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
             while (value.Parent is IDelegateCreationOperation or IConversionOperation)
                 value = value.Parent;
 
-            if (value.Parent is not IArgumentOperation { Parent: IInvocationOperation call })
-                return true;
+            switch (value.Parent)
+            {
+                // ((Action)(() => ...))(): runs right here, like inline code.
+                case IInvocationOperation invoked when ReferenceEquals(invoked.Instance, value):
+                    continue;
 
-            if (RetryingStrategyModel.RunsDelegateUnderStrategy(call.TargetMethod, cancellationToken))
-                return true;
+                case IArgumentOperation { Parent: IInvocationOperation call } argument:
+                    if (RetryingStrategyModel.RunsDelegateUnderStrategy(call.TargetMethod, argument.Parameter, compilation, cancellationToken))
+                        return true;
+
+                    // Handed to another method (Task.Run, a callback): it runs there, outside any strategy.
+                    continue;
+
+                case IVariableInitializerOperation { Parent: IVariableDeclaratorOperation declarator }:
+                    return LocalInvocationsRunUnderStrategy(declarator.Symbol, value, compilation, depth, cancellationToken);
+
+                case ISimpleAssignmentOperation { Target: ILocalReferenceOperation target } assignment
+                    when ReferenceEquals(assignment.Value, value):
+                    return LocalInvocationsRunUnderStrategy(target.Local, assignment, compilation, depth, cancellationToken);
+
+                default:
+                    return true;
+            }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// For a lambda held in <paramref name="local"/>: when the local is written only by <paramref name="write"/> and
+    /// every other use invokes it, the lambda runs at those invocations, so it is protected only if each of them is.
+    /// Any other use (passed on, captured as a value, reassigned) leaves the invocation unknown: protected.
+    /// </summary>
+    private static bool LocalInvocationsRunUnderStrategy(
+        ILocalSymbol local,
+        IOperation write,
+        Compilation compilation,
+        int depth,
+        CancellationToken cancellationToken)
+    {
+        var root = write;
+        while (root.Parent != null)
+            root = root.Parent;
+
+        var invocations = new List<IInvocationOperation>();
+        foreach (var operation in root.Descendants())
+        {
+            if (operation is not ILocalReferenceOperation reference ||
+                !SymbolEqualityComparer.Default.Equals(reference.Local, local))
+            {
+                continue;
+            }
+
+            if (reference.Parent is ISimpleAssignmentOperation assignment && ReferenceEquals(assignment.Target, reference))
+            {
+                if (ReferenceEquals(assignment, write))
+                    continue;
+                return true;
+            }
+
+            if (reference.Parent is IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke } invocation &&
+                ReferenceEquals(invocation.Instance, reference))
+            {
+                invocations.Add(invocation);
+                continue;
+            }
+
+            return true;
+        }
+
+        // Never invoked here: it does not run in this method.
+        if (invocations.Count == 0)
+            return true;
+
+        foreach (var invocation in invocations)
+        {
+            if (!IsInsideStrategy(invocation, compilation, depth + 1, cancellationToken))
+                return false;
+        }
+
+        return true;
     }
 
     private static ISymbol? FindOwningCallable(IOperation operation, ISymbol containingSymbol)

@@ -7,6 +7,7 @@ using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC063_TransactionUnderRetryingStrategy;
 
@@ -300,9 +301,16 @@ internal sealed class StrategyCallers
         SemanticModel semanticModel,
         CancellationToken cancellationToken)
     {
-        return expression.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax call } } &&
-               semanticModel.GetSymbolInfo(call, cancellationToken).Symbol is IMethodSymbol target &&
-               RetryingStrategyModel.RunsDelegateUnderStrategy(target, cancellationToken);
+        return expression.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax } } argument &&
+               semanticModel.GetOperation(argument, cancellationToken) is IArgumentOperation
+               {
+                   Parent: IInvocationOperation call
+               } argumentOperation &&
+               RetryingStrategyModel.RunsDelegateUnderStrategy(
+                   call.TargetMethod,
+                   argumentOperation.Parameter,
+                   semanticModel.Compilation,
+                   cancellationToken);
     }
 
     private static bool IsInsideNameof(SyntaxNode node)

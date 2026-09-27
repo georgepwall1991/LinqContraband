@@ -145,22 +145,83 @@ internal sealed class RetryingStrategyModel
         return false;
     }
 
-    /// <summary>A method declared in source whose declaration mentions an execution strategy, such as a resilient-transaction helper.</summary>
-    public static bool IsProjectStrategyWrapper(IMethodSymbol method, CancellationToken cancellationToken)
+    /// <summary>
+    /// True when a delegate bound to <paramref name="parameter"/> of <paramref name="method"/> runs under an execution
+    /// strategy: <paramref name="method"/> is a strategy's Execute* method, or a source method that hands that parameter
+    /// (or a lambda that invokes it) to a strategy's Execute* call.
+    /// </summary>
+    public static bool RunsDelegateUnderStrategy(
+        IMethodSymbol method,
+        IParameterSymbol? parameter,
+        Compilation compilation,
+        CancellationToken cancellationToken)
     {
-        foreach (var reference in (method.ReducedFrom ?? method).OriginalDefinition.DeclaringSyntaxReferences)
+        if (IsStrategyExecute(method))
+            return true;
+
+        return parameter != null && IsStrategyWrapperParameter(method, parameter, compilation, cancellationToken);
+    }
+
+    private static bool IsStrategyWrapperParameter(
+        IMethodSymbol method,
+        IParameterSymbol parameter,
+        Compilation compilation,
+        CancellationToken cancellationToken)
+    {
+        // Map the parameter onto the unreduced, unconstructed declaration.
+        var declaration = (method.ReducedFrom ?? method).OriginalDefinition;
+        var ordinal = method.ReducedFrom != null ? parameter.Ordinal + 1 : parameter.Ordinal;
+        if (ordinal >= declaration.Parameters.Length)
+            return false;
+
+        var target = declaration.Parameters[ordinal];
+        if (target.Type.TypeKind != TypeKind.Delegate)
+            return false;
+
+        foreach (var reference in declaration.DeclaringSyntaxReferences)
         {
-            if (reference.GetSyntax(cancellationToken).ToString().IndexOf("ExecutionStrategy", StringComparison.Ordinal) >= 0)
-                return true;
+            var syntax = reference.GetSyntax(cancellationToken);
+            if (!compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var semanticModel) ||
+                semanticModel.GetOperation(syntax, cancellationToken) is not { } body)
+            {
+                continue;
+            }
+
+            foreach (var operation in body.Descendants())
+            {
+                if (operation is IInvocationOperation execute &&
+                    IsStrategyExecute(execute.TargetMethod) &&
+                    execute.Arguments.Any(argument => HandsParameterToStrategy(argument.Value, target)))
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
-    /// <summary>A strategy's Execute* method, or a project method that wraps one: a delegate passed to it runs under the strategy.</summary>
-    public static bool RunsDelegateUnderStrategy(IMethodSymbol method, CancellationToken cancellationToken)
+    /// <summary>The argument is the parameter itself, or a lambda that invokes it.</summary>
+    private static bool HandsParameterToStrategy(IOperation value, IParameterSymbol parameter)
     {
-        return IsStrategyExecute(method) || IsProjectStrategyWrapper(method, cancellationToken);
+        while (value is IDelegateCreationOperation or IConversionOperation)
+        {
+            value = value switch
+            {
+                IDelegateCreationOperation delegateCreation => delegateCreation.Target,
+                IConversionOperation conversion => conversion.Operand,
+                _ => value
+            };
+        }
+
+        if (value is IParameterReferenceOperation direct)
+            return SymbolEqualityComparer.Default.Equals(direct.Parameter, parameter);
+
+        return value is IAnonymousFunctionOperation lambda &&
+               lambda.Body.Descendants().Any(operation =>
+                   operation is IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke } invocation &&
+                   invocation.Instance?.UnwrapConversions() is IParameterReferenceOperation invoked &&
+                   SymbolEqualityComparer.Default.Equals(invoked.Parameter, parameter));
     }
 
     private static bool IsExecutionStrategyInterface(ITypeSymbol type)
@@ -189,11 +250,11 @@ internal sealed class RetryingStrategyModel
         var method = operation.TargetMethod;
         if (method.Name == "EnableRetryOnFailure")
         {
-            return method.ContainingType?.Name.EndsWith("OptionsBuilder", StringComparison.Ordinal) == true &&
+            return IsProviderOptionsBuilder(method.ContainingType, operation.Instance?.Type) &&
                    !HasZeroRetryCount(operation.Arguments);
         }
 
-        if (method.Name != "ExecutionStrategy" || !IsRelationalOptionsBuilder(method.ContainingType))
+        if (method.Name != "ExecutionStrategy" || !IsProviderOptionsBuilder(method.ContainingType, operation.Instance?.Type))
             return false;
 
         foreach (var argument in operation.Arguments)
@@ -224,6 +285,31 @@ internal sealed class RetryingStrategyModel
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// An EF Core provider options builder: the method's type or the receiver's type derives from
+    /// <c>RelationalDbContextOptionsBuilder&lt;,&gt;</c> (SQL Server, Azure SQL, Npgsql, Pomelo, Oracle, SQLite), or is a
+    /// <c>*DbContextOptionsBuilder</c> declared in a <c>Microsoft.EntityFrameworkCore</c> namespace.
+    /// </summary>
+    private static bool IsProviderOptionsBuilder(INamedTypeSymbol? containingType, ITypeSymbol? receiverType)
+    {
+        return IsRelationalOptionsBuilder(containingType) ||
+               IsRelationalOptionsBuilder(receiverType as INamedTypeSymbol) ||
+               IsEfCoreProviderBuilder(containingType) ||
+               IsEfCoreProviderBuilder(receiverType as INamedTypeSymbol);
+    }
+
+    private static bool IsEfCoreProviderBuilder(INamedTypeSymbol? type)
+    {
+        // EF Core's own DbContextOptionsBuilder has no retry settings; provider builders add a prefix (SqlServer...).
+        if (type == null ||
+            type.Name == "DbContextOptionsBuilder" ||
+            !type.Name.EndsWith("DbContextOptionsBuilder", StringComparison.Ordinal))
+            return false;
+
+        var ns = type.ContainingNamespace?.ToDisplayString();
+        return ns == EfNamespace || ns?.StartsWith(EfNamespace + ".", StringComparison.Ordinal) == true;
     }
 
     private static bool IsRelationalOptionsBuilder(INamedTypeSymbol? type)

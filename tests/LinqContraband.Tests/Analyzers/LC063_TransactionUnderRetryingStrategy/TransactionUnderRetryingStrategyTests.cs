@@ -552,6 +552,97 @@ public class Audit { }
     }
 
     [Fact]
+    public async Task EnableRetryOnFailureOnANonEfBuilder_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"using var tx = db.Database.BeginTransaction(); tx.Commit();",
+            configuration: @"
+static class Registration
+{
+    public static void Configure(IServiceCollection services) =>
+        services.AddDbContext<AppDb>(o =>
+        {
+            new CacheOptionsBuilder().EnableRetryOnFailure();
+            o.UseSqlServer(""cs"");
+        });
+}
+
+class CacheOptionsBuilder
+{
+    public CacheOptionsBuilder EnableRetryOnFailure() => this;
+    public CacheOptionsBuilder ExecutionStrategy(Func<ExecutionStrategyDependencies, IExecutionStrategy> factory) => this;
+}
+"));
+    }
+
+    [Fact]
+    public async Task MethodThatOnlyMentionsExecutionStrategy_IsNotAWrapper()
+    {
+        await VerifyAsync(Wrap(
+            @"Run(() =>
+        {
+            using var tx = db.Database.{|LC063:BeginTransaction|}();
+            db.SaveChanges();
+            tx.Commit();
+        });",
+            extraMembers: @"
+    private static void Run(Action action)
+    {
+        Console.WriteLine(""ExecutionStrategy"");
+        action();
+    }"));
+    }
+
+    [Fact]
+    public async Task WrapperForwardingTheDelegateToTheStrategy_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"Run(() =>
+        {
+            using var tx = db.Database.BeginTransaction();
+            db.SaveChanges();
+            tx.Commit();
+        });
+        RunLogged(() =>
+        {
+            using var tx = db.Database.BeginTransaction();
+            tx.Commit();
+        }, ""save"");",
+            extraMembers: @"
+    private void Run(Action action) => _db.Database.CreateExecutionStrategy().Execute(action);
+
+    private void RunLogged(Action action, string name)
+    {
+        var strategy = _db.Database.CreateExecutionStrategy();
+        strategy.Execute(() =>
+        {
+            Console.WriteLine(name);
+            action();
+        });
+    }"));
+    }
+
+    [Theory]
+    [InlineData(@"Action work = () => { using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit(); }; work();")]
+    [InlineData(@"Action work; work = () => { using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit(); }; work.Invoke();")]
+    [InlineData(@"((Action)(() => { using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit(); }))();")]
+    [InlineData(@"Action work = () => { using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit(); }; db.Database.CreateExecutionStrategy().Execute(() => work()); work();")]
+    public async Task LambdaInvokedInPlace_Reports(string body)
+    {
+        await VerifyAsync(Wrap(body));
+    }
+
+    [Theory]
+    // The local is invoked only under the strategy.
+    [InlineData(@"Action work = () => { using var tx = db.Database.BeginTransaction(); tx.Commit(); }; db.Database.CreateExecutionStrategy().Execute(() => work());")]
+    // Handed to a method the rule cannot see into: where it runs is unknown.
+    [InlineData(@"Action work = () => { using var tx = db.Database.BeginTransaction(); tx.Commit(); }; Schedule(work);")]
+    public async Task LambdaWithUnknownOrProtectedInvocation_NotReported(string body)
+    {
+        await VerifyAsync(Wrap(body, extraMembers: "    private static void Schedule(Action action) { }"));
+    }
+
+    [Fact]
     public async Task ProjectResilientTransactionWrapper_NotReported()
     {
         await VerifyAsync(Wrap(
