@@ -13,7 +13,7 @@ public sealed partial class SyncBlockerFixer
     /// suspension point. That produces CS4007, which binding does not report — it is raised by
     /// the async rewriter during emit — so the rewrite looks valid right up until the build.
     /// </summary>
-    private static bool WouldStrandRefStructLocal(
+    internal static bool WouldStrandRefStructLocal(
         SyntaxNode invocation,
         SemanticModel semanticModel,
         CancellationToken cancellationToken

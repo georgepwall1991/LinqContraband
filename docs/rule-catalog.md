@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>59</strong><span>rules</span></div>
-    <div class="metric"><strong>40</strong><span>warnings</span></div>
-    <div class="metric"><strong>42</strong><span>code fixes</span></div>
+    <div class="metric"><strong>60</strong><span>rules</span></div>
+    <div class="metric"><strong>41</strong><span>warnings</span></div>
+    <div class="metric"><strong>43</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -339,6 +339,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC058_TransactionScopeWithoutAsyncFlow/</span>
+    </a>
+    <a class="rule-card" href="./LC062_BlockingEfAsyncCall.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC062</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>Blocking on an EF Core async call</h3>
+      <p class="rule-card__summary">Flags .Result, .Wait() and .GetAwaiter().GetResult() on EF Core async calls, which starve the thread pool and deadlock under a SynchronizationContext.</p>
+      <span class="rule-card__meta">
+        <span>Performance</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC062_BlockingEfAsyncCall/</span>
     </a>
   </div>
 </section>

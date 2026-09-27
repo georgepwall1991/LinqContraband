@@ -253,3 +253,6 @@ indent_size = 2
 
 # LC059: Disposed Context Connection - disposing the connection from GetDbConnection() breaks later operations on the DbContext
 # dotnet_diagnostic.LC059.severity = warning
+
+# LC062: Blocking EF Async Call - .Result, .Wait() or .GetAwaiter().GetResult() on an EF Core async call starves the thread pool and can deadlock
+# dotnet_diagnostic.LC062.severity = warning

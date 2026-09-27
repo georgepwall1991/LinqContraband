@@ -571,6 +571,15 @@
       "ruleIds": [
         "LC059"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC062_BlockingEfAsyncCall/BlockingEfAsyncCallSample.cs",
+      "samplePaths": [
+        "Samples/LC062_BlockingEfAsyncCall/BlockingEfAsyncCallSample.cs"
+      ],
+      "ruleIds": [
+        "LC062"
+      ]
     }
   ]
 }

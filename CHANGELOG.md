@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LC062 reports blocking on an EF Core async call with `.Result`, `.Wait()` or `.GetAwaiter().GetResult()`, such as `db.Users.ToListAsync().Result` or `db.SaveChangesAsync().Wait()`, in any method. Sync-over-async holds a thread while the database works and needs another to finish the task, which starves the thread pool under load and deadlocks under a `SynchronizationContext` (WinForms, WPF, classic ASP.NET). It covers EF Core query operators, `SaveChangesAsync`, `FindAsync`, `AddAsync`, `AddRangeAsync`, `ExecuteDeleteAsync`/`ExecuteUpdateAsync` and the `Database` async methods (`MigrateAsync`, `BeginTransactionAsync`, `ExecuteSqlRawAsync`, ...), including `ValueTask` results and tasks stored in a local. It stays quiet when the task was already awaited or proven complete (`await Task.WhenAll(t1, t2)`, `task.IsCompletedSuccessfully ? task.Result : ...`), on tasks that do not come from EF Core, and on in-memory `AsQueryable()` queries. In async code the fix awaits the task; elsewhere it calls the synchronous method (`ToList()`, `SaveChanges()`, `Find(...)`). LC008 is the reverse case. LC062 joins the `critical` preset.
+
 ### Fixed
 
 - LC011 no longer reports a many-to-many join entity named in `UsingEntity<TJoin>(...)`, such as Moonglade's `PostTagEntity` in `HasMany(p => p.Tags).WithMany(p => p.Posts).UsingEntity<PostTagEntity>(...)`: EF Core keys it by convention with the composite of its two foreign keys. It also reads `ApplyConfigurationsFromAssembly(GetType().Assembly)` and `this.GetType().Assembly` in the context as the current assembly, so the `HasKey` calls in that assembly's configurations count, as in modular-monolith-with-ddd, where eight `MeetingsContext` entities were reported. A context that declares its own `GetType`, and another object's `GetType().Assembly`, are not read that way.

@@ -164,10 +164,10 @@ public sealed class AnalyzerModularizationTests
 
         var analyzerSource = File.ReadAllText(analyzerPath);
         Assert.Contains("public sealed partial class SyncBlockerAnalyzer", analyzerSource);
-        Assert.DoesNotContain("private static bool IsInsideAsyncMethod", analyzerSource);
+        Assert.DoesNotContain("static bool IsInsideAsyncMethod", analyzerSource);
 
         var asyncContextSource = File.ReadAllText(asyncContextPath);
-        Assert.Contains("private static bool IsInsideAsyncMethod", asyncContextSource);
+        Assert.Contains("internal static bool IsInsideAsyncMethod", asyncContextSource);
         Assert.Contains("ILocalFunctionOperation", asyncContextSource);
         Assert.Contains("IAnonymousFunctionOperation", asyncContextSource);
     }
@@ -5875,12 +5875,12 @@ public sealed class AnalyzerModularizationTests
 
         var fixerSource = File.ReadAllText(fixerPath);
         Assert.Contains("public sealed partial class SyncBlockerFixer", fixerSource);
-        Assert.DoesNotContain("private static bool IsInvalidAwaitContext", fixerSource);
+        Assert.DoesNotContain("static bool IsInvalidAwaitContext", fixerSource);
         Assert.DoesNotContain("FromClauseSyntax", fixerSource);
         Assert.DoesNotContain("AnonymousFunctionExpressionSyntax", fixerSource);
 
         var awaitContextSource = File.ReadAllText(awaitContextPath);
-        Assert.Contains("private static bool IsInvalidAwaitContext", awaitContextSource);
+        Assert.Contains("internal static bool IsInvalidAwaitContext", awaitContextSource);
         Assert.Contains("FromClauseSyntax", awaitContextSource);
         Assert.Contains("JoinClauseSyntax", awaitContextSource);
         Assert.Contains("AnonymousFunctionExpressionSyntax", awaitContextSource);
