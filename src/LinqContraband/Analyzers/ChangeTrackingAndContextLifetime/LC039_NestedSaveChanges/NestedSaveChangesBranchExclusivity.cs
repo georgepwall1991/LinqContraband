@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace LinqContraband.Analyzers.LC039_NestedSaveChanges;
@@ -99,59 +101,87 @@ public sealed partial class NestedSaveChangesAnalyzer
 
         private static bool EndsWithMethodExit(StatementSyntax branch, SyntaxNode right, SemanticModel? semanticModel)
         {
-            var last = GetLastStatement(branch);
-            if (last is ReturnStatementSyntax)
+            return !MayContinueAfter(branch, right, null, semanticModel);
+        }
+
+        /// <summary>
+        /// Whether control can leave <paramref name="block"/> other than by <c>return</c> or by a throw that nothing
+        /// catches before <paramref name="right"/>: falling off its end, <c>break</c>, <c>continue</c> or <c>goto</c>
+        /// out of it, or a throw a later catch swallows. <c>catch { if (retry) return; else throw; }</c> cannot.
+        /// Anything the control-flow analysis cannot answer counts as continuing.
+        /// </summary>
+        private static bool MayContinueAfter(StatementSyntax block, SyntaxNode right, ITypeSymbol? rethrownType, SemanticModel? semanticModel)
+        {
+            if (semanticModel == null || block.SyntaxTree != semanticModel.SyntaxTree)
                 return true;
 
-            return IsThrow(last) && !IsCaughtBefore(branch, right, GetThrownType(last!, semanticModel), semanticModel);
+            var controlFlow = semanticModel.AnalyzeControlFlow(block);
+            if (controlFlow == null || !controlFlow.Succeeded || controlFlow.EndPointIsReachable)
+                return true;
+
+            if (controlFlow.ExitPoints.Any(exitPoint =>
+                    exitPoint is not ReturnStatementSyntax &&
+                    !exitPoint.IsKind(SyntaxKind.YieldBreakStatement)))
+            {
+                return true;
+            }
+
+            foreach (var throwNode in GetThrows(block))
+            {
+                var thrownType = GetThrownType(throwNode, semanticModel) ?? (IsRethrow(throwNode) ? rethrownType : null);
+                if (IsCaughtBefore(throwNode, block, right, thrownType, semanticModel))
+                    return true;
+            }
+
+            return false;
         }
 
-        private static StatementSyntax? GetLastStatement(StatementSyntax statement)
+        private static IEnumerable<SyntaxNode> GetThrows(SyntaxNode block)
         {
-            return statement is BlockSyntax block ? block.Statements.LastOrDefault() : statement;
+            return block
+                .DescendantNodes(node => node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+                .Where(node => node is ThrowStatementSyntax or ThrowExpressionSyntax);
         }
 
-        private static bool IsThrow(StatementSyntax? statement)
+        private static bool IsRethrow(SyntaxNode throwNode)
         {
-            return statement is ThrowStatementSyntax ||
-                   statement is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax };
+            return throwNode is ThrowStatementSyntax { Expression: null };
         }
 
         /// <summary>
         /// The static type of the thrown expression. A bare <c>throw;</c> or an unknown type yields null, which only
         /// untyped catches, <c>catch (Exception)</c> and <c>catch (object)</c> definitely receive.
         /// </summary>
-        private static ITypeSymbol? GetThrownType(StatementSyntax throwStatement, SemanticModel? semanticModel)
+        private static ITypeSymbol? GetThrownType(SyntaxNode throwNode, SemanticModel semanticModel)
         {
-            var expression = throwStatement switch
+            var expression = throwNode switch
             {
                 ThrowStatementSyntax statement => statement.Expression,
-                ExpressionStatementSyntax { Expression: ThrowExpressionSyntax throwExpression } => throwExpression.Expression,
+                ThrowExpressionSyntax throwExpression => throwExpression.Expression,
                 _ => null
             };
 
-            if (expression == null || semanticModel == null || expression.SyntaxTree != semanticModel.SyntaxTree)
-                return null;
-
-            return semanticModel.GetTypeInfo(expression).Type;
+            return expression == null ? null : semanticModel.GetTypeInfo(expression).Type;
         }
 
         /// <summary>
         /// <c>try { if (flag) { db.SaveChanges(); throw ...; } } catch { } db.SaveChanges();</c>: the catch swallows the
         /// throw and the later save still runs. Only a try whose try block also holds the later save is skipped by the throw.
-        /// Catches are tried in order: the first one that definitely receives the exception decides. If it completes
-        /// normally the throw is caught; if it returns the method is left; if it throws, the new exception keeps going
-        /// outward. A filtered catch, or one whose type might only match at run time, may not handle it and is passed over.
+        /// Catches are tried in order: the first one that definitely receives the exception decides, and the throw is
+        /// caught when control can leave that catch other than by returning or throwing on out of the method.
+        /// A filtered catch, or one whose type might only match at run time, may not handle it and is passed over.
+        /// A try inside <paramref name="container"/> that receives the throw keeps it inside, where the container's
+        /// own control-flow analysis already accounts for what happens next.
         /// </summary>
-        private static bool IsCaughtBefore(SyntaxNode branch, SyntaxNode right, ITypeSymbol? thrownType, SemanticModel? semanticModel)
+        private static bool IsCaughtBefore(SyntaxNode throwNode, SyntaxNode container, SyntaxNode right, ITypeSymbol? thrownType, SemanticModel semanticModel)
         {
-            foreach (var ancestor in branch.Ancestors())
+            foreach (var ancestor in throwNode.Ancestors())
             {
                 if (ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or MemberDeclarationSyntax)
                     return false;
 
                 if (ancestor is not TryStatementSyntax tryStatement ||
-                    !tryStatement.Block.Span.Contains(branch.SpanStart) ||
+                    !tryStatement.Block.Span.Contains(throwNode.SpanStart) ||
                     tryStatement.Block.Span.Contains(right.SpanStart))
                 {
                     continue;
@@ -162,29 +192,19 @@ public sealed partial class NestedSaveChangesAnalyzer
                 if (receiver == null)
                     continue;
 
-                var last = GetLastStatement(receiver.Block);
-                if (last is ReturnStatementSyntax)
+                if (container.Span.Contains(tryStatement.Span))
                     return false;
 
-                if (!IsThrow(last))
-                    return true;
-
-                if (last is ThrowStatementSyntax { Expression: null })
-                    continue;
-
-                thrownType = GetThrownType(last!, semanticModel);
+                return MayContinueAfter(receiver.Block, right, thrownType, semanticModel);
             }
 
             return false;
         }
 
-        private static bool DefinitelyReceives(CatchClauseSyntax catchClause, ITypeSymbol? thrownType, SemanticModel? semanticModel)
+        private static bool DefinitelyReceives(CatchClauseSyntax catchClause, ITypeSymbol? thrownType, SemanticModel semanticModel)
         {
             if (catchClause.Declaration == null)
                 return true;
-
-            if (semanticModel == null || catchClause.SyntaxTree != semanticModel.SyntaxTree)
-                return false;
 
             var catchType = semanticModel.GetTypeInfo(catchClause.Declaration.Type).Type;
             if (catchType == null)

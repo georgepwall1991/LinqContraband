@@ -16,10 +16,12 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             foreach (var rootGroup in groupedByRoot)
             {
-                var boundaries = rootGroup
+                var boundaryRecords = rootGroup
                     .Where(record => record.IsBoundary)
+                    .OrderBy(record => record.Position)
+                    .ToArray();
+                var boundaries = boundaryRecords
                     .Select(record => record.Position)
-                    .OrderBy(position => position)
                     .ToArray();
 
                 var savesByContext = rootGroup
@@ -51,7 +53,7 @@ public sealed partial class NestedSaveChangesAnalyzer
 
                         var previous = saves[previousIndex];
 
-                        if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
+                        if (HasTransactionBoundaryBetween(boundaryRecords, previous, current))
                             continue;
 
                         if (AreInsideSameTransactionUsing(previous.Syntax, current.Syntax, boundaries))

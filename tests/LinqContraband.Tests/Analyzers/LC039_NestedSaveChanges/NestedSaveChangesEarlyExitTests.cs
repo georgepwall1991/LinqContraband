@@ -554,4 +554,120 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_CatchReturnsOrRethrowsOnEveryPath_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag, bool retry)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch
+        {
+            if (retry)
+                return;
+            else
+                throw;
+        }
+
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_CatchSometimesReturns_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag, bool retry)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch
+        {
+            if (retry)
+                return;
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TransactionBoundaryOnlyInEarlyExitBranch_DoesNotSeparateSurroundingSaves()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        if (flag)
+        {
+            using var tx = db.Database.BeginTransaction();
+            db.SaveChanges();
+            tx.Commit();
+            return;
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TransactionBoundaryOnSharedPath_StillSeparatesSaves()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        using var tx = db.Database.BeginTransaction();
+        if (flag)
+        {
+            db.SaveChanges();
+            return;
+        }
+
+        db.SaveChanges();
+        tx.Commit();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
