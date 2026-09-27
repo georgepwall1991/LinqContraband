@@ -33,6 +33,41 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             cancellationToken);
     }
 
+    private static bool IsEntityFrameworkCoreMethod(
+        InvocationExpressionSyntax invocation,
+        SyntaxNode methodSyntax,
+        CompilationModel compilationModel,
+        ref SemanticModel? semanticModel,
+        ref bool semanticModelResolved,
+        CancellationToken cancellationToken)
+    {
+        if (!semanticModelResolved)
+        {
+            semanticModelResolved = true;
+            semanticModel = compilationModel.GetSemanticModel(methodSyntax.SyntaxTree);
+        }
+
+        if (semanticModel == null)
+            return false;
+
+        // A lambda argument that does not bind yet leaves only candidates; accept them when all are EF Core's.
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, cancellationToken);
+        if (symbolInfo.Symbol is IMethodSymbol method)
+            return IsInEntityFrameworkCoreNamespace(method.ContainingType);
+
+        return !symbolInfo.CandidateSymbols.IsEmpty &&
+               symbolInfo.CandidateSymbols.All(candidate =>
+                   candidate is IMethodSymbol && IsInEntityFrameworkCoreNamespace(candidate.ContainingType));
+    }
+
+    private static bool IsInEntityFrameworkCoreNamespace(INamedTypeSymbol? type)
+    {
+        var ns = type?.ContainingNamespace?.ToDisplayString();
+        return ns != null &&
+               (ns == "Microsoft.EntityFrameworkCore" ||
+                ns.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal));
+    }
+
     // OnModelCreating often hands the ModelBuilder to helpers, such as a static
     // `AddressData.OnModelCreating(builder)` on each entity or a `builder.ConfigureUsers()`
     // extension, or passes `builder.Entity<User>()` to one, so source methods that take a
@@ -105,9 +140,11 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     }
 
                     // HasMany(...).WithMany(...).UsingEntity<PostTag>(...): EF Core keys a many-to-many
-                    // join entity by convention with the composite of its two foreign keys.
+                    // join entity by convention with the composite of its two foreign keys. The call must
+                    // bind to EF Core's own UsingEntity, so a user method with the same name does not count.
                     if (methodName == "UsingEntity" &&
                         memberAccess.Name is GenericNameSyntax { TypeArgumentList.Arguments.Count: 1 } usingEntity &&
+                        IsEntityFrameworkCoreMethod(invocation, syntax, compilationModel, ref semanticModel, ref semanticModelResolved, cancellationToken) &&
                         compilationModel.FindType(usingEntity.TypeArgumentList.Arguments[0], cancellationToken) is { } joinEntity)
                     {
                         configuredEntities.Add(joinEntity);
