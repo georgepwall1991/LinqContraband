@@ -91,6 +91,7 @@ namespace TestApp
             var scaled = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Select(f => Scale(f.Version)).First()|});
             var created = forms.GroupBy(f => f.CorrelationId).Select(g => new Summary({|LC024:g|}));
             var unordered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Last()|});
+            var afterList = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.ToList().Where(f => f.Version > 1)|});
             var unorderedFiltered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 1).LastOrDefault()|});
         }
     }

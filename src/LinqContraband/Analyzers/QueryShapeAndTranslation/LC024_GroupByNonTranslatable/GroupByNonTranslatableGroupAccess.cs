@@ -100,12 +100,15 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
     // An invocation that only sees the group through translatable aggregates, such as
     // `Convert.ToBoolean(g.Min(...))` or `Math.Round(g.Average(...))`, works on the aggregate's
-    // scalar result, not on the group's elements.
+    // scalar result, not on the group's elements. A materialized g.ToList() is not a scalar: a
+    // call over it, as in g.ToList().Where(p), runs over the group's rows.
     private static bool ReferencesGroupOnlyThroughAggregates(IInvocationOperation invocation, IParameterSymbol groupParam, bool groupProjections)
     {
         var aggregates = GetAllOperations(invocation)
             .OfType<IInvocationOperation>()
-            .Where(candidate => !ReferenceEquals(candidate, invocation) && IsTranslatableGroupAccess(candidate, groupParam, groupProjections))
+            .Where(candidate => !ReferenceEquals(candidate, invocation) &&
+                                candidate.TargetMethod.Name is not ("ToList" or "ToArray") &&
+                                IsTranslatableGroupAccess(candidate, groupParam, groupProjections))
             .ToList();
 
         foreach (var reference in GetAllOperations(invocation).OfType<IParameterReferenceOperation>())
@@ -129,7 +132,9 @@ public sealed partial class GroupByNonTranslatableAnalyzer
             if (current is IParameterReferenceOperation parameterReference)
                 return SymbolEqualityComparer.Default.Equals(parameterReference.Parameter, groupParam);
 
-            if (current is IInvocationOperation chained && IsGroupChainMethod(chained.TargetMethod, groupProjections))
+            // A materializer or element accessor ends the translated group query, so it is never a link
+            // in the middle: in g.ToList().Where(p) the Where runs over the materialized list.
+            if (current is IInvocationOperation chained && IsGroupChainMethod(chained.TargetMethod, groupProjections: false))
             {
                 current = chained.GetInvocationReceiver();
                 continue;
@@ -146,6 +151,9 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         var outermost = invocation;
         while (true)
         {
+            if (groupProjections && GroupProjectionTerminals.Contains(outermost.TargetMethod.Name))
+                return outermost;
+
             IOperation? parent = outermost.Parent;
             while (parent is IConversionOperation or IArgumentOperation)
                 parent = parent.Parent;
