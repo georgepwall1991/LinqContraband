@@ -126,8 +126,8 @@ public sealed partial class NestedSaveChangesAnalyzer
         /// Whether control can leave <paramref name="block"/> other than by <c>return</c>, <c>goto</c> or a throw that
         /// nothing catches before <paramref name="right"/>: falling off its end, <c>break</c> or <c>continue</c> out of
         /// it, or a throw a later catch swallows. <c>catch { if (retry) return; else throw; }</c> cannot.
-        /// Anything the control-flow analysis cannot answer counts as continuing. Only exits and throws starting at or
-        /// after <paramref name="after"/> are considered.
+        /// Anything the control-flow analysis cannot answer counts as continuing. Only exits and throws ending after
+        /// <paramref name="after"/> are considered, so <c>throw Create(db.SaveChanges())</c> still counts.
         /// </summary>
         private static bool MayContinueAfter(StatementSyntax block, SyntaxNode right, ITypeSymbol? rethrownType, SemanticModel? semanticModel, int after = 0)
         {
@@ -140,14 +140,14 @@ public sealed partial class NestedSaveChangesAnalyzer
 
             // A goto out of the block is not followed: it counts as leaving, which keeps LC039 quiet.
             if (controlFlow.ExitPoints.Any(exitPoint =>
-                    exitPoint.SpanStart >= after &&
+                    exitPoint.Span.End > after &&
                     exitPoint is not (ReturnStatementSyntax or GotoStatementSyntax) &&
                     !exitPoint.IsKind(SyntaxKind.YieldBreakStatement)))
             {
                 return true;
             }
 
-            foreach (var throwNode in GetThrows(block).Where(node => node.SpanStart >= after))
+            foreach (var throwNode in GetThrows(block).Where(node => node.Span.End > after))
             {
                 var thrownType = GetThrownType(throwNode, semanticModel) ?? (IsRethrow(throwNode) ? rethrownType : null);
                 if (IsCaughtBefore(throwNode, block, right, thrownType, semanticModel))

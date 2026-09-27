@@ -1128,4 +1128,34 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SaveInsideCaughtThrowExpression_ThenLaterSave_Triggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    static Exception Create(int count) => new InvalidOperationException(count.ToString());
+
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                throw Create(db.SaveChanges());
+            }
+        }
+        catch
+        {
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
