@@ -26,6 +26,18 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         "Data", "Rows", "Records", "Entries", "Items", "Entities", "Tables"
     };
 
+    private static readonly (string Singular, string Plural)[] IrregularPlurals =
+    {
+        ("Person", "People"), ("Child", "Children"), ("Man", "Men"), ("Woman", "Women"),
+        ("Mouse", "Mice"), ("Goose", "Geese"), ("Tooth", "Teeth"), ("Foot", "Feet")
+    };
+
+    // Words whose plural is the same word: ClearSeries over Set<Series>().
+    private static readonly string[] InvariantPlurals =
+    {
+        "Series", "Species", "Sheep", "Fish", "Deer", "News", "Data"
+    };
+
     private static readonly HashSet<string> GenericEntryPointNames = new(StringComparer.Ordinal)
     {
         "Handle", "HandleAsync", "Execute", "ExecuteAsync", "Run", "RunAsync",
@@ -78,14 +90,12 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         if (words.Count < 2)
             return false;
 
-        // ClearAllData, DeleteAllSessions: a clearing verb, then All, then the whole set.
-        // DeleteAllInactiveUsers names a subset and does not count.
-        for (var i = 0; i + 2 < words.Count; i++)
+        // ClearAllData, DeleteAllSessions: the name starts with a clearing verb, then All, then the whole set.
+        // DeleteAllInactiveUsers names a subset, and PreviewDeleteAllUsers or CanDeleteAllUsers do not
+        // clear anything themselves; none of them count.
+        if (words.Count > 2 && AllVerbs.Contains(words[0]) && words[1] == "All")
         {
-            if (!AllVerbs.Contains(words[i]) || words[i + 1] != "All")
-                continue;
-
-            var set = string.Concat(words.Skip(i + 2));
+            var set = string.Concat(words.Skip(2));
             if (WholeSetNouns.Contains(set) || NamesTable(set, tableNames))
                 return true;
         }
@@ -172,6 +182,19 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         if (name.Length == 0)
             return name;
 
+        // Match on the last word, so SalesPerson becomes SalesPeople and TvSeries stays TvSeries.
+        foreach (var invariant in InvariantPlurals)
+        {
+            if (EndsWithWord(name, invariant))
+                return name;
+        }
+
+        foreach (var (singular, plural) in IrregularPlurals)
+        {
+            if (EndsWithWord(name, singular))
+                return name.Substring(0, name.Length - singular.Length) + plural;
+        }
+
         if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !IsVowel(name[name.Length - 2]))
             return name.Substring(0, name.Length - 1) + "ies";
 
@@ -182,6 +205,10 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
 
         return name + "s";
     }
+
+    private static bool EndsWithWord(string name, string word) =>
+        name.EndsWith(word, StringComparison.Ordinal) ||
+        (name.Length == word.Length && string.Equals(name, word, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsVowel(char c) => "aeiouAEIOU".IndexOf(c) >= 0;
 

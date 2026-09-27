@@ -14,6 +14,9 @@ namespace TestApp
     public sealed class Address { public int Id { get; set; } }
     public sealed class Status { public int Id { get; set; } }
     public sealed class User { public int Id { get; set; } }
+    public sealed class Person { public int Id { get; set; } }
+    public sealed class SalesPerson { public int Id { get; set; } }
+    public sealed class Series { public int Id { get; set; } }
 
     public class BlogDbContext : DbContext
     {
@@ -165,6 +168,44 @@ namespace TestApp
         public Task<int> ClearCategoriesAsync(BlogDbContext db) => db.Categories.ExecuteDeleteAsync();
         public Task<int> ClearAllDataAsync(BlogDbContext db) => db.Users.ExecuteDeleteAsync();
         public Task<int> ClearCategoryAsync(BlogDbContext db) => {|LC035:db.Categories.ExecuteDeleteAsync()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task VerbNotFirstInName_StillTriggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int PreviewDeleteAllUsers(BlogDbContext db) => {|LC035:db.Users.ExecuteDelete()|};
+        public int CanDeleteAllUsers(BlogDbContext db) => {|LC035:db.Users.ExecuteDelete()|};
+        public Task<int> PreviewClearAllDataAsync(BlogDbContext db) => {|LC035:db.Users.ExecuteDeleteAsync()|};
+    }
+
+    public class PreviewDeleteAllUsersCommandHandler
+    {
+        public int Handle(BlogDbContext db) => {|LC035:db.Users.ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task IrregularAndInvariantPlurals_DoNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearPeople(BlogDbContext db) => db.Set<Person>().ExecuteDelete();
+        public int PurgeSalesPeople(BlogDbContext db) => db.Set<SalesPerson>().ExecuteDelete();
+        public int ClearSeries(BlogDbContext db) => db.Set<Series>().ExecuteDelete();
+        public int DeleteAllPeople(BlogDbContext db) => db.Set<Person>().ExecuteDelete();
+        public int ClearPerson(BlogDbContext db) => {|LC035:db.Set<Person>().ExecuteDelete()|};
+        public int ClearPersons(BlogDbContext db) => {|LC035:db.Set<Person>().ExecuteDelete()|};
     }
 }";
 
