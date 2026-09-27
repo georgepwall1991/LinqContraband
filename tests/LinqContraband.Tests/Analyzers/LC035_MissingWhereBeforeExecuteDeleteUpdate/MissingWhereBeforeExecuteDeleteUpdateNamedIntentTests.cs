@@ -26,6 +26,9 @@ namespace TestApp
     public sealed class Iris { public int Id { get; set; } }
     public sealed class Trellis { public int Id { get; set; } }
     public sealed class Axis { public int Id { get; set; } }
+    public sealed class Safe { public int Id { get; set; } }
+    public sealed class Knife { public int Id { get; set; } }
+    public sealed class Cafe { public int Id { get; set; } }
     public sealed class Potato { public int Id { get; set; } }
     public sealed class Photo { public int Id { get; set; } }
     public sealed class Video { public int Id { get; set; } }
@@ -257,7 +260,7 @@ namespace TestApp
     {
         public int ClearAnalyses(BlogDbContext db) => db.Set<Analysis>().ExecuteDelete();
         public int ClearLeaves(BlogDbContext db) => db.Set<Leaf>().ExecuteDelete();
-        public int ClearLeafs(BlogDbContext db) => db.Set<Leaf>().ExecuteDelete();
+        public int ClearLeafs(BlogDbContext db) => {|LC035:db.Set<Leaf>().ExecuteDelete()|};
         public int ClearCriteria(BlogDbContext db) => db.Set<Criterion>().ExecuteDelete();
         public int ClearRadii(BlogDbContext db) => db.Set<Radius>().ExecuteDelete();
         public int ClearMedia(BlogDbContext db) => db.Set<Medium>().ExecuteDelete();
@@ -323,6 +326,28 @@ namespace TestApp
         public int ClearIres(BlogDbContext db) => {|LC035:db.Set<Iris>().ExecuteDelete()|};
         public int ClearAnalysises(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
         public int ClearAxises(BlogDbContext db) => {|LC035:db.Set<Axis>().ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task OnlyListedWordsTakeClassicalPlurals()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearSafes(BlogDbContext db) => db.Set<Safe>().ExecuteDelete();
+        public int ClearLeaves(BlogDbContext db) => db.Set<Leaf>().ExecuteDelete();
+        public int ClearKnives(BlogDbContext db) => db.Set<Knife>().ExecuteDelete();
+        public int ClearRadii(BlogDbContext db) => db.Set<Radius>().ExecuteDelete();
+        public int ClearMedia(BlogDbContext db) => db.Set<Medium>().ExecuteDelete();
+        public int ClearCriteria(BlogDbContext db) => db.Set<Criterion>().ExecuteDelete();
+        public int ClearStatuses(BlogDbContext db) => db.Set<Status>().ExecuteDelete();
+        public int ClearSaves(BlogDbContext db) => {|LC035:db.Set<Safe>().ExecuteDelete()|};
+        public int ClearStati(BlogDbContext db) => {|LC035:db.Set<Status>().ExecuteDelete()|};
+        public int ClearCafeves(BlogDbContext db) => {|LC035:db.Set<Cafe>().ExecuteDelete()|};
     }
 }";
 

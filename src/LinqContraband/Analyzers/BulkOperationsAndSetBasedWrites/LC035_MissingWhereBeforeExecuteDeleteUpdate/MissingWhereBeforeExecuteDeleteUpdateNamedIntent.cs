@@ -32,6 +32,24 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         ("Mouse", "Mice"), ("Goose", "Geese"), ("Tooth", "Teeth"), ("Foot", "Feet")
     };
 
+    // Classical plurals, matched on the last word. AlsoRegular accepts the regular form too
+    // (Scarves and Scarfs, Radii and Radiuses, Media and Mediums).
+    private static readonly (string Singular, string Plural, bool AlsoRegular)[] ClassicalPlurals =
+    {
+        ("Leaf", "Leaves", false), ("Loaf", "Loaves", false), ("Thief", "Thieves", false),
+        ("Sheaf", "Sheaves", false), ("Half", "Halves", false), ("Calf", "Calves", false),
+        ("Shelf", "Shelves", false), ("Wolf", "Wolves", false), ("Self", "Selves", false),
+        ("Elf", "Elves", false), ("Knife", "Knives", false), ("Wife", "Wives", false),
+        ("Life", "Lives", false), ("Scarf", "Scarves", true), ("Hoof", "Hooves", true),
+        ("Dwarf", "Dwarves", true), ("Wharf", "Wharves", true),
+        ("Radius", "Radii", true), ("Cactus", "Cacti", true), ("Fungus", "Fungi", true),
+        ("Nucleus", "Nuclei", true), ("Stimulus", "Stimuli", true), ("Alumnus", "Alumni", true),
+        ("Syllabus", "Syllabi", true), ("Focus", "Foci", true),
+        ("Datum", "Data", false), ("Medium", "Media", true), ("Curriculum", "Curricula", true),
+        ("Bacterium", "Bacteria", false), ("Stratum", "Strata", false), ("Memorandum", "Memoranda", true),
+        ("Criterion", "Criteria", false), ("Phenomenon", "Phenomena", false)
+    };
+
     // Words whose plural is the same word: ClearSeries over Set<Series>().
     private static readonly string[] InvariantPlurals =
     {
@@ -191,10 +209,10 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         tableNames.Any(tableName => string.Equals(words, tableName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// The accepted plural spellings of a name, matched on its last word: irregular and invariant
-    /// words, then classical endings (<c>Analysis</c> to <c>Analyses</c>, <c>Leaf</c> to <c>Leaves</c>,
-    /// <c>Medium</c> to <c>Media</c>, <c>Criterion</c> to <c>Criteria</c>, <c>Radius</c> to <c>Radii</c>),
-    /// alongside the regular English form except for <c>-sis</c> and <c>-xis</c>.
+    /// The accepted plural spellings of a name, matched on its last word: listed irregular, invariant
+    /// and classical words (<c>Leaf</c> to <c>Leaves</c>, <c>Radius</c> to <c>Radii</c>, <c>Criterion</c>
+    /// to <c>Criteria</c>), <c>-sis</c>/<c>-xis</c> to <c>-ses</c>/<c>-xes</c>, and otherwise only the
+    /// regular English plural, so <c>Safe</c> becomes <c>Safes</c> and <c>Status</c> <c>Statuses</c>.
     /// </summary>
     private static List<string> Pluralize(string name)
     {
@@ -234,14 +252,17 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
             return plurals;
         }
 
-        if (name.EndsWith("us", StringComparison.Ordinal))
-            plurals.Add(name.Substring(0, name.Length - 2) + "i");
-        else if (name.EndsWith("um", StringComparison.Ordinal) || name.EndsWith("on", StringComparison.Ordinal))
-            plurals.Add(name.Substring(0, name.Length - 2) + "a");
-        else if (name.EndsWith("fe", StringComparison.Ordinal))
-            plurals.Add(name.Substring(0, name.Length - 2) + "ves");
-        else if (name.EndsWith("f", StringComparison.Ordinal) && !name.EndsWith("ff", StringComparison.Ordinal))
-            plurals.Add(name.Substring(0, name.Length - 1) + "ves");
+        // Only listed words take a classical plural; Safe stays Safes and Status Statuses.
+        foreach (var (singular, plural, alsoRegular) in ClassicalPlurals)
+        {
+            if (!EndsWithWord(name, singular))
+                continue;
+
+            plurals.Add(name.Substring(0, name.Length - singular.Length) + plural);
+            if (!alsoRegular)
+                return plurals;
+            break;
+        }
 
         if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
             name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
