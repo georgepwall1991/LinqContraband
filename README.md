@@ -139,7 +139,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 
 <!-- rule-table:start (generated from RuleCatalog by tools/RuleCatalogDocGenerator; do not edit by hand) -->
 
-**60 rules**, 43 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
+**61 rules**, 44 with automatic code fixes. Each rule links to its full page: what it flags, why it matters, how to fix it, and where it deliberately stays quiet.
 
 | Rule | What it catches | Default severity | Code fix |
 | --- | --- | --- | --- |
@@ -203,6 +203,7 @@ Product-flow diagrams from real sample diagnostics and shipped LC message format
 | [LC058](https://georgepwall1991.github.io/LinqContraband/LC058_TransactionScopeWithoutAsyncFlow.html) | TransactionScope without async flow spans an await | Warning | Yes |
 | [LC059](https://georgepwall1991.github.io/LinqContraband/LC059_DisposedContextConnection.html) | Connection owned by the DbContext is disposed | Warning | Yes |
 | [LC060](https://georgepwall1991.github.io/LinqContraband/LC060_AsyncOnInMemoryQuery.html) | EF Core async operator on an in-memory query | Warning | Yes |
+| [LC061](https://georgepwall1991.github.io/LinqContraband/LC061_UncachedCompiledQuery.html) | Compiled query is not cached | Warning | Yes |
 
 <!-- rule-table:end -->
 

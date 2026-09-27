@@ -256,3 +256,5 @@ indent_size = 2
 
 # LC060: Async On In-Memory Query - EF Core async operators throw on AsQueryable() over an in-memory collection
 # dotnet_diagnostic.LC060.severity = warning
+# LC061: Uncached Compiled Query - EF.CompileQuery/CompileAsyncQuery compiled on every call instead of stored in a static readonly field
+# dotnet_diagnostic.LC061.severity = warning

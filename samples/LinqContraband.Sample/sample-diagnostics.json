@@ -580,6 +580,15 @@
       "ruleIds": [
         "LC060"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC061"
+      ]
     }
   ]
 }
