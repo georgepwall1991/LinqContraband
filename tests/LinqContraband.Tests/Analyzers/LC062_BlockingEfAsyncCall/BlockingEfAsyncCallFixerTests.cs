@@ -176,6 +176,35 @@ class Program
         await VerifyNoFixAsync(code, isAsync);
     }
 
+    [Theory]
+    // AuditedContext overrides SaveChangesAsync but inherits SaveChanges: the sync call would skip the override.
+    [InlineData(@"var saved = {|LC062:audited.SaveChangesAsync().Result|};")]
+    [InlineData(@"{|LC062:audited.SaveChangesAsync(ct).Wait()|};")]
+    // A DbContext variable can hold an AuditedContext, which this compilation declares.
+    [InlineData(@"Microsoft.EntityFrameworkCore.DbContext context = audited; var saved = {|LC062:context.SaveChangesAsync().Result|};")]
+    public async Task AsyncOverrideWithoutSyncOverride_OffersNoSynchronousFix(string code)
+    {
+        await VerifyNoFixAsync(code, isAsync: false);
+    }
+
+    [Fact]
+    public async Task AsyncOverrideWithoutSyncOverride_StillAwaitsInAsyncCode()
+    {
+        await VerifyFixAsync(
+            @"var saved = {|LC062:audited.SaveChangesAsync().Result|};",
+            @"var saved = await audited.SaveChangesAsync();",
+            isAsync: true);
+    }
+
+    [Fact]
+    public async Task AsyncAndSyncBothOverridden_KeepsTheSynchronousFix()
+    {
+        await VerifyFixAsync(
+            @"var full = new FullyAuditedContext(); var saved = {|LC062:full.SaveChangesAsync().Result|};",
+            @"var full = new FullyAuditedContext(); var saved = full.SaveChanges();",
+            isAsync: false);
+    }
+
     [Fact]
     public async Task FixAll_FixesEveryBlockingCall()
     {

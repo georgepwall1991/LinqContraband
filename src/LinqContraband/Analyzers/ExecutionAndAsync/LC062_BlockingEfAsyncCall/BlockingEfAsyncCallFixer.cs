@@ -88,6 +88,11 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
 
             var asyncName = efInvocation.TargetMethod.Name;
             var syncName = asyncName.Substring(0, asyncName.Length - "Async".Length);
+            // An application override of the async method (SaveChangesAsync auditing, say) would be skipped by the
+            // synchronous call unless the synchronous method is overridden as well.
+            if (BypassesAsyncOverride(efInvocation, semanticModel.Compilation, cancellationToken))
+                continue;
+
             var syncMarker = new SyntaxAnnotation();
             var synchronousDraft = await CreateSyncFixAsync(document, site, efInvocation, efSyntax, syncName, syncMarker, cancellationToken)
                 .ConfigureAwait(false);
@@ -345,6 +350,93 @@ public sealed class BlockingEfAsyncCallFixer : CodeFixProvider
 
         var namespaceName = original.ContainingNamespace?.ToDisplayString() ?? "";
         return namespaceName == "System.Linq" || namespaceName.StartsWith("Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// True when the call resolves to an application override of the async method, or when the receiver's static
+    /// type, or a type in this compilation derived from it, overrides the async method at a more derived level than
+    /// the synchronous one: the synchronous call would then skip that override. Overloads count together, because
+    /// <c>SaveChangesAsync(CancellationToken)</c> calls the overridable <c>SaveChangesAsync(bool, CancellationToken)</c>.
+    /// </summary>
+    private static bool BypassesAsyncOverride(
+        IInvocationOperation efInvocation,
+        Compilation compilation,
+        CancellationToken cancellationToken)
+    {
+        var method = efInvocation.TargetMethod;
+        if (method.IsStatic || method.IsExtensionMethod || efInvocation.Instance?.Type is not INamedTypeSymbol receiverType)
+            return false;
+
+        var asyncName = method.Name;
+        var syncName = asyncName.Substring(0, asyncName.Length - "Async".Length);
+
+        // The chain from the receiver's type covers an override the call itself resolves to.
+        if (!SyncOverriddenNoLessDerived(receiverType, asyncName, syncName))
+            return true;
+
+        // A variable of a base type can hold a derived context declared in this project.
+        if (receiverType.IsSealed)
+            return false;
+
+        foreach (var symbol in compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type, cancellationToken))
+        {
+            if (symbol is INamedTypeSymbol candidate &&
+                DerivesFrom(candidate, receiverType) &&
+                !SyncOverriddenNoLessDerived(candidate, asyncName, syncName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Walking from <paramref name="type"/> towards EF Core's own base type, the synchronous method must be
+    /// overridden no less derived than the async one. A chain that overrides neither is fine.
+    /// </summary>
+    private static bool SyncOverriddenNoLessDerived(INamedTypeSymbol type, string asyncName, string syncName)
+    {
+        for (var current = type; current != null && !IsEfCoreType(current); current = current.BaseType)
+        {
+            var overridesAsync = DeclaresOverride(current, asyncName);
+            var overridesSync = DeclaresOverride(current, syncName);
+            if (overridesAsync)
+                return overridesSync;
+            if (overridesSync)
+                return true;
+        }
+
+        return true;
+    }
+
+    private static bool DeclaresOverride(INamedTypeSymbol type, string name)
+    {
+        foreach (var member in type.GetMembers(name))
+        {
+            if (member is IMethodSymbol { IsOverride: true })
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool DerivesFrom(INamedTypeSymbol type, INamedTypeSymbol baseType)
+    {
+        for (var current = type.BaseType; current != null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, baseType.OriginalDefinition))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsEfCoreType(INamedTypeSymbol type)
+    {
+        var namespaceName = type.ContainingNamespace?.ToDisplayString() ?? "";
+        return namespaceName == "Microsoft.EntityFrameworkCore" ||
+               namespaceName.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal);
     }
 
     private static async Task<Document> WithoutMarkerAsync(Document document, SyntaxAnnotation marker, CancellationToken cancellationToken)

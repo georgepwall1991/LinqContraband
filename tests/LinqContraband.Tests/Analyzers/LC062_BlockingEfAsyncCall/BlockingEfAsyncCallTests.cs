@@ -105,8 +105,16 @@ public class ShopContext : Microsoft.EntityFrameworkCore.DbContext
     public Task<List<User>> LoadUsersAsync() => null;
 }
 
-public class AuditedContext : ShopContext
+// Overrides the async save only: a synchronous SaveChanges() would skip the override.
+public class AuditedContext : Microsoft.EntityFrameworkCore.DbContext
 {
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
+}
+
+// Overrides both saves.
+public class FullyAuditedContext : Microsoft.EntityFrameworkCore.DbContext
+{
+    public override int SaveChanges() => base.SaveChanges();
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => base.SaveChangesAsync(cancellationToken);
 }
 
