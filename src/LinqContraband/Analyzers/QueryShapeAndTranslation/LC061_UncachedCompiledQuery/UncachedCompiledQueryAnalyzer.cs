@@ -50,8 +50,25 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         Description,
         helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC061_UncachedCompiledQuery.html");
 
+    /// <summary>
+    /// Cache APIs that run a factory once per key and keep its result, as "namespace.MetadataName.Method". A
+    /// project's own method of the same name may run the factory on every call, so only these count.
+    /// </summary>
     private static readonly ImmutableHashSet<string> CacheFactoryMethods = ImmutableHashSet.Create(
-        "GetOrAdd", "AddOrUpdate", "GetOrCreate", "GetOrCreateAsync", "EnsureInitialized");
+        "System.Collections.Concurrent.ConcurrentDictionary`2.GetOrAdd",
+        "System.Collections.Concurrent.ConcurrentDictionary`2.AddOrUpdate",
+        "System.Collections.Immutable.ImmutableInterlocked.GetOrAdd",
+        "System.Threading.LazyInitializer.EnsureInitialized",
+        "Microsoft.Extensions.Caching.Memory.CacheExtensions.GetOrCreate",
+        "Microsoft.Extensions.Caching.Memory.CacheExtensions.GetOrCreateAsync",
+        "Microsoft.Extensions.Caching.Hybrid.HybridCache.GetOrCreateAsync");
+
+    /// <summary>Lazy types whose factory runs once per instance.</summary>
+    private static readonly ImmutableHashSet<string> LazyTypes = ImmutableHashSet.Create(
+        "System.Lazy`1",
+        "System.Lazy`2",
+        "Microsoft.VisualStudio.Threading.AsyncLazy`1",
+        "Nito.AsyncEx.AsyncLazy`1");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
@@ -491,9 +508,11 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// True when the nearest enclosing lambda is the one handed to a cache that runs it once (per key):
-    /// <c>GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs every time the key
-    /// exists), <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
+    /// True when the nearest enclosing lambda is the one handed to a known cache API that runs it once (per key):
+    /// <c>ConcurrentDictionary.GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs
+    /// every time the key exists), <c>ImmutableInterlocked.GetOrAdd</c>, <c>IMemoryCache.GetOrCreate</c>,
+    /// <c>HybridCache.GetOrCreateAsync</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c>
+    /// constructor, matched by symbol. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
     /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
     /// <paramref name="cacheBuiltPerCall"/> says whether the cache itself is built on every call (a Lazy read straight
     /// away, or a dictionary created in the method), in which case the factory runs on every call too.
@@ -515,13 +534,14 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         switch (owner)
         {
             case InvocationExpressionSyntax call
-                when CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
+                when IsCacheFactoryMethod(semanticModel.GetSymbolInfo(call).Symbol as IMethodSymbol) &&
                      IsAddFactory(argument, argumentList, semanticModel):
                 cacheBuiltPerCall = !RunsOnce(call) && CacheIsBuiltPerCall(call, semanticModel);
                 return true;
 
             case BaseObjectCreationExpressionSyntax creation
-                when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" } &&
+                when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol lazyType &&
+                     LazyTypes.Contains(GetMetadataName(lazyType.OriginalDefinition)) &&
                      IsAddFactory(argument, argumentList, semanticModel):
                 cacheBuiltPerCall = LazyIsBuiltPerCall(creation);
                 return true;
@@ -662,6 +682,25 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         return argumentList.Parent is not InvocationExpressionSyntax call ||
                GetInvokedName(call.Expression) != "AddOrUpdate" ||
                argumentList.Arguments.IndexOf(argument) == 1;
+    }
+
+    private static bool IsCacheFactoryMethod(IMethodSymbol? method)
+    {
+        if (method == null)
+            return false;
+
+        method = method.ReducedFrom ?? method;
+        return method.ContainingType is { } type &&
+               CacheFactoryMethods.Contains(GetMetadataName(type.OriginalDefinition) + "." + method.Name);
+    }
+
+    private static string GetMetadataName(INamedTypeSymbol type)
+    {
+        var name = type.MetadataName;
+        for (var outer = type.ContainingType; outer != null; outer = outer.ContainingType)
+            name = outer.MetadataName + "+" + name;
+
+        return type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() + "." + name : name;
     }
 
     private static string GetInvokedName(ExpressionSyntax expression)

@@ -270,6 +270,49 @@ public class UncachedCompiledQueryFixerTests
     }
 
     [Fact]
+    public async Task UserDefinedCache_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static readonly MyCache Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id));
+    private sealed class MyCache { public Blog GetOrAdd(string key, Func<string, Blog> valueFactory) => valueFactory(key); }",
+            @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", @"
+    private static readonly MyCache Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, _ => GetQuery(_db, id));
+    private sealed class MyCache { public Blog GetOrAdd(string key, Func<string, Blog> valueFactory) => valueFactory(key); }");
+    }
+
+    [Fact]
+    public async Task MemberInsideAnEarlierConditionalRegion_GetsNoFix()
+    {
+        const string members = @"
+#if FEATURE
+    private readonly int _featureFlag = 1;
+    public Blog Get(int id) => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);
+#endif";
+        var code = "#define FEATURE" + WrapMembers(members);
+        await new CodeFixTest { TestCode = code, FixedCode = code }.RunAsync();
+    }
+
+    [Fact]
+    public async Task MemberAfterAClosedConditionalRegion_Hoists()
+    {
+        await new CodeFixTest
+        {
+            TestCode = "#define FEATURE" + WrapMembers(@"
+#if FEATURE
+    private readonly int _featureFlag = 1;
+#endif
+    public Blog Get(int id) => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);"),
+            FixedCode = "#define FEATURE" + WrapFixed(@"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", @"
+#if FEATURE
+    private readonly int _featureFlag = 1;
+#endif
+    public Blog Get(int id) => GetQuery(_db, id);")
+        }.RunAsync();
+    }
+
+    [Fact]
     public async Task NameInUse_PicksAnotherName()
     {
         await VerifyFixAsync(@"

@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 
@@ -23,8 +24,8 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// <remarks>
 /// No fix is offered when the query reads a local, a parameter of the method or the instance (a static field cannot
 /// see them), when it reads a static member of the type (its order against the new field is not known), when the
-/// call does not sit in a class, struct or record member, when the member's leading trivia holds an <c>#if</c>,
-/// <c>#elif</c>, <c>#else</c> or <c>#endif</c>, when another partial declaration of the type has a static
+/// call does not sit in a class, struct or record member, when the member sits inside an <c>#if</c>, <c>#elif</c>
+/// or <c>#else</c> region opened in the type before it, when another partial declaration of the type has a static
 /// initializer or static constructor (the order across parts is not defined), when the member and the top of the
 /// type are in different nullable annotation contexts, or when the rewritten document has more compiler errors than
 /// before (for example a delegate type that uses a method type parameter).
@@ -147,8 +148,8 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         if (member?.Parent is not TypeDeclarationSyntax type)
             return null;
 
-        // A field inserted next to a member inside `#if`/`#else`/`#endif` could land in the wrong branch.
-        if (member.GetLeadingTrivia().Any(IsConditionalDirective))
+        // The field goes to the top of the type, outside any `#if` region the member sits in.
+        if (IsInsideConditionalRegion(type, member))
             return null;
 
         // The field goes first in the type declaration, so it is set before every other static initializer in this
@@ -296,13 +297,27 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         };
     }
 
-    private static bool IsConditionalDirective(SyntaxTrivia trivia)
+    /// <summary>
+    /// True when an <c>#if</c> opened after the type's open brace is still open at <paramref name="member"/>. The
+    /// field goes to the top of the type, outside that region, where it would stay active in configurations that
+    /// leave out the member and whatever its query uses.
+    /// </summary>
+    private static bool IsInsideConditionalRegion(TypeDeclarationSyntax type, MemberDeclarationSyntax member)
     {
-        return trivia.IsKind(SyntaxKind.IfDirectiveTrivia) ||
-               trivia.IsKind(SyntaxKind.ElifDirectiveTrivia) ||
-               trivia.IsKind(SyntaxKind.ElseDirectiveTrivia) ||
-               trivia.IsKind(SyntaxKind.EndIfDirectiveTrivia) ||
-               trivia.IsKind(SyntaxKind.DisabledTextTrivia);
+        var start = type.OpenBraceToken.Span.End;
+        if (member.SpanStart <= start)
+            return false;
+
+        var depth = 0;
+        foreach (var trivia in type.DescendantTrivia(TextSpan.FromBounds(start, member.SpanStart), descendIntoTrivia: true))
+        {
+            if (trivia.IsKind(SyntaxKind.IfDirectiveTrivia))
+                depth++;
+            else if (trivia.IsKind(SyntaxKind.EndIfDirectiveTrivia))
+                depth--;
+        }
+
+        return depth != 0;
     }
 
     /// <summary>
