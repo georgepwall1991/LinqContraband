@@ -120,6 +120,8 @@ namespace TestApp
             var unorderedFiltered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 1).LastOrDefault()|});
             var indexed = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where((f, i) => i > 0)|});
             var compared = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Distinct(EqualityComparer<Form>.Default).ToList()|});
+            var filteredScaled = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 0).Select(f => Scale(f.Version)).ToList()|});
+            var filteredCompared = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 0).Distinct(EqualityComparer<Form>.Default).ToList()|});
         }
     }
 }";

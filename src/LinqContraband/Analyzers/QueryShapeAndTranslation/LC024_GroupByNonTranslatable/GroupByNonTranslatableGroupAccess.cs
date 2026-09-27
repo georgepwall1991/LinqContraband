@@ -131,14 +131,14 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
     // An invocation that only sees the group through translatable aggregates, such as
     // `Convert.ToBoolean(g.Min(...))` or `Math.Round(g.Average(...))`, works on the aggregate's
-    // scalar result, not on the group's elements. A materialized g.ToList() is not a scalar: a
-    // call over it, as in g.ToList().Where(p), runs over the group's rows.
+    // scalar result, not on the group's elements. A sub-sequence or a materialized g.ToList() is not a
+    // scalar: a call over it, as in g.ToList().Where(p), runs over the group's rows.
     private static bool ReferencesGroupOnlyThroughAggregates(IInvocationOperation invocation, IParameterSymbol groupParam, bool groupProjections)
     {
         var aggregates = GetAllOperations(invocation)
             .OfType<IInvocationOperation>()
             .Where(candidate => !ReferenceEquals(candidate, invocation) &&
-                                candidate.TargetMethod.Name is not ("ToList" or "ToArray") &&
+                                !ReturnsSequence(candidate.Type) &&
                                 IsTranslatableGroupAccess(candidate, groupParam, groupProjections))
             .ToList();
 
@@ -152,6 +152,17 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         }
 
         return true;
+    }
+
+    // A bare group sub-sequence (g.Where(p), g.ToList()) still carries the group's rows, so a call
+    // over it is not shielded; only scalar and element results are.
+    private static bool ReturnsSequence(ITypeSymbol? type)
+    {
+        if (type == null || type.SpecialType == SpecialType.System_String)
+            return false;
+
+        return type.SpecialType == SpecialType.System_Collections_IEnumerable ||
+               type.AllInterfaces.Any(candidate => candidate.SpecialType == SpecialType.System_Collections_IEnumerable);
     }
 
     private static bool RootsAtGroupParam(IOperation? receiver, IParameterSymbol groupParam, bool groupProjections)
