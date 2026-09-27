@@ -22,6 +22,10 @@ namespace TestApp
     public sealed class Criterion { public int Id { get; set; } }
     public sealed class Radius { public int Id { get; set; } }
     public sealed class Medium { public int Id { get; set; } }
+    public sealed class Hero { public int Id { get; set; } }
+    public sealed class Potato { public int Id { get; set; } }
+    public sealed class Photo { public int Id { get; set; } }
+    public sealed class Video { public int Id { get; set; } }
 
     public class BlogDbContext : DbContext
     {
@@ -257,6 +261,24 @@ namespace TestApp
         public int ClearAnalysis(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
         public int ClearAnalysises(BlogDbContext db) => {|LC035:db.Set<Analysis>().ExecuteDelete()|};
         public int ClearRadius(BlogDbContext db) => {|LC035:db.Set<Radius>().ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task WordsEndingInO_DoNotTrigger()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearHeroes(BlogDbContext db) => db.Set<Hero>().ExecuteDelete();
+        public int ClearPotatoes(BlogDbContext db) => db.Set<Potato>().ExecuteDelete();
+        public int ClearPhotos(BlogDbContext db) => db.Set<Photo>().ExecuteDelete();
+        public int ClearVideos(BlogDbContext db) => db.Set<Video>().ExecuteDelete();
+        public int ClearHero(BlogDbContext db) => {|LC035:db.Set<Hero>().ExecuteDelete()|};
+        public int ClearVideoes(BlogDbContext db) => {|LC035:db.Set<Video>().ExecuteDelete()|};
     }
 }";
 

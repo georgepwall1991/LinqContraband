@@ -248,6 +248,10 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         else
             plurals.Add(name + "s");
 
+        // Consonant + o takes either spelling: Heroes and Potatoes, but Photos and Pianos. Video stays Videos.
+        if (name.Length > 1 && name.EndsWith("o", StringComparison.Ordinal) && !IsVowel(name[name.Length - 2]))
+            plurals.Add(name + "es");
+
         return plurals;
     }
 
