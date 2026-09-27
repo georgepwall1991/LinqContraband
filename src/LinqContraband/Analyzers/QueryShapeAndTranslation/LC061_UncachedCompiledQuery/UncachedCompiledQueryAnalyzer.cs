@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Linq;
+using System;
 using LinqContraband.Catalog;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -247,7 +249,8 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
                     return false;
 
                 case LocalFunctionStatementSyntax localFunction:
-                    return IsFactoryOnlyInvoked(localFunction.Identifier.ValueText, GetEnclosingMember(localFunction));
+                    return semanticModel.GetDeclaredSymbol(localFunction) is IMethodSymbol localSymbol &&
+                           IsFactoryOnlyInvoked(localSymbol, GetEnclosingMember(localFunction), semanticModel);
 
                 case AccessorDeclarationSyntax accessor:
                     return accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
@@ -257,7 +260,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
                 case MethodDeclarationSyntax method:
                     return semanticModel.GetDeclaredSymbol(method) is IMethodSymbol symbol &&
-                           PrivateFactoryIsOnlyInvoked(symbol);
+                           PrivateFactoryIsOnlyInvoked(symbol, semanticModel);
 
                 case MemberDeclarationSyntax:
                     return false;
@@ -267,7 +270,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static bool PrivateFactoryIsOnlyInvoked(IMethodSymbol method)
+    private static bool PrivateFactoryIsOnlyInvoked(IMethodSymbol method, SemanticModel semanticModel)
     {
         if (method.DeclaredAccessibility != Accessibility.Private || method.ContainingType == null)
             return false;
@@ -275,34 +278,63 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         var referenced = false;
         foreach (var reference in method.ContainingType.DeclaringSyntaxReferences)
         {
-            if (!TryCheckFactoryReferences(method.Name, reference.GetSyntax(), ref referenced))
+            var tree = reference.SyntaxTree;
+            SemanticModel? model = tree == semanticModel.SyntaxTree
+                ? semanticModel
+                : semanticModel.Compilation.TryGetOwnedSemanticModel(tree, out var owned) ? owned : null;
+            if (model == null ||
+                !TryCheckFactoryReferences(method, reference.GetSyntax(), model, ref referenced))
+            {
                 return false;
+            }
         }
 
         return referenced;
     }
 
-    private static bool IsFactoryOnlyInvoked(string name, SyntaxNode? scope)
+    private static bool IsFactoryOnlyInvoked(IMethodSymbol localFunction, SyntaxNode? scope, SemanticModel semanticModel)
     {
         if (scope == null)
             return false;
 
         var referenced = false;
-        return TryCheckFactoryReferences(name, scope, ref referenced) && referenced;
+        return TryCheckFactoryReferences(localFunction, scope, semanticModel, ref referenced) && referenced;
     }
 
     /// <summary>
-    /// False when a reference to the factory named <paramref name="name"/> under <paramref name="scope"/> does
-    /// anything other than call it and invoke the result straight away: <c>Build()(...)</c> or
-    /// <c>Build().Invoke(...)</c>. A reference stored in a field, passed on or used as a method group keeps the rule
-    /// quiet.
+    /// False when a reference to <paramref name="factory"/> under <paramref name="scope"/> does anything other than
+    /// call it and invoke the result straight away: <c>Build()(...)</c> or <c>Build().Invoke(...)</c>. A reference
+    /// stored in a field, passed on or used as a method group keeps the rule quiet. References are matched by
+    /// symbol, so a call to another overload of the same name is ignored; a same-named reference that does not
+    /// bind keeps the rule quiet.
     /// </summary>
-    private static bool TryCheckFactoryReferences(string name, SyntaxNode scope, ref bool referenced)
+    private static bool TryCheckFactoryReferences(
+        IMethodSymbol factory,
+        SyntaxNode scope,
+        SemanticModel semanticModel,
+        ref bool referenced)
     {
         foreach (var node in scope.DescendantNodes())
         {
-            if (node is not SimpleNameSyntax simpleName || simpleName.Identifier.ValueText != name)
+            if (node is not SimpleNameSyntax simpleName || simpleName.Identifier.ValueText != factory.Name)
                 continue;
+
+            var symbolInfo = semanticModel.GetSymbolInfo(simpleName);
+            if (symbolInfo.Symbol is { } bound)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(bound.OriginalDefinition, factory.OriginalDefinition))
+                    continue;
+            }
+            else if (symbolInfo.CandidateSymbols.IsEmpty ||
+                     symbolInfo.CandidateSymbols.Any(candidate =>
+                         SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, factory.OriginalDefinition)))
+            {
+                return false;
+            }
+            else
+            {
+                continue;
+            }
 
             ExpressionSyntax reference = simpleName;
             if (simpleName.Parent is MemberAccessExpressionSyntax access && access.Name == simpleName)
@@ -364,8 +396,8 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// True when the nearest enclosing lambda is the one handed to a cache that runs it once (per key):
-    /// <c>GetOrAdd</c>, <c>AddOrUpdate</c>, <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a
-    /// <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
+    /// <c>GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs every time the key
+    /// exists), <c>GetOrCreate</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c> constructor. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
     /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
     /// </summary>
     private static bool IsInsideCacheFactory(SyntaxNode node, SemanticModel semanticModel)
@@ -373,18 +405,44 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         var boundary = node.Ancestors()
             .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
         if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
-            lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } })
+            lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } argumentList } argument)
         {
             return false;
         }
 
         return owner switch
         {
-            InvocationExpressionSyntax call => CacheFactoryMethods.Contains(GetInvokedName(call.Expression)),
+            InvocationExpressionSyntax call =>
+                CacheFactoryMethods.Contains(GetInvokedName(call.Expression)) &&
+                IsAddFactory(argument, argumentList, semanticModel),
             BaseObjectCreationExpressionSyntax creation =>
-                semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" },
+                semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol { Name: "Lazy" or "AsyncLazy" } &&
+                IsAddFactory(argument, argumentList, semanticModel),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// True when <paramref name="argument"/> binds to the factory the cache runs once to add a value
+    /// (<c>valueFactory</c>, <c>addValueFactory</c>, <c>factory</c>). The <c>updateValueFactory</c> of
+    /// <c>AddOrUpdate</c> runs on every call for an existing key, and a lambda passed as the value itself
+    /// (<c>GetOrAdd(key, value)</c>, <c>AddOrUpdate(key, addValue, ...)</c>) is what gets cached, so neither counts.
+    /// When the parameter does not resolve, only the second argument of <c>AddOrUpdate</c> counts, and any argument
+    /// of the other caches.
+    /// </summary>
+    private static bool IsAddFactory(ArgumentSyntax argument, ArgumentListSyntax argumentList, SemanticModel semanticModel)
+    {
+        var name = (semanticModel.GetOperation(argument) as IArgumentOperation)?.Parameter?.Name ??
+                   argument.NameColon?.Name.Identifier.ValueText;
+        if (name != null)
+        {
+            return name.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   name.IndexOf("update", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        return argumentList.Parent is not InvocationExpressionSyntax call ||
+               GetInvokedName(call.Expression) != "AddOrUpdate" ||
+               argumentList.Arguments.IndexOf(argument) == 1;
     }
 
     private static string GetInvokedName(ExpressionSyntax expression)

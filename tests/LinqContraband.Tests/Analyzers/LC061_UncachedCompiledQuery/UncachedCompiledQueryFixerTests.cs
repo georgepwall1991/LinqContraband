@@ -113,6 +113,55 @@ public class UncachedCompiledQueryFixerTests
     }
 
     [Fact]
+    public async Task UpdateFactory_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static readonly ConcurrentDictionary<string, Blog> Cache = new();
+    public Blog Load(string key, int id) => Cache.AddOrUpdate(key, _ => null, (_, _) => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id));", @"
+    private static readonly ConcurrentDictionary<string, Blog> Cache = new();
+    private static readonly Func<Ctx, int, Blog> LoadQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    public Blog Load(string key, int id) => Cache.AddOrUpdate(key, _ => null, (_, _) => LoadQuery(_db, id));");
+    }
+
+    [Fact]
+    public async Task CachedValueLambda_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, (c, i) => {|LC061:EF.CompileQuery|}((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x))(c, i))(_db, id);", @"
+    private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
+    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c2, int x) => c2.Blogs.First(b => b.Id == x));
+
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, (c, i) => GetQuery(c, i))(_db, id);");
+    }
+
+    [Fact]
+    public async Task OverloadedPrivateFactory_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private static Func<Ctx, int, Blog> Build() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    private static Func<Ctx, int, Blog> Build(int unused) => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    private static readonly Func<Ctx, int, Blog> ById = Build(0);
+    public Blog Get(int id) => Build()(_db, id);", @"
+    private static readonly Func<Ctx, int, Blog> BuildQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    private static Func<Ctx, int, Blog> Build() => BuildQuery;
+    private static Func<Ctx, int, Blog> Build(int unused) => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    private static readonly Func<Ctx, int, Blog> ById = Build(0);
+    public Blog Get(int id) => Build()(_db, id);");
+    }
+
+    [Fact]
+    public async Task MemberAfterConditionalDirective_GetsNoFix()
+    {
+        await VerifyNoFixAsync(@"
+#if !LC061_EXCLUDED
+    public Blog Get(int id) => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);
+#endif");
+    }
+
+    [Fact]
     public async Task NameInUse_PicksAnotherName()
     {
         await VerifyFixAsync(@"

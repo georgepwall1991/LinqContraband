@@ -21,7 +21,9 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// </summary>
 /// <remarks>
 /// No fix is offered when the query reads a local, a parameter of the method or the instance (a static field cannot
-/// see them), when the call does not sit in a class, struct or record member, or when the rewritten document has more
+/// see them), when the call does not sit in a class, struct or record member, when the member's leading trivia holds
+/// an <c>#if</c>, <c>#elif</c>, <c>#else</c> or <c>#endif</c> (the field could land in the wrong branch), or when the
+/// rewritten document has more
 /// compiler errors than before (for example a delegate type that uses a method type parameter).
 /// </remarks>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UncachedCompiledQueryFixer))]
@@ -93,6 +95,10 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         if (member?.Parent is not TypeDeclarationSyntax type)
             return null;
 
+        // A field inserted next to a member inside `#if`/`#else`/`#endif` could land in the wrong branch.
+        if (member.GetLeadingTrivia().Any(IsConditionalDirective))
+            return null;
+
         var name = ChooseName(type, member, compile, semanticModel);
         var typeName = delegateType.ToMinimalDisplayString(semanticModel, member.SpanStart, TypeFormat);
         if (SyntaxFactory.ParseMemberDeclaration(
@@ -113,6 +119,15 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         var index = type.Members.IndexOf(member);
         var members = type.Members.Replace(member, newMember).Insert(index, field);
         return root.ReplaceNode(type, type.WithMembers(members));
+    }
+
+    private static bool IsConditionalDirective(SyntaxTrivia trivia)
+    {
+        return trivia.IsKind(SyntaxKind.IfDirectiveTrivia) ||
+               trivia.IsKind(SyntaxKind.ElifDirectiveTrivia) ||
+               trivia.IsKind(SyntaxKind.ElseDirectiveTrivia) ||
+               trivia.IsKind(SyntaxKind.EndIfDirectiveTrivia) ||
+               trivia.IsKind(SyntaxKind.DisabledTextTrivia);
     }
 
     /// <summary>
