@@ -56,6 +56,20 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         if (IsGetExecutingAssemblyCall(expression, dbContextType, compilationModel, cancellationToken))
             return true;
 
+        // GetType().Assembly inside the context: the context's own assembly.
+        if (expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Assembly" } getTypeAccess &&
+            getTypeAccess.Expression is InvocationExpressionSyntax { ArgumentList.Arguments.Count: 0 } getTypeCall &&
+            getTypeCall.Expression switch
+            {
+                IdentifierNameSyntax { Identifier.ValueText: "GetType" } => true,
+                MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name.Identifier.ValueText: "GetType" } => true,
+                _ => false
+            } &&
+            !HasSourceGetTypeMethod(dbContextType))
+        {
+            return true;
+        }
+
         if (expression is IdentifierNameSyntax identifier)
         {
             if (TryResolveLocalCurrentAssembly(identifier, dbContextType, compilationModel, cancellationToken, visitedExpressions, out var localIsCurrentAssembly))
@@ -73,6 +87,17 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 compilationModel,
                 cancellationToken,
                 visitedExpressions);
+        }
+
+        return false;
+    }
+
+    private static bool HasSourceGetTypeMethod(INamedTypeSymbol dbContextType)
+    {
+        for (var currentType = dbContextType; currentType != null; currentType = currentType.BaseType)
+        {
+            if (currentType.GetMembers("GetType").Any(member => member.DeclaringSyntaxReferences.Length > 0))
+                return true;
         }
 
         return false;

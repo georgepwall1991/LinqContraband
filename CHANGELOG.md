@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LC011 no longer reports a many-to-many join entity named in `UsingEntity<TJoin>(...)`, such as Moonglade's `PostTagEntity` in `HasMany(p => p.Tags).WithMany(p => p.Posts).UsingEntity<PostTagEntity>(...)`: EF Core keys it by convention with the composite of its two foreign keys. It also reads `ApplyConfigurationsFromAssembly(GetType().Assembly)` and `this.GetType().Assembly` in the context as the current assembly, so the `HasKey` calls in that assembly's configurations count, as in modular-monolith-with-ddd, where eight `MeetingsContext` entities were reported. A context that declares its own `GetType`, and another object's `GetType().Assembly`, are not read that way.
+
 ## [5.15.0] - 2026-09-25
 
 ### Fixed
