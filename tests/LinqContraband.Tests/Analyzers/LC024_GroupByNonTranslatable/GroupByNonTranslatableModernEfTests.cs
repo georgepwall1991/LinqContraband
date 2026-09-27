@@ -116,6 +116,7 @@ namespace TestApp
             var created = forms.GroupBy(f => f.CorrelationId).Select(g => new Summary({|LC024:g|}));
             var unordered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Last()|});
             var afterList = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.ToList().Where(f => f.Version > 1)|});
+            var distinctLast = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.OrderBy(f => f.Version).Distinct().Last()|});
             var unorderedFiltered = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(f => f.Version > 1).LastOrDefault()|});
         }
     }

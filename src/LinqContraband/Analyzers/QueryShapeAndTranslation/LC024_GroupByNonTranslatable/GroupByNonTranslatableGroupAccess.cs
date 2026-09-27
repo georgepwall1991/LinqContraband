@@ -41,7 +41,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
 
         var terminal = FindOutermostGroupChainInvocation(invocation, groupProjections);
         if (!(IsAllowedAggregateMethod(terminal.TargetMethod.Name) ||
-              groupProjections && (GroupProjectionTerminals.Contains(terminal.TargetMethod.Name) ||
+              groupProjections && (IsGroupProjectionTerminal(terminal.TargetMethod) ||
                                    TranslatableGroupOperators.Contains(terminal.TargetMethod.Name))) ||
             !IsKnownAggregateContainingType(terminal.TargetMethod.ContainingType))
         {
@@ -60,13 +60,44 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         return !ChainHasLambdaInvocation(terminal, groupParam, groupProjections);
     }
 
+    // Only the plain, predicate and int-index overloads were checked; g.FirstOrDefault(defaultValue)
+    // and g.ElementAt(^1) are not recognized and stay reported.
+    private static bool IsGroupProjectionTerminal(IMethodSymbol method)
+    {
+        if (!GroupProjectionTerminals.Contains(method.Name))
+            return false;
+
+        var parameters = method.IsExtensionMethod && method.ReducedFrom == null
+            ? method.Parameters.Skip(1)
+            : method.Parameters;
+        return parameters.All(parameter =>
+            parameter.Type.SpecialType == SpecialType.System_Int32 && method.Name.StartsWith("ElementAt", System.StringComparison.Ordinal) ||
+            parameter.Type.TypeKind == TypeKind.Delegate ||
+            parameter.Type is INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } expression &&
+            expression.TypeArguments[0].TypeKind == TypeKind.Delegate);
+    }
+
+    // Last needs an ordering that is still in effect: Distinct drops one made before it.
     private static bool UsesLastWithoutOrdering(IInvocationOperation terminal)
     {
-        var names = GetAllOperations(terminal).OfType<IInvocationOperation>()
-            .Select(chained => chained.TargetMethod.Name)
-            .ToArray();
-        return names.Any(name => name is "Last" or "LastOrDefault") &&
-               !names.Any(name => name is "OrderBy" or "OrderByDescending");
+        if (terminal.TargetMethod.Name is not ("Last" or "LastOrDefault"))
+            return false;
+
+        var current = terminal.GetInvocationReceiver();
+        while (current?.UnwrapConversions() is IInvocationOperation chained)
+        {
+            switch (chained.TargetMethod.Name)
+            {
+                case "OrderBy" or "OrderByDescending" or "ThenBy" or "ThenByDescending":
+                    return false;
+                case "Distinct":
+                    return true;
+            }
+
+            current = chained.GetInvocationReceiver();
+        }
+
+        return true;
     }
 
     // True when the group-chain subtree contains an invocation that is NOT one of the chain's own
@@ -151,7 +182,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
         var outermost = invocation;
         while (true)
         {
-            if (groupProjections && GroupProjectionTerminals.Contains(outermost.TargetMethod.Name))
+            if (groupProjections && IsGroupProjectionTerminal(outermost.TargetMethod))
                 return outermost;
 
             IOperation? parent = outermost.Parent;
@@ -173,7 +204,7 @@ public sealed partial class GroupByNonTranslatableAnalyzer
     private static bool IsGroupChainMethod(IMethodSymbol method, bool groupProjections)
     {
         return (IsAllowedAggregateMethod(method.Name) || TranslatableGroupOperators.Contains(method.Name) ||
-                groupProjections && GroupProjectionTerminals.Contains(method.Name)) &&
+                groupProjections && IsGroupProjectionTerminal(method)) &&
                IsKnownAggregateContainingType(method.ContainingType);
     }
 
