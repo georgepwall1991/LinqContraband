@@ -669,5 +669,16 @@
     "code_fix": true,
     "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs",
     "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC061_UncachedCompiledQuery"
+  },
+  {
+    "id": "LC063",
+    "title": "User transaction under a retrying execution strategy",
+    "category": "Reliability",
+    "domain": "Execution & Async",
+    "domain_anchor": "execution-async",
+    "severity": "Warning",
+    "code_fix": true,
+    "sample_url": "https://github.com/georgepwall1991/LinqContraband/blob/master/samples/LinqContraband.Sample/Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs",
+    "source_url": "https://github.com/georgepwall1991/LinqContraband/tree/master/src/LinqContraband/Analyzers/ExecutionAndAsync/LC063_TransactionUnderRetryingStrategy"
   }
 ]

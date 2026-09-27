@@ -11,9 +11,9 @@ body_class: page-rule-catalog
     <p>The source of truth for rule metadata lives in <code>src/LinqContraband/Catalog/RuleCatalog.cs</code>. This page is generated from that catalog and grouped by EF Core failure mode.</p>
   </div>
   <div class="metric-strip" aria-label="Rule catalog summary">
-    <div class="metric"><strong>61</strong><span>rules</span></div>
-    <div class="metric"><strong>42</strong><span>warnings</span></div>
-    <div class="metric"><strong>44</strong><span>code fixes</span></div>
+    <div class="metric"><strong>62</strong><span>rules</span></div>
+    <div class="metric"><strong>43</strong><span>warnings</span></div>
+    <div class="metric"><strong>45</strong><span>code fixes</span></div>
   </div>
 </section>
 
@@ -352,6 +352,19 @@ body_class: page-rule-catalog
         <span class="pill pill--fix">Code fix</span>
       </span>
       <span class="rule-card__sample">Samples/LC060_AsyncOnInMemoryQuery/</span>
+    </a>
+    <a class="rule-card" href="./LC063_TransactionUnderRetryingStrategy.html" data-severity="warning" data-fix="true">
+      <span class="rule-card__top">
+        <span class="rule-card__id">LC063</span>
+        <span class="pill pill--warning">Warning</span>
+      </span>
+      <h3>User transaction under a retrying execution strategy</h3>
+      <p class="rule-card__summary">Flags BeginTransaction on an EF Core context set up with EnableRetryOnFailure, which throws unless the transaction runs in the execution strategy.</p>
+      <span class="rule-card__meta">
+        <span>Reliability</span>
+        <span class="pill pill--fix">Code fix</span>
+      </span>
+      <span class="rule-card__sample">Samples/LC063_TransactionUnderRetryingStrategy/</span>
     </a>
   </div>
 </section>

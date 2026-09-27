@@ -589,6 +589,15 @@
       "ruleIds": [
         "LC061"
       ]
+    },
+    {
+      "diagnosticPath": "Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs",
+      "samplePaths": [
+        "Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs"
+      ],
+      "ruleIds": [
+        "LC063"
+      ]
     }
   ]
 }

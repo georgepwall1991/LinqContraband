@@ -22,6 +22,21 @@ public static partial class RuleCatalog
                 analyzerSourcePath: "src/LinqContraband/Analyzers/QueryShapeAndTranslation/LC061_UncachedCompiledQuery",
                 hasCodeFix: true,
                 noCodeFixRationale: null
+            ),
+            new RuleCatalogEntry(
+                id: "LC063",
+                slug: "LC063_TransactionUnderRetryingStrategy",
+                title: "User transaction under a retrying execution strategy",
+                category: "Reliability",
+                domain: "Execution & Async",
+                severity: DiagnosticSeverity.Warning,
+                analyzerTypeName: "TransactionUnderRetryingStrategyAnalyzer",
+                fixerTypeName: "TransactionUnderRetryingStrategyFixer",
+                documentationPath: "docs/LC063_TransactionUnderRetryingStrategy.md",
+                samplePath: "samples/LinqContraband.Sample/Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs",
+                analyzerSourcePath: "src/LinqContraband/Analyzers/ExecutionAndAsync/LC063_TransactionUnderRetryingStrategy",
+                hasCodeFix: true,
+                noCodeFixRationale: null
             )
         );
     }
