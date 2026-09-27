@@ -87,6 +87,9 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer : Diag
         var state = new LocalFlowState(trackParameters: true);
         if (!HasWhereInChain(invocation.GetInvocationReceiver(), context.CancellationToken, state))
         {
+            if (IsNamedWholeTableOperation(invocation))
+                return;
+
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
             return;
         }

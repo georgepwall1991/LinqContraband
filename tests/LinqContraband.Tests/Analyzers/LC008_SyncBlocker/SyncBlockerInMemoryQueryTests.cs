@@ -442,4 +442,224 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TestInnocent_EntityNavigationCollectionThroughSourceHelper_NoDiagnostic()
+    {
+        // Cofoundry: an ICollection<T> navigation of a loaded entity. No EF query type implements
+        // ICollection<T>, so AsQueryable() over it is LINQ to Objects even though T is an entity.
+        var test = Usings + @"
+class Version { public ICollection<User> Blocks { get; set; } = new List<User>(); }
+static class BlockQueries
+{
+    public static IQueryable<User> FilterActive(this IQueryable<User> source) => source.Where(u => u.Id > 0);
+}
+class Program
+{
+    static int MapBlock(User user, int x) => user.Id + x;
+
+    async Task<List<int>> Main(Version dbVersion, int x)
+    {
+        await Task.Delay(1);
+        return dbVersion.Blocks.AsQueryable().FilterActive().Where(m => m.Id < 100).OrderBy(m => m.Id).Select(m => MapBlock(m, x)).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    [InlineData("IList<User>")]
+    [InlineData("IReadOnlyCollection<User>")]
+    [InlineData("IReadOnlyList<User>")]
+    [InlineData("ISet<User>")]
+    public async Task TestInnocent_EntityCollectionInterfaceAsQueryable_NoDiagnostic(string type)
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main(" + type + @" users)
+    {
+        await Task.Delay(1);
+        return users.AsQueryable().Count();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_EnumerableOperatorResultAsQueryable_NoDiagnostic()
+    {
+        // SimpleIdServer: Enumerable.Select returns a LINQ-to-Objects iterator, never a DbSet.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(List<User> users)
+    {
+        await Task.Delay(1);
+        return users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_AsEnumerableOverDbSetAsQueryable_StillTriggers()
+    {
+        // Enumerable.AsEnumerable returns the DbSet itself, and AsQueryable() hands back the EF query.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return {|LC008:db.Users.AsEnumerable().AsQueryable().ToList()|};
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // Enumerable operators are lazy: the iterator still enumerates the EF query.
+    [InlineData("{|LC008:db.Users.AsEnumerable().Where(u => u.Id > 0).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:db.Users.AsEnumerable().Select(u => u).OrderBy(u => u.Id).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // ThenBy reads an IOrderedEnumerable<TSource> source, which is still the EF query underneath.
+    [InlineData("{|LC008:db.Users.AsEnumerable().OrderBy(u => u.Id).ThenBy(u => -u.Id).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:db.Users.AsEnumerable().OrderBy(u => u.Id).ThenByDescending(u => -u.Id).AsQueryable().ToList()|}")]
+    // A bare IEnumerable<User> may be a DbSet at run time.
+    [InlineData("{|LC008:users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // A SelectMany selector that returns the DbSet enumerates it.
+    [InlineData("{|LC008:list.SelectMany(_ => db.Users).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:list.SelectMany(u => { return users; }).AsQueryable().ToList()|}")]
+    // Every sequence an operator enumerates counts, not only its source.
+    [InlineData("{|LC008:list.Concat(db.Users).AsQueryable().ToList()|}")]
+    public async Task TestCrime_EnumerableOperatorOverUnprovenSource_StillTriggers(string call)
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(MyDbContext db, IEnumerable<User> users, List<User> list)
+    {
+        await Task.Delay(1);
+        return " + call + @";
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_CastOverDbSetAsQueryable_StillTriggers()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return {|LC008:db.Users.AsEnumerable().Cast<User>().AsQueryable().Count()|};
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_SelectResultSelectorReturningDbSet_NoDiagnostic()
+    {
+        // Select, Join and GroupJoin result selectors only yield their value: the DbSets are elements of an
+        // in-memory sequence and are never enumerated by the operator.
+        var test = Usings + @"
+class Program
+{
+    async Task<object> Main(MyDbContext db, List<User> list)
+    {
+        await Task.Delay(1);
+        var selected = list.Select(_ => db.Users).AsQueryable().ToList();
+        var joined = list.Join(list, a => a.Id, b => b.Id, (a, b) => db.Users).AsQueryable().ToList();
+        var grouped = list.GroupJoin(list, a => a.Id, b => b.Id, (a, bs) => db.Users).AsQueryable().Count();
+        return (selected, joined, grouped);
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_AppendSequenceElement_NoDiagnostic()
+    {
+        // Append's element is a value, not a sequence the operator reads, even when it is typed IEnumerable<User>.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<IEnumerable<User>>> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return new List<IEnumerable<User>>().Append(db.Users).Prepend(db.Users).AsQueryable().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // SimpleIdServer's shape: the helper's body is not visible, so it could return static or injected query
+    // state whatever it is handed. Opaque library helpers are never trusted.
+    [InlineData("{|LC008:scimFilter.EvaluateAttributes(list.AsQueryable(), false).ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.Filter(list.AsQueryable(), \"emails\").ToList()|}")]
+    [InlineData("{|LC008:ScimLibrary.Filter(db.Users, \"emails\").ToList()|}")]
+    public async Task TestCrime_OpaqueLibraryHelper_StillTriggers(string call)
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC008_SyncBlocker.SyncBlockerAnalyzer,
+            Microsoft.CodeAnalysis.Testing.DefaultVerifier>
+        {
+            TestCode = Usings + @"using ScimLib;
+class Program
+{
+    async Task<List<User>> Main(ScimExpression scimFilter, List<User> list, MyDbContext db)
+    {
+        await Task.Delay(1);
+        return " + call + @";
+    }
+}
+" + MockNamespace
+        };
+
+        var library = new Microsoft.CodeAnalysis.Testing.ProjectState(
+            "ScimLib", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/scim/", "cs");
+        library.Sources.Add(("/scim/Scim.cs", @"
+using System.Linq;
+
+namespace ScimLib
+{
+    public sealed class ScimExpression { }
+
+    public static class ScimLibrary
+    {
+        public static object Injected;
+
+        public static IQueryable<T> EvaluateAttributes<T>(this ScimExpression expression, IQueryable<T> attributes, bool isStrict) =>
+            Injected as IQueryable<T> ?? attributes;
+
+        public static IQueryable<T> Filter<T>(IQueryable<T> source, string attribute) => source;
+    }
+}
+"));
+        test.TestState.AdditionalProjects.Add("ScimLib", library);
+        test.TestState.AdditionalProjectReferences.Add("ScimLib");
+
+        await test.RunAsync();
+    }
 }

@@ -573,6 +573,15 @@
       ]
     },
     {
+      "diagnosticPath": "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC060"
+      ]
+    },
+    {
       "diagnosticPath": "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs",
       "samplePaths": [
         "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs"

@@ -10,12 +10,27 @@ public sealed partial class NestedSaveChangesAnalyzer
 {
     private sealed partial class AnalysisState
     {
-        private static bool HasTransactionBoundaryBetween(int[] boundaries, int left, int right)
+        /// <summary>
+        /// <c>save0; if (flag) { BeginTransaction(); save1; return; } save2;</c>: the boundary sits in a branch that
+        /// leaves the method before <c>save2</c>, so it never runs between <c>save0</c> and <c>save2</c>. A boundary only
+        /// separates the pair when it can run on the path from the earlier save to the current one; it is discarded
+        /// only when it is definitely off that path.
+        /// </summary>
+        private static bool HasTransactionBoundaryBetween(InvocationRecord[] boundaries, InvocationRecord previous, InvocationRecord current)
         {
             foreach (var boundary in boundaries)
             {
-                if (boundary > left && boundary < right)
-                    return true;
+                if (boundary.Position <= previous.Position || boundary.Position >= current.Position)
+                    continue;
+
+                if (LeavesMethodBefore(boundary.Syntax, current.Syntax, boundary.Root.SemanticModel) ||
+                    AreMutuallyExclusiveBranches(boundary.Syntax, current.Syntax, definitely: true) ||
+                    AreMutuallyExclusiveBranches(previous.Syntax, boundary.Syntax, definitely: true))
+                {
+                    continue;
+                }
+
+                return true;
             }
 
             return false;
