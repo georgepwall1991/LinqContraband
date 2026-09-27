@@ -207,6 +207,41 @@ public class UncachedCompiledQueryFixerTests
     public Blog Get(int id) => Build()(_db, id);");
     }
 
+    private const string PartialMembers = @"
+    private static Func<Ctx, int, Blog> Build() => {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+    public Blog Get(int id) => Build()(_db, id);";
+
+    private static string PartialRepo(string members) => WrapMembers(members).Replace("class Repo", "partial class Repo");
+
+    [Theory]
+    [InlineData("partial class Repo { private static readonly Blog First = Build()(new Ctx(), 1); }")]
+    [InlineData("partial class Repo { private static readonly Blog First; static Repo() { First = Build()(new Ctx(), 1); } }")]
+    public async Task StaticCodeInAnotherPart_GetsNoFix(string otherPart)
+    {
+        var test = new CodeFixTest();
+        test.TestState.Sources.Add(PartialRepo(PartialMembers));
+        test.TestState.Sources.Add(otherPart);
+        test.FixedState.Sources.Add(PartialRepo(PartialMembers));
+        test.FixedState.Sources.Add(otherPart);
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task InstanceCodeInAnotherPart_Hoists()
+    {
+        const string otherPart = "partial class Repo { private readonly Blog _first = new Blog(); }";
+        var test = new CodeFixTest();
+        test.TestState.Sources.Add(PartialRepo(PartialMembers));
+        test.TestState.Sources.Add(otherPart);
+        test.FixedState.Sources.Add(PartialRepo(@"
+    private static readonly Func<Ctx, int, Blog> BuildQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+
+    private static Func<Ctx, int, Blog> Build() => BuildQuery;
+    public Blog Get(int id) => Build()(_db, id);"));
+        test.FixedState.Sources.Add(otherPart);
+        await test.RunAsync();
+    }
+
     [Fact]
     public async Task NameInUse_PicksAnotherName()
     {

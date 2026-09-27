@@ -153,6 +153,12 @@ class Repo
     [InlineData(@"
     private Func<Ctx, int, Blog> _byId;
     public Blog Get(int id) { if (_byId is null) { } else { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    // The whole condition must imply the member is null in the store's branch.
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId == null || id > 0) _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId != null && id > 0) { } else { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (!(_byId == null || id > 0)) { } else { _byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    // A local of the same name is not the member.
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { Func<Ctx, int, Blog> _byId = null; if (_byId == null) this._byId = {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return this._byId(_db, id); }")]
     // A private factory with any ordinary caller still compiles on every call, even if a static initializer calls it too.
     [InlineData(@"
     private static readonly Blog First = Build()(new Ctx(), 1);
@@ -230,6 +236,10 @@ class Repo
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (this._byId == null) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId != null) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (!(_byId is not null) && id > 0) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId == null && id > 0) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId != null || id > 0) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (!(_byId == null && id > 0)) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
+    [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId == null) this._byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return this._byId(_db, id); }")]
     // A private factory called only from static initializers or a static constructor runs once.
     [InlineData(@"
     private static readonly Blog First = Build()(new Ctx(), 1);

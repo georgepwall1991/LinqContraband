@@ -47,7 +47,7 @@ Reports `Microsoft.EntityFrameworkCore.EF.CompileQuery` and `EF.CompileAsyncQuer
 2. Assigned to a local whose every use invokes it: `var query = EF.CompileQuery(...); return query(db, id);`.
 3. Returned from an expression-bodied property or a `get` accessor, which compiles it on every read: `static Func<...> ById => EF.CompileQuery(...);`.
 4. Returned from a private method or local function whose every call invokes the result straight away: `Build()(db, id)`. Calls are matched by symbol, so a call to another overload of `Build` does not count. A factory whose only callers are static field or property initializers or a static constructor runs once and stays quiet.
-5. Stored in an instance field or property of `this` from an ordinary method or accessor, without an `if` that tests that member is null first (`if (_query == null)`, `if (_query is null)`, or the `else` of `if (_query != null)`). A `!= null` guard, or a guard on another member, still reports.
+5. Stored in an instance field or property of `this` from an ordinary method or accessor, without an `if` whose whole condition guarantees that member is null in the branch holding the store (`if (_query == null)`, `if (_query is null && ready)`, or the `else` of `if (_query != null)` or `if (_query != null || other)`). A `!= null` guard, `if (_query == null || refresh)`, the `else` of `if (_query != null && ready)`, a guard on another member, or a guard on a local that shares the member's name still reports.
 
 ## When it stays quiet (non-goals)
 
@@ -75,7 +75,7 @@ private static readonly Func<BlogContext, int, Task<Blog?>> GetQuery = EF.Compil
 public Task<Blog?> Get(int id) => GetQuery(_db, id);
 ```
 
-The field is named after the member (`GetQuery`, then `GetQuery2` and so on when the name is taken). No fix is offered when the query lambda reads a local, a parameter of the method or the instance (a static field cannot see them; pass the value as a query parameter instead), when the delegate type uses a method type parameter, when an `#if`, `#elif`, `#else` or `#endif` directive sits directly above the member (the field could land in the wrong branch), when a static initializer above the member refers to it (initializers run in source order, so it would read the new field before it is set), or when the rewritten document would have more compiler errors than before.
+The field is named after the member (`GetQuery`, then `GetQuery2` and so on when the name is taken). No fix is offered when the query lambda reads a local, a parameter of the method or the instance (a static field cannot see them; pass the value as a query parameter instead), when the delegate type uses a method type parameter, when an `#if`, `#elif`, `#else` or `#endif` directive sits directly above the member (the field could land in the wrong branch), when a static initializer above the member refers to it (initializers run in source order, so it would read the new field before it is set), when a static initializer or static constructor in another partial declaration of the type refers to it (the order across parts is not defined), or when the rewritten document would have more compiler errors than before.
 
 ## Test Cases
 

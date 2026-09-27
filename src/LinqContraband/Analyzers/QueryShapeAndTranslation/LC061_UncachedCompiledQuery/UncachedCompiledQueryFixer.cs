@@ -24,7 +24,8 @@ namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
 /// see them), when the call does not sit in a class, struct or record member, when the member's leading trivia holds
 /// an <c>#if</c>, <c>#elif</c>, <c>#else</c> or <c>#endif</c> (the field could land in the wrong branch), when a static
 /// field or property initializer above the member refers to it (initializers run in source order, so it would read
-/// the new field before it is set), or when the
+/// the new field before it is set), when a static initializer or static constructor in another partial declaration of
+/// the type refers to it (the order across parts is not defined), or when the
 /// rewritten document has more
 /// compiler errors than before (for example a delegate type that uses a method type parameter).
 /// </remarks>
@@ -103,9 +104,14 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
 
         // Static initializers run in source order: one above the new field that reaches this member would read the
         // field before it is set.
+        // Across partial declarations the order is not defined, so any static initializer or static constructor in
+        // another part that reaches this member withholds the fix too.
         var memberName = GetMemberName(member, type);
-        if (type.Members.TakeWhile(candidate => candidate != member).Any(candidate => IsStaticInitializerUsing(candidate, memberName)))
+        if (type.Members.TakeWhile(candidate => candidate != member).Any(candidate => IsStaticInitializerUsing(candidate, memberName)) ||
+            OtherPartRunsStaticCodeUsing(type, memberName, semanticModel))
+        {
             return null;
+        }
 
         var name = ChooseName(type, member, compile, semanticModel);
         var typeName = delegateType.ToMinimalDisplayString(semanticModel, member.SpanStart, TypeFormat);
@@ -129,12 +135,37 @@ public sealed class UncachedCompiledQueryFixer : CodeFixProvider
         return root.ReplaceNode(type, type.WithMembers(members));
     }
 
-    private static bool IsStaticInitializerUsing(MemberDeclarationSyntax candidate, string memberName)
+    private static bool OtherPartRunsStaticCodeUsing(TypeDeclarationSyntax type, string memberName, SemanticModel semanticModel)
+    {
+        if (semanticModel.GetDeclaredSymbol(type) is not { } typeSymbol)
+            return false;
+
+        foreach (var reference in typeSymbol.DeclaringSyntaxReferences)
+        {
+            if (reference.SyntaxTree == type.SyntaxTree && reference.Span == type.Span)
+                continue;
+
+            if (reference.GetSyntax() is TypeDeclarationSyntax part &&
+                part.Members.Any(candidate => IsStaticInitializerUsing(candidate, memberName, includeStaticConstructor: true)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsStaticInitializerUsing(
+        MemberDeclarationSyntax candidate,
+        string memberName,
+        bool includeStaticConstructor = false)
     {
         SyntaxNode? initializer = candidate switch
         {
             FieldDeclarationSyntax field when field.Modifiers.Any(SyntaxKind.StaticKeyword) => field.Declaration,
             PropertyDeclarationSyntax { Initializer: { } value } property when property.Modifiers.Any(SyntaxKind.StaticKeyword) => value,
+            ConstructorDeclarationSyntax constructor
+                when includeStaticConstructor && constructor.Modifiers.Any(SyntaxKind.StaticKeyword) => constructor,
             _ => null
         };
 

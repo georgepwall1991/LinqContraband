@@ -199,10 +199,10 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
                 return IsOnlyInvoked(local.Name, assignment, assignment.Left);
 
             case IFieldSymbol { IsStatic: false } field:
-                return InstanceStoreCompilesOnEveryCall(assignment, field.Name);
+                return InstanceStoreCompilesOnEveryCall(assignment, field, semanticModel);
 
             case IPropertySymbol { IsStatic: false, IsIndexer: false } property:
-                return InstanceStoreCompilesOnEveryCall(assignment, property.Name);
+                return InstanceStoreCompilesOnEveryCall(assignment, property, semanticModel);
 
             default:
                 // Static members, indexers (dictionary caches), parameters and anything else.
@@ -212,10 +212,13 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// A store to a field or property of <c>this</c> from an ordinary method or accessor, not guarded by an
-    /// <c>if</c> that tests the member is null (or an <c>else</c> of a test that it is not null). Constructors and <c>init</c> accessors are a non-goal: whether the instance
-    /// lives long enough to reuse the delegate is not known.
+    /// <c>if</c> whose condition implies the member is null in the branch that holds the store. Constructors and
+    /// <c>init</c> accessors are a non-goal: whether the instance lives long enough to reuse the delegate is not known.
     /// </summary>
-    private static bool InstanceStoreCompilesOnEveryCall(AssignmentExpressionSyntax assignment, string memberName)
+    private static bool InstanceStoreCompilesOnEveryCall(
+        AssignmentExpressionSyntax assignment,
+        ISymbol memberSymbol,
+        SemanticModel semanticModel)
     {
         var target = assignment.Left;
         if (target is MemberAccessExpressionSyntax access && access.Expression is not ThisExpressionSyntax)
@@ -237,7 +240,7 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
             {
                 // `if (_q == null) _q = ...` or `if (_q != null) ... else _q = ...`.
                 var inElse = ifStatement.Else != null && previous == ifStatement.Else;
-                if (TestsMember(ifStatement.Condition, memberName, inElse ? NullTest.NotNull : NullTest.Null))
+                if (ImpliesNull(ifStatement.Condition, !inElse, memberSymbol, semanticModel))
                     return false;
             }
 
@@ -247,40 +250,39 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
-    private enum NullTest
-    {
-        Null,
-        NotNull
-    }
-
     /// <summary>
-    /// True when <paramref name="condition"/> tests that the member named <paramref name="memberName"/> (or
-    /// <c>this.</c> it) is null (or, for <see cref="NullTest.NotNull"/>, is not null), alone or as one operand of
-    /// <c>&amp;&amp;</c> or <c>||</c>. A guard on another member, or the opposite test, does not count.
+    /// True when <paramref name="condition"/> evaluating to <paramref name="whenTrue"/> guarantees that
+    /// <paramref name="member"/> is null. <c>A &amp;&amp; B</c> being true needs only one side to imply it, and being
+    /// false needs both (<c>!A || !B</c>); <c>A || B</c> is the other way round. Members are matched by symbol, so a
+    /// local of the same name does not count.
     /// </summary>
-    private static bool TestsMember(ExpressionSyntax condition, string memberName, NullTest test)
+    private static bool ImpliesNull(ExpressionSyntax condition, bool whenTrue, ISymbol member, SemanticModel semanticModel)
     {
         switch (condition)
         {
             case ParenthesizedExpressionSyntax parenthesized:
-                return TestsMember(parenthesized.Expression, memberName, test);
+                return ImpliesNull(parenthesized.Expression, whenTrue, member, semanticModel);
 
             case PrefixUnaryExpressionSyntax unary when unary.IsKind(SyntaxKind.LogicalNotExpression):
-                return TestsMember(unary.Operand, memberName, test == NullTest.Null ? NullTest.NotNull : NullTest.Null);
+                return ImpliesNull(unary.Operand, !whenTrue, member, semanticModel);
 
             case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression) || binary.IsKind(SyntaxKind.LogicalOrExpression):
-                return TestsMember(binary.Left, memberName, test) || TestsMember(binary.Right, memberName, test);
+            {
+                var left = ImpliesNull(binary.Left, whenTrue, member, semanticModel);
+                var right = ImpliesNull(binary.Right, whenTrue, member, semanticModel);
+                var eitherSuffices = binary.IsKind(SyntaxKind.LogicalAndExpression) == whenTrue;
+                return eitherSuffices ? left || right : left && right;
+            }
 
             case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression):
             {
-                var isNullTest = binary.IsKind(SyntaxKind.EqualsExpression);
-                var matches = IsMember(binary.Left, memberName) && IsNull(binary.Right) ||
-                              IsMember(binary.Right, memberName) && IsNull(binary.Left);
-                return matches && isNullTest == (test == NullTest.Null);
+                var matches = IsMember(binary.Left, member, semanticModel) && IsNull(binary.Right) ||
+                              IsMember(binary.Right, member, semanticModel) && IsNull(binary.Left);
+                return matches && binary.IsKind(SyntaxKind.EqualsExpression) == whenTrue;
             }
 
-            case IsPatternExpressionSyntax isPattern when IsMember(isPattern.Expression, memberName):
-                return PatternTestsNull(isPattern.Pattern) is { } isNull && isNull == (test == NullTest.Null);
+            case IsPatternExpressionSyntax isPattern when IsMember(isPattern.Expression, member, semanticModel):
+                return PatternTestsNull(isPattern.Pattern) is { } isNull && isNull == whenTrue;
 
             default:
                 return false;
@@ -306,15 +308,18 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool IsMember(ExpressionSyntax expression, string memberName)
+    private static bool IsMember(ExpressionSyntax expression, ISymbol member, SemanticModel semanticModel)
     {
-        return expression switch
+        switch (expression)
         {
-            ParenthesizedExpressionSyntax parenthesized => IsMember(parenthesized.Expression, memberName),
-            IdentifierNameSyntax identifier => identifier.Identifier.ValueText == memberName,
-            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText == memberName,
-            _ => false
-        };
+            case ParenthesizedExpressionSyntax parenthesized:
+                return IsMember(parenthesized.Expression, member, semanticModel);
+            case IdentifierNameSyntax:
+            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax }:
+                return SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(expression).Symbol, member);
+            default:
+                return false;
+        }
     }
 
     private static bool IsNull(ExpressionSyntax expression)
