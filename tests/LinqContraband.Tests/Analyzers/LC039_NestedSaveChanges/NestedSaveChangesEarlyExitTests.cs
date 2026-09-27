@@ -275,4 +275,159 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task SaveAfterExclusiveEarlierSave_StillPairsWithReachableSaveBeforeIf()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool a, bool b)
+    {
+        var db = new TestApp.AppDbContext();
+        db.SaveChanges();
+        if (a)
+        {
+            {|LC039:db.SaveChanges()|};
+        }
+        else
+        {
+            if (b)
+            {
+                {|LC039:db.SaveChanges()|};
+                return;
+            }
+
+            {|LC039:db.SaveChanges()|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveAfterExclusiveEarlierSave_WithNoReachableSave_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool a, bool b)
+    {
+        var db = new TestApp.AppDbContext();
+        if (a)
+        {
+            db.SaveChanges();
+        }
+        else
+        {
+            if (b)
+            {
+                db.SaveChanges();
+                return;
+            }
+
+            db.SaveChanges();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_CatchReturns_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_CatchRethrows_DoesNotTrigger()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+
+        db.SaveChanges();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SaveInBranchThatThrows_OneCatchResumes_StillTriggers()
+    {
+        var test = EFCoreMock + Types + @"
+
+class Program
+{
+    void Run(bool flag)
+    {
+        var db = new TestApp.AppDbContext();
+        try
+        {
+            if (flag)
+            {
+                db.SaveChanges();
+                throw new InvalidOperationException();
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch
+        {
+            Console.WriteLine();
+        }
+
+        {|LC039:db.SaveChanges()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

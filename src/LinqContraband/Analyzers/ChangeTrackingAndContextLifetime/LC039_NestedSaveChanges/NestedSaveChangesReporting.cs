@@ -39,10 +39,12 @@ public sealed partial class NestedSaveChangesAnalyzer
                     {
                         var current = saves[i];
 
-                        // A save in a branch that always returns or throws never precedes the later
-                        // save; compare with the nearest earlier save that can.
+                        // A save in a branch that always returns or throws, or in a branch exclusive with the
+                        // later save, never precedes it; compare with the nearest earlier save that can.
                         var previousIndex = i - 1;
-                        while (previousIndex >= 0 && LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax))
+                        while (previousIndex >= 0 &&
+                               (LeavesMethodBefore(saves[previousIndex].Syntax, current.Syntax) ||
+                                AreMutuallyExclusiveBranches(saves[previousIndex].Syntax, current.Syntax)))
                             previousIndex--;
                         if (previousIndex < 0)
                             continue;
@@ -50,9 +52,6 @@ public sealed partial class NestedSaveChangesAnalyzer
                         var previous = saves[previousIndex];
 
                         if (HasTransactionBoundaryBetween(boundaries, previous.Position, current.Position))
-                            continue;
-
-                        if (AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
                             continue;
 
                         if (AreInsideSameTransactionUsing(previous.Syntax, current.Syntax, boundaries))

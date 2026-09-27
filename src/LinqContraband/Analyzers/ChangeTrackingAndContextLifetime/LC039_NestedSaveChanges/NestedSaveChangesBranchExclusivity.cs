@@ -99,17 +99,37 @@ public sealed partial class NestedSaveChangesAnalyzer
 
         private static bool EndsWithMethodExit(StatementSyntax branch, SyntaxNode right)
         {
-            var last = branch is BlockSyntax block ? block.Statements.LastOrDefault() : branch;
+            var last = GetLastStatement(branch);
             if (last is ReturnStatementSyntax)
                 return true;
 
-            return (last is ThrowStatementSyntax || last is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax }) &&
-                   !IsCaughtBefore(branch, right);
+            return IsThrow(last) && !IsCaughtBefore(branch, right);
+        }
+
+        private static StatementSyntax? GetLastStatement(StatementSyntax statement)
+        {
+            return statement is BlockSyntax block ? block.Statements.LastOrDefault() : statement;
+        }
+
+        private static bool IsThrow(StatementSyntax? statement)
+        {
+            return statement is ThrowStatementSyntax ||
+                   statement is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax };
+        }
+
+        /// <summary>
+        /// <c>catch { return; }</c> or <c>catch { throw; }</c> never resumes after the try statement.
+        /// </summary>
+        private static bool CanCompleteNormally(CatchClauseSyntax catchClause)
+        {
+            var last = GetLastStatement(catchClause.Block);
+            return last is not ReturnStatementSyntax && !IsThrow(last);
         }
 
         /// <summary>
         /// <c>try { if (flag) { db.SaveChanges(); throw ...; } } catch { } db.SaveChanges();</c>: the catch swallows the
-        /// throw and the later save still runs. Only a try whose try block also holds the later save is skipped by the throw.
+        /// throw and the later save still runs. Only a try whose try block also holds the later save is skipped by the throw,
+        /// and a try whose every catch returns or throws does not resume.
         /// </summary>
         private static bool IsCaughtBefore(SyntaxNode branch, SyntaxNode right)
         {
@@ -119,7 +139,7 @@ public sealed partial class NestedSaveChangesAnalyzer
                     return false;
 
                 if (ancestor is TryStatementSyntax tryStatement &&
-                    tryStatement.Catches.Count > 0 &&
+                    tryStatement.Catches.Any(CanCompleteNormally) &&
                     tryStatement.Block.Span.Contains(branch.SpanStart) &&
                     !tryStatement.Block.Span.Contains(right.SpanStart))
                 {
