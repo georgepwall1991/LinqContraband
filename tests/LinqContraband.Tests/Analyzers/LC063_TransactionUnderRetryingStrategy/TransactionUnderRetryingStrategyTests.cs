@@ -327,6 +327,55 @@ public class DerivedAppDb : AppDb { }
 ");
     }
 
+    [Theory]
+    // Replaces the inherited configuration without calling base.
+    [InlineData(@"optionsBuilder.UseSqlServer(""cs"");", "")]
+    // Calls base, so the inherited retries still apply.
+    [InlineData(@"base.OnConfiguring(optionsBuilder); optionsBuilder.UseSqlServer(""cs"");", "LC063")]
+    public async Task DerivedOnConfiguringOverride_DecidesWhetherBaseRetriesApply(string derivedBody, string diagnostic)
+    {
+        var call = diagnostic.Length == 0 ? "BeginTransaction" : "{|LC063:BeginTransaction|}";
+        await VerifyAsync(Wrap(
+            @"using var tx = derived.Database." + call + @"(); tx.Commit();",
+            configuration: @"
+public class RetryingBaseDb : DbContext
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure());
+}
+
+public class DerivedDb : RetryingBaseDb
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        " + derivedBody + @"
+    }
+}
+",
+            extraMembers: "private readonly DerivedDb derived = new DerivedDb();"));
+    }
+
+    [Fact]
+    public async Task DerivedOnConfiguringOverrideWithItsOwnRetries_Reports()
+    {
+        await VerifyAsync(Wrap(
+            @"using var tx = derived.Database.{|LC063:BeginTransaction|}(); tx.Commit();",
+            configuration: @"
+public class PlainBaseDb : DbContext
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseSqlServer(""cs"");
+}
+
+public class DerivedDb : PlainBaseDb
+{
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure());
+}
+",
+            extraMembers: "private readonly DerivedDb derived = new DerivedDb();"));
+    }
+
     [Fact]
     public async Task DerivedFromOnConfiguringContext_Reports()
     {
@@ -770,6 +819,33 @@ class CacheOptionsBuilder
                 tx.Commit();
             });
         });"));
+    }
+
+    [Theory]
+    [InlineData("work?.Invoke();")]
+    [InlineData("work.Invoke();")]
+    public async Task LocalLambdaInvokedOutsideTheStrategy_Reports(string call)
+    {
+        await VerifyAsync(Wrap(
+            @"Action work = () =>
+        {
+            using var tx = db.Database.{|LC063:BeginTransaction|}();
+            tx.Commit();
+        };
+        " + call));
+    }
+
+    [Fact]
+    public async Task LocalLambdaConditionallyInvokedInsideTheStrategy_NotReported()
+    {
+        await VerifyAsync(Wrap(
+            @"Action work = () =>
+        {
+            using var tx = db.Database.BeginTransaction();
+            tx.Commit();
+        };
+        var strategy = db.Database.CreateExecutionStrategy();
+        strategy.Execute(() => work?.Invoke());"));
     }
 
     [Fact]

@@ -84,7 +84,7 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
         if (IsInsideStrategy(invocation, context.Compilation, context.CancellationToken))
             return;
 
-        var configuration = model.Value.FindConfiguration(contextType);
+        var configuration = model.Value.FindConfiguration(contextType, context.CancellationToken);
         if (configuration == null)
             return;
 
@@ -251,6 +251,19 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
                 ReferenceEquals(invocation.Instance, reference))
             {
                 invocations.Add(invocation);
+                continue;
+            }
+
+            // work?.Invoke(): the invocation hangs off the conditional access, on its placeholder instance.
+            if (reference.Parent is IConditionalAccessOperation conditional &&
+                ReferenceEquals(conditional.Operation, reference) &&
+                conditional.WhenNotNull is IInvocationOperation
+                {
+                    TargetMethod.MethodKind: MethodKind.DelegateInvoke,
+                    Instance: IConditionalAccessInstanceOperation
+                } conditionalInvocation)
+            {
+                invocations.Add(conditionalInvocation);
                 continue;
             }
 

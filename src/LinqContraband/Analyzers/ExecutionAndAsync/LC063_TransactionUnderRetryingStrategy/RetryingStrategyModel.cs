@@ -50,7 +50,7 @@ internal sealed class RetryingStrategyModel
     /// provably does. A registration or <c>DbContextOptionsBuilder&lt;T&gt;</c> chain configures only its exact type;
     /// an <c>OnConfiguring</c> override also runs for every derived context that does not replace it.
     /// </summary>
-    public Location? FindConfiguration(ITypeSymbol contextType)
+    public Location? FindConfiguration(ITypeSymbol contextType, CancellationToken cancellationToken)
     {
         if (contextType is INamedTypeSymbol named && _configuredContexts.TryGetValue(named, out var exact))
             return exact;
@@ -59,6 +59,10 @@ internal sealed class RetryingStrategyModel
         {
             if (_configuredDefinitions.TryGetValue(current.OriginalDefinition, out var location))
                 return location;
+
+            // An override that never calls base.OnConfiguring replaces every inherited configuration.
+            if (ReplacesInheritedOnConfiguring(current, cancellationToken))
+                break;
         }
 
         if (_unattributedLocation != null &&
@@ -69,6 +73,35 @@ internal sealed class RetryingStrategyModel
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="type"/> declares an <c>OnConfiguring</c> override in source whose body never calls
+    /// <c>base.OnConfiguring(...)</c>, so the configuration of its base types does not run for it.
+    /// </summary>
+    private static bool ReplacesInheritedOnConfiguring(INamedTypeSymbol type, CancellationToken cancellationToken)
+    {
+        foreach (var member in type.GetMembers("OnConfiguring"))
+        {
+            if (member is not IMethodSymbol { IsOverride: true } method || method.DeclaringSyntaxReferences.Length == 0)
+                continue;
+
+            foreach (var reference in method.DeclaringSyntaxReferences)
+            {
+                var callsBase = reference.GetSyntax(cancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>().Any(
+                    invocation => invocation.Expression is MemberAccessExpressionSyntax
+                    {
+                        Expression: BaseExpressionSyntax,
+                        Name.Identifier.ValueText: "OnConfiguring"
+                    });
+                if (callsBase)
+                    return false;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     public static RetryingStrategyModel Build(Compilation compilation, CancellationToken cancellationToken)
