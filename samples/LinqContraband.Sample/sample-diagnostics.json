@@ -573,6 +573,33 @@
       ]
     },
     {
+      "diagnosticPath": "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC060_AsyncOnInMemoryQuery/AsyncOnInMemoryQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC060"
+      ]
+    },
+    {
+      "diagnosticPath": "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs",
+      "samplePaths": [
+        "Samples/LC061_UncachedCompiledQuery/UncachedCompiledQuerySample.cs"
+      ],
+      "ruleIds": [
+        "LC061"
+      ]
+    },
+    {
+      "diagnosticPath": "Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs",
+      "samplePaths": [
+        "Samples/LC063_TransactionUnderRetryingStrategy/TransactionUnderRetryingStrategySample.cs"
+      ],
+      "ruleIds": [
+        "LC063"
+      ]
+    },
+    {
       "diagnosticPath": "Samples/LC062_BlockingEfAsyncCall/BlockingEfAsyncCallSample.cs",
       "samplePaths": [
         "Samples/LC062_BlockingEfAsyncCall/BlockingEfAsyncCallSample.cs"

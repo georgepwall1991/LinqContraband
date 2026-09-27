@@ -1,0 +1,743 @@
+using System.Collections.Immutable;
+using System.Linq;
+using System;
+using LinqContraband.Catalog;
+using LinqContraband.Extensions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
+
+namespace LinqContraband.Analyzers.LC061_UncachedCompiledQuery;
+
+/// <summary>
+/// Analyzes <c>EF.CompileQuery</c> and <c>EF.CompileAsyncQuery</c> calls whose delegate is built again on every call
+/// instead of being stored once. Diagnostic ID: LC061
+/// </summary>
+/// <remarks>
+/// <para><b>Why this matters:</b> a compiled query only pays off when the delegate is created once and reused, which
+/// is why the EF Core documentation stores it in a <c>static readonly</c> field. Compiling inside a method builds and
+/// compiles the expression tree on every call, which costs more than an ordinary LINQ query (that at least hits EF
+/// Core's query cache).</para>
+/// <para>The analyzer is conservative: it reports only when the delegate is invoked straight away, kept in a local
+/// that is only invoked, returned from an expression-bodied property or getter, returned from a private factory whose
+/// every caller invokes the result straight away, or stored on <c>this</c> from an ordinary method without a null
+/// guard. Static fields and properties (including values compiled and invoked in their initializers), instance field
+/// and property initializers that store the delegate, constructors, <c>??=</c>, lazy and
+/// dictionary caches, factory lambdas and delegates passed elsewhere stay quiet.</para>
+/// </remarks>
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
+{
+    public const string DiagnosticId = "LC061";
+    private const string Category = "Performance";
+    private static readonly LocalizableString Title = "Compiled query is not cached";
+
+    private static readonly LocalizableString MessageFormat =
+        "EF.{0} builds and compiles the query again on every call; store the delegate in a static readonly field and reuse it";
+
+    private static readonly LocalizableString Description =
+        "EF.CompileQuery and EF.CompileAsyncQuery only save work when the delegate they return is created once and reused. Compiling on every call costs more than an ordinary LINQ query, which at least hits EF Core's query cache. Store the compiled delegate in a static readonly field.";
+
+    private static readonly DiagnosticDescriptor Rule = new(
+        DiagnosticId,
+        Title,
+        MessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description,
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC061_UncachedCompiledQuery.html");
+
+    /// <summary>
+    /// Cache APIs that run a factory once per key and keep its result, as "namespace.MetadataName.Method". A
+    /// project's own method of the same name may run the factory on every call, so only these count.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> CacheFactoryMethods = ImmutableHashSet.Create(
+        "System.Collections.Concurrent.ConcurrentDictionary`2.GetOrAdd",
+        "System.Collections.Concurrent.ConcurrentDictionary`2.AddOrUpdate",
+        "System.Collections.Immutable.ImmutableInterlocked.GetOrAdd",
+        "System.Threading.LazyInitializer.EnsureInitialized",
+        "Microsoft.Extensions.Caching.Memory.CacheExtensions.GetOrCreate",
+        "Microsoft.Extensions.Caching.Memory.CacheExtensions.GetOrCreateAsync",
+        "Microsoft.Extensions.Caching.Hybrid.HybridCache.GetOrCreateAsync");
+
+    /// <summary>Lazy types whose factory runs once per instance.</summary>
+    private static readonly ImmutableHashSet<string> LazyTypes = ImmutableHashSet.Create(
+        "System.Lazy`1",
+        "System.Lazy`2",
+        "Microsoft.VisualStudio.Threading.AsyncLazy`1",
+        "Nito.AsyncEx.AsyncLazy`1");
+
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+
+    public override void Initialize(AnalysisContext context)
+    {
+        context.EnableConcurrentExecution();
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+    }
+
+    private static void AnalyzeInvocation(OperationAnalysisContext context)
+    {
+        var invocation = (IInvocationOperation)context.Operation;
+        if (!IsCompileQuery(invocation.TargetMethod) ||
+            invocation.Syntax is not InvocationExpressionSyntax syntax ||
+            invocation.SemanticModel is not { } semanticModel)
+        {
+            return;
+        }
+
+        if (!CompilesOnEveryCall(syntax, semanticModel))
+            return;
+
+        context.ReportDiagnostic(Diagnostic.Create(Rule, syntax.Expression.GetLocation(), invocation.TargetMethod.Name));
+    }
+
+    internal static bool IsCompileQuery(IMethodSymbol method)
+    {
+        return method.Name is "CompileQuery" or "CompileAsyncQuery" &&
+               method.ContainingType is { Name: "EF", IsStatic: true } type &&
+               type.ContainingNamespace?.ToDisplayString() == "Microsoft.EntityFrameworkCore";
+    }
+
+    private static bool CompilesOnEveryCall(InvocationExpressionSyntax compile, SemanticModel semanticModel)
+    {
+        if (RunsOnce(compile))
+            return false;
+
+        if (IsInsideCacheFactory(compile, semanticModel, out var cacheBuiltPerCall))
+            return cacheBuiltPerCall;
+
+        var value = ClimbValue(compile);
+        switch (value.Parent)
+        {
+            case InvocationExpressionSyntax or MemberAccessExpressionSyntax when IsInvoked(value):
+                return true;
+
+            case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
+                when declarator.Parent?.Parent is LocalDeclarationStatementSyntax:
+                return IsOnlyInvoked(declarator.Identifier.ValueText, declarator, null);
+
+            case AssignmentExpressionSyntax assignment when assignment.Right == value:
+                return AssignmentCompilesOnEveryCall(assignment, semanticModel);
+
+            case ArrowExpressionClauseSyntax arrow:
+                return ReturnCompilesOnEveryCall(arrow, semanticModel);
+
+            case ReturnStatementSyntax returnStatement:
+                return ReturnCompilesOnEveryCall(returnStatement, semanticModel);
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Walks up from <paramref name="expression"/> through parentheses, casts, <c>!</c>, <c>?:</c> branches and
+    /// <c>??</c> to the expression whose value is the compiled delegate.
+    /// </summary>
+    private static ExpressionSyntax ClimbValue(ExpressionSyntax expression)
+    {
+        var current = expression;
+        while (true)
+        {
+            switch (current.Parent)
+            {
+                case ParenthesizedExpressionSyntax parenthesized:
+                    current = parenthesized;
+                    continue;
+                case CastExpressionSyntax cast when cast.Expression == current:
+                    current = cast;
+                    continue;
+                case PostfixUnaryExpressionSyntax postfix when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression):
+                    current = postfix;
+                    continue;
+                case ConditionalExpressionSyntax conditional when conditional.Condition != current:
+                    current = conditional;
+                    continue;
+                case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.CoalesceExpression):
+                    current = binary;
+                    continue;
+                default:
+                    return current;
+            }
+        }
+    }
+
+    /// <summary>True when the delegate <paramref name="value"/> is called right away: <c>value(...)</c> or <c>value.Invoke(...)</c>.</summary>
+    private static bool IsInvoked(ExpressionSyntax value)
+    {
+        return value.Parent switch
+        {
+            InvocationExpressionSyntax call => call.Expression == value,
+            MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Invoke" } access =>
+                access.Expression == value && access.Parent is InvocationExpressionSyntax call && call.Expression == access,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// True when every use of the local named <paramref name="name"/> in its enclosing member invokes it, and there
+    /// is at least one. The match is by name, so any other use of the same name (a store, a return, an argument, a
+    /// reassignment) counts as the delegate escaping.
+    /// </summary>
+    private static bool IsOnlyInvoked(string name, SyntaxNode declaration, SyntaxNode? excluded)
+    {
+        var scope = GetEnclosingMember(declaration);
+        if (scope == null)
+            return false;
+
+        var invoked = false;
+        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.ValueText != name || identifier == excluded)
+                continue;
+
+            if (IsMemberName(identifier) || !IsInvoked(identifier))
+                return false;
+
+            invoked = true;
+        }
+
+        return invoked;
+    }
+
+    private static bool AssignmentCompilesOnEveryCall(AssignmentExpressionSyntax assignment, SemanticModel semanticModel)
+    {
+        // `_query ??= EF.CompileQuery(...)` is a lazy cache.
+        if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
+            return false;
+
+        switch (semanticModel.GetSymbolInfo(assignment.Left).Symbol)
+        {
+            case ILocalSymbol local:
+                return IsOnlyInvoked(local.Name, assignment, assignment.Left);
+
+            case IFieldSymbol { IsStatic: false } field:
+                return InstanceStoreCompilesOnEveryCall(assignment, field, semanticModel);
+
+            case IPropertySymbol { IsStatic: false, IsIndexer: false } property:
+                return InstanceStoreCompilesOnEveryCall(assignment, property, semanticModel);
+
+            default:
+                // Static members, indexers (dictionary caches), parameters and anything else.
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// A store to a field or property of <c>this</c> (or <c>base</c>) from an ordinary method or accessor, not guarded by an
+    /// <c>if</c> whose condition implies the member is null in the branch that holds the store. Constructors and
+    /// <c>init</c> accessors are a non-goal: whether the instance lives long enough to reuse the delegate is not known.
+    /// </summary>
+    private static bool InstanceStoreCompilesOnEveryCall(
+        AssignmentExpressionSyntax assignment,
+        ISymbol memberSymbol,
+        SemanticModel semanticModel)
+    {
+        var target = assignment.Left;
+        if (target is MemberAccessExpressionSyntax access && access.Expression is not (ThisExpressionSyntax or BaseExpressionSyntax))
+            return false;
+        if (target is not (IdentifierNameSyntax or MemberAccessExpressionSyntax))
+            return false;
+
+        var member = GetEnclosingMember(assignment);
+        if (member is not (MethodDeclarationSyntax or AccessorDeclarationSyntax { RawKind: (int)SyntaxKind.GetAccessorDeclaration or (int)SyntaxKind.SetAccessorDeclaration }))
+            return false;
+
+        SyntaxNode previous = assignment;
+        foreach (var ancestor in assignment.Ancestors())
+        {
+            if (ancestor is MemberDeclarationSyntax or AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
+                break;
+
+            if (ancestor is IfStatementSyntax ifStatement)
+            {
+                // `if (_q == null) _q = ...` or `if (_q != null) ... else _q = ...`.
+                var inElse = ifStatement.Else != null && previous == ifStatement.Else;
+                if (ImpliesNull(ifStatement.Condition, !inElse, memberSymbol, semanticModel))
+                    return false;
+            }
+
+            previous = ancestor;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="condition"/> evaluating to <paramref name="whenTrue"/> guarantees that
+    /// <paramref name="member"/> is null. <c>A &amp;&amp; B</c> being true needs only one side to imply it, and being
+    /// false needs both (<c>!A || !B</c>); <c>A || B</c> is the other way round. Members are matched by symbol, so a
+    /// local of the same name does not count.
+    /// </summary>
+    private static bool ImpliesNull(ExpressionSyntax condition, bool whenTrue, ISymbol member, SemanticModel semanticModel)
+    {
+        switch (condition)
+        {
+            case ParenthesizedExpressionSyntax parenthesized:
+                return ImpliesNull(parenthesized.Expression, whenTrue, member, semanticModel);
+
+            case PrefixUnaryExpressionSyntax unary when unary.IsKind(SyntaxKind.LogicalNotExpression):
+                return ImpliesNull(unary.Operand, !whenTrue, member, semanticModel);
+
+            case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression) || binary.IsKind(SyntaxKind.LogicalOrExpression):
+            {
+                var left = ImpliesNull(binary.Left, whenTrue, member, semanticModel);
+                var right = ImpliesNull(binary.Right, whenTrue, member, semanticModel);
+                var eitherSuffices = binary.IsKind(SyntaxKind.LogicalAndExpression) == whenTrue;
+                return eitherSuffices ? left || right : left && right;
+            }
+
+            case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression):
+            {
+                var matches = IsMember(binary.Left, member, semanticModel) && IsNull(binary.Right) ||
+                              IsMember(binary.Right, member, semanticModel) && IsNull(binary.Left);
+                return matches && binary.IsKind(SyntaxKind.EqualsExpression) == whenTrue;
+            }
+
+            case IsPatternExpressionSyntax isPattern when IsMember(isPattern.Expression, member, semanticModel):
+                return PatternTestsNull(isPattern.Pattern) is { } isNull && isNull == whenTrue;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>True for <c>null</c>, false for <c>not null</c> and <c>{ }</c>, null for any other pattern.</summary>
+    private static bool? PatternTestsNull(PatternSyntax pattern)
+    {
+        switch (pattern)
+        {
+            case ConstantPatternSyntax constant when IsNull(constant.Expression):
+                return true;
+            case UnaryPatternSyntax unary when unary.IsKind(SyntaxKind.NotPattern):
+                return PatternTestsNull(unary.Pattern) is { } inner ? !inner : null;
+            case RecursivePatternSyntax { Type: null, PositionalPatternClause: null, Designation: null } recursive
+                when recursive.PropertyPatternClause is { Subpatterns.Count: 0 }:
+                return false;
+            case ParenthesizedPatternSyntax parenthesized:
+                return PatternTestsNull(parenthesized.Pattern);
+            default:
+                return null;
+        }
+    }
+
+    private static bool IsMember(ExpressionSyntax expression, ISymbol member, SemanticModel semanticModel)
+    {
+        switch (expression)
+        {
+            case ParenthesizedExpressionSyntax parenthesized:
+                return IsMember(parenthesized.Expression, member, semanticModel);
+            case IdentifierNameSyntax:
+            case MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax }:
+                return SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(expression).Symbol, member);
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsNull(ExpressionSyntax expression)
+    {
+        return expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.NullLiteralExpression) ||
+               expression is LiteralExpressionSyntax defaultLiteral && defaultLiteral.IsKind(SyntaxKind.DefaultLiteralExpression);
+    }
+
+    /// <summary>
+    /// A compiled delegate returned to the caller. Lambdas are factories whose caller decides the lifetime, so they
+    /// stay quiet. Getters and expression-bodied properties compile on every read. Methods and local functions report
+    /// only when they are private (or local) and every reference to them invokes the returned delegate straight away.
+    /// </summary>
+    private static bool ReturnCompilesOnEveryCall(SyntaxNode returnNode, SemanticModel semanticModel)
+    {
+        foreach (var ancestor in returnNode.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case AnonymousFunctionExpressionSyntax:
+                    return false;
+
+                case LocalFunctionStatementSyntax localFunction:
+                    return semanticModel.GetDeclaredSymbol(localFunction) is IMethodSymbol localSymbol &&
+                           IsFactoryOnlyInvoked(localSymbol, GetEnclosingMember(localFunction), semanticModel);
+
+                case AccessorDeclarationSyntax accessor:
+                    return accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
+
+                case PropertyDeclarationSyntax or IndexerDeclarationSyntax:
+                    return true;
+
+                case MethodDeclarationSyntax method:
+                    return semanticModel.GetDeclaredSymbol(method) is IMethodSymbol symbol &&
+                           PrivateFactoryIsOnlyInvoked(symbol, semanticModel);
+
+                case MemberDeclarationSyntax:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool PrivateFactoryIsOnlyInvoked(IMethodSymbol method, SemanticModel semanticModel)
+    {
+        if (method.DeclaredAccessibility != Accessibility.Private || method.ContainingType == null)
+            return false;
+
+        var referenced = false;
+        foreach (var reference in method.ContainingType.DeclaringSyntaxReferences)
+        {
+            var tree = reference.SyntaxTree;
+            SemanticModel? model = tree == semanticModel.SyntaxTree
+                ? semanticModel
+                : semanticModel.Compilation.TryGetOwnedSemanticModel(tree, out var owned) ? owned : null;
+            if (model == null ||
+                !TryCheckFactoryReferences(method, reference.GetSyntax(), model, ref referenced))
+            {
+                return false;
+            }
+        }
+
+        return referenced;
+    }
+
+    private static bool IsFactoryOnlyInvoked(IMethodSymbol localFunction, SyntaxNode? scope, SemanticModel semanticModel)
+    {
+        if (scope == null)
+            return false;
+
+        var referenced = false;
+        return TryCheckFactoryReferences(localFunction, scope, semanticModel, ref referenced) && referenced;
+    }
+
+    /// <summary>
+    /// False when a reference to <paramref name="factory"/> under <paramref name="scope"/> does anything other than
+    /// call it and invoke the result straight away: <c>Build()(...)</c> or <c>Build().Invoke(...)</c>. A reference
+    /// stored in a field, passed on or used as a method group keeps the rule quiet. References are matched by
+    /// symbol, so a call to another overload of the same name is ignored; a same-named reference that does not
+    /// bind keeps the rule quiet.
+    /// </summary>
+    private static bool TryCheckFactoryReferences(
+        IMethodSymbol factory,
+        SyntaxNode scope,
+        SemanticModel semanticModel,
+        ref bool referenced)
+    {
+        foreach (var node in scope.DescendantNodes())
+        {
+            if (node is not SimpleNameSyntax simpleName || simpleName.Identifier.ValueText != factory.Name)
+                continue;
+
+            var symbolInfo = semanticModel.GetSymbolInfo(simpleName);
+            if (symbolInfo.Symbol is { } bound)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(bound.OriginalDefinition, factory.OriginalDefinition))
+                    continue;
+            }
+            else if (symbolInfo.CandidateSymbols.IsEmpty ||
+                     symbolInfo.CandidateSymbols.Any(candidate =>
+                         SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, factory.OriginalDefinition)))
+            {
+                return false;
+            }
+            else
+            {
+                continue;
+            }
+
+            ExpressionSyntax reference = simpleName;
+            if (simpleName.Parent is MemberAccessExpressionSyntax access && access.Name == simpleName)
+                reference = access;
+            else if (IsMemberName(simpleName))
+                return false;
+
+            if (reference.Parent is not InvocationExpressionSyntax call || call.Expression != reference)
+                return false;
+
+            if (!IsInvoked(ClimbValue(call)))
+                return false;
+
+            // A call from a static initializer or static constructor compiles once.
+            if (!RunsOnce(call))
+                referenced = true;
+        }
+
+        return true;
+    }
+
+    private static bool IsMemberName(SimpleNameSyntax name)
+    {
+        return name.Parent is MemberAccessExpressionSyntax access && access.Name == name ||
+               name.Parent is MemberBindingExpressionSyntax;
+    }
+
+    /// <summary>
+    /// True for code that runs once per program or type: a static constructor, a static field or static
+    /// auto-property initializer, or top-level statements, outside any lambda or local function. Instance field
+    /// initializers run once per instance, so they are not included.
+    /// </summary>
+    private static bool RunsOnce(SyntaxNode node)
+    {
+        SyntaxNode? previous = null;
+        foreach (var ancestor in node.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax:
+                    return false;
+                case ConstructorDeclarationSyntax constructor:
+                    return constructor.Modifiers.Any(SyntaxKind.StaticKeyword);
+                case BaseFieldDeclarationSyntax field:
+                    return field.Modifiers.Any(SyntaxKind.StaticKeyword);
+                case PropertyDeclarationSyntax property:
+                    // Only the `= ...` initializer runs once; getters and `=>` bodies run on every read.
+                    return property.Initializer != null && previous == property.Initializer &&
+                           property.Modifiers.Any(SyntaxKind.StaticKeyword);
+                case GlobalStatementSyntax:
+                    return true;
+                case MemberDeclarationSyntax:
+                    return false;
+            }
+
+            previous = ancestor;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when the nearest enclosing lambda is the one handed to a known cache API that runs it once (per key):
+    /// <c>ConcurrentDictionary.GetOrAdd</c>, the add-value factory of <c>AddOrUpdate</c> (its update factory runs
+    /// every time the key exists), <c>ImmutableInterlocked.GetOrAdd</c>, <c>IMemoryCache.GetOrCreate</c>,
+    /// <c>HybridCache.GetOrCreateAsync</c>, <c>LazyInitializer.EnsureInitialized</c> or a <c>Lazy&lt;T&gt;</c>
+    /// constructor, matched by symbol. A delegate nested inside the factory (<c>_ =&gt; (c, id) =&gt; ...</c>) is
+    /// what gets cached, and it compiles again on every call, so the search stops at the first function boundary.
+    /// <paramref name="cacheBuiltPerCall"/> says whether the cache itself may not outlive the call (it is not kept in
+    /// a field, property or parameter), in which case the factory may run on every call too.
+    /// </summary>
+    private static bool IsInsideCacheFactory(
+        SyntaxNode node,
+        SemanticModel semanticModel,
+        out bool cacheBuiltPerCall)
+    {
+        cacheBuiltPerCall = false;
+        var boundary = node.Ancestors()
+            .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
+        if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
+            lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } argumentList } argument)
+        {
+            return false;
+        }
+
+        switch (owner)
+        {
+            case InvocationExpressionSyntax call
+                when IsCacheFactoryMethod(semanticModel.GetSymbolInfo(call).Symbol as IMethodSymbol) &&
+                     IsAddFactory(argument, argumentList, semanticModel):
+                cacheBuiltPerCall = !RunsOnce(call) && !CacheIsKept(call, semanticModel);
+                return true;
+
+            case BaseObjectCreationExpressionSyntax creation
+                when semanticModel.GetTypeInfo(creation).Type is INamedTypeSymbol lazyType &&
+                     LazyTypes.Contains(GetMetadataName(lazyType.OriginalDefinition)) &&
+                     IsAddFactory(argument, argumentList, semanticModel):
+                cacheBuiltPerCall = !RunsOnce(creation) && !LazyIsStored(creation, semanticModel);
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// True when the new <c>Lazy</c>/<c>AsyncLazy</c> goes straight into a field or property and is kept there: a field
+    /// or property initializer, or an assignment to a member of this instance or a static member that the rule would
+    /// accept for a compiled query (<c>??=</c>, a null guard, a constructor or a static member). Any other use (<c>.Value</c>,
+    /// <c>.GetValueAsync()</c>, <c>.Task</c>, a local, an argument or a return) may build it on every call.
+    /// </summary>
+    private static bool LazyIsStored(BaseObjectCreationExpressionSyntax creation, SemanticModel semanticModel)
+    {
+        var value = ClimbValue(creation);
+        switch (value.Parent)
+        {
+            case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent.Parent: BaseFieldDeclarationSyntax } }:
+            case EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax }:
+                return true;
+
+            // Judged like a compiled query stored the same way: `??=`, a null guard, a constructor or a static
+            // member keeps it; an unguarded store from an ordinary method replaces it on every call.
+            case AssignmentExpressionSyntax assignment
+                when assignment.Right == value &&
+                     (assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression)):
+                return semanticModel.GetSymbolInfo(assignment.Left).Symbol is { } target &&
+                       target is IFieldSymbol or IPropertySymbol { IsIndexer: false } &&
+                       IsOwnOrStaticMember(assignment.Left, target) &&
+                       !AssignmentCompilesOnEveryCall(assignment, semanticModel);
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// True when the cache a known cache API runs on is kept beyond the call. The receiver of
+    /// <c>GetOrAdd</c>/<c>GetOrCreate</c>/<c>GetOrCreateAsync</c> must be a field, auto-property or parameter (an injected
+    /// service); the <c>ref</c> target of <c>LazyInitializer.EnsureInitialized</c> and
+    /// <c>ImmutableInterlocked.GetOrAdd</c> must be a field or a <c>ref</c> parameter. A local, a new instance or any
+    /// other expression may not outlive the call.
+    /// </summary>
+    private static bool CacheIsKept(InvocationExpressionSyntax call, SemanticModel semanticModel)
+    {
+        if (semanticModel.GetSymbolInfo(call).Symbol is not IMethodSymbol method)
+            return false;
+
+        // An instance method, or an extension method called as one: the receiver is the cache.
+        if (!method.IsStatic || method.MethodKind == MethodKind.ReducedExtension)
+            return call.Expression is MemberAccessExpressionSyntax access && IsKeptReceiver(access.Expression, semanticModel);
+
+        if (call.ArgumentList.Arguments.Count == 0)
+            return false;
+
+        var first = call.ArgumentList.Arguments[0];
+        return first.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
+            ? IsKeptRefTarget(first.Expression, semanticModel)
+            : IsKeptReceiver(first.Expression, semanticModel);
+    }
+
+    /// <summary>
+    /// True for a store to a member of this instance (unqualified, <c>this.</c> or <c>base.</c>) or to a static
+    /// member. A store through another object (<c>holder.Query = ...</c>) says nothing about how long it lives.
+    /// </summary>
+    private static bool IsOwnOrStaticMember(ExpressionSyntax target, ISymbol member)
+    {
+        if (member.IsStatic)
+            return true;
+
+        return StripParentheses(target) switch
+        {
+            IdentifierNameSyntax => true,
+            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } => true,
+            _ => false
+        };
+    }
+
+    private static bool IsKeptReceiver(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol switch
+        {
+            IFieldSymbol or IParameterSymbol => true,
+            IPropertySymbol { IsIndexer: false } property => HasNoGetterBody(property),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// True for an auto-property, an abstract or interface property, or one declared outside the source: its getter
+    /// has no body that could build a new cache on every read (<c>Cache =&gt; new()</c>).
+    /// </summary>
+    private static bool HasNoGetterBody(IPropertySymbol property)
+    {
+        foreach (var reference in property.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is not PropertyDeclarationSyntax declaration)
+                return false;
+
+            if (declaration.ExpressionBody != null ||
+                declaration.AccessorList?.Accessors.Any(accessor =>
+                    accessor.IsKind(SyntaxKind.GetAccessorDeclaration) && (accessor.Body != null || accessor.ExpressionBody != null)) == true)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsKeptRefTarget(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        return semanticModel.GetSymbolInfo(StripParentheses(expression)).Symbol switch
+        {
+            IFieldSymbol => true,
+            IParameterSymbol parameter => parameter.RefKind == RefKind.Ref,
+            _ => false
+        };
+    }
+
+    private static ExpressionSyntax StripParentheses(ExpressionSyntax expression)
+    {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        return expression;
+    }
+
+    /// <summary>
+    /// True when <paramref name="argument"/> binds to the factory the cache runs once to add a value
+    /// (<c>valueFactory</c>, <c>addValueFactory</c>, <c>factory</c>). The <c>updateValueFactory</c> of
+    /// <c>AddOrUpdate</c> runs on every call for an existing key, and a lambda passed as the value itself
+    /// (<c>GetOrAdd(key, value)</c>, <c>AddOrUpdate(key, addValue, ...)</c>) is what gets cached, so neither counts.
+    /// When the parameter does not resolve, only the second argument of <c>AddOrUpdate</c> counts, and any argument
+    /// of the other caches.
+    /// </summary>
+    private static bool IsAddFactory(ArgumentSyntax argument, ArgumentListSyntax argumentList, SemanticModel semanticModel)
+    {
+        var name = (semanticModel.GetOperation(argument) as IArgumentOperation)?.Parameter?.Name ??
+                   argument.NameColon?.Name.Identifier.ValueText;
+        if (name != null)
+        {
+            return name.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   name.IndexOf("update", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        return argumentList.Parent is not InvocationExpressionSyntax call ||
+               GetInvokedName(call.Expression) != "AddOrUpdate" ||
+               argumentList.Arguments.IndexOf(argument) == 1;
+    }
+
+    private static bool IsCacheFactoryMethod(IMethodSymbol? method)
+    {
+        if (method == null)
+            return false;
+
+        method = method.ReducedFrom ?? method;
+        return method.ContainingType is { } type &&
+               CacheFactoryMethods.Contains(GetMetadataName(type.OriginalDefinition) + "." + method.Name);
+    }
+
+    private static string GetMetadataName(INamedTypeSymbol type)
+    {
+        var name = type.MetadataName;
+        for (var outer = type.ContainingType; outer != null; outer = outer.ContainingType)
+            name = outer.MetadataName + "+" + name;
+
+        return type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() + "." + name : name;
+    }
+
+    private static string GetInvokedName(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            MemberAccessExpressionSyntax access => access.Name.Identifier.ValueText,
+            SimpleNameSyntax name => name.Identifier.ValueText,
+            _ => string.Empty
+        };
+    }
+
+    /// <summary>The method, constructor, accessor, property or other member declaration that holds <paramref name="node"/>.</summary>
+    private static SyntaxNode? GetEnclosingMember(SyntaxNode node)
+    {
+        foreach (var ancestor in node.Ancestors())
+        {
+            if (ancestor is GlobalStatementSyntax)
+                return ancestor.Parent;
+            if (ancestor is AccessorDeclarationSyntax or BaseMethodDeclarationSyntax or PropertyDeclarationSyntax or IndexerDeclarationSyntax)
+                return ancestor;
+            if (ancestor is MemberDeclarationSyntax)
+                return null;
+        }
+
+        return null;
+    }
+}
