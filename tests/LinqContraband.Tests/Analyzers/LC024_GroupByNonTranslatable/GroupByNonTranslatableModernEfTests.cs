@@ -109,8 +109,9 @@ namespace TestApp
         private static int Scale(int value) => value * 2;
         private static Form Pick(IEnumerable<Form> forms) => null;
 
-        public void TestMethod(IQueryable<Form> forms)
+        public void TestMethod(IQueryable<Form> forms, Func<Form, bool> predicate)
         {
+            var captured = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Where(predicate).ToList()|});
             var helper = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:Pick(g)|});
             var scaled = forms.GroupBy(f => f.CorrelationId).Select(g => {|LC024:g.Select(f => Scale(f.Version)).First()|});
             var created = forms.GroupBy(f => f.CorrelationId).Select(g => new Summary({|LC024:g|}));

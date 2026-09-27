@@ -110,10 +110,31 @@ public sealed partial class GroupByNonTranslatableAnalyzer
                 continue;
 
             if (!IsGroupChainMethod(descendant.TargetMethod, groupProjections) ||
-                !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam, groupProjections))
+                !RootsAtGroupParam(descendant.GetInvocationReceiver(), groupParam, groupProjections) ||
+                HasNonLambdaDelegateArgument(descendant))
             {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    // A predicate or selector held in a variable (g.Where(predicate)) is an opaque delegate to EF, so only a
+    // lambda written in place can translate.
+    private static bool HasNonLambdaDelegateArgument(IInvocationOperation invocation)
+    {
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter == null || GetDelegateParameterCount(argument.Parameter.Type) < 0)
+                continue;
+
+            var value = argument.Value;
+            while (value is IConversionOperation or IDelegateCreationOperation)
+                value = value is IConversionOperation conversion ? conversion.Operand : ((IDelegateCreationOperation)value).Target;
+
+            if (value is not IAnonymousFunctionOperation)
+                return true;
         }
 
         return false;
