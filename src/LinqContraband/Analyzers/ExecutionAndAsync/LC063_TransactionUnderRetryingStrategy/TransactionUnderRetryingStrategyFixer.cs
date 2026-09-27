@@ -117,19 +117,14 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
 
         // The transaction value, through an optional ConfigureAwait(...) and await.
         SyntaxNode value = invocation;
-        var configureAwaitFalse = false;
         if (value.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" } configureAwait &&
             configureAwait.Parent is InvocationExpressionSyntax configureAwaitCall)
         {
             value = configureAwaitCall;
-            configureAwaitFalse = configureAwaitCall.ArgumentList.Arguments.Count == 1 &&
-                                  configureAwaitCall.ArgumentList.Arguments[0].Expression.IsKind(SyntaxKind.FalseLiteralExpression);
         }
 
         if (value.Parent is AwaitExpressionSyntax awaitExpression)
             value = awaitExpression;
-        else
-            configureAwaitFalse = false;
 
         if (value.Parent is not EqualsValueClauseSyntax
             {
@@ -164,6 +159,11 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
         if (moved.Any(ChangesControlFlow))
             return null;
 
+        // Code that picks its resumption context (ConfigureAwait(false), or a value that is not the constant true)
+        // cannot keep that choice across the new outer await without guessing, so it gets no fix.
+        if (moved.Any(statement => ChoosesAwaitContext(statement, semanticModel, cancellationToken)))
+            return null;
+
         var isAsync = moved.Any(ContainsAwait);
         if (isAsync && !IsInAsyncFunction(block))
             return null;
@@ -178,8 +178,7 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
             .WithAdditionalAnnotations(Formatter.Annotation);
 
         var executeText = isAsync
-            // Code that avoids resuming on the captured context keeps doing so for the outer await.
-            ? "await " + strategyName + ".ExecuteAsync(async () => { })" + (configureAwaitFalse ? ".ConfigureAwait(false);" : ";")
+            ? "await " + strategyName + ".ExecuteAsync(async () => { });"
             : strategyName + ".Execute(() => { });";
         var executeStatement = SyntaxFactory.ParseStatement(executeText);
         var placeholder = executeStatement.DescendantNodes().OfType<BlockSyntax>().First();
@@ -298,6 +297,24 @@ public sealed class TransactionUnderRetryingStrategyFixer : CodeFixProvider
     {
         return DescendantsOutsideFunctions(statement).Any(node =>
             node is ReturnStatementSyntax or YieldStatementSyntax or LabeledStatementSyntax or GotoStatementSyntax);
+    }
+
+    private static bool ChoosesAwaitContext(StatementSyntax statement, SemanticModel semanticModel, CancellationToken cancellationToken)
+    {
+        foreach (var invocation in statement.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+        {
+            if (invocation.Expression is not MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" })
+                continue;
+
+            var arguments = invocation.ArgumentList.Arguments;
+            if (arguments.Count != 1 ||
+                semanticModel.GetConstantValue(arguments[0].Expression, cancellationToken) is not { HasValue: true, Value: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsAwait(StatementSyntax statement)

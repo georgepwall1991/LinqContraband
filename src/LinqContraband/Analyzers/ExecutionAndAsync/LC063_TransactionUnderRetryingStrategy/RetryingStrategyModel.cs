@@ -187,41 +187,73 @@ internal sealed class RetryingStrategyModel
                 continue;
             }
 
-            foreach (var operation in body.Descendants())
-            {
-                if (operation is IInvocationOperation execute &&
-                    IsStrategyExecute(execute.TargetMethod) &&
-                    execute.Arguments.Any(argument => HandsParameterToStrategy(argument.Value, target)))
-                {
-                    return true;
-                }
-            }
+            if (EveryUseForwardsToStrategy(body, target))
+                return true;
         }
 
         return false;
     }
 
-    /// <summary>The argument is the parameter itself, or a lambda that invokes it.</summary>
-    private static bool HandsParameterToStrategy(IOperation value, IParameterSymbol parameter)
+    /// <summary>
+    /// True when the parameter is used at least once and every use hands it to a strategy's Execute* call: passed as
+    /// the delegate argument, or invoked directly inside a lambda that is itself that delegate argument. Any other
+    /// use (invoked outside the strategy, stored, returned, passed elsewhere, captured by some other lambda or local
+    /// function) means the delegate can run outside the strategy.
+    /// </summary>
+    private static bool EveryUseForwardsToStrategy(IOperation body, IParameterSymbol parameter)
     {
-        while (value is IDelegateCreationOperation or IConversionOperation)
+        var forwarded = false;
+        foreach (var operation in body.Descendants())
         {
-            value = value switch
+            if (operation is not IParameterReferenceOperation reference ||
+                !SymbolEqualityComparer.Default.Equals(reference.Parameter, parameter))
             {
-                IDelegateCreationOperation delegateCreation => delegateCreation.Target,
-                IConversionOperation conversion => conversion.Operand,
-                _ => value
-            };
+                continue;
+            }
+
+            if (IsStrategyDelegateArgument(reference))
+            {
+                forwarded = true;
+                continue;
+            }
+
+            IOperation invoked = reference;
+            while (invoked.Parent is IConversionOperation)
+                invoked = invoked.Parent;
+
+            if (invoked.Parent is IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke } invocation &&
+                ReferenceEquals(invocation.Instance, invoked) &&
+                EnclosingFunction(invocation) is IAnonymousFunctionOperation lambda &&
+                IsStrategyDelegateArgument(lambda))
+            {
+                forwarded = true;
+                continue;
+            }
+
+            return false;
         }
 
-        if (value is IParameterReferenceOperation direct)
-            return SymbolEqualityComparer.Default.Equals(direct.Parameter, parameter);
+        return forwarded;
+    }
 
-        return value is IAnonymousFunctionOperation lambda &&
-               lambda.Body.Descendants().Any(operation =>
-                   operation is IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke } invocation &&
-                   invocation.Instance?.UnwrapConversions() is IParameterReferenceOperation invoked &&
-                   SymbolEqualityComparer.Default.Equals(invoked.Parameter, parameter));
+    private static bool IsStrategyDelegateArgument(IOperation value)
+    {
+        while (value.Parent is IDelegateCreationOperation or IConversionOperation)
+            value = value.Parent;
+
+        return value.Parent is IArgumentOperation { Parent: IInvocationOperation execute } &&
+               IsStrategyExecute(execute.TargetMethod);
+    }
+
+    private static IOperation? EnclosingFunction(IOperation operation)
+    {
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is IAnonymousFunctionOperation or ILocalFunctionOperation)
+                return current;
+        }
+
+        return null;
     }
 
     private static bool IsExecutionStrategyInterface(ITypeSymbol type)

@@ -104,7 +104,7 @@ public class TransactionUnderRetryingStrategyFixerTests
     {
         await VerifyFixAsync(@"
         var saved = 0;
-        using (var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct).ConfigureAwait(false))
+        using (var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct))
         {
             saved = await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -114,29 +114,27 @@ public class TransactionUnderRetryingStrategyFixerTests
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            using (var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false))
+            using (var tx = await db.Database.BeginTransactionAsync(ct))
             {
                 saved = await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
-        }).ConfigureAwait(false);
+        });
         Console.WriteLine(saved);");
     }
 
     [Fact]
-    public async Task ConfigureAwaitFalse_IsKeptOnTheOuterAwait()
+    public async Task ConfigureAwaitTrue_IsFixed()
     {
         await VerifyFixAsync(@"
-        await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct).ConfigureAwait(false);
-        await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        await tx.CommitAsync(ct).ConfigureAwait(false);", @"
+        await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct).ConfigureAwait(true);
+        await tx.CommitAsync(ct).ConfigureAwait(true);", @"
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-            await tx.CommitAsync(ct).ConfigureAwait(false);
-        }).ConfigureAwait(false);");
+            await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(true);
+            await tx.CommitAsync(ct).ConfigureAwait(true);
+        });");
     }
 
     [Fact]
@@ -314,6 +312,10 @@ public class TransactionUnderRetryingStrategyFixerTests
     [InlineData(@"using var tx = _mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"using var tx = this._mutable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"using var tx = Settable.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
+    // The moved code chooses where awaits resume; the new outer await cannot keep that choice without guessing.
+    [InlineData(@"await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct).ConfigureAwait(false); await tx.CommitAsync(ct);")]
+    [InlineData(@"await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct); await db.SaveChangesAsync(ct).ConfigureAwait(false); await tx.CommitAsync(ct);")]
+    [InlineData(@"var resume = ct.CanBeCanceled; await using var tx = await db.Database.{|LC063:BeginTransactionAsync|}(ct); await tx.CommitAsync(ct).ConfigureAwait(resume);")]
     // A virtual get-only auto-property can be overridden to return a different context on each read.
     [InlineData(@"using var tx = VirtualDb.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]
     [InlineData(@"if (ct.CanBeCanceled) db = new AppDb(); using var tx = db.Database.{|LC063:BeginTransaction|}(); tx.Commit();")]

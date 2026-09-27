@@ -594,6 +594,48 @@ class CacheOptionsBuilder
     }
 
     [Fact]
+    public async Task WrapperWithAFallbackThatInvokesTheDelegate_Reports()
+    {
+        // The fallback branch runs the delegate outside the strategy, so Run is not a wrapper.
+        await VerifyAsync(Wrap(
+            @"Run(() =>
+        {
+            using var tx = db.Database.{|LC063:BeginTransaction|}();
+            tx.Commit();
+        }, ct.CanBeCanceled);",
+            extraMembers: @"
+    private void Run(Action action, bool resilient)
+    {
+        if (resilient)
+            _db.Database.CreateExecutionStrategy().Execute(action);
+        else
+            action();
+    }"));
+    }
+
+    [Theory]
+    // Stored, or captured by a lambda that is not the strategy's delegate: it can run outside the strategy.
+    [InlineData(@"_last = action; _db.Database.CreateExecutionStrategy().Execute(action);")]
+    [InlineData(@"_db.Database.CreateExecutionStrategy().Execute(action); Task.Run(() => action());")]
+    [InlineData(@"_db.Database.CreateExecutionStrategy().Execute(() => { Action inner = () => action(); inner(); });")]
+    public async Task WrapperWithAnotherUseOfTheDelegate_Reports(string runBody)
+    {
+        await VerifyAsync(Wrap(
+            @"Run(() =>
+        {
+            using var tx = db.Database.{|LC063:BeginTransaction|}();
+            tx.Commit();
+        });",
+            extraMembers: @"
+    private Action _last;
+
+    private void Run(Action action)
+    {
+        " + runBody + @"
+    }"));
+    }
+
+    [Fact]
     public async Task WrapperForwardingTheDelegateToTheStrategy_NotReported()
     {
         await VerifyAsync(Wrap(
