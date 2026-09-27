@@ -16,7 +16,8 @@ public sealed partial class SyncBlockerAnalyzer
     /// Beyond the shared <see cref="InMemoryQueryableProvenance"/> walk it follows a local through
     /// every write in its method (each must be in-memory-rooted or composed from the same local)
     /// and follows calls to non-overridable source helpers whose returned query is composed only
-    /// from one <c>IQueryable</c> parameter, continuing with that call's argument. Anything else
+    /// from one <c>IQueryable</c> parameter, continuing with that call's argument, and library helpers
+    /// handed only an in-memory query (see <see cref="WalkLibraryHelperCall"/>). Anything else
     /// (a parameter, field, property, <c>DbSet</c>, or an unfollowable helper) is not proven.
     /// </summary>
     private sealed class InMemoryQueryProvenance
@@ -70,7 +71,7 @@ public sealed partial class SyncBlockerAnalyzer
                                 continue;
                             }
 
-                            return IsConcreteInMemorySequence(receiver?.Type) ||
+                            return InMemoryQueryableProvenance.IsInMemorySequenceSource(receiver) ||
                                    IsNonEntitySequence(receiver?.Type);
                         }
 
@@ -87,7 +88,7 @@ public sealed partial class SyncBlockerAnalyzer
                             continue;
                         }
 
-                        return false;
+                        return WalkLibraryHelperCall(invocation, passThroughParameter, inProgress, helpersInProgress, depth);
                     }
 
                     case IObjectCreationOperation creation:
@@ -220,6 +221,71 @@ public sealed partial class SyncBlockerAnalyzer
             }
         }
 
+        /// <summary>
+        /// A static or extension helper without source (a referenced project or package, such as
+        /// SimpleIdServer's <c>scimFilter.EvaluateAttributes(attributes.AsQueryable(), false)</c>) that
+        /// returns a query. It is proven when at least one argument is a query proven in-memory, every other
+        /// sequence argument is an in-memory sequence, and no argument is a <c>DbContext</c>, a delegate
+        /// or a <c>params</c> array. The helper cannot reach EF through what it is given.
+        /// </summary>
+        private bool WalkLibraryHelperCall(
+            IInvocationOperation invocation,
+            IParameterSymbol? passThroughParameter,
+            HashSet<ISymbol> inProgress,
+            HashSet<IMethodSymbol> helpersInProgress,
+            int depth)
+        {
+            if (invocation.Instance != null)
+                return false;
+
+            var provenQuery = false;
+            foreach (var argument in invocation.Arguments)
+            {
+                if (argument.ArgumentKind == ArgumentKind.ParamArray)
+                    return false;
+
+                if (argument.ArgumentKind == ArgumentKind.DefaultValue)
+                    continue;
+
+                var value = argument.Value.UnwrapConversions();
+                var type = value.Type;
+                if (type == null)
+                    continue;
+
+                if (type.IsIQueryable())
+                {
+                    if (!Walk(value, passThroughParameter, inProgress, helpersInProgress, depth + 1))
+                        return false;
+
+                    provenQuery = true;
+                    continue;
+                }
+
+                // A DbContext, or a callback that could hand back an EF query, reaches the database.
+                if (type.IsDbContext() || type.TypeKind == TypeKind.Delegate)
+                    return false;
+
+                if (type.SpecialType != SpecialType.System_String &&
+                    IsSequence(type) &&
+                    !InMemoryQueryableProvenance.IsInMemorySequenceSource(value))
+                    return false;
+            }
+
+            return provenQuery;
+        }
+
+        private static bool IsSequence(ITypeSymbol type)
+        {
+            if (type is IArrayTypeSymbol)
+                return true;
+
+            if (type.SpecialType == SpecialType.System_Collections_IEnumerable ||
+                type.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
+                return true;
+
+            return type.AllInterfaces.Any(i => i.SpecialType == SpecialType.System_Collections_IEnumerable);
+        }
+
         private bool WalkHelperCall(
             IInvocationOperation invocation,
             IParameterSymbol? passThroughParameter,
@@ -343,19 +409,14 @@ public sealed partial class SyncBlockerAnalyzer
             return null;
         }
 
-        private static bool IsOwnedSourceMethod(IMethodSymbol method)
+        /// <summary>
+        /// Declared in this compilation. A helper from a referenced project has syntax references when the
+        /// IDE loads that project as a compilation reference, but it is metadata in a command-line build, so
+        /// both are treated as library helpers.
+        /// </summary>
+        private bool IsOwnedSourceMethod(IMethodSymbol method)
         {
-            return method.OriginalDefinition.DeclaringSyntaxReferences.Length > 0;
-        }
-
-        private static bool IsConcreteInMemorySequence(ITypeSymbol? type)
-        {
-            return type switch
-            {
-                IArrayTypeSymbol => true,
-                INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } named => !named.IsIQueryable(),
-                _ => false
-            };
+            return method.OriginalDefinition.DeclaringSyntaxReferences.Any(r => compilation.ContainsSyntaxTree(r.SyntaxTree));
         }
 
         /// <summary>

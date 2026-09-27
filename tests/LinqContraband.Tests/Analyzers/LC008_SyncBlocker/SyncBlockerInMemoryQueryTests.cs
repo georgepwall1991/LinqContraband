@@ -442,4 +442,186 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TestInnocent_EntityNavigationCollectionThroughSourceHelper_NoDiagnostic()
+    {
+        // Cofoundry: an ICollection<T> navigation of a loaded entity. No EF query type implements
+        // ICollection<T>, so AsQueryable() over it is LINQ to Objects even though T is an entity.
+        var test = Usings + @"
+class Version { public ICollection<User> Blocks { get; set; } = new List<User>(); }
+static class BlockQueries
+{
+    public static IQueryable<User> FilterActive(this IQueryable<User> source) => source.Where(u => u.Id > 0);
+}
+class Program
+{
+    static int MapBlock(User user, int x) => user.Id + x;
+
+    async Task<List<int>> Main(Version dbVersion, int x)
+    {
+        await Task.Delay(1);
+        return dbVersion.Blocks.AsQueryable().FilterActive().Where(m => m.Id < 100).OrderBy(m => m.Id).Select(m => MapBlock(m, x)).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    [InlineData("IList<User>")]
+    [InlineData("IReadOnlyCollection<User>")]
+    [InlineData("IReadOnlyList<User>")]
+    [InlineData("ISet<User>")]
+    public async Task TestInnocent_EntityCollectionInterfaceAsQueryable_NoDiagnostic(string type)
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main(" + type + @" users)
+    {
+        await Task.Delay(1);
+        return users.AsQueryable().Count();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_EnumerableOperatorResultAsQueryable_NoDiagnostic()
+    {
+        // SimpleIdServer: Enumerable.Select returns a LINQ-to-Objects iterator, never a DbSet.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(IEnumerable<User> users)
+    {
+        await Task.Delay(1);
+        return users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_AsEnumerableOverDbSetAsQueryable_StillTriggers()
+    {
+        // Enumerable.AsEnumerable returns the DbSet itself, and AsQueryable() hands back the EF query.
+        var test = Usings + @"
+class Program
+{
+    async Task<List<User>> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return {|LC008:db.Users.AsEnumerable().AsQueryable().ToList()|};
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_CastOverDbSetAsQueryable_StillTriggers()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main(MyDbContext db)
+    {
+        await Task.Delay(1);
+        return {|LC008:db.Users.AsEnumerable().Cast<User>().AsQueryable().Count()|};
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_LibraryHelperOverInMemoryQuery_NoDiagnostic()
+    {
+        // SimpleIdServer: an extension in a referenced project (no source) that takes the in-memory
+        // query as its second argument and returns a query.
+        await RunWithLibraryAsync(@"
+class Program
+{
+    static List<User> BuildHierarchy(List<User> users) => users;
+
+    async Task<List<User>> Main(ScimExpression scimFilter, List<User> list)
+    {
+        await Task.Delay(1);
+        var x = scimFilter.EvaluateAttributes(BuildHierarchy(list).AsQueryable(), false).ToList();
+        return x;
+    }
+}
+");
+    }
+
+    [Theory]
+    // The query argument is the EF set.
+    [InlineData("{|LC008:scimFilter.EvaluateAttributes(db.Users, false).ToList()|}")]
+    // The helper is handed the DbContext.
+    [InlineData("{|LC008:ScimLibrary.FromContext(list.AsQueryable(), db).ToList()|}")]
+    // A callback could return an EF query.
+    [InlineData("{|LC008:ScimLibrary.Apply(list.AsQueryable(), q => db.Users).ToList()|}")]
+    // A sequence argument that may be a DbSet.
+    [InlineData("{|LC008:ScimLibrary.Merge(list.AsQueryable(), sequence).ToList()|}")]
+    // No query argument at all.
+    [InlineData("{|LC008:ScimLibrary.Load(list.Count).ToList()|}")]
+    public async Task TestCrime_LibraryHelperWithUnprovenInput_StillTriggers(string call)
+    {
+        await RunWithLibraryAsync(@"
+class Program
+{
+    async Task<object> Main(ScimExpression scimFilter, List<User> list, IEnumerable<User> sequence, MyDbContext db)
+    {
+        await Task.Delay(1);
+        var x = " + call + @";
+        return x;
+    }
+}
+");
+    }
+
+    private static async Task RunWithLibraryAsync(string code)
+    {
+        var test = new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC008_SyncBlocker.SyncBlockerAnalyzer,
+            Microsoft.CodeAnalysis.Testing.DefaultVerifier>
+        {
+            TestCode = Usings + "using ScimLib;\n" + code + MockNamespace
+        };
+
+        var library = new Microsoft.CodeAnalysis.Testing.ProjectState(
+            "ScimLib", Microsoft.CodeAnalysis.LanguageNames.CSharp, "/scim/", "cs");
+        library.Sources.Add(("/scim/Scim.cs", @"
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ScimLib
+{
+    public class ScimExpression { }
+
+    public static class ScimLibrary
+    {
+        public static IQueryable<T> EvaluateAttributes<T>(this ScimExpression expression, IQueryable<T> attributes, bool isStrict, string propertyName = ""Children"") => attributes;
+        public static IQueryable<T> FromContext<T>(IQueryable<T> source, object context) => source;
+        public static IQueryable<T> Apply<T>(IQueryable<T> source, Func<IQueryable<T>, IQueryable<T>> step) => step(source);
+        public static IQueryable<T> Merge<T>(IQueryable<T> source, IEnumerable<T> more) => source.Concat(more);
+        public static IQueryable<int> Load(int count) => Enumerable.Range(0, count).AsQueryable();
+    }
+}
+"));
+        test.TestState.AdditionalProjects.Add("ScimLib", library);
+        test.TestState.AdditionalProjectReferences.Add("ScimLib");
+
+        await test.RunAsync();
+    }
 }

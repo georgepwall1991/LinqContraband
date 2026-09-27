@@ -104,15 +104,20 @@ public sealed partial class LocalMethodAnalyzer : DiagnosticAnalyzer
 
         var parent = invocation.Parent;
         var lambdas = new List<IAnonymousFunctionOperation>();
+        var insideExpressionTree = false;
 
         while (parent != null)
         {
             if (parent is IAnonymousFunctionOperation anonymousFunction)
             {
                 lambdas.Add(anonymousFunction);
+                insideExpressionTree |= IsExpressionTreeLambda(anonymousFunction);
             }
 
+            // A call that sits only in delegate lambdas (list.Select(r => Enrich(r)).AsQueryable().Where(...))
+            // runs as ordinary code before the query; it never reaches the query provider.
             if (parent is IInvocationOperation queryInvocation &&
+                insideExpressionTree &&
                 IsTranslationCriticalQueryableInvocation(queryInvocation) &&
                 lambdas.Count > 0 &&
                 InvocationDependsOnLambdaParameter(invocation, lambdas[lambdas.Count - 1]))

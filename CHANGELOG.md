@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LC001, LC004, LC016, LC020 and LC022 recognise more queries that run on LINQ to Objects and stay quiet on them: `AsQueryable()` over a value typed as `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>` or `IReadOnlySet<T>` (no EF query type implements these), and over the result of a `System.Linq.Enumerable` operator such as `Select` or `Where`, which is always an in-memory iterator. `AsEnumerable()`, `Cast<T>()` and `OfType<T>()` are excluded because they can return a `DbSet` unchanged, and a bare `IEnumerable<T>` still reports.
+- LC001 no longer reports a method called in a delegate lambda that runs before the query is built, as in SimpleIdServer's `_representations.Select(r => Enrich(r)).AsQueryable().Where(r => r.ResourceType == type)`. Only methods inside an expression tree are reported; a delegate lambda nested in a query lambda still is.
+- LC008 no longer reports a sync terminal on the in-memory shapes above, such as Cofoundry's `dbVersion.CustomEntityVersionPageBlocks.AsQueryable().FilterActive().Where(...).Select(...).ToList()` over an `ICollection<T>` entity navigation. It also follows a static or extension helper from a referenced project or package that returns a query, when it is given a query proven in memory and nothing that could reach EF (no `DbContext`, other EF query, possibly-EF sequence, delegate or `params` array), as in SimpleIdServer's `scimFilter.EvaluateAttributes(SCIMRepresentation.BuildHierarchicalAttributes(list).AsQueryable(), false).ToList()`.
+
 ## [5.15.0] - 2026-09-25
 
 ### Fixed
