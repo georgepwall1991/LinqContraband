@@ -29,6 +29,7 @@ namespace TestApp
     public sealed class Safe { public int Id { get; set; } }
     public sealed class Knife { public int Id { get; set; } }
     public sealed class Cafe { public int Id { get; set; } }
+    public sealed class Quiz { public int Id { get; set; } }
     public sealed class Potato { public int Id { get; set; } }
     public sealed class Photo { public int Id { get; set; } }
     public sealed class Video { public int Id { get; set; } }
@@ -348,6 +349,21 @@ namespace TestApp
         public int ClearSaves(BlogDbContext db) => {|LC035:db.Set<Safe>().ExecuteDelete()|};
         public int ClearStati(BlogDbContext db) => {|LC035:db.Set<Status>().ExecuteDelete()|};
         public int ClearCafeves(BlogDbContext db) => {|LC035:db.Set<Cafe>().ExecuteDelete()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task QuizDoublesItsZ()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class Maintenance
+    {
+        public int ClearQuizzes(BlogDbContext db) => db.Set<Quiz>().ExecuteDelete();
+        public int PurgeQuizes(BlogDbContext db) => db.Set<Quiz>().ExecuteDelete();
+        public int ClearQuizs(BlogDbContext db) => {|LC035:db.Set<Quiz>().ExecuteDelete()|};
     }
 }";
 

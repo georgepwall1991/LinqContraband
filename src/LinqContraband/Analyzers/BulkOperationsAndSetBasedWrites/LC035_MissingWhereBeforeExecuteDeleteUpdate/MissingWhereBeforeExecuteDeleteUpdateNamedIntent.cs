@@ -32,7 +32,8 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         ("Mouse", "Mice"), ("Goose", "Geese"), ("Tooth", "Teeth"), ("Foot", "Feet")
     };
 
-    // Classical plurals, matched on the last word. AlsoRegular accepts the regular form too
+    // Classical and other listed plurals, matched on the last word. A word missing here only makes
+    // LC035 report a clear it could have recognised, which is the safe direction. AlsoRegular accepts the regular form too
     // (Scarves and Scarfs, Radii and Radiuses, Media and Mediums).
     private static readonly (string Singular, string Plural, bool AlsoRegular)[] ClassicalPlurals =
     {
@@ -47,7 +48,8 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         ("Syllabus", "Syllabi", true), ("Focus", "Foci", true),
         ("Datum", "Data", false), ("Medium", "Media", true), ("Curriculum", "Curricula", true),
         ("Bacterium", "Bacteria", false), ("Stratum", "Strata", false), ("Memorandum", "Memoranda", true),
-        ("Criterion", "Criteria", false), ("Phenomenon", "Phenomena", false)
+        ("Criterion", "Criteria", false), ("Phenomenon", "Phenomena", false),
+        ("Quiz", "Quizzes", true), ("Whiz", "Whizzes", false)
     };
 
     // Words whose plural is the same word: ClearSeries over Set<Series>().
