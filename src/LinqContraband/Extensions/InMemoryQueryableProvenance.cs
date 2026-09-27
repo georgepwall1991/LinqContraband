@@ -248,20 +248,62 @@ public static class InMemoryQueryableProvenance
     }
 
     /// <summary>
-    /// A sequence the operator reads, judged by the operator's generic definition: a parameter declared
-    /// as <c>IEnumerable</c> or as <c>IEnumerable&lt;TSource&gt;</c> over one of the operator's own type
-    /// parameters (source, inner, second, ...). <c>Append</c>'s and <c>Prepend</c>'s <c>TSource element</c>
-    /// is a value even when <c>TSource</c> is substituted with <c>IEnumerable&lt;User&gt;</c>.
+    /// A sequence the operator reads, judged by the operator's generic definition: a parameter declared as
+    /// <c>IEnumerable</c>, or as a type that is or implements <c>IEnumerable&lt;X&gt;</c> where <c>X</c> mentions one
+    /// of the operator's own type parameters (<c>IEnumerable&lt;TSource&gt;</c>, ThenBy's
+    /// <c>IOrderedEnumerable&lt;TSource&gt;</c>, ...). A bare type parameter is a value: <c>Append</c>'s and
+    /// <c>Prepend</c>'s <c>TSource element</c> is not read even when <c>TSource</c> is <c>IEnumerable&lt;User&gt;</c>.
     /// </summary>
     private static bool IsSequenceInputParameter(IParameterSymbol parameter)
     {
         var type = parameter.OriginalDefinition.Type;
+        if (type.TypeKind == TypeKind.TypeParameter)
+            return false;
+
         if (type.SpecialType == SpecialType.System_Collections_IEnumerable)
             return true;
 
+        if (IsEnumerableOfMethodTypeParameter(type))
+            return true;
+
+        foreach (var implemented in type.AllInterfaces)
+        {
+            if (IsEnumerableOfMethodTypeParameter(implemented))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsEnumerableOfMethodTypeParameter(ITypeSymbol type)
+    {
         return type is INamedTypeSymbol { Arity: 1 } named &&
                named.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T &&
-               named.TypeArguments[0] is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method };
+               MentionsMethodTypeParameter(named.TypeArguments[0], 0);
+    }
+
+    private static bool MentionsMethodTypeParameter(ITypeSymbol type, int depth)
+    {
+        if (depth > MaxDepth)
+            return false;
+
+        switch (type)
+        {
+            case ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method }:
+                return true;
+            case IArrayTypeSymbol array:
+                return MentionsMethodTypeParameter(array.ElementType, depth + 1);
+            case INamedTypeSymbol named:
+                foreach (var argument in named.TypeArguments)
+                {
+                    if (MentionsMethodTypeParameter(argument, depth + 1))
+                        return true;
+                }
+
+                return false;
+            default:
+                return false;
+        }
     }
 
     private static bool IsConcreteInMemorySequence(ITypeSymbol type)

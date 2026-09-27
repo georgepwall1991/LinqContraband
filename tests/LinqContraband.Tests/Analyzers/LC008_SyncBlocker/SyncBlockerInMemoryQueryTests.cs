@@ -530,6 +530,9 @@ class Program
     // Enumerable operators are lazy: the iterator still enumerates the EF query.
     [InlineData("{|LC008:db.Users.AsEnumerable().Where(u => u.Id > 0).AsQueryable().ToList()|}")]
     [InlineData("{|LC008:db.Users.AsEnumerable().Select(u => u).OrderBy(u => u.Id).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
+    // ThenBy reads an IOrderedEnumerable<TSource> source, which is still the EF query underneath.
+    [InlineData("{|LC008:db.Users.AsEnumerable().OrderBy(u => u.Id).ThenBy(u => -u.Id).AsQueryable().ToList()|}")]
+    [InlineData("{|LC008:db.Users.AsEnumerable().OrderBy(u => u.Id).ThenByDescending(u => -u.Id).AsQueryable().ToList()|}")]
     // A bare IEnumerable<User> may be a DbSet at run time.
     [InlineData("{|LC008:users.Select(u => u).AsQueryable().Where(u => u.Id > 0).ToList()|}")]
     // A SelectMany selector that returns the DbSet enumerates it.
