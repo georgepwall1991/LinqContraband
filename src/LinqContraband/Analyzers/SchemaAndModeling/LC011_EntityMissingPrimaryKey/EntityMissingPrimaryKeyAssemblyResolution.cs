@@ -56,7 +56,10 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         if (IsGetExecutingAssemblyCall(expression, dbContextType, compilationModel, cancellationToken))
             return true;
 
-        // GetType().Assembly inside the context: the context's own assembly.
+        // GetType().Assembly inside the context: the context's own assembly. GetType() returns the
+        // runtime type, so for an abstract context it is some derived type that may live in another
+        // assembly; only a concrete context is taken to be instantiated as itself. An abstract
+        // context falls back to the unknown-assembly behavior.
         if (expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Assembly" } getTypeAccess &&
             getTypeAccess.Expression is InvocationExpressionSyntax { ArgumentList.Arguments.Count: 0 } getTypeCall &&
             getTypeCall.Expression switch
@@ -65,6 +68,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name.Identifier.ValueText: "GetType" } => true,
                 _ => false
             } &&
+            !dbContextType.IsAbstract &&
             !HasSourceGetTypeMethod(dbContextType))
         {
             return true;

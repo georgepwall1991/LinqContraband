@@ -33,6 +33,54 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             cancellationToken);
     }
 
+    private static bool IsEntityFrameworkCoreMethod(
+        InvocationExpressionSyntax invocation,
+        SyntaxNode methodSyntax,
+        CompilationModel compilationModel,
+        ref SemanticModel? semanticModel,
+        ref bool semanticModelResolved,
+        CancellationToken cancellationToken)
+    {
+        if (!semanticModelResolved)
+        {
+            semanticModelResolved = true;
+            semanticModel = compilationModel.GetSemanticModel(methodSyntax.SyntaxTree);
+        }
+
+        if (semanticModel == null)
+            return false;
+
+        // A lambda argument that does not bind yet leaves only candidates; accept them when all are EF Core's.
+        var compilationAssembly = compilationModel.Compilation.Assembly;
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, cancellationToken);
+        if (symbolInfo.Symbol is IMethodSymbol method)
+            return IsDeclaredByEntityFrameworkCore(method, compilationAssembly);
+
+        return !symbolInfo.CandidateSymbols.IsEmpty &&
+               symbolInfo.CandidateSymbols.All(candidate =>
+                   candidate is IMethodSymbol && IsDeclaredByEntityFrameworkCore(candidate, compilationAssembly));
+    }
+
+    // The namespace alone is not enough: a project can declare its own method inside
+    // Microsoft.EntityFrameworkCore. The method must also come from the referenced core EF Core
+    // assembly, which is where EF Core declares UsingEntity; a name prefix would admit third-party
+    // packages such as Microsoft.EntityFrameworkCore.Extensions.
+    private static bool IsDeclaredByEntityFrameworkCore(ISymbol method, IAssemblySymbol compilationAssembly)
+    {
+        var assembly = method.ContainingAssembly;
+        if (assembly == null ||
+            SymbolEqualityComparer.Default.Equals(assembly, compilationAssembly) ||
+            !string.Equals(assembly.Name, "Microsoft.EntityFrameworkCore", System.StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var ns = method.ContainingType?.ContainingNamespace?.ToDisplayString();
+        return ns != null &&
+               (ns == "Microsoft.EntityFrameworkCore" ||
+                ns.StartsWith("Microsoft.EntityFrameworkCore.", System.StringComparison.Ordinal));
+    }
+
     // OnModelCreating often hands the ModelBuilder to helpers, such as a static
     // `AddressData.OnModelCreating(builder)` on each entity or a `builder.ConfigureUsers()`
     // extension, or passes `builder.Entity<User>()` to one, so source methods that take a
@@ -105,9 +153,11 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                     }
 
                     // HasMany(...).WithMany(...).UsingEntity<PostTag>(...): EF Core keys a many-to-many
-                    // join entity by convention with the composite of its two foreign keys.
+                    // join entity by convention with the composite of its two foreign keys. The call must
+                    // bind to EF Core's own UsingEntity, so a user method with the same name does not count.
                     if (methodName == "UsingEntity" &&
                         memberAccess.Name is GenericNameSyntax { TypeArgumentList.Arguments.Count: 1 } usingEntity &&
+                        IsEntityFrameworkCoreMethod(invocation, syntax, compilationModel, ref semanticModel, ref semanticModelResolved, cancellationToken) &&
                         compilationModel.FindType(usingEntity.TypeArgumentList.Arguments[0], cancellationToken) is { } joinEntity)
                     {
                         configuredEntities.Add(joinEntity);
