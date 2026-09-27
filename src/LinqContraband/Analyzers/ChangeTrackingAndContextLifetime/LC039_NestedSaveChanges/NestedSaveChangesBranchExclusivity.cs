@@ -90,18 +90,44 @@ public sealed partial class NestedSaveChangesAnalyzer
                     return false;
 
                 var branch = GetContainingBranch(ifStatement, left);
-                if (branch != null && EndsWithMethodExit(branch) && !IsInFinallyAround(left, right))
+                if (branch != null && EndsWithMethodExit(branch, right) && !IsInFinallyAround(left, right))
                     return true;
             }
 
             return false;
         }
 
-        private static bool EndsWithMethodExit(StatementSyntax branch)
+        private static bool EndsWithMethodExit(StatementSyntax branch, SyntaxNode right)
         {
             var last = branch is BlockSyntax block ? block.Statements.LastOrDefault() : branch;
-            return last is ReturnStatementSyntax or ThrowStatementSyntax ||
-                   last is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax };
+            if (last is ReturnStatementSyntax)
+                return true;
+
+            return (last is ThrowStatementSyntax || last is ExpressionStatementSyntax { Expression: ThrowExpressionSyntax }) &&
+                   !IsCaughtBefore(branch, right);
+        }
+
+        /// <summary>
+        /// <c>try { if (flag) { db.SaveChanges(); throw ...; } } catch { } db.SaveChanges();</c>: the catch swallows the
+        /// throw and the later save still runs. Only a try whose try block also holds the later save is skipped by the throw.
+        /// </summary>
+        private static bool IsCaughtBefore(SyntaxNode branch, SyntaxNode right)
+        {
+            foreach (var ancestor in branch.Ancestors())
+            {
+                if (ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or MemberDeclarationSyntax)
+                    return false;
+
+                if (ancestor is TryStatementSyntax tryStatement &&
+                    tryStatement.Catches.Count > 0 &&
+                    tryStatement.Block.Span.Contains(branch.SpanStart) &&
+                    !tryStatement.Block.Span.Contains(right.SpanStart))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsInFinallyAround(SyntaxNode left, SyntaxNode right)

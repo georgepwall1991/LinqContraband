@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- LC039 no longer reports a save after an `if` whose branch saves and then returns or throws, as in Moonglade's request counter (`if (entity is null) { db.Add(entity); await db.SaveChangesAsync(ct); return 1; } entity.RequestCount++; await db.SaveChangesAsync(ct);`). The two saves never run in the same call. A save before the `if` still pairs with the save after it, and a later save in a `finally` block still reports.
+- LC039 no longer reports a save after an `if` whose branch saves and then returns or throws, as in Moonglade's request counter (`if (entity is null) { db.Add(entity); await db.SaveChangesAsync(ct); return 1; } entity.RequestCount++; await db.SaveChangesAsync(ct);`). The two saves never run in the same call. A save before the `if` still pairs with the save after it, a later save in a `finally` block still reports, and a `throw` that an enclosing `catch` swallows before the later save does not count as leaving the method.
 
 ## [5.15.0] - 2026-09-25
 
