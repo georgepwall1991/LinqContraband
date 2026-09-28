@@ -98,4 +98,22 @@ modelBuilder.Entity<Blog>().HasQueryFilter(b => b.TenantId == _tenantId && !b.Is
 
 modelBuilder.Entity<Blog>().HasQueryFilter("Tenant", b => b.TenantId == _tenantId);
 modelBuilder.Entity<Blog>().HasQueryFilter("SoftDelete", b => !b.IsDeleted);
+
+switch (mode)
+{
+    case Mode.SoftDelete:
+        modelBuilder.Entity<Blog>().HasQueryFilter(b => !b.IsDeleted);
+        break;
+    default:
+        modelBuilder.Entity<Blog>().HasQueryFilter(b => b.TenantId == _tenantId);
+        break;
+}
+
+_ = mode switch
+{
+    Mode.SoftDelete => modelBuilder.Entity<Blog>().HasQueryFilter(b => !b.IsDeleted),
+    _ => modelBuilder.Entity<Blog>().HasQueryFilter(b => b.TenantId == _tenantId)
+};
 ```
+
+Two unnamed filters in the same switch section, or one inside a switch and another after it, still conflict.
