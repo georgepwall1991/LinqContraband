@@ -149,6 +149,15 @@ public class DisposedContextConnectionFixerTests
     [InlineData(
         @"var connection = db.Database.GetDbConnection(); await connection.OpenAsync(ct); await {|LC059:connection.DisposeAsync()|};",
         @"var connection = db.Database.GetDbConnection(); await connection.OpenAsync(ct);")]
+    [InlineData(
+        @"using var connection = {|LC059:RelationalDatabaseFacadeExtensions.GetDbConnection(db.Database)|}; await connection.OpenAsync(ct);",
+        @"var connection = RelationalDatabaseFacadeExtensions.GetDbConnection(db.Database); await connection.OpenAsync(ct);")]
+    [InlineData(
+        @"var timeout = 30; {|LC059:RelationalDatabaseFacadeExtensions.GetDbConnection(db.Database).Dispose()|};",
+        @"var timeout = 30;")]
+    [InlineData(
+        @"var connection = db.Database.GetDbConnection(); {|LC059:((IDisposable)connection).Dispose()|};",
+        @"var connection = db.Database.GetDbConnection();")]
     public async Task ReportedShapes_FixCompiles(string before, string after)
     {
         await VerifyFixAsync(before, after);
