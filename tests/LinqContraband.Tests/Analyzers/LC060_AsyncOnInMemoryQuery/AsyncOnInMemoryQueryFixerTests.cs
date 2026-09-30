@@ -130,6 +130,15 @@ public class AsyncOnInMemoryQueryFixerTests
     [InlineData(
         @"var items = await list.AsQueryable().ActiveOnly().{|LC060:ToListAsync|}(ct);",
         @"var items = list.AsQueryable().ActiveOnly().ToList();")]
+    [InlineData(
+        @"var items = await new HashSet<Item>().AsQueryable().{|LC060:ToListAsync|}(ct);",
+        @"var items = new HashSet<Item>().AsQueryable().ToList();")]
+    [InlineData(
+        @"var items = await list.SelectMany(_ => array).AsQueryable().{|LC060:ToListAsync|}(ct);",
+        @"var items = list.SelectMany(_ => array).AsQueryable().ToList();")]
+    [InlineData(
+        @"var items = await list.Concat(array).AsQueryable().{|LC060:ToListAsync|}(ct);",
+        @"var items = list.Concat(array).AsQueryable().ToList();")]
     public async Task EveryOtherReportingShape_GetsACompilingFix(string before, string after)
     {
         await VerifyFixAsync(before, after);

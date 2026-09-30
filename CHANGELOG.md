@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- LC060 coverage now pins leftover `AsyncIncapable` arms from 5.16.0: `AsQueryable()` over a `HashSet<T>`, and over `SelectMany`/`Concat`/`ThenBy`/`Distinct` LINQ to Objects iterators, still report (those iterators were named in the analyzer but only `Where`/`Select`/`OrderBy`/`Skip`/`Take` were tested). Interface-typed locals (`IList<T>`, `ICollection<T>`, `ISet<T>`) stay quiet even when assigned from a list, which is the documented distinction from LC008, and `OfType()` before `AsQueryable()` stays quiet with `Cast()`. The fixer corpus covers the new reporting shapes.
+
 ## [5.16.0] - 2026-09-27
 
 ### Added
