@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- LC061 coverage now pins leftover 5.16.0 arms: a compile call invoked through a cast, `!`, `?:` or `??` still reports (`ClimbValue` walked those wrappers, but only parentheses were tested). An empty `{ }` property pattern in the true branch still reports, while its `else` and `if (_query == default)` stay quiet as null guards. `IMemoryCache.GetOrCreate`/`GetOrCreateAsync`, `HybridCache.GetOrCreateAsync` and `ImmutableInterlocked.GetOrAdd` stay quiet when the cache is a field or parameter, and still report when the cache is a local copy or a `ref` local. The fixer corpus hoists the new cast and `{ }` reporting shapes.
+
 ## [5.16.0] - 2026-09-27
 
 ### Added

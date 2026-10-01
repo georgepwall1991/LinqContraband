@@ -87,6 +87,9 @@ The field is named after the member (`GetQuery`, then `GetQuery2` and so on when
 return EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id);
 var query = EF.CompileQuery((Ctx c) => c.Blogs.Count()); return query(_db);
 public static Func<Ctx, int, Blog> ById => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+return ((Func<Ctx, int, Blog>)EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);
+return (EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))!)(_db, id);
+if (_byId is { }) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
 ```
 
 ### Valid
@@ -95,4 +98,8 @@ public static Func<Ctx, int, Blog> ById => EF.CompileQuery((Ctx c, int i) => c.B
 private static readonly Func<Ctx, int, Blog> ById = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
 private static Func<Ctx, int, Blog> _byId; // _byId ??= EF.CompileQuery(...);
 Cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
+if (_byId is { }) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }
+if (_byId == default) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
+_cache.GetOrCreate(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
+ImmutableInterlocked.GetOrAdd(ref _byId, 0, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
 ```
