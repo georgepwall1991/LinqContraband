@@ -101,8 +101,4 @@ var items = await db.Items.AsQueryable().ToListAsync(ct);
 var items = await query.ToListAsync(ct);            // IQueryable<T> parameter
 var items = await list.BuildMock().ToListAsync(ct); // MockQueryable
 var items = list.AsQueryable().Where(x => x.Active).ToList();
-IList<Item> items = list; await items.AsQueryable().ToListAsync(ct);
-ICollection<Item> items = list; await items.AsQueryable().ToListAsync(ct);
-ISet<Item> items = new HashSet<Item>(); await items.AsQueryable().ToListAsync(ct);
-await sequence.OfType<Item>().AsQueryable().ToListAsync(ct);
 ```

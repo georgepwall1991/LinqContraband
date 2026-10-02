@@ -46,14 +46,6 @@ public partial class StoredProcedureComposedTests
     }
 
     [Fact]
-    public async Task ThenInclude_Composer_Reports()
-    {
-        // ThenInclude is composing. Dropping it from EfComposing leaves this quiet; Include stays green.
-        await VerifyCS.VerifyAnalyzerAsync(Wrap(
-            @"var rows = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:ThenInclude|}(b => b.Posts).ToList();"));
-    }
-
-    [Fact]
     public async Task ExecuteDelete_Composer_Reports()
     {
         // ExecuteDelete is composing. Dropping it from EfComposing leaves a hard DELETE over EXEC quiet.

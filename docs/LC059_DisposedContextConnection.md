@@ -96,5 +96,4 @@ using var connection = RelationalDatabaseFacadeExtensions.GetDbConnection(db.Dat
 using var command = db.Database.GetDbConnection().CreateCommand();
 var connection = db.Database.GetDbConnection(); await connection.OpenAsync(ct); await connection.CloseAsync();
 using var owned = new SqlConnection(connectionString);
-connection?.Dispose();
 ```

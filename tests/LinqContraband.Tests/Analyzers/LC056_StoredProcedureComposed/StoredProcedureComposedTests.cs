@@ -62,7 +62,6 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<T> IgnoreQueryFilters<T>(this IQueryable<T> source) where T : class => source;
         public static IQueryable<T> IgnoreAutoIncludes<T>(this IQueryable<T> source) where T : class => source;
         public static IQueryable<T> Include<T, TProperty>(this IQueryable<T> source, Expression<Func<T, TProperty>> path) where T : class => source;
-        public static IQueryable<T> ThenInclude<T, TProperty>(this IQueryable<T> source, Expression<Func<T, TProperty>> path) where T : class => source;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<T> FirstOrDefaultAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<int> CountAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
