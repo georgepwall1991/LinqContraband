@@ -510,6 +510,10 @@ static class DatabaseOptions
     [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute((Action)work);")]
     // An async lambda invoked in place and awaited inside the strategy delegate.
     [InlineData(@"await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))(); });")]
+    [InlineData(@"await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))().ConfigureAwait(false); });")]
+    // Not awaited, but the call runs before the lambda's first await, or the lambda never awaits.
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { SaveInTransaction(); await Task.Yield(); }))(); });")]
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { SaveInTransaction(); }))(); });")]
     public async Task MethodCalledFromLambdaThatRunsUnderStrategy_NotReported(string body)
     {
         await VerifyAsync(Wrap(
@@ -522,6 +526,19 @@ static class DatabaseOptions
         _db.SaveChanges();
         tx.Commit();
     }"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InlineTransactionBeforeFirstAwaitOfAsyncLambdaInvokedInPlace_NotReported(bool configureAwait)
+    {
+        var invoke = "((Func<Task>)(async () => { using var tx = db.Database.BeginTransaction(); tx.Commit(); await Task.Yield(); }))()";
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        " + (configureAwait
+                ? "await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); using var tx = db.Database.BeginTransaction(); tx.Commit(); }))().ConfigureAwait(false); });"
+                : "strategy.Execute(() => { _ = " + invoke + "; });")));
     }
 
     [Theory]
@@ -570,6 +587,8 @@ static class Helpers
     [InlineData(@"((Action)(() => SaveInTransaction()))();")]
     // An async lambda invoked in place but not awaited: the code after its first await runs outside the strategy.
     [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))(); });")]
+    // Before the first await textually, but in a loop that awaits: later iterations run after a suspension.
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { for (var i = 0; i < 2; i++) { SaveInTransaction(); await Task.Yield(); } }))(); });")]
     // The local is also invoked directly, or passed elsewhere, or reassigned.
     [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute(work); work();")]
     [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute(work); Task.Run(work);")]

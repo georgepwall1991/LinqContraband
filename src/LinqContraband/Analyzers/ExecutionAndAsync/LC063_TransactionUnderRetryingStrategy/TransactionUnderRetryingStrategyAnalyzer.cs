@@ -189,10 +189,16 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
             switch (value.Parent)
             {
                 // ((Action)(() => ...))(): runs right here, like inline code. An async lambda returns at its first
-                // await and runs the rest later, outside any enclosing strategy delegate, unless it is awaited here.
+                // await and runs the rest later, outside any enclosing strategy delegate, unless it is awaited here
+                // (directly or through ConfigureAwait) or the operation runs before that first await.
                 case IInvocationOperation invoked when ReferenceEquals(invoked.Instance, value):
-                    if (lambda.Symbol.IsAsync && invoked.Parent is not IAwaitOperation)
+                    if (lambda.Symbol.IsAsync &&
+                        !StrategyCallers.IsAwaitedHere(invoked.Syntax) &&
+                        !(lambda.Syntax is AnonymousFunctionExpressionSyntax lambdaSyntax &&
+                          StrategyCallers.RunsBeforeFirstAwait(lambdaSyntax, operation.Syntax)))
+                    {
                         return false;
+                    }
                     continue;
 
                 case IArgumentOperation { Parent: IInvocationOperation call } argument:

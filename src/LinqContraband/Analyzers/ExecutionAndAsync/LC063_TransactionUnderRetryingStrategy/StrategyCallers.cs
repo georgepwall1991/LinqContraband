@@ -282,7 +282,7 @@ internal sealed class StrategyCallers
             {
                 case AnonymousFunctionExpressionSyntax lambda:
                     // ((Action)(() => Save()))() runs right here, like inline code: keep walking out.
-                    if (IsInvokedInPlace(lambda))
+                    if (IsInvokedInPlace(lambda, invocation))
                         continue;
 
                     return new Reference(IsStrategyDelegateArgument(lambda, semanticModel, cancellationToken) ||
@@ -350,10 +350,11 @@ internal sealed class StrategyCallers
 
     /// <summary>
     /// True when <paramref name="lambda"/>, through parentheses and casts, is the expression an invocation calls, and
-    /// its whole body runs there: an async lambda returns at its first <c>await</c> and the rest runs later, outside
-    /// any enclosing strategy delegate, unless the invocation's task is awaited right there.
+    /// <paramref name="node"/> in its body runs there. An async lambda returns at its first <c>await</c> and runs the
+    /// rest later, outside any enclosing strategy delegate, so a node after an await counts only when the invocation's
+    /// task is awaited right there.
     /// </summary>
-    private static bool IsInvokedInPlace(AnonymousFunctionExpressionSyntax lambda)
+    private static bool IsInvokedInPlace(AnonymousFunctionExpressionSyntax lambda, SyntaxNode node)
     {
         ExpressionSyntax current = lambda;
         while (current.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
@@ -366,15 +367,72 @@ internal sealed class StrategyCallers
             return false;
         }
 
-        return lambda.AsyncKeyword.IsKind(SyntaxKind.None) || IsAwaited(invocation);
+        return lambda.AsyncKeyword.IsKind(SyntaxKind.None) ||
+               IsAwaitedHere(invocation) ||
+               RunsBeforeFirstAwait(lambda, node);
     }
 
-    private static bool IsAwaited(ExpressionSyntax expression)
+    /// <summary>True when the task <paramref name="invocation"/> returns is awaited right there, directly or through <c>ConfigureAwait(...)</c>.</summary>
+    internal static bool IsAwaitedHere(SyntaxNode invocation)
     {
-        while (expression.Parent is ParenthesizedExpressionSyntax parenthesized)
-            expression = parenthesized;
+        var expression = invocation;
+        while (true)
+        {
+            while (expression.Parent is ParenthesizedExpressionSyntax)
+                expression = expression.Parent;
 
-        return expression.Parent is AwaitExpressionSyntax;
+            if (expression.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" } access &&
+                access.Expression == expression &&
+                access.Parent is InvocationExpressionSyntax configured &&
+                configured.Expression == access)
+            {
+                expression = configured;
+                continue;
+            }
+
+            return expression.Parent is AwaitExpressionSyntax;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="node"/> in the async <paramref name="lambda"/> runs before the lambda can first suspend:
+    /// it precedes every <c>await</c> (including <c>await foreach</c> and <c>await using</c>) of the lambda's own body,
+    /// and no loop around it in the lambda contains one.
+    /// </summary>
+    internal static bool RunsBeforeFirstAwait(AnonymousFunctionExpressionSyntax lambda, SyntaxNode node)
+    {
+        var awaits = lambda.Body.DescendantNodesAndSelf(descendant =>
+                descendant == lambda.Body || descendant is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+            .Where(IsAwaitPoint)
+            .ToList();
+        if (awaits.Count == 0)
+            return true;
+
+        if (awaits.Any(awaitPoint => awaitPoint.SpanStart <= node.SpanStart))
+            return false;
+
+        foreach (var loop in node.Ancestors().TakeWhile(ancestor => ancestor != lambda))
+        {
+            if (loop is WhileStatementSyntax or DoStatementSyntax or ForStatementSyntax or CommonForEachStatementSyntax &&
+                awaits.Any(awaitPoint => loop.Span.Contains(awaitPoint.Span)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsAwaitPoint(SyntaxNode node)
+    {
+        return node switch
+        {
+            AwaitExpressionSyntax => true,
+            CommonForEachStatementSyntax forEach => !forEach.AwaitKeyword.IsKind(SyntaxKind.None),
+            UsingStatementSyntax usingStatement => !usingStatement.AwaitKeyword.IsKind(SyntaxKind.None),
+            LocalDeclarationStatementSyntax declaration => !declaration.AwaitKeyword.IsKind(SyntaxKind.None),
+            _ => false
+        };
     }
 
     /// <summary>Climbs out of parentheses and casts around <paramref name="expression"/>.</summary>
