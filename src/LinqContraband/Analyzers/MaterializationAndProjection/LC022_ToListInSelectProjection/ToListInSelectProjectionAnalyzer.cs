@@ -55,8 +55,10 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
         context.RegisterCompilationStartAction(compilationContext =>
         {
             var translatesNestedCollections = TranslatesNestedCollections(compilationContext.Compilation);
+            // Only claim an EF Core translation failure when the project uses EF Core at all.
+            var referencesEfCore = compilationContext.Compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext") != null;
             compilationContext.RegisterOperationAction(
-                operationContext => AnalyzeInvocation(operationContext, translatesNestedCollections),
+                operationContext => AnalyzeInvocation(operationContext, translatesNestedCollections, referencesEfCore),
                 OperationKind.Invocation);
         });
     }
@@ -90,7 +92,7 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
             "ToHashSet" or "ToHashSetAsync";
     }
 
-    private static void AnalyzeInvocation(OperationAnalysisContext context, bool translatesNestedCollections)
+    private static void AnalyzeInvocation(OperationAnalysisContext context, bool translatesNestedCollections, bool referencesEfCore)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
@@ -148,7 +150,7 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
                                 Rule,
                                 invocation.Syntax.GetLocation(),
                                 method.Name,
-                                isDictionary ? UntranslatableReason : ReviewReason));
+                                isDictionary && referencesEfCore ? UntranslatableReason : ReviewReason));
                     }
                 }
                 break;

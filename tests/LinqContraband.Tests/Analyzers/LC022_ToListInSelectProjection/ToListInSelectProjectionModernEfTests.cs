@@ -95,4 +95,43 @@ class TestClass
             Source(version, @"var a = users.Select(u => {|#0:u.Orders.ToList()|}).ToList();", provider),
             expected);
     }
+
+    [Fact]
+    public async Task NestedToDictionaryWithoutEfCore_KeepsAdvisoryWording()
+    {
+        // Another LINQ provider: nothing says EF Core will translate (or reject) the query.
+        const string source = @"
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+
+public class Source<T> : IQueryable<T>
+{
+    public Type ElementType => typeof(T);
+    public Expression Expression => null;
+    public IQueryProvider Provider => null;
+    public IEnumerator<T> GetEnumerator() => null;
+    IEnumerator IEnumerable.GetEnumerator() => null;
+}
+
+public class User { public int Id { get; set; } public List<Order> Orders { get; set; } }
+public class Order { public int Id { get; set; } public int Total { get; set; } }
+
+class TestClass
+{
+    void TestMethod(Source<User> users)
+    {
+        var a = users.Select(u => new { u.Id, ById = {|#0:u.Orders.ToDictionary(o => o.Id, o => o.Total)|} }).ToList();
+    }
+}
+";
+        var expected = new DiagnosticResult("LC022", DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(
+                "ToDictionary",
+                "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.");
+        await VerifyCS.VerifyAnalyzerAsync(source, expected);
+    }
 }
