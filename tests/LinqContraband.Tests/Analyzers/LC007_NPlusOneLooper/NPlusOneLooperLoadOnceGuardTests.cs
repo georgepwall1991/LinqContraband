@@ -240,6 +240,32 @@ class Program
     }
 
     [Fact]
+    public Task LoadOnceGuardBehindUserDefinedConversion_StillReports()
+    {
+        // A user-defined conversion to bool can answer true after the local is loaded, so the guard stays open.
+        var test = Usings + @"
+struct AlwaysTrue
+{
+    public static explicit operator AlwaysTrue(bool value) => default;
+    public static implicit operator bool(AlwaysTrue value) => true;
+}
+
+class Program
+{
+    void Run(MyDbContext db, int[] ids)
+    {
+        User cached = null;
+        foreach (var id in ids)
+        {
+            if ((AlwaysTrue)(cached == null))
+                cached = {|LC007:db.Users.First(u => u.Id == id)|};
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public Task LoadOnceGuardWithRefAliasReturnedFromCall_StillReports()
     {
         // A method that takes the local by ref can hand the reference back, so the alias escapes through the call.
@@ -283,6 +309,12 @@ class Program
         foreach (var id in ids)
         {
             first ??= {|LC007:db.Users.Find(id)|};
+        }")]
+    // Without nullable annotations a projection can yield a null element, which First returns without throwing.
+    [InlineData(@"User first = null;
+        foreach (var id in ids)
+        {
+            first ??= {|LC007:db.Users.Where(u => u.Id == id).Select(u => (User)null).First()|};
         }")]
     public Task LoadOnceGuardWhoseQueryCanReturnNull_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));

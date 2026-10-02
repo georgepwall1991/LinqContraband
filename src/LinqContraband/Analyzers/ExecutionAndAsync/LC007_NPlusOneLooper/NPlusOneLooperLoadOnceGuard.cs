@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -101,9 +102,56 @@ internal static partial class NPlusOneLooperAnalysis
         if (annotation == NullableAnnotation.Annotated || HasMaybeNullReturn(method))
             return false;
 
-        // A non-nullable reference result is trusted. Without nullable annotations, only the LINQ and EF Core
-        // executors, which throw or return a collection rather than null, are.
-        return annotation == NullableAnnotation.NotAnnotated || IsLinqOrEfCoreMethod(method);
+        // A non-nullable reference result is trusted. Without nullable annotations, only LINQ and EF Core
+        // executors that return a collection, or an element of an entity set no projection reshaped, are.
+        return annotation == NullableAnnotation.NotAnnotated ||
+               (IsLinqOrEfCoreMethod(method) &&
+                (method.Name.StartsWith("To", System.StringComparison.Ordinal) || IsUnprojectedEntitySetQuery(invocation)));
+    }
+
+    private static readonly ImmutableHashSet<string> ElementPreservingOperators = ImmutableHashSet.Create(
+        "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take", "SkipWhile",
+        "TakeWhile", "SkipLast", "TakeLast", "Distinct", "Reverse", "OfType", "AsQueryable", "AsEnumerable",
+        "AsAsyncEnumerable", "AsNoTracking", "AsNoTrackingWithIdentityResolution", "AsTracking", "Include",
+        "ThenInclude", "AsSplitQuery", "AsSingleQuery", "IgnoreQueryFilters", "IgnoreAutoIncludes", "TagWith",
+        "TagWithCallSite");
+
+    /// <summary>
+    /// An entity read from a <c>DbSet</c> is never null, but a projection such as <c>Select(u => u.Manager)</c>
+    /// can yield null elements, and so can an in-memory source.
+    /// </summary>
+    private static bool IsUnprojectedEntitySetQuery(IInvocationOperation executor)
+    {
+        var source = ExtensionReceiver(executor);
+        while (source is IInvocationOperation invocation && IsLinqOrEfCoreMethod(invocation.TargetMethod))
+        {
+            if (!ElementPreservingOperators.Contains(invocation.TargetMethod.Name))
+                return false;
+
+            source = ExtensionReceiver(invocation);
+        }
+
+        for (var type = source?.Type; type != null; type = type.BaseType)
+        {
+            if (type is INamedTypeSymbol { Name: "DbSet", Arity: 1 } dbSet &&
+                dbSet.ContainingNamespace?.ToDisplayString() == "Microsoft.EntityFrameworkCore")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IOperation? ExtensionReceiver(IInvocationOperation invocation)
+    {
+        var receiver = invocation.Instance ??
+                       (invocation.TargetMethod.IsExtensionMethod && invocation.Arguments.Length > 0
+                           ? invocation.Arguments[0].Value
+                           : null);
+        while (receiver is IConversionOperation { Conversion.IsUserDefined: false } conversion)
+            receiver = conversion.Operand;
+        return receiver;
     }
 
     /// <summary>
@@ -193,10 +241,13 @@ internal static partial class NPlusOneLooperAnalysis
 
     private static bool ConditionImpliesNull(IOperation condition, ILocalSymbol local)
     {
-        condition = condition.UnwrapConversions();
+        // A user-defined conversion can turn a false comparison into true, so only built-in conversions are peeled.
+        while (condition is IConversionOperation { Conversion.IsUserDefined: false } conversion)
+            condition = conversion.Operand;
+
         switch (condition)
         {
-            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } conjunction:
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd, OperatorMethod: null } conjunction:
                 return ConditionImpliesNull(conjunction.LeftOperand, local) ||
                        ConditionImpliesNull(conjunction.RightOperand, local);
             // A user-defined == can answer true for a non-null value, so only the built-in comparison proves null.
