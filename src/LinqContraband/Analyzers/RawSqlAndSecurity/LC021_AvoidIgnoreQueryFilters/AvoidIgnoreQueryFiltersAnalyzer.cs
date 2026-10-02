@@ -104,7 +104,7 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
     // in another source, and Select changes what a later Where filters, so the walk stops at them.
     private static readonly ImmutableHashSet<string> ChainOperators = ImmutableHashSet.Create(
         "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take", "SkipWhile",
-        "TakeWhile", "Distinct", "Reverse", "AsQueryable", "AsNoTracking", "AsNoTrackingWithIdentityResolution",
+        "TakeWhile", "Distinct", "Reverse", "OfType", "Cast", "AsQueryable", "AsNoTracking", "AsNoTrackingWithIdentityResolution",
         "AsTracking", "Include", "ThenInclude", "AsSplitQuery", "AsSingleQuery", "TagWith", "TagWithCallSite",
         "IgnoreAutoIncludes", "IgnoreQueryFilters");
 

@@ -467,6 +467,14 @@ namespace LinqContraband.Test
     public Task DeletedFilterAcrossOrderingAndPaging_ReportsWithoutFix() => VerifyFixWithheld(@"
             var result = {|LC021:posts.IgnoreQueryFilters()|}.OrderBy(p => p.Id).Skip(10).Take(10).Where(p => p.IsDeleted).ToList();");
 
+    [Fact]
+    public Task DeletedFilterAfterOfType_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = {|LC021:posts.OfType<TestApp.Post>().IgnoreQueryFilters()|}.Where(p => p.IsDeleted).ToList();");
+
+    [Fact]
+    public Task DeletedFilterAfterCast_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = {|LC021:posts.Cast<TestApp.Post>().Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
+
     // A deleted-rows predicate does not show the named filter is the soft-delete one, so the fix stays.
     [Fact]
     public Task WhereReadsDeletedRows_NamedOverload_KeepsFix() => VerifyFixOffered(@"
