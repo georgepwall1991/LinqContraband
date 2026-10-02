@@ -56,7 +56,7 @@ If the main issue is an early `ToList` or `AsEnumerable` boundary, use the
 | --- | --- | --- |
 | [LC017: whole entity projection](/LinqContraband/LC017_WholeEntityProjection.html) | Large entity loads where later code uses only a small subset of properties. | Project a DTO, anonymous type, or scalar sequence with the fields the caller actually needs. |
 | [LC041: single entity scalar projection](/LinqContraband/LC041_SingleEntityScalarProjection.html) | `First`, `Single`, and related single-row queries where the local code consumes one scalar property. | Project the scalar before materialization when the rewrite preserves no-row behaviour. |
-| [LC022: nested collection materialization inside projection](/LinqContraband/LC022_ToListInSelectProjection.html) | `ToList`, `ToArray`, or similar materializers inside projected collection members. | Review whether the shape should stay provider-friendly, use split-query shaping, or intentionally return a concrete collection. |
+| [LC022: nested collection materialization inside projection](/LinqContraband/LC022_ToListInSelectProjection.html) | `ToDictionary` on a nested collection inside a projection, which EF Core cannot translate, and on EF Core 7 or older also nested `ToList`, `ToArray` and `ToHashSet`. | Project the nested rows and build the dictionary after the query; EF Core 8+ translates nested `ToList` to the same SQL, so keep it when a DTO needs a list. |
 | [LC029: redundant identity Select](/LinqContraband/LC029_RedundantIdentitySelect.html) | `Select(x => x)` or equivalent identity projections on queryable and enumerable chains. | Remove the redundant projection while preserving any intentional boundary such as `AsEnumerable`. |
 
 ## Common EF Core Projection Problems
@@ -97,21 +97,23 @@ return await db.Users
 ### Nested materializer inside Select
 
 ```csharp
-var customers = db.Customers
+var customers = await db.Customers
     .Select(customer => new
     {
         customer.Id,
-        OrderIds = customer.Orders.Select(order => order.Id).ToList() // LC022
-    });
+        OrdersById = customer.Orders.ToDictionary(order => order.Id) // LC022: throws, cannot be translated
+    })
+    .ToListAsync(cancellationToken);
 ```
 
 ```csharp
-var customers = db.Customers
-    .Select(customer => new
-    {
-        customer.Id,
-        OrderIds = customer.Orders.Select(order => order.Id)
-    });
+var rows = await db.Customers
+    .Select(customer => new { customer.Id, Orders = customer.Orders.ToList() })
+    .ToListAsync(cancellationToken);
+
+var customers = rows
+    .Select(customer => new { customer.Id, OrdersById = customer.Orders.ToDictionary(order => order.Id) })
+    .ToList();
 ```
 
 ### Identity projection noise
