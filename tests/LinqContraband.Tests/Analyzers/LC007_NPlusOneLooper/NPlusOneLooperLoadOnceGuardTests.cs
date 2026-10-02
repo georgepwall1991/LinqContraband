@@ -14,7 +14,7 @@ public partial class NPlusOneLooperTests
         foreach (var id in ids)
         {
             if (first == null)
-                first = db.Users.Where(u => u.ParentId == 0).FirstOrDefault();
+                first = db.Users.Where(u => u.ParentId == 0).First();
             Console.WriteLine(first.Id + id);
         }")]
     [InlineData(@"User first = null;
@@ -22,7 +22,7 @@ public partial class NPlusOneLooperTests
         {
             if (first is null)
             {
-                first = await db.Users.FindAsync(1);
+                first = db.Users.First(u => u.Id == 1);
             }
             Console.WriteLine(first.Id + id);
         }")]
@@ -53,14 +53,14 @@ public partial class NPlusOneLooperTests
         {
             User first = null;
             if (first == null)
-                first = {|LC007:db.Users.Find(id)|};
+                first = {|LC007:db.Users.First(u => u.Id == id)|};
         }")]
     // The local is reset inside the loop, re-arming the guard on every iteration.
     [InlineData(@"User current = null;
         foreach (var id in ids)
         {
             if (current == null)
-                current = {|LC007:db.Users.Find(id)|};
+                current = {|LC007:db.Users.First(u => u.Id == id)|};
             Console.WriteLine(current.Id);
             current = null;
         }")]
@@ -70,21 +70,21 @@ public partial class NPlusOneLooperTests
         foreach (var id in ids)
         {
             if (other == null)
-                first = {|LC007:db.Users.Find(id)|};
+                first = {|LC007:db.Users.First(u => u.Id == id)|};
         }")]
     // Not a null guard: an inequality check runs the query whenever a value is already loaded.
     [InlineData(@"User first = null;
         foreach (var id in ids)
         {
             if (first != null)
-                first = {|LC007:db.Users.Find(id)|};
+                first = {|LC007:db.Users.First(u => u.Id == id)|};
         }")]
     // An `||` condition can be true while the local is already loaded.
     [InlineData(@"User first = null;
         foreach (var id in ids)
         {
             if (first == null || id > 3)
-                first = {|LC007:db.Users.Find(id)|};
+                first = {|LC007:db.Users.First(u => u.Id == id)|};
         }")]
     // The assignment sits in the else branch of the null check.
     [InlineData(@"User first = null;
@@ -93,7 +93,7 @@ public partial class NPlusOneLooperTests
             if (first == null)
                 Console.WriteLine(id);
             else
-                first = {|LC007:db.Users.Find(id)|};
+                first = {|LC007:db.Users.First(u => u.Id == id)|};
         }")]
     // The guard is declared outside the inner loop but inside the outer one: once per outer item.
     [InlineData(@"foreach (var id in ids)
@@ -101,14 +101,14 @@ public partial class NPlusOneLooperTests
             User first = null;
             foreach (var other in ids)
             {
-                first ??= {|LC007:db.Users.Find(id)|};
+                first ??= {|LC007:db.Users.First(u => u.Id == id)|};
             }
         }")]
     // A lambda inside the loop can reset the local between iterations.
     [InlineData(@"User first = null;
         foreach (var id in ids)
         {
-            first ??= {|LC007:db.Users.Find(id)|};
+            first ??= {|LC007:db.Users.First(u => u.Id == id)|};
             Action reset = () => first = null;
             reset();
         }")]
@@ -116,12 +116,59 @@ public partial class NPlusOneLooperTests
         VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));
 
     [Fact]
+    public Task LoadOnceGuardWithRefAlias_StillReports()
+    {
+        // A ref alias can reset the local under another name.
+        var test = Usings + @"
+class Program
+{
+    void Run(MyDbContext db, int[] ids)
+    {
+        User first = null;
+        ref var alias = ref first;
+        foreach (var id in ids)
+        {
+            first ??= {|LC007:db.Users.First(u => u.Id == id)|};
+            alias = null;
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // FirstOrDefault, Find and their async forms leave the local null when nothing matches, so the guard stays open
+    // and the query runs again on the next iteration.
+    [InlineData(@"User first = null;
+        foreach (var id in ids)
+        {
+            if (first == null)
+                first = {|LC007:db.Users.Where(u => u.ParentId == id).FirstOrDefault()|};
+        }")]
+    [InlineData(@"User first = null;
+        foreach (var id in ids)
+        {
+            if (first is null)
+            {
+                first = await {|LC007:db.Users.FindAsync(id)|};
+            }
+        }")]
+    [InlineData(@"User first = null;
+        foreach (var id in ids)
+        {
+            first ??= {|LC007:db.Users.Find(id)|};
+        }")]
+    public Task LoadOnceGuardWhoseQueryCanReturnNull_StillReports(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));
+
+    [Fact]
     public async Task LoadOnceGuardedHelperCallInsideLoop_IsQuiet()
     {
         var test = HelperProgram(@"
+#nullable enable
     async Task Run(List<User> orders)
     {
-        User root = null;
+        User? root = null;
         foreach (var order in orders)
         {
             if (root == null)
@@ -130,8 +177,33 @@ public partial class NPlusOneLooperTests
         }
     }
 
-    private Task<User> GetCustomerAsync(int id) => _db.Users.FirstOrDefaultAsync(c => c.Id == id);");
+    private Task<User> GetCustomerAsync(int id) => Task.FromResult(_db.Users.First(c => c.Id == id));
+#nullable restore");
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Theory]
+    // The helper may return null (annotated, or written without nullable annotations), so the guard can stay open.
+    [InlineData(@"#nullable enable
+    private Task<User?> GetCustomerAsync(int id) => _db.Users.FirstOrDefaultAsync(c => c.Id == id)!;
+#nullable restore", "FirstOrDefaultAsync")]
+    [InlineData(@"private Task<User> GetCustomerAsync(int id) => Task.FromResult(_db.Users.First(c => c.Id == id));", "First")]
+    public async Task LoadOnceGuardedHelperThatCanReturnNull_StillReports(string helper, string query)
+    {
+        var test = HelperProgram(@"
+    async Task Run(List<User> orders)
+    {
+        User root = null;
+        foreach (var order in orders)
+        {
+            if (root == null)
+                root = await {|#0:GetCustomerAsync(0)|};
+        }
+    }
+
+    " + helper);
+
+        await VerifyCS.VerifyAnalyzerAsync(test, HelperCall(0, "GetCustomerAsync", query));
     }
 }

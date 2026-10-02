@@ -45,7 +45,63 @@ internal static partial class NPlusOneLooperAnalysis
             return false;
         }
 
-        return !HasOtherWriteThatCanRearm(local, assignment, loop);
+        return AssignedValueIsNeverNull(assignment.Value) &&
+               !HasOtherWriteThatCanRearm(local, assignment, loop);
+    }
+
+    /// <summary>
+    /// The guard only closes if the assignment leaves the local non-null. <c>FirstOrDefault</c>, <c>Find</c> or a
+    /// helper that may return null leaves it null when nothing matches, and the query then runs again on the next
+    /// iteration.
+    /// </summary>
+    private static bool AssignedValueIsNeverNull(IOperation value)
+    {
+        value = value.UnwrapConversions();
+        while (value is IInvocationOperation { TargetMethod.Name: "ConfigureAwait", Instance: { } awaited } &&
+               value.Type?.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices")
+        {
+            value = awaited.UnwrapConversions();
+        }
+
+        if (value is IObjectCreationOperation or IArrayCreationOperation)
+            return true;
+
+        if (value is not IInvocationOperation invocation)
+            return false;
+
+        var method = invocation.TargetMethod;
+        if (method.Name.EndsWith("OrDefault", System.StringComparison.Ordinal) ||
+            method.Name.EndsWith("OrDefaultAsync", System.StringComparison.Ordinal) ||
+            method.Name is "Find" or "FindAsync")
+        {
+            return false;
+        }
+
+        var resultType = method.ReturnType;
+        var annotation = method.ReturnNullableAnnotation;
+        if (resultType is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } taskType &&
+            taskType.Name is "Task" or "ValueTask" &&
+            taskType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
+        {
+            resultType = taskType.TypeArguments[0];
+            annotation = taskType.TypeArgumentNullableAnnotations[0];
+        }
+
+        if (resultType.IsValueType)
+            return resultType.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T;
+
+        if (annotation == NullableAnnotation.Annotated)
+            return false;
+
+        // A non-nullable reference result is trusted. Without nullable annotations, only the LINQ and EF Core
+        // executors, which throw or return a collection rather than null, are.
+        return annotation == NullableAnnotation.NotAnnotated || IsLinqOrEfCoreMethod(method);
+    }
+
+    private static bool IsLinqOrEfCoreMethod(IMethodSymbol method)
+    {
+        var ns = method.ContainingNamespace?.ToDisplayString();
+        return ns is "System.Linq" or "Microsoft.EntityFrameworkCore";
     }
 
     private static IExpressionStatementOperation? FindEnclosingExpressionStatement(IOperation operation)
@@ -121,11 +177,17 @@ internal static partial class NPlusOneLooperAnalysis
         foreach (var reference in root.Descendants().OfType<ILocalReferenceOperation>())
         {
             if (!SymbolEqualityComparer.Default.Equals(reference.Local, local) ||
-                ReferenceEquals(reference, guardedAssignment.Target) ||
-                !IsWriteReference(reference))
+                ReferenceEquals(reference, guardedAssignment.Target))
             {
                 continue;
             }
+
+            // A ref alias can write the local under another name, wherever the alias is taken.
+            if (IsRefAlias(reference))
+                return true;
+
+            if (!IsWriteReference(reference))
+                continue;
 
             if (loop.Syntax.Span.Contains(reference.Syntax.Span) ||
                 !ReferenceEquals(reference.FindOwningExecutableRoot(), root))
@@ -135,6 +197,30 @@ internal static partial class NPlusOneLooperAnalysis
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// <c>ref var alias = ref x;</c>, <c>alias = ref x;</c> or <c>return ref x;</c> from a local function or lambda.
+    /// </summary>
+    private static bool IsRefAlias(ILocalReferenceOperation reference)
+    {
+        return reference.Parent switch
+        {
+            IVariableInitializerOperation { Parent: IVariableDeclaratorOperation { Symbol.IsRef: true } } => true,
+            ISimpleAssignmentOperation { IsRef: true } refAssignment => ReferenceEquals(refAssignment.Value, reference),
+            IReturnOperation => reference.FindOwningExecutableRoot() is { } owner && ReturnsByRef(owner),
+            _ => false
+        };
+    }
+
+    private static bool ReturnsByRef(IOperation root)
+    {
+        return root switch
+        {
+            ILocalFunctionOperation localFunction => localFunction.Symbol.ReturnsByRef,
+            IAnonymousFunctionOperation lambda => lambda.Symbol.ReturnsByRef,
+            _ => false
+        };
     }
 
     private static bool IsWriteReference(ILocalReferenceOperation reference)
