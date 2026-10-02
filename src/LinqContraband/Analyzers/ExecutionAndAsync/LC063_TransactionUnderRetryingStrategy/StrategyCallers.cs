@@ -280,7 +280,12 @@ internal sealed class StrategyCallers
             switch (ancestor)
             {
                 case AnonymousFunctionExpressionSyntax lambda:
-                    return new Reference(IsStrategyDelegateArgument(lambda, semanticModel, cancellationToken)
+                    // ((Action)(() => Save()))() runs right here, like inline code: keep walking out.
+                    if (IsInvokedInPlace(lambda))
+                        continue;
+
+                    return new Reference(IsStrategyDelegateArgument(lambda, semanticModel, cancellationToken) ||
+                                         IsLocalOnlyHandedToStrategy(lambda, semanticModel, cancellationToken)
                         ? ReferenceKind.Protected
                         : ReferenceKind.Unprotected);
                 case LocalFunctionStatementSyntax or MethodDeclarationSyntax:
@@ -311,6 +316,61 @@ internal sealed class StrategyCallers
                    argumentOperation.Parameter,
                    semanticModel.Compilation,
                    cancellationToken);
+    }
+
+    /// <summary>True when <paramref name="lambda"/>, through parentheses and casts, is the expression an invocation calls.</summary>
+    private static bool IsInvokedInPlace(AnonymousFunctionExpressionSyntax lambda)
+    {
+        ExpressionSyntax current = lambda;
+        while (current.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            current = (ExpressionSyntax)current.Parent;
+
+        return current != lambda &&
+               current.Parent is InvocationExpressionSyntax invocation &&
+               invocation.Expression == current;
+    }
+
+    /// <summary>
+    /// True when <paramref name="lambda"/> initializes a local (<c>Action work = () => Save();</c>) that is never
+    /// written again and whose every use is the delegate argument of a strategy's Execute* call or a project wrapper,
+    /// so the lambda only runs under the strategy.
+    /// </summary>
+    private static bool IsLocalOnlyHandedToStrategy(
+        AnonymousFunctionExpressionSyntax lambda,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        ExpressionSyntax value = lambda;
+        while (value.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            value = (ExpressionSyntax)value.Parent;
+
+        if (value.Parent is not EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } ||
+            semanticModel.GetDeclaredSymbol(declarator, cancellationToken) is not ILocalSymbol { RefKind: RefKind.None } local)
+        {
+            return false;
+        }
+
+        var scope = declarator.FirstAncestorOrSelf<BlockSyntax>() as SyntaxNode ??
+                    declarator.FirstAncestorOrSelf<MemberDeclarationSyntax>();
+        if (scope == null)
+            return false;
+
+        var handedToStrategy = false;
+        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.ValueText != local.Name ||
+                !SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, local))
+            {
+                continue;
+            }
+
+            if (!IsStrategyDelegateArgument(identifier, semanticModel, cancellationToken))
+                return false;
+
+            handedToStrategy = true;
+        }
+
+        return handedToStrategy;
     }
 
     private static bool IsInsideNameof(SyntaxNode node)

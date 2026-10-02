@@ -84,7 +84,7 @@ public sealed class TransactionUnderRetryingStrategyAnalyzer : DiagnosticAnalyze
         if (IsInsideStrategy(invocation, context.Compilation, context.CancellationToken))
             return;
 
-        var configuration = model.Value.FindConfiguration(contextType, context.CancellationToken);
+        var configuration = model.Value.FindConfiguration(contextType, context.Compilation, context.CancellationToken);
         if (configuration == null)
             return;
 

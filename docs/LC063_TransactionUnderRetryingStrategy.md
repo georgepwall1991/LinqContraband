@@ -68,7 +68,7 @@ The code inside the delegate can run more than once, so keep work that must happ
 - `UseTransaction(null)`, which clears the transaction.
 - `TransactionScope` is not tracked.
 
-**Known false positive:** a method called from a lambda that is first stored in a local and then handed to the strategy (`Action work = () => Save(); strategy.Execute(work);`) reports, because the call to `Save` sits in a lambda that is not itself the strategy's argument. Pass the lambda inline (`strategy.Execute(() => Save())`) instead.
+A method whose every caller runs under the strategy stays quiet. That includes calls from a lambda invoked in place inside the strategy delegate (`strategy.Execute(() => ((Action)(() => Save()))())`) and from a lambda kept in a local whose only use is the strategy's delegate argument (`Action work = () => Save(); strategy.Execute(work);`). If that local is also invoked, passed elsewhere or reassigned, `Save` still reports. An override that calls `base.OnConfiguring(...)` inherits the base context's retries only when the call binds to the overridden method, not to another `OnConfiguring` overload.
 
 ## Code Fix
 

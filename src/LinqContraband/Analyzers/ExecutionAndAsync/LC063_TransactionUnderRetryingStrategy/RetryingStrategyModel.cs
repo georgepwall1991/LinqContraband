@@ -50,7 +50,7 @@ internal sealed class RetryingStrategyModel
     /// provably does. A registration or <c>DbContextOptionsBuilder&lt;T&gt;</c> chain configures only its exact type;
     /// an <c>OnConfiguring</c> override also runs for every derived context that does not replace it.
     /// </summary>
-    public Location? FindConfiguration(ITypeSymbol contextType, CancellationToken cancellationToken)
+    public Location? FindConfiguration(ITypeSymbol contextType, Compilation compilation, CancellationToken cancellationToken)
     {
         if (contextType is INamedTypeSymbol named && _configuredContexts.TryGetValue(named, out var exact))
             return exact;
@@ -61,7 +61,7 @@ internal sealed class RetryingStrategyModel
                 return location;
 
             // An override that never calls base.OnConfiguring replaces every inherited configuration.
-            if (ReplacesInheritedOnConfiguring(current, cancellationToken))
+            if (ReplacesInheritedOnConfiguring(current, compilation, cancellationToken))
                 break;
         }
 
@@ -77,9 +77,10 @@ internal sealed class RetryingStrategyModel
 
     /// <summary>
     /// True when <paramref name="type"/> declares an <c>OnConfiguring</c> override in source whose body never calls
-    /// <c>base.OnConfiguring(...)</c>, so the configuration of its base types does not run for it.
+    /// <c>base.OnConfiguring(...)</c> on the method it overrides, so the configuration of its base types does not run
+    /// for it. A <c>base.OnConfiguring</c> call that binds to another overload does not count.
     /// </summary>
-    private static bool ReplacesInheritedOnConfiguring(INamedTypeSymbol type, CancellationToken cancellationToken)
+    private static bool ReplacesInheritedOnConfiguring(INamedTypeSymbol type, Compilation compilation, CancellationToken cancellationToken)
     {
         foreach (var member in type.GetMembers("OnConfiguring"))
         {
@@ -88,12 +89,18 @@ internal sealed class RetryingStrategyModel
 
             foreach (var reference in method.DeclaringSyntaxReferences)
             {
-                var callsBase = reference.GetSyntax(cancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>().Any(
+                var syntax = reference.GetSyntax(cancellationToken);
+                compilation.TryGetOwnedSemanticModel(syntax.SyntaxTree, out var semanticModel);
+                var callsBase = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>().Any(
                     invocation => invocation.Expression is MemberAccessExpressionSyntax
                     {
                         Expression: BaseExpressionSyntax,
                         Name.Identifier.ValueText: "OnConfiguring"
-                    });
+                    } &&
+                    (semanticModel == null ||
+                     method.OverriddenMethod == null ||
+                     semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol called ||
+                     SymbolEqualityComparer.Default.Equals(called.OriginalDefinition, method.OverriddenMethod.OriginalDefinition)));
                 if (callsBase)
                     return false;
             }
