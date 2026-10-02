@@ -49,6 +49,12 @@ It stays silent on bounded aliases and ambiguous reassigned locals rather than g
 - `Take`, `First`, `Single`, `Last`, `Find` and their async forms, applied while the source is still a query.
 - A primary-key lookup: `Where(u => u.Id == id)` (also with `&&` extra conditions, or with the operands swapped) or `Where(u => ids.Contains(u.Id))`. The key is a property named `Id`, `<EntityName>Id`, or marked `[Key]`. Foreign keys (`OrderId` on `OrderLine`) and `||` conditions can still match many rows and keep reporting.
 
+- A `FromSql`, `FromSqlRaw` or `FromSqlInterpolated` root whose constant SQL limits rows at the outer level: `LIMIT n`, `TOP n` or `TOP (n)`, `FETCH FIRST n ROWS ONLY`, or `OFFSET ... FETCH NEXT n ROWS ONLY`. The count may be a literal, a parameter (`@p0`, `{0}`, `$1`) or an interpolation hole. LC031 reads the SQL conservatively: a limit only inside parentheses (a subquery or CTE body), inside a comment or a quoted literal, `TOP n PERCENT`, SQL with a top-level `UNION`/`INTERSECT`/`EXCEPT` (the limit may cover only one branch), and SQL that is not a compile-time constant all keep reporting.
+
+```csharp
+var latest = db.Posts.FromSqlRaw("SELECT * FROM Posts ORDER BY CreatedAt DESC LIMIT 20").ToList(); // no LC031
+```
+
 LC031 walks back through LINQ (`System.Linq`) and EF Core operators only. A project's own `IQueryable` helper, such as a `Paginate(page, size)` extension or an Ardalis-style `WithSpecification(spec)`, may apply the bound itself, so LC031 stops there and stays quiet:
 
 ```csharp
