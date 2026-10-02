@@ -251,7 +251,11 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsParameterWrittenInsideRoot(localFunction, parameter, includeCompoundAssignments: true));
+                               IsWrittenInsideLocalFunctionChain(
+                                   localFunctionLookupScope,
+                                   localFunction,
+                                   root => IsParameterWrittenInsideRoot(root, parameter, includeCompoundAssignments: true),
+                                   new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
     }
 
     private static bool IsLocalWrittenByCalledLocalFunctionBeforeOperation(
@@ -270,7 +274,39 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsLocalWrittenInsideRoot(localFunction, local, includeCompoundAssignments: true));
+                               IsWrittenInsideLocalFunctionChain(
+                                   localFunctionLookupScope,
+                                   localFunction,
+                                   root => IsLocalWrittenInsideRoot(root, local, includeCompoundAssignments: true),
+                                   new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
+    }
+
+    /// <summary>
+    /// Whether a called local function, or a local function it calls in turn, writes the variable.
+    /// </summary>
+    private static bool IsWrittenInsideLocalFunctionChain(
+        IOperation localFunctionLookupScope,
+        ILocalFunctionOperation localFunction,
+        System.Func<IOperation, bool> isWrittenInsideRoot,
+        HashSet<IMethodSymbol> visited)
+    {
+        if (!visited.Add(localFunction.Symbol))
+            return false;
+
+        if (isWrittenInsideRoot(localFunction))
+            return true;
+
+        foreach (var invocation in localFunction.Descendants().OfType<IInvocationOperation>())
+        {
+            if (ReferenceEquals(invocation.FindOwningExecutableRoot(), localFunction) &&
+                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var calledFunction) &&
+                IsWrittenInsideLocalFunctionChain(localFunctionLookupScope, calledFunction, isWrittenInsideRoot, visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsRelevantWriteRoot(IOperation write, IOperation? ignoredRoot, IOperation? requiredRoot)

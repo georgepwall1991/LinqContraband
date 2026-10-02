@@ -428,6 +428,31 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedTwoLocalFunctionsDeep_ShouldTriggerLC010()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            void UseFallback() => db ??= fallback;
+            void Prepare() { if (item > 0) Prepare2(); UseFallback(); }
+            void Prepare2() => Prepare();
+            Prepare();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_DelegateParameterCoalesceAssignedInCalledLocalFunction_ShouldTriggerLC010()
     {
         var test = Usings + @"
