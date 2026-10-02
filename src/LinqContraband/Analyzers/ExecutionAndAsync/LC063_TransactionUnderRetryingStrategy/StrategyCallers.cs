@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -280,7 +281,12 @@ internal sealed class StrategyCallers
             switch (ancestor)
             {
                 case AnonymousFunctionExpressionSyntax lambda:
-                    return new Reference(IsStrategyDelegateArgument(lambda, semanticModel, cancellationToken)
+                    // ((Action)(() => Save()))() runs right here, like inline code: keep walking out.
+                    if (IsInvokedInPlace(lambda, invocation))
+                        continue;
+
+                    return new Reference(IsStrategyDelegateArgument(lambda, semanticModel, cancellationToken) ||
+                                         IsLocalOnlyHandedToStrategy(lambda, semanticModel, cancellationToken)
                         ? ReferenceKind.Protected
                         : ReferenceKind.Unprotected);
                 case LocalFunctionStatementSyntax or MethodDeclarationSyntax:
@@ -302,7 +308,7 @@ internal sealed class StrategyCallers
         CancellationToken cancellationToken)
     {
         return expression.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax } } argument &&
-               semanticModel.GetOperation(argument, cancellationToken) is IArgumentOperation
+               GetArgumentOperation(argument, semanticModel, cancellationToken) is
                {
                    Parent: IInvocationOperation call
                } argumentOperation &&
@@ -311,6 +317,177 @@ internal sealed class StrategyCallers
                    argumentOperation.Parameter,
                    semanticModel.Compilation,
                    cancellationToken);
+    }
+
+    /// <summary>
+    /// The argument operation for <paramref name="argument"/>. Roslyn binds no operation to an argument whose
+    /// expression is parenthesized (<c>Execute((work))</c>), so that case climbs from the expression's operation.
+    /// </summary>
+    private static IArgumentOperation? GetArgumentOperation(
+        ArgumentSyntax argument,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(argument, cancellationToken) is IArgumentOperation argumentOperation)
+            return argumentOperation;
+
+        var expression = argument.Expression;
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        for (var current = semanticModel.GetOperation(expression, cancellationToken)?.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            if (current is IArgumentOperation found)
+                return found;
+            if (current is not (IConversionOperation or IDelegateCreationOperation))
+                return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="lambda"/>, through parentheses and casts, is the expression an invocation calls, and
+    /// <paramref name="node"/> in its body runs there. An async lambda returns at its first <c>await</c> and runs the
+    /// rest later, outside any enclosing strategy delegate, so a node after an await counts only when the invocation's
+    /// task is awaited right there.
+    /// </summary>
+    private static bool IsInvokedInPlace(AnonymousFunctionExpressionSyntax lambda, SyntaxNode node)
+    {
+        ExpressionSyntax current = lambda;
+        while (current.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            current = (ExpressionSyntax)current.Parent;
+
+        if (current == lambda ||
+            current.Parent is not InvocationExpressionSyntax invocation ||
+            invocation.Expression != current)
+        {
+            return false;
+        }
+
+        return lambda.AsyncKeyword.IsKind(SyntaxKind.None) ||
+               IsAwaitedHere(invocation) ||
+               RunsBeforeFirstAwait(lambda, node);
+    }
+
+    /// <summary>True when the task <paramref name="invocation"/> returns is awaited right there, directly or through <c>ConfigureAwait(...)</c>.</summary>
+    internal static bool IsAwaitedHere(SyntaxNode invocation)
+    {
+        var expression = invocation;
+        while (true)
+        {
+            while (expression.Parent is ParenthesizedExpressionSyntax)
+                expression = expression.Parent;
+
+            if (expression.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" } access &&
+                access.Expression == expression &&
+                access.Parent is InvocationExpressionSyntax configured &&
+                configured.Expression == access)
+            {
+                expression = configured;
+                continue;
+            }
+
+            return expression.Parent is AwaitExpressionSyntax;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="node"/> in the async <paramref name="lambda"/> runs before the lambda can first suspend:
+    /// it precedes every <c>await</c> (including <c>await foreach</c> and <c>await using</c>) of the lambda's own body,
+    /// and no loop around it in the lambda contains one.
+    /// </summary>
+    internal static bool RunsBeforeFirstAwait(AnonymousFunctionExpressionSyntax lambda, SyntaxNode node)
+    {
+        var awaits = lambda.Body.DescendantNodesAndSelf(descendant =>
+                descendant == lambda.Body || descendant is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+            .Where(IsAwaitPoint)
+            .ToList();
+        if (awaits.Count == 0)
+            return true;
+
+        if (awaits.Any(awaitPoint => awaitPoint.SpanStart <= node.SpanStart))
+            return false;
+
+        foreach (var loop in node.Ancestors().TakeWhile(ancestor => ancestor != lambda))
+        {
+            if (loop is WhileStatementSyntax or DoStatementSyntax or ForStatementSyntax or CommonForEachStatementSyntax &&
+                awaits.Any(awaitPoint => loop.Span.Contains(awaitPoint.Span)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsAwaitPoint(SyntaxNode node)
+    {
+        return node switch
+        {
+            AwaitExpressionSyntax => true,
+            CommonForEachStatementSyntax forEach => !forEach.AwaitKeyword.IsKind(SyntaxKind.None),
+            UsingStatementSyntax usingStatement => !usingStatement.AwaitKeyword.IsKind(SyntaxKind.None),
+            LocalDeclarationStatementSyntax declaration => !declaration.AwaitKeyword.IsKind(SyntaxKind.None),
+            _ => false
+        };
+    }
+
+    /// <summary>Climbs out of parentheses and casts around <paramref name="expression"/>.</summary>
+    private static ExpressionSyntax ClimbParenthesesAndCasts(ExpressionSyntax expression)
+    {
+        while (expression.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            expression = (ExpressionSyntax)expression.Parent;
+
+        return expression;
+    }
+
+    /// <summary>
+    /// True when <paramref name="lambda"/> initializes a local (<c>Action work = () => Save();</c>) that is never
+    /// written again and whose every use is the delegate argument of a strategy's Execute* call or a project wrapper,
+    /// so the lambda only runs under the strategy.
+    /// </summary>
+    private static bool IsLocalOnlyHandedToStrategy(
+        AnonymousFunctionExpressionSyntax lambda,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        var value = ClimbParenthesesAndCasts(lambda);
+        if (value.Parent is not EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } ||
+            semanticModel.GetDeclaredSymbol(declarator, cancellationToken) is not ILocalSymbol { RefKind: RefKind.None } local)
+        {
+            return false;
+        }
+
+        // A top-level statement local is in scope for every later top-level statement of the file.
+        SyntaxNode? scope = declarator.FirstAncestorOrSelf<BlockSyntax>();
+        if (scope == null)
+        {
+            var member = declarator.FirstAncestorOrSelf<MemberDeclarationSyntax>();
+            scope = member is GlobalStatementSyntax ? member.Parent : member;
+        }
+
+        if (scope == null)
+            return false;
+
+        var handedToStrategy = false;
+        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.ValueText != local.Name ||
+                !SymbolEqualityComparer.Default.Equals(semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, local))
+            {
+                continue;
+            }
+
+            if (!IsStrategyDelegateArgument(ClimbParenthesesAndCasts(identifier), semanticModel, cancellationToken))
+                return false;
+
+            handedToStrategy = true;
+        }
+
+        return handedToStrategy;
     }
 
     private static bool IsInsideNameof(SyntaxNode node)

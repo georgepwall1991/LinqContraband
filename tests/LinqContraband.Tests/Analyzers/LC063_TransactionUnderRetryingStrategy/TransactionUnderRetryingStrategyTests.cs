@@ -332,6 +332,8 @@ public class DerivedAppDb : AppDb { }
     [InlineData(@"optionsBuilder.UseSqlServer(""cs"");", "")]
     // Calls base, so the inherited retries still apply.
     [InlineData(@"base.OnConfiguring(optionsBuilder); optionsBuilder.UseSqlServer(""cs"");", "LC063")]
+    // Calls a non-virtual base overload, not the overridden method: the inherited retries do not run.
+    [InlineData(@"base.OnConfiguring(0); optionsBuilder.UseSqlServer(""cs"");", "")]
     public async Task DerivedOnConfiguringOverride_DecidesWhetherBaseRetriesApply(string derivedBody, string diagnostic)
     {
         var call = diagnostic.Length == 0 ? "BeginTransaction" : "{|LC063:BeginTransaction|}";
@@ -342,6 +344,8 @@ public class RetryingBaseDb : DbContext
 {
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.UseSqlServer(""cs"", sql => sql.EnableRetryOnFailure());
+
+    protected void OnConfiguring(int level) { }
 }
 
 public class DerivedDb : RetryingBaseDb
@@ -486,6 +490,116 @@ static class DatabaseOptions
         await VerifyAsync(Wrap(
             @"var strategy = db.Database.CreateExecutionStrategy();
         strategy.Execute(() => { Action later = SaveInTransaction; GC.KeepAlive(later); });",
+            extraMembers: @"
+    private void SaveInTransaction()
+    {
+        using var tx = _db.Database.{|LC063:BeginTransaction|}();
+        _db.SaveChanges();
+        tx.Commit();
+    }"));
+    }
+
+    [Theory]
+    // A lambda invoked in place inside the strategy delegate runs under the strategy.
+    [InlineData(@"strategy.Execute(() => ((Action)(() => SaveInTransaction()))());")]
+    [InlineData(@"strategy.Execute(() => { ((Action)(() => { SaveInTransaction(); }))(); });")]
+    // A lambda kept in a local whose only use is the strategy's delegate argument.
+    [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute(work);")]
+    [InlineData(@"Func<Task> work = async () => { SaveInTransaction(); await Task.Yield(); }; await strategy.ExecuteAsync(work);")]
+    [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute((work));")]
+    [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute((Action)work);")]
+    // An async lambda invoked in place and awaited inside the strategy delegate.
+    [InlineData(@"await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))(); });")]
+    [InlineData(@"await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))().ConfigureAwait(false); });")]
+    // Not awaited, but the call runs before the lambda's first await, or the lambda never awaits.
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { SaveInTransaction(); await Task.Yield(); }))(); });")]
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { SaveInTransaction(); }))(); });")]
+    public async Task MethodCalledFromLambdaThatRunsUnderStrategy_NotReported(string body)
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        " + body,
+            extraMembers: @"
+    private void SaveInTransaction()
+    {
+        using var tx = _db.Database.BeginTransaction();
+        _db.SaveChanges();
+        tx.Commit();
+    }"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InlineTransactionBeforeFirstAwaitOfAsyncLambdaInvokedInPlace_NotReported(bool configureAwait)
+    {
+        var invoke = "((Func<Task>)(async () => { using var tx = db.Database.BeginTransaction(); tx.Commit(); await Task.Yield(); }))()";
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        " + (configureAwait
+                ? "await strategy.ExecuteAsync(async () => { await ((Func<Task>)(async () => { await Task.Yield(); using var tx = db.Database.BeginTransaction(); tx.Commit(); }))().ConfigureAwait(false); });"
+                : "strategy.Execute(() => { _ = " + invoke + "; });")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InlineTransactionInAsyncLambdaInvokedInPlace_ReportsUnlessAwaited(bool awaited)
+    {
+        var call = awaited ? "BeginTransaction" : "{|LC063:BeginTransaction|}";
+        var invoke = "((Func<Task>)(async () => { await Task.Yield(); using var tx = db.Database." + call + "(); tx.Commit(); }))()";
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        " + (awaited
+                ? "await strategy.ExecuteAsync(async () => { await " + invoke + "; });"
+                : "strategy.Execute(() => { _ = " + invoke + "; });")));
+    }
+
+    [Fact]
+    public async Task LocalLambdaHandedToStrategyInTopLevelStatements_NotReported()
+    {
+        var source = Usings + @"
+var db = new AppDb();
+var strategy = db.Database.CreateExecutionStrategy();
+Action work = () => Helpers.SaveInTransaction(db);
+strategy.Execute(work);
+
+static class Helpers
+{
+    public static void SaveInTransaction(AppDb db)
+    {
+        using var tx = db.Database.BeginTransaction();
+        db.SaveChanges();
+        tx.Commit();
+    }
+}
+" + AppDbRetry + EfMock;
+        await new Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerTest<
+            LinqContraband.Analyzers.LC063_TransactionUnderRetryingStrategy.TransactionUnderRetryingStrategyAnalyzer,
+            Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>
+        {
+            TestState = { Sources = { source }, OutputKind = Microsoft.CodeAnalysis.OutputKind.ConsoleApplication }
+        }.RunAsync();
+    }
+
+    [Theory]
+    // Invoked in place outside any strategy delegate.
+    [InlineData(@"((Action)(() => SaveInTransaction()))();")]
+    // An async lambda invoked in place but not awaited: the code after its first await runs outside the strategy.
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { await Task.Yield(); SaveInTransaction(); }))(); });")]
+    // Before the first await textually, but in a loop that awaits: later iterations run after a suspension.
+    [InlineData(@"strategy.Execute(() => { _ = ((Func<Task>)(async () => { for (var i = 0; i < 2; i++) { SaveInTransaction(); await Task.Yield(); } }))(); });")]
+    // The local is also invoked directly, or passed elsewhere, or reassigned.
+    [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute(work); work();")]
+    [InlineData(@"Action work = () => SaveInTransaction(); strategy.Execute(work); Task.Run(work);")]
+    [InlineData(@"Action work = () => SaveInTransaction(); work = () => { }; strategy.Execute(work);")]
+    // Kept in a local that never reaches the strategy.
+    [InlineData(@"Action work = () => SaveInTransaction(); GC.KeepAlive(work);")]
+    public async Task MethodCalledFromLambdaThatMayRunOutsideStrategy_Reports(string body)
+    {
+        await VerifyAsync(Wrap(
+            @"var strategy = db.Database.CreateExecutionStrategy();
+        " + body,
             extraMembers: @"
     private void SaveInTransaction()
     {
