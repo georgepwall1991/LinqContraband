@@ -116,15 +116,23 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
     private static bool QueryChainSelectsDeletedRows(IInvocationOperation invocation)
     {
-        // Calls before IgnoreQueryFilters() in the same chain.
+        // Calls before IgnoreQueryFilters() in the same chain. The whole chain back to its root has to be
+        // row-preserving: posts.Select(p => new { IsDeleted = true }).Where(p => p.IsDeleted) filters a projection,
+        // not the entity's soft-delete column, so a Select or Concat anywhere upstream disqualifies every Where.
+        var selectsDeletedRows = false;
         var current = GetChainSource(invocation);
         while (current is IInvocationOperation earlier && IsChainOperator(earlier.TargetMethod))
         {
-            if (IsWhereSelectingDeletedRows(earlier))
-                return true;
-
+            selectsDeletedRows |= IsWhereSelectingDeletedRows(earlier);
             current = GetChainSource(earlier);
         }
+
+        // The root is a DbSet property, field, local or parameter, or a call that returns a DbSet (db.Set<Post>()).
+        if (current is IInvocationOperation root && !root.Type.IsDbSet())
+            return false;
+
+        if (selectsDeletedRows)
+            return true;
 
         // Calls after it.
         IOperation link = invocation;

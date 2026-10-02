@@ -365,6 +365,8 @@ namespace TestApp
         public System.DateTime? ArchivedOn { get; set; }
     }
 
+    public class BlogContext : Microsoft.EntityFrameworkCore.DbContext { }
+
     public static class ProjectQueries
     {
         public static IQueryable<T> Where<T>(this IQueryable<T> source, System.Linq.Expressions.Expression<System.Func<T, bool>> predicate) => source;
@@ -377,7 +379,26 @@ namespace TestApp
 }
 ";
 
-    private static string SoftDeleteCode(string body) => @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + SoftDeleteTypes + @"
+    private const string DbSetMock = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public abstract class DbSet<T> : IQueryable<T> where T : class
+    {
+        public abstract Type ElementType { get; }
+        public abstract System.Linq.Expressions.Expression Expression { get; }
+        public abstract IQueryProvider Provider { get; }
+        public abstract IEnumerator<T> GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public class DbContext
+    {
+        public DbSet<T> Set<T>() where T : class => null;
+    }
+}
+";
+
+    private static string SoftDeleteCode(string body) => @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + DbSetMock + SoftDeleteTypes + @"
 namespace LinqContraband.Test
 {
     public class TestClass
@@ -461,6 +482,19 @@ namespace LinqContraband.Test
     [Fact]
     public Task DeletedFilterThroughProjectWhere_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = TestApp.ProjectQueries.Where({|LC021:posts.IgnoreQueryFilters()|}, p => p.IsDeleted).ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_SetRoot_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            TestApp.BlogContext db = null;
+            var result = db.Set<TestApp.Post>().Where(p => p.IsDeleted).IgnoreQueryFilters().ToList();"));
+
+    [Fact]
+    public Task DeletedFilterOnProjectionBeforeCall_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();"));
+
+    [Fact]
+    public Task DeletedFilterAfterCallOnProjectedSource_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).IgnoreQueryFilters()|}.Where(p => p.IsDeleted).ToList();"));
 
     [Fact]
     public Task DeletedFilterBeforeConcat_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
