@@ -128,7 +128,14 @@ modelBuilder.HasDbFunction(typeof(Rules).GetMethod(nameof(Rules.IsAdult)));
 modelBuilder.HasDbFunction(() => Rules.IsAdult(default));
 ```
 
-LC001 reads these mappings from this project's source. `GetMethod` with a constant name trusts every overload of that name on the type; a name only known at run time, or a mapping in another project, is not seen.
+The `MethodInfo` can also come from a local or a `readonly` field whose initializer is that `GetMethod` (or `GetRuntimeMethod`) call, as long as nothing assigns it again:
+
+```csharp
+var asText = typeof(SpatialFunctions).GetMethod(nameof(SpatialFunctions.AsText));
+modelBuilder.HasDbFunction(asText!).HasName("ST_AsText");
+```
+
+LC001 reads these mappings from this project's source. `GetMethod` with a constant name trusts every overload of that name on the type; a name only known at run time, a local that is reassigned (or passed by `ref`/`out`), a mutable field, a `MethodInfo` returned by a helper method or property, or a mapping in another project, is not seen.
 
 If your project has its own translation attribute, list it in `.editorconfig` (full names, separated by commas, because `;` and `#` start a comment there; the `Attribute` suffix is optional):
 

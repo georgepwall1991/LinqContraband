@@ -78,7 +78,7 @@ namespace Fake
     }
 }";
 
-    private static string Program(string attribute, string mapping = "") => Usings + @"
+    private static string Program(string attribute, string mapping = "", string members = "") => Usings + @"
 class Program
 {
     void Main()
@@ -98,6 +98,8 @@ static class Rules
 
 class Mapping
 {
+    " + members + @"
+
     void Configure(Microsoft.EntityFrameworkCore.ModelBuilder modelBuilder)
     {
         " + mapping + @"
@@ -134,6 +136,58 @@ class Mapping
     public Task OtherOrUnknownDbFunctionMapping_StillReports(string mapping) =>
         VerifyCS.VerifyAnalyzerAsync(
             Program("", mapping).Replace(
+                "u => Rules.IsAdult(u.Age)", "u => {|LC001:Rules.IsAdult(u.Age)|}"));
+
+    // The MethodInfo goes through a local or a readonly field first (fullstackhero's NetTopologySuite mappings).
+    [Theory]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); modelBuilder.HasDbFunction(isAdult!);")]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(\"IsAdult\", new[] { typeof(int) }); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("System.Reflection.MethodInfo isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var isAdult = System.Reflection.RuntimeReflectionExtensions.GetRuntimeMethod(typeof(Rules), nameof(Rules.IsAdult), new[] { typeof(int) }); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); Console.WriteLine(isAdult); modelBuilder.HasDbFunction(isAdult);")]
+    public Task DbFunctionMappingThroughLocal_IsQuiet(string mapping) =>
+        VerifyCS.VerifyAnalyzerAsync(Program("", mapping));
+
+    [Theory]
+    [InlineData("private static readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsAdult));")]
+    [InlineData("private readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(\"IsAdult\", new[] { typeof(int) });")]
+    [InlineData("static readonly System.Reflection.MethodInfo IsAdultMethod = System.Reflection.RuntimeReflectionExtensions.GetRuntimeMethod(typeof(Rules), nameof(Rules.IsAdult), new[] { typeof(int) });")]
+    public Task DbFunctionMappingThroughReadonlyField_IsQuiet(string field) =>
+        VerifyCS.VerifyAnalyzerAsync(Program("", "modelBuilder.HasDbFunction(IsAdultMethod);", field));
+
+    [Theory]
+    // The local maps a different method.
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsSenior)); modelBuilder.HasDbFunction(isAdult);")]
+    // The local is reassigned, so the mapped method is not known.
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); isAdult = typeof(Rules).GetMethod(nameof(Rules.IsSenior)); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); Action reset = () => isAdult = null; modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); Replace(ref isAdult); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); (isAdult, _) = (typeof(Rules).GetMethod(nameof(Rules.IsSenior)), 0); modelBuilder.HasDbFunction(isAdult);")]
+    // The initializer is not typeof(T).GetMethod(constant).
+    [InlineData("var isAdult = Find(); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var name = Console.ReadLine(); var isAdult = typeof(Rules).GetMethod(name); modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("var first = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); var isAdult = first; modelBuilder.HasDbFunction(isAdult);")]
+    [InlineData("System.Reflection.MethodInfo isAdult; isAdult = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); modelBuilder.HasDbFunction(isAdult);")]
+    public Task DbFunctionMappingThroughUnknownLocal_StillReports(string mapping) =>
+        VerifyCS.VerifyAnalyzerAsync(
+            Program("", mapping, @"
+    static System.Reflection.MethodInfo Find() => typeof(Rules).GetMethod(nameof(Rules.IsAdult));
+    static void Replace(ref System.Reflection.MethodInfo method) => method = null;").Replace(
+                "u => Rules.IsAdult(u.Age)", "u => {|LC001:Rules.IsAdult(u.Age)|}"));
+
+    [Theory]
+    // A mutable field can be set from anywhere.
+    [InlineData("private static System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsAdult));")]
+    // A readonly field assigned again in a constructor.
+    [InlineData("private static readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); static Mapping() { IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsSenior)); }")]
+    [InlineData("private readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); Mapping(bool other) { if (other) IsAdultMethod = null; }")]
+    // No initializer, or one that is not typeof(T).GetMethod(constant).
+    [InlineData("private static readonly System.Reflection.MethodInfo IsAdultMethod; static Mapping() { IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsAdult)); }")]
+    [InlineData("private static readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethod(nameof(Rules.IsSenior));")]
+    [InlineData("private static readonly System.Reflection.MethodInfo IsAdultMethod = typeof(Rules).GetMethods()[0];")]
+    public Task DbFunctionMappingThroughUnknownField_StillReports(string field) =>
+        VerifyCS.VerifyAnalyzerAsync(
+            Program("", "modelBuilder.HasDbFunction(IsAdultMethod);", field).Replace(
                 "u => Rules.IsAdult(u.Age)", "u => {|LC001:Rules.IsAdult(u.Age)|}"));
 
     [Theory]
