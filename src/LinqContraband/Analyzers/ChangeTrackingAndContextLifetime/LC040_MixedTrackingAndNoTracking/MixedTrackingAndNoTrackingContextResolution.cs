@@ -67,9 +67,20 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
             return false;
         }
 
+        // Walks up to DbSet<T> itself, so a specialized set such as `sealed class UserSet : DbSet<User>` resolves too.
         private static ITypeSymbol? GetDbSetEntityType(ITypeSymbol? dbSetType)
         {
-            return dbSetType is INamedTypeSymbol { TypeArguments.Length: 1 } named ? named.TypeArguments[0] : null;
+            for (var current = dbSetType as INamedTypeSymbol; current != null; current = current.BaseType)
+            {
+                if (current.Name == "DbSet" &&
+                    current.TypeArguments.Length == 1 &&
+                    current.ContainingNamespace?.ToString() == "Microsoft.EntityFrameworkCore")
+                {
+                    return current.TypeArguments[0];
+                }
+            }
+
+            return null;
         }
 
         private static bool TryGetSymbol(IOperation? operation, out ISymbol? symbol)
