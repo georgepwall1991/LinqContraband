@@ -55,8 +55,9 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
         context.RegisterCompilationStartAction(compilationContext =>
         {
             var translatesNestedCollections = TranslatesNestedCollections(compilationContext.Compilation);
-            // Only claim an EF Core translation failure when the project uses EF Core at all.
-            var referencesEfCore = compilationContext.Compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext") != null;
+            // Only claim a translation failure on EF Core 3.0 or later, which throws instead of evaluating on the client.
+            var dbContext = compilationContext.Compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext");
+            var referencesEfCore = dbContext?.ContainingAssembly.Identity.Version.Major >= 3;
             compilationContext.RegisterOperationAction(
                 operationContext => AnalyzeInvocation(operationContext, translatesNestedCollections, referencesEfCore),
                 OperationKind.Invocation);
@@ -100,7 +101,8 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
         if (!IsCollectionMaterializer(method.Name)) return;
 
         var isDictionary = IsDictionaryMaterializer(method.Name);
-        if (translatesNestedCollections && !isDictionary) return;
+        // Only the synchronous ToList/ToArray/ToHashSet are stripped; async terminals return tasks.
+        if (translatesNestedCollections && method.Name is ("ToList" or "ToArray" or "ToHashSet")) return;
 
         // Walk up to find if inside a lambda
         var parent = invocation.Parent;

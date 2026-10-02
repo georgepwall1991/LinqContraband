@@ -28,6 +28,11 @@ namespace Microsoft.EntityFrameworkCore
     public class DbContext { }
     public static class " + provider + @" { }
 
+    public static class EntityFrameworkQueryableExtensions
+    {
+        public static System.Threading.Tasks.Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => null;
+    }
+
     public class DbSet<TEntity> : IQueryable<TEntity> where TEntity : class
     {
         public Type ElementType => typeof(TEntity);
@@ -74,6 +79,34 @@ class TestClass
                 "cannot be translated by EF Core and throws at run time. Project a list and build the dictionary after the query.");
         await VerifyCS.VerifyAnalyzerAsync(
             Source(version, @"var a = users.Select(u => new { u.Id, ById = {|#0:u.Orders.ToDictionary(o => o.Id, o => o.Total)|} }).ToList();"),
+            expected);
+    }
+
+    [Fact]
+    public async Task EfCore8Relational_NestedAsyncMaterializer_StillReports()
+    {
+        // ToListAsync returns a task; EF Core does not strip it from a projection the way it strips ToList.
+        var expected = new DiagnosticResult("LC022", DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(
+                "ToListAsync",
+                "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.");
+        await VerifyCS.VerifyAnalyzerAsync(
+            Source("10.0.0.0", @"var a = users.Select(u => {|#0:u.Orders.AsQueryable().ToListAsync()|}).ToList();"),
+            expected);
+    }
+
+    [Fact]
+    public async Task EfCore2_NestedToDictionary_KeepsAdvisoryWording()
+    {
+        // EF Core 2.x evaluates untranslatable fragments on the client instead of throwing.
+        var expected = new DiagnosticResult("LC022", DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(
+                "ToDictionary",
+                "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.");
+        await VerifyCS.VerifyAnalyzerAsync(
+            Source("2.2.0.0", @"var a = users.Select(u => new { u.Id, ById = {|#0:u.Orders.ToDictionary(o => o.Id, o => o.Total)|} }).ToList();"),
             expected);
     }
 

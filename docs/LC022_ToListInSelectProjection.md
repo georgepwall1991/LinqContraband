@@ -16,10 +16,13 @@ books. Asking EF Core for `ToDictionary` inside the query is asking for that ind
 
 A collection materializer called on a nested collection inside a `Select` projection over an EF Core query:
 
-- `ToDictionary` (and `ToDictionaryAsync`) on every EF Core version. EF Core cannot translate it and throws
-  "The LINQ expression ... could not be translated" when the query runs.
-- `ToList`, `ToArray` and `ToHashSet` (and their async forms) only when the project references EF Core 7 or older, or
-  when the EF Core version or a relational provider cannot be found, as an advisory query-shape review.
+- `ToDictionary` (and `ToDictionaryAsync`) on every EF Core version. From EF Core 3.0 on, EF Core cannot translate it
+  and throws "The LINQ expression ... could not be translated" when the query runs, and the message says so. On EF Core
+  2.x, which evaluates such fragments on the client, or in a project without EF Core, it is an advisory.
+- `ToListAsync`, `ToArrayAsync` and `ToHashSetAsync` on every EF Core version, as an advisory. They return tasks, and
+  EF Core does not strip them from a projection.
+- `ToList`, `ToArray` and `ToHashSet` only when the project references EF Core 7 or older, or when the EF Core version
+  or a relational provider cannot be found, as an advisory query-shape review.
 
 ## Why it matters
 
@@ -29,7 +32,8 @@ not it ends in `ToList()`, `ToArray()` or `ToHashSet()`. Probed with SQLite on E
 customer key, and `c.Orders.ToList().Count` becomes a `COUNT(*)` subquery. Those calls cost nothing there, and a DTO
 that needs a `List<T>` should keep them, so LC022 stays quiet on them.
 
-`ToDictionary` is different: no EF Core version translates it on a nested collection, so the query fails at run time.
+`ToDictionary` is different: no EF Core version translates it on a nested collection, so from EF Core 3.0 on the query
+fails at run time.
 
 If a query projects several collections, the cost to look at is the row explosion of the joins, which LC006 covers;
 removing `ToList()` does not change it.

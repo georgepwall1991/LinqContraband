@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- LC022 no longer reports nested `ToList()`, `ToArray()` or `ToHashSet()` in a `Select` projection when the project references EF Core 8 or later with a relational provider (not Cosmos). EF Core 8 and later translate these to the same SQL as the bare navigation. A nested `ToDictionary(...)` still reports there, with a message saying EF Core cannot translate it and it throws at run time. Projects on EF Core 7 or older keep the advisory report.
+- LC022 no longer reports nested `ToList()`, `ToArray()` or `ToHashSet()` in a `Select` projection when the project references EF Core 8 or later with a relational provider (not Cosmos). EF Core 8 and later translate these to the same SQL as the bare navigation. A nested `ToDictionary(...)` still reports there, with a message saying EF Core cannot translate it and it throws at run time (on EF Core 3.0 or later), and nested `ToListAsync`/`ToArrayAsync`/`ToHashSetAsync` still report as an advisory. Projects on EF Core 7 or older keep the advisory report.
 
 ## [5.16.0] - 2026-09-27
 
