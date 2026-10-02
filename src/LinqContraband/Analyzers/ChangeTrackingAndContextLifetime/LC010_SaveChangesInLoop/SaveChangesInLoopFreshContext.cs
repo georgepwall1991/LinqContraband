@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -171,7 +172,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
-                                      IsLocalReference(assignment.Target, local)) ||
+                                      AssignmentTargets(assignment).Any(target => IsLocalReference(target, local))) ||
                scope.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => argument.Syntax.SpanStart < operationStart &&
@@ -217,7 +218,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
-                                      IsParameterReference(assignment.Target, parameter)) ||
+                                      AssignmentTargets(assignment).Any(target => IsParameterReference(target, parameter))) ||
                scope.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => argument.Syntax.SpanStart < operationStart &&
@@ -250,7 +251,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsParameterWrittenInsideRoot(localFunction, parameter));
+                               IsParameterWrittenInsideRoot(localFunction, parameter, includeCompoundAssignments: true));
     }
 
     private static bool IsLocalWrittenByCalledLocalFunctionBeforeOperation(
@@ -269,7 +270,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsLocalWrittenInsideRoot(localFunction, local));
+                               IsLocalWrittenInsideRoot(localFunction, local, includeCompoundAssignments: true));
     }
 
     private static bool IsRelevantWriteRoot(IOperation write, IOperation? ignoredRoot, IOperation? requiredRoot)
@@ -277,6 +278,26 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var writeRoot = write.FindOwningExecutableRoot();
         return !ReferenceEquals(writeRoot, ignoredRoot) &&
                (requiredRoot == null || ReferenceEquals(writeRoot, requiredRoot));
+    }
+
+    /// <summary>
+    /// The variables an assignment writes: its target, or each element of a deconstruction's tuple target.
+    /// </summary>
+    private static IEnumerable<IOperation> AssignmentTargets(IAssignmentOperation assignment)
+    {
+        if (assignment is not IDeconstructionAssignmentOperation)
+            return new[] { assignment.Target };
+
+        return TupleElements(assignment.Target);
+
+        static IEnumerable<IOperation> TupleElements(IOperation target)
+        {
+            var value = target is IDeclarationExpressionOperation declaration ? declaration.Expression : target;
+            if (value is not ITupleOperation tuple)
+                return new[] { value };
+
+            return tuple.Elements.SelectMany(TupleElements);
+        }
     }
 
     private static bool IsLocalReference(IOperation operation, ILocalSymbol local)

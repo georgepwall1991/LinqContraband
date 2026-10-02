@@ -383,6 +383,77 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_FreshContextReassignedByDeconstruction_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = new MyDbContext();
+            int count;
+            (db, count) = (fallback, item);
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedInCalledLocalFunction_ShouldTriggerLC010()
+    {
+        // The ??= runs inside a local function called before the save, so later iterations can save the fallback.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            void UseFallback() => db ??= fallback;
+            UseFallback();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateParameterCoalesceAssignedInCalledLocalFunction_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(MyDbContext fallback, List<int> items)
+    {
+        Action<MyDbContext> saveCurrent = db =>
+        {
+            void UseFallback() => db ??= fallback;
+            UseFallback();
+            {|LC010:db.SaveChanges()|};
+        };
+
+        foreach (var item in items)
+        {
+            using var db = new MyDbContext();
+            saveCurrent(db);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_ScopedContextResolvedFromScopeCreatedInsideLoop_ShouldNotTrigger()
     {
         var test = @"

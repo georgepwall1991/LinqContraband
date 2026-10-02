@@ -2215,12 +2215,13 @@ public sealed partial class SaveChangesInLoopAnalyzer
         return false;
     }
 
-    private static bool IsLocalWrittenInsideRoot(IOperation containingRoot, ILocalSymbol local)
+    private static bool IsLocalWrittenInsideRoot(IOperation containingRoot, ILocalSymbol local, bool includeCompoundAssignments = false)
     {
         return containingRoot.Descendants()
-            .OfType<ISimpleAssignmentOperation>()
-            .Any(assignment => ReferenceEquals(assignment.FindOwningExecutableRoot(), containingRoot) &&
-                               IsLocalReference(assignment.Target, local)) ||
+            .OfType<IAssignmentOperation>()
+            .Any(assignment => (includeCompoundAssignments || assignment is ISimpleAssignmentOperation) &&
+                               ReferenceEquals(assignment.FindOwningExecutableRoot(), containingRoot) &&
+                               AssignmentTargets(assignment).Any(target => IsLocalReference(target, local))) ||
                containingRoot.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => ReferenceEquals(argument.FindOwningExecutableRoot(), containingRoot) &&
@@ -2228,12 +2229,13 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                     IsLocalReference(argument.Value, local));
     }
 
-    private static bool IsParameterWrittenInsideRoot(IOperation containingRoot, IParameterSymbol parameter)
+    private static bool IsParameterWrittenInsideRoot(IOperation containingRoot, IParameterSymbol parameter, bool includeCompoundAssignments = false)
     {
         return containingRoot.Descendants()
-            .OfType<ISimpleAssignmentOperation>()
-            .Any(assignment => ReferenceEquals(assignment.FindOwningExecutableRoot(), containingRoot) &&
-                               IsParameterReference(assignment.Target, parameter)) ||
+            .OfType<IAssignmentOperation>()
+            .Any(assignment => (includeCompoundAssignments || assignment is ISimpleAssignmentOperation) &&
+                               ReferenceEquals(assignment.FindOwningExecutableRoot(), containingRoot) &&
+                               AssignmentTargets(assignment).Any(target => IsParameterReference(target, parameter))) ||
                containingRoot.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => ReferenceEquals(argument.FindOwningExecutableRoot(), containingRoot) &&
