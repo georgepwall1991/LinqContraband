@@ -23,7 +23,7 @@ public sealed partial class CartesianExplosionAnalyzer
                 node = conversion;
 
             var next = GetChainedCall(node);
-            if (next == null || !IsQueryable(next.Type))
+            if (next == null || !IsQueryable(next.Type) || !IsKnownQueryOperator(next.TargetMethod))
                 break;
 
             node = next;
@@ -86,7 +86,9 @@ public sealed partial class CartesianExplosionAnalyzer
 
             // A call that leaves IQueryable (ToList, AsEnumerable, ...) runs or hands off the query here, so a later
             // AsSplitQuery() on its result no longer applies to it.
-            if (!IsQueryable(next.Type))
+            // A project or third-party helper may run the query before handing it back, so only LINQ and EF Core
+            // operators are followed.
+            if (!IsQueryable(next.Type) || !IsKnownQueryOperator(next.TargetMethod))
                 return mode == QuerySplittingMode.Split;
 
             current = next;
@@ -109,6 +111,11 @@ public sealed partial class CartesianExplosionAnalyzer
         }
 
         return null;
+    }
+
+    private static bool IsKnownQueryOperator(IMethodSymbol method)
+    {
+        return method.ContainingNamespace?.ToDisplayString() is "System.Linq" or "Microsoft.EntityFrameworkCore";
     }
 
     private static bool IsQueryable(ITypeSymbol? type)

@@ -285,6 +285,52 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_IncludeLocalThroughOpaqueHelperBeforeSplit_TriggersDiagnostic()
+    {
+        // A project helper that returns IQueryable may have run the query already, so the later split is not proof.
+        var test = Usings + @"
+static class QueryHelpers
+{
+    public static IQueryable<T> InspectAndReturn<T>(this IQueryable<T> query)
+    {
+        var count = query.ToList().Count;
+        return query;
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var users = q.InspectAndReturn().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeLocalParenthesizedBeforeSplit_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    List<User> Main()
+    {
+        var db = new DbContext();
+        var q = (db.Users.Include(u => u.Orders).Include(u => u.Roles));
+        return (q).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_IncludeLocalSplitThenSingle_TriggersDiagnostic()
     {
         // AsSingleQuery() after AsSplitQuery() wins, so the downstream query is single again.
