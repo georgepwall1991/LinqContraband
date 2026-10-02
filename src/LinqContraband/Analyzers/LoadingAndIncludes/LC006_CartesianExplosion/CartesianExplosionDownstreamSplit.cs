@@ -84,6 +84,11 @@ public sealed partial class CartesianExplosionAnalyzer
                     mode = QuerySplittingMode.Single;
             }
 
+            // A call that leaves IQueryable (ToList, AsEnumerable, ...) runs or hands off the query here, so a later
+            // AsSplitQuery() on its result no longer applies to it.
+            if (!IsQueryable(next.Type))
+                return mode == QuerySplittingMode.Split;
+
             current = next;
         }
     }

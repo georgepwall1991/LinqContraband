@@ -266,6 +266,25 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_IncludeLocalMaterializedBeforeSplit_TriggersDiagnostic()
+    {
+        // ToList() runs the sibling Includes as a single query; the later AsSplitQuery() is on an in-memory copy.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var copy = q.ToList().AsQueryable().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_IncludeLocalSplitThenSingle_TriggersDiagnostic()
     {
         // AsSingleQuery() after AsSplitQuery() wins, so the downstream query is single again.
