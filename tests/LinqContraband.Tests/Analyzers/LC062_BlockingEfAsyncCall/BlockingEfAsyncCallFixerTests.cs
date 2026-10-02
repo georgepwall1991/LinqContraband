@@ -64,6 +64,14 @@ public class BlockingEfAsyncCallFixerTests
         await VerifyFixAsync(before, after, isAsync: true);
     }
 
+    [Fact]
+    public async Task WaitWithCancellationToken_GetsNoAwaitFix()
+    {
+        // Wait(timeout) returns bool; Wait(CancellationToken) is also an argument-taking
+        // overload, so the fixer only rewrites the parameterless Wait().
+        await VerifyNoFixAsync(@"{|LC062:db.SaveChangesAsync().Wait(ct)|};", isAsync: true);
+    }
+
     [Theory]
     // Outside async code there is no fix: a synchronous rewrite cannot be proven equivalent, because async-only
     // interceptors (SaveChangesInterceptor, DbCommandInterceptor), async-only overrides and the evaluation of the
