@@ -285,6 +285,62 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_FactoryClassNonInterfaceCreateDbContextReturningCachedContext_ShouldTriggerLC010()
+    {
+        // The interface member is implemented explicitly; the public CreateDbContext hands back one cached context.
+        var test = Usings + @"
+class CachingFactory : IDbContextFactory<MyDbContext>
+{
+    private readonly MyDbContext _cached = new MyDbContext();
+    public MyDbContext CreateDbContext(int unused = 0) => _cached;
+    MyDbContext IDbContextFactory<MyDbContext>.CreateDbContext() => new MyDbContext();
+    Task<MyDbContext> IDbContextFactory<MyDbContext>.CreateDbContextAsync() => Task.FromResult(new MyDbContext());
+}
+
+class Program
+{
+    void Main(CachingFactory factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = factory.CreateDbContext(1);
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ProjectCreateScopeReturningCachedScope_ShouldTriggerLC010()
+    {
+        // A project method named CreateScope that returns a cached IServiceScope is not a fresh DI scope.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+static class ScopeCache
+{
+    private static IServiceScope _scope;
+    public static IServiceScope CreateScope(this IServiceProvider provider, int unused) => _scope;
+}
+
+class Program
+{
+    void Main(IServiceProvider services, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var scope = services.CreateScope(0);
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_ScopedContextResolvedFromScopeCreatedInsideLoop_ShouldNotTrigger()
     {
         var test = @"

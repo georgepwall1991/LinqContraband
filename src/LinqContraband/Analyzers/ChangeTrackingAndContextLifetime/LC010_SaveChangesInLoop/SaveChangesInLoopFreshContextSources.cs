@@ -55,13 +55,33 @@ public sealed partial class SaveChangesInLoopAnalyzer
             returnType = taskType.TypeArguments[0];
         }
 
-        return returnType.IsDbContext() && IsDbContextFactoryType(method.ContainingType);
+        return returnType.IsDbContext() && IsDbContextFactoryMember(method);
     }
 
-    private static bool IsDbContextFactoryType(INamedTypeSymbol? type)
+    /// <summary>
+    /// The <c>IDbContextFactory&lt;T&gt;</c> member itself, or the method a class uses to implement it. Another
+    /// method of the same name on an implementing class (one that hands back a cached context while the interface
+    /// member is implemented explicitly) is not the factory API.
+    /// </summary>
+    private static bool IsDbContextFactoryMember(IMethodSymbol method)
     {
-        return type != null &&
-               (IsDbContextFactoryInterface(type) || type.AllInterfaces.Any(IsDbContextFactoryInterface));
+        var type = method.ContainingType;
+        if (type == null)
+            return false;
+
+        if (IsDbContextFactoryInterface(type))
+            return true;
+
+        foreach (var factoryInterface in type.AllInterfaces.Where(IsDbContextFactoryInterface))
+        {
+            foreach (var member in factoryInterface.GetMembers(method.Name))
+            {
+                if (SymbolEqualityComparer.Default.Equals(type.FindImplementationForInterfaceMember(member), method))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDbContextFactoryInterface(INamedTypeSymbol type)
@@ -132,8 +152,20 @@ public sealed partial class SaveChangesInLoopAnalyzer
 
         return scopeDeclaration?.Initializer?.Value.UnwrapConversions() is IInvocationOperation scopeCreation &&
                scopeCreation.TargetMethod.Name is "CreateScope" or "CreateAsyncScope" &&
+               IsDependencyInjectionScopeApi(scopeCreation.TargetMethod) &&
                scopeCreation.TargetMethod.ReturnType is { Name: "IServiceScope" or "AsyncServiceScope" } scopeType &&
                scopeType.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace &&
                !IsLocalWrittenBeforeSaveExecution(loop.Body, saveOperation, executionOperation, scopeLocal);
+    }
+
+    /// <summary>
+    /// <c>IServiceScopeFactory.CreateScope</c>/<c>CreateAsyncScope</c> or the
+    /// <c>Microsoft.Extensions.DependencyInjection</c> extensions over it. A project method of the same name that
+    /// returns an <c>IServiceScope</c> may hand back a cached scope.
+    /// </summary>
+    private static bool IsDependencyInjectionScopeApi(IMethodSymbol method)
+    {
+        var original = method.ReducedFrom ?? method;
+        return original.ContainingType?.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace;
     }
 }
