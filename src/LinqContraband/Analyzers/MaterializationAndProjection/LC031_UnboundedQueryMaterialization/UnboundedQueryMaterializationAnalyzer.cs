@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using LinqContraband.Catalog;
 using Microsoft.CodeAnalysis;
@@ -80,14 +81,33 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
             if (current is not IAnonymousFunctionOperation)
                 continue;
 
-            if (current.Parent is { Type: INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } converted } &&
-                converted.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+            if (current.Parent is { Type: INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } converted } conversion &&
+                converted.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions" &&
+                IsQueryOperatorArgument(conversion))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    // Only an expression tree handed to a query operator is translated; one held in a local or passed elsewhere can be
+    // compiled and run in memory.
+    private static bool IsQueryOperatorArgument(IOperation conversion)
+    {
+        if (conversion.Parent is not IArgumentOperation { Parent: IInvocationOperation { TargetMethod: var method } })
+            return false;
+
+        var containingType = method.ContainingType;
+        if (containingType == null)
+            return false;
+
+        if (containingType.Name == "Queryable" && containingType.ContainingNamespace?.ToDisplayString() == "System.Linq")
+            return true;
+
+        var ns = containingType.ContainingNamespace?.ToDisplayString();
+        return ns != null && (ns == "Microsoft.EntityFrameworkCore" || ns.StartsWith("Microsoft.EntityFrameworkCore.", StringComparison.Ordinal));
     }
 
     private void AnalyzeInvocation(OperationAnalysisContext context)

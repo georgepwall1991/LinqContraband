@@ -43,6 +43,7 @@ namespace TestApp
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users ORDER BY Id OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users FETCH FIRST 5 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(TopTen).ToList();")]
+    [InlineData(@"return db.Users.FromSqlRaw(""SELECT $q$a$q$ AS marker, * FROM Users WHERE Id > $1 LIMIT 10"", n).ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Id IN (SELECT UserId FROM Logins) LIMIT 50"").Where(u => u.IsActive).ToList();")]
     [InlineData(@"return db.Users.FromSqlInterpolated($""SELECT * FROM Users LIMIT {n}"").ToList();")]
     [InlineData(@"return db.Users.FromSql($""SELECT TOP ({n}) * FROM Users"").ToList();")]
@@ -63,6 +64,11 @@ namespace TestApp
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT [Limit], [Top] FROM Users"").ToList()|};")]
     // TOP n PERCENT scales with the table.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP 10 PERCENT * FROM Users"").ToList()|};")]
+    // WITH TIES can return every row that ties with the last one.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP 10 WITH TIES * FROM Users ORDER BY IsActive"").ToList()|};")]
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users ORDER BY IsActive FETCH FIRST 10 ROWS WITH TIES"").ToList()|};")]
+    // Limit only inside a PostgreSQL dollar-quoted literal.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT $tag$ LIMIT 10 $tag$ AS marker FROM Users"").ToList()|};")]
     // A top-level set operator: the limit may cover only one branch.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP 5 * FROM Users UNION ALL SELECT * FROM Users"").ToList()|};")]
     // Non-constant SQL cannot be read.

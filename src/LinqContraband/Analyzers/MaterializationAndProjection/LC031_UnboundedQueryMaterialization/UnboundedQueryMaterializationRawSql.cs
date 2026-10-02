@@ -88,7 +88,8 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                     limited = true;
                     break;
 
-                case "TOP" when IsRowCount(tokens, i + 1, allowParen: true) && TokenAt(tokens, i + 2) != "PERCENT":
+                case "TOP" when IsRowCount(tokens, i + 1, allowParen: true) && TokenAt(tokens, i + 2) != "PERCENT" &&
+                                !IsWithTies(tokens, i + 2):
                     limited = true;
                     break;
 
@@ -98,7 +99,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                     if (IsRowCount(tokens, next, allowParen: true))
                         next++;
 
-                    if (TokenAt(tokens, next) is "ROW" or "ROWS")
+                    if (TokenAt(tokens, next) is "ROW" or "ROWS" && !IsWithTies(tokens, next + 1))
                         limited = true;
 
                     break;
@@ -108,6 +109,10 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
 
         return limited;
     }
+
+    // WITH TIES adds every row that ties with the last one, which can be the whole table.
+    private static bool IsWithTies(List<string> tokens, int index) =>
+        TokenAt(tokens, index) == "WITH" && TokenAt(tokens, index + 1) == "TIES";
 
     private static string? TokenAt(List<string> tokens, int index) =>
         index < tokens.Count ? tokens[index] : null;
@@ -193,6 +198,18 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 continue;
             }
 
+            if (c == '$' && TryGetDollarQuoteTag(sql, i, out var tag))
+            {
+                // PostgreSQL dollar-quoted literal: $$...$$ or $tag$...$tag$.
+                var end = sql.IndexOf(tag, i + tag.Length, StringComparison.Ordinal);
+                if (end < 0)
+                    return null;
+                i = end + tag.Length;
+                if (depth == 0)
+                    tokens.Add("'");
+                continue;
+            }
+
             var start = i;
             if (c is '@' or ':' or '$' or '{' or '?')
             {
@@ -238,6 +255,23 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
         }
 
         return depth == 0 ? tokens : null;
+    }
+
+    private static bool TryGetDollarQuoteTag(string sql, int start, out string tag)
+    {
+        tag = "";
+        var i = start + 1;
+        if (i < sql.Length && char.IsDigit(sql[i]))
+            return false; // $1 is a positional parameter.
+
+        while (i < sql.Length && IsWordChar(sql[i]))
+            i++;
+
+        if (i >= sql.Length || sql[i] != '$')
+            return false;
+
+        tag = sql.Substring(start, i - start + 1);
+        return true;
     }
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';

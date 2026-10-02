@@ -30,6 +30,8 @@ namespace TestApp
         {
             " + body + @"
         }
+
+        private static T Execute<T>(Expression<Func<T>> query) => query.Compile()();
     }
 }";
 
@@ -41,8 +43,6 @@ namespace TestApp
     [InlineData("return db.Blogs.Select(b => new { b.Name, Posts = db.Set<Post>().Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList();")]
     // Query syntax projection.
     [InlineData("return (from b in db.Blogs select new { b.Name, Posts = db.Posts.Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList();")]
-    // A standalone expression tree is never executed by LC031's materializer.
-    [InlineData("Expression<Func<Blog, List<Post>>> selector = b => db.Posts.Where(p => p.BlogId == b.Id).ToList(); return selector;")]
     public Task NestedMaterializerInsideExpressionTree_IsQuiet(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 
@@ -53,6 +53,10 @@ namespace TestApp
     [InlineData("return {|LC031:(from b in db.Blogs select new { b.Name, Posts = db.Posts.Where(p => p.BlogId == b.Id).ToList() }).ToList()|};")]
     // A delegate lambda (not an expression tree) runs the query itself.
     [InlineData("Func<Blog, List<Post>> load = b => {|LC031:db.Posts.Where(p => p.BlogId == b.Id).ToList()|}; return load;")]
+    // An expression tree held in a local or passed to a non-query method can be compiled and run in memory.
+    [InlineData("Expression<Func<List<Post>>> load = () => {|LC031:db.Posts.ToList()|}; return load.Compile()();")]
+    [InlineData("Expression<Func<Blog, List<Post>>> selector = b => {|LC031:db.Posts.Where(p => p.BlogId == b.Id).ToList()|}; return selector;")]
+    [InlineData("return Execute(() => {|LC031:db.Posts.ToList()|});")]
     public Task OuterUnboundedTerminalOrDelegateLambda_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 }
