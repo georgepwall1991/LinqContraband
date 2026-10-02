@@ -45,7 +45,15 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer
         CancellationToken cancellationToken)
     {
         var semanticModel = localReference.SemanticModel;
-        if (semanticModel == null)
+        if (semanticModel == null || localReference.Local.RefKind != RefKind.None)
+            return false;
+
+        // A later write (db = injectedDb) may hand the lookup a long-lived context.
+        var root = (IOperation)localReference;
+        while (root.Parent != null)
+            root = root.Parent;
+
+        if (LocalAssignmentCache.GetAssignments(root, localReference.Local, cancellationToken).Count != 1)
             return false;
 
         foreach (var reference in localReference.Local.DeclaringSyntaxReferences)

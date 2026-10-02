@@ -353,6 +353,40 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FirstOrDefault_WhenSetQueryFilterClearsTheFilter_ShouldTrigger()
+    {
+        // SetQueryFilter(null) removes a filter, so it must not silence the rule for every entity.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using System;
+using System.Linq;
+using System.Linq.Expressions;" + EFCoreMock + InvisibleFilterExtraMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public static class FilterSetup
+    {
+        public static void Clear(IMutableEntityType[] entityTypes)
+        {
+            foreach (var entityType in entityTypes)
+                entityType.SetQueryFilter(null);
+        }
+    }
+
+    public class TestClass
+    {
+        public User TestMethod(DbSet<User> users, int id)
+        {
+            return {|LC023:users.FirstOrDefault(x => x.Id == id)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FirstOrDefault_WhenSetQueryFilterIsNotOnEntityTypeMetadata_ShouldTrigger()
     {
         // A SetQueryFilter lookalike under an EF Core namespace that is not entity-type metadata does not
@@ -550,6 +584,35 @@ namespace LinqContraband.Test
 }";
 
         await VerifyAgainstSourceAsync(test);
+    }
+
+    [Fact]
+    public async Task FirstOrDefault_OnFactoryLocalReassignedToInjectedContext_ShouldTrigger()
+    {
+        // The local starts fresh from the factory but is pointed at a long-lived context before the lookup.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + InvisibleFilterExtraMock + @"
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+    }
+
+    public class TestClass
+    {
+        public User ById(IDbContextFactory<AppDbContext> factory, AppDbContext injected, int id)
+        {
+            var db = factory.CreateDbContext();
+            db = injected;
+            return {|LC023:db.Users.FirstOrDefault(x => x.Id == id)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

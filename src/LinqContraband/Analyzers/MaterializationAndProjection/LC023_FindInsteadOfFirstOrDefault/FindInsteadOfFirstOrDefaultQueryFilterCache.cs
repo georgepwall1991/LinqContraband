@@ -28,7 +28,8 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
             var methodName = invocation.TargetMethod.Name;
             if (methodName == "SetQueryFilter")
             {
-                if (IsEntityTypeMetadataMethod(invocation.TargetMethod))
+                // SetQueryFilter(null) removes a filter rather than adding one.
+                if (IsEntityTypeMetadataMethod(invocation.TargetMethod) && !ClearsFilter(invocation))
                     hasUnresolvedQueryFilter = true;
 
                 return;
@@ -90,6 +91,13 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                 : original.ContainingType;
             return receiverType is INamedTypeSymbol named &&
                    (IsEntityTypeMetadata(named) || named.AllInterfaces.Any(IsEntityTypeMetadata));
+        }
+
+        private static bool ClearsFilter(IInvocationOperation invocation)
+        {
+            return invocation.Arguments.Any(argument =>
+                argument.Parameter?.Type.Name == "LambdaExpression" &&
+                argument.Value.UnwrapConversions() is { ConstantValue: { HasValue: true, Value: null } });
         }
 
         private static bool IsEntityTypeMetadata(INamedTypeSymbol type)
