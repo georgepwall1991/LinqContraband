@@ -72,7 +72,7 @@ A filter configured in another assembly for a context that is never visible from
 
 ### Fresh contexts from `IDbContextFactory`
 
-LC023 stays silent when the `DbSet` belongs to a local context created by `IDbContextFactory<TContext>.CreateDbContext()` or `CreateDbContextAsync()` (including `using var`/`await using var` declarations). A fresh context has an empty change tracker, so `Find` would run the same query and the advice has no benefit. A context injected through the constructor, or reached through a field, still reports.
+LC023 stays silent when the `DbSet` belongs to a local context created by `IDbContextFactory<TContext>.CreateDbContext()` or `CreateDbContextAsync()` (including `using var`/`await using var` declarations). A fresh context has an empty change tracker, so `Find` would run the same query and the advice has no benefit. A context injected through the constructor, reached through a field, or held in a factory local that is reassigned before the lookup still reports.
 
 ## Fixer Behavior
 
