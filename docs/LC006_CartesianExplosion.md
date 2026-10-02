@@ -70,6 +70,8 @@ Reference-only prefixes before a collection navigation are row-preserving, so th
 
 The receiver-chain walk follows a **single-assignment local** back to its assigned value, so a chain split across a variable is analysed as one query. A prior-statement `AsSplitQuery()` is honoured (`var q = db.Users.AsSplitQuery(); q.Include(a).Include(b)` stays quiet) and sibling collection Includes split across the local are still detected (`var q = db.Users.Include(a); q.Include(b)` reports). Locals that are reassigned, or whose source is ambiguous, are left conservative (the walk stops at the local).
 
+The split can also come after the local. When the Include chain (optionally followed by deferred operators such as `Where` or `OrderBy`) initializes a local, and every use of that local in the method composes `AsSplitQuery()` onto it with no later `AsSingleQuery()` (`var q = db.Users.Include(a).Include(b); ... q.AsSplitQuery().ToList()`), the chain itself stays quiet. If any use runs the local without the split, returns it, passes it to a method, or the local is reassigned, the Include chain still reports. A method that returns the Include chain is not followed into its callers, so it reports even when every caller applies `AsSplitQuery()`.
+
 ### ID: `LC006`
 ### Category: `Performance`
 ### Severity: `Warning`
@@ -104,6 +106,7 @@ db.Users.Include(u => u.Address).Include(u => u.Profile);               // two r
 db.Users.Include(u => u.Orders).ThenInclude(o => o.Items);              // linear chain, single path
 db.Users.AsSplitQuery().Include(u => u.Orders).Include(u => u.Roles);   // explicit split
 db.Users.Include(u => u.Orders).Include(u => u.Roles).AsSplitQuery();   // trailing split also accepted
+var q = db.Users.Include(u => u.Orders).Include(u => u.Roles); q.AsSplitQuery().ToList(); // every use of the local splits
 db.Users.Include(u => u.Orders).Include(u => u.Orders);                 // repeated path, deduplicated
 db.Users.Include(navigation).Include("Roles");                          // unresolved string, stays quiet
 ```
