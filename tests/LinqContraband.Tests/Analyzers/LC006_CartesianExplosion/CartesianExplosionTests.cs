@@ -177,6 +177,228 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_IncludeLocalSplitBeforeEveryUse_NoDiagnostic()
+    {
+        // The sibling Includes are built on a local, and every use of the local applies
+        // AsSplitQuery() before running it, so no single query joins both collections.
+        var test = Usings + @"
+class Program
+{
+    List<User> Main(bool filtered)
+    {
+        var db = new DbContext();
+        var q = db.Users.Include(u => u.Orders).Include(u => u.Roles);
+        if (filtered)
+            return q.Where(u => u.Id > 0).AsSplitQuery().ToList();
+        return q.AsSplitQuery().ToList();
+    }
+
+    List<User> Ordered()
+    {
+        var db = new DbContext();
+        var q = db.Users.Include(u => u.Orders).Include(u => u.Roles).Where(u => u.Id > 0).OrderBy(u => u.Id);
+        return q.AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalNotSplitOnEveryUse_TriggersDiagnostic()
+    {
+        // One use splits, the other runs the sibling Includes as a single query.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var split = q.AsSplitQuery().ToList();
+        var single = q.ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalReturnedAfterSplitUse_TriggersDiagnostic()
+    {
+        // The local escapes through return, so a caller may run it without AsSplitQuery().
+        var test = Usings + @"
+class Program
+{
+    IQueryable<User> Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var split = q.AsSplitQuery().ToList();
+        return q;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalReassignedBeforeSplit_TriggersDiagnostic()
+    {
+        // A reassigned local is not a single-assignment query, so the split is not proven for it.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        IQueryable<User> q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        q = q.Where(u => u.Id > 0);
+        var split = q.AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalMaterializedBeforeSplit_TriggersDiagnostic()
+    {
+        // ToList() runs the sibling Includes as a single query; the later AsSplitQuery() is on an in-memory copy.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var copy = q.ToList().AsQueryable().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalThroughOpaqueHelperBeforeSplit_TriggersDiagnostic()
+    {
+        // A project helper that returns IQueryable may have run the query already, so the later split is not proof.
+        var test = Usings + @"
+static class QueryHelpers
+{
+    public static IQueryable<T> InspectAndReturn<T>(this IQueryable<T> query)
+    {
+        var count = query.ToList().Count;
+        return query;
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var users = q.InspectAndReturn().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalThroughHelperInEfNamespaceBeforeSplit_TriggersDiagnostic()
+    {
+        // Only EF Core's and LINQ's own query extension classes are trusted, not anything in their namespaces.
+        var test = Usings + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    static class ProjectQueryHelpers
+    {
+        public static IQueryable<T> InspectAndReturn<T>(this IQueryable<T> query)
+        {
+            var count = query.ToList().Count;
+            return query;
+        }
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var users = q.InspectAndReturn().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeLocalPassedByNamedArgumentBeforeSplit_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    List<User> Main()
+    {
+        var db = new DbContext();
+        var q = db.Users.Include(u => u.Orders).Include(u => u.Roles);
+        return Queryable.Where(predicate: u => u.Id > 0, source: q).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeLocalParenthesizedBeforeSplit_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    List<User> Main()
+    {
+        var db = new DbContext();
+        var q = (db.Users.Include(u => u.Orders).Include(u => u.Roles));
+        return (q).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_IncludeLocalSplitThenSingle_TriggersDiagnostic()
+    {
+        // AsSingleQuery() after AsSplitQuery() wins, so the downstream query is single again.
+        var test = Usings + @"
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var single = {|LC006:q.AsSplitQuery().AsSingleQuery()|}.ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_OneCollectionOneReference_NoDiagnostic()
     {
         var test = Usings + @"

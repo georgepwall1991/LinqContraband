@@ -64,7 +64,8 @@ public sealed partial class CartesianExplosionAnalyzer : DiagnosticAnalyzer
         if (chain.EffectiveQueryMode == QuerySplittingMode.Split)
             return;
 
-        if (chain.TryGetRiskySiblingCollections(out var siblings))
+        if (chain.TryGetRiskySiblingCollections(out var siblings) &&
+            !IsIncludeLocalSplitBeforeEveryUse(invocation))
         {
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), string.Join("', '", siblings)));
