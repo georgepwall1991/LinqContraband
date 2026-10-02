@@ -387,6 +387,8 @@ namespace LinqContraband.Test
     [InlineData("HasKey")]
     [InlineData("HasNoKey")]
     [InlineData("HasQueryFilter")]
+    [InlineData("SetQueryFilter")]
+    [InlineData("IsMultiTenant")]
     public void ModelConfigurationPrefilter_FindsNeedleAcrossChunkBoundaries(string needle)
     {
         // The prefilter reads the source in fixed-size chunks; slide the needle across every
@@ -401,7 +403,7 @@ namespace LinqContraband.Test
     [Fact]
     public void ModelConfigurationPrefilter_SkipsSourceWithoutModelConfiguration()
     {
-        var text = SourceText.From(new string(' ', 9000) + "var user = users.FirstOrDefault(x => x.Id == id); Has(); Key(); HasKe;");
+        var text = SourceText.From(new string(' ', 9000) + "var user = users.FirstOrDefault(x => x.Id == id); Has(); Key(); HasKe; QueryFilte; IsMultiTenan;");
 
         Assert.False(FindInsteadOfFirstOrDefaultKeyAnalysis.MayContainModelConfiguration(text));
     }

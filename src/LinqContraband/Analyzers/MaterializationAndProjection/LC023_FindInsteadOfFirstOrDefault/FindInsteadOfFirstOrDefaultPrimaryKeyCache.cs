@@ -77,7 +77,8 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (invocationSyntax.Expression is not MemberAccessExpressionSyntax memberAccess ||
-                    memberAccess.Name.Identifier.ValueText is not ("HasKey" or "HasNoKey" or "HasQueryFilter"))
+                    memberAccess.Name.Identifier.ValueText is not
+                        ("HasKey" or "HasNoKey" or "HasQueryFilter" or "SetQueryFilter" or "IsMultiTenant"))
                 {
                     continue;
                 }
