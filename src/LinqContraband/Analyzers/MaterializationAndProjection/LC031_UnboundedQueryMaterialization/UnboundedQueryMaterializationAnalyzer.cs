@@ -73,12 +73,32 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
             "ExecuteUpdate" or "ExecuteUpdateAsync";
     }
 
+    private static bool IsInsideExpressionTree(IOperation operation)
+    {
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is not IAnonymousFunctionOperation)
+                continue;
+
+            if (current.Parent is { Type: INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } converted } &&
+                converted.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
         if (!IsCollectionMaterializer(method.Name)) return;
+
+        // Inside an expression tree the call is part of the query EF Core translates; only the outer terminal runs it.
+        if (IsInsideExpressionTree(invocation)) return;
 
         var querySource = ResolveQuerySource(invocation);
         if (querySource.FoundDbSet && !querySource.FoundBounding)

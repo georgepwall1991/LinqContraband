@@ -20,6 +20,8 @@ Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToH
 
 The rule reports the materializer that runs the query. In `db.Orders.ToList().Where(o => o.Total > 1).ToList()` or `(await db.Orders.ToListAsync()).Where(...).ToList()` the table is loaded once, at the inner `ToList()`/`ToListAsync()`, and only that call is reported. The outer materializer copies a list that is already in memory, so it is not reported again, and neither is a later `ToList()` on a local that holds the loaded list.
 
+A materializer inside an expression-tree lambda is not reported. In `db.Blogs.Select(b => new BlogDto { Posts = db.Posts.Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList()` the inner `ToList()` is part of the query EF Core translates (a correlated subquery or collection projection), not a separate load, so LC031 judges only the outer terminal. The same holds for any lambda converted to `Expression<Func<...>>`, including query-syntax `select` clauses. The outer terminal still reports when it is unbounded. A materializer inside a delegate lambda (`Func<...>`) runs the query itself and is still reported.
+
 ## Why it matters
 
 LinqContraband reports this rule when the query shape suggests a risky or non-translatable pattern that is better made explicit before it reaches production.
