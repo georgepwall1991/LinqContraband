@@ -102,10 +102,9 @@ public sealed partial class CartesianExplosionAnalyzer
         if (parent is IInvocationOperation instanceCall && ReferenceEquals(instanceCall.Instance, operation))
             return instanceCall;
 
-        if (parent is IArgumentOperation { Parent: IInvocationOperation extensionCall } argument &&
-            extensionCall.TargetMethod.IsExtensionMethod &&
-            extensionCall.Arguments.Length > 0 &&
-            ReferenceEquals(extensionCall.Arguments[0], argument))
+        // Arguments are in source order, so named arguments can move the receiver; match it by parameter ordinal.
+        if (parent is IArgumentOperation { Parent: IInvocationOperation extensionCall, Parameter.Ordinal: 0 } &&
+            extensionCall.TargetMethod.IsExtensionMethod)
         {
             return extensionCall;
         }
@@ -115,7 +114,11 @@ public sealed partial class CartesianExplosionAnalyzer
 
     private static bool IsKnownQueryOperator(IMethodSymbol method)
     {
-        return method.ContainingNamespace?.ToDisplayString() is "System.Linq" or "Microsoft.EntityFrameworkCore";
+        var type = method.ContainingType;
+        var ns = type?.ContainingNamespace?.ToDisplayString();
+        return (ns == "System.Linq" && type!.Name == "Queryable") ||
+               (ns == "Microsoft.EntityFrameworkCore" &&
+                type!.Name is "EntityFrameworkQueryableExtensions" or "RelationalQueryableExtensions");
     }
 
     private static bool IsQueryable(ITypeSymbol? type)

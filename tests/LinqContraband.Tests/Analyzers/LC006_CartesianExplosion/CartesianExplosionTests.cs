@@ -313,6 +313,55 @@ class Program
     }
 
     [Fact]
+    public async Task TestCrime_IncludeLocalThroughHelperInEfNamespaceBeforeSplit_TriggersDiagnostic()
+    {
+        // Only EF Core's and LINQ's own query extension classes are trusted, not anything in their namespaces.
+        var test = Usings + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    static class ProjectQueryHelpers
+    {
+        public static IQueryable<T> InspectAndReturn<T>(this IQueryable<T> query)
+        {
+            var count = query.ToList().Count;
+            return query;
+        }
+    }
+}
+
+class Program
+{
+    void Main()
+    {
+        var db = new DbContext();
+        var q = {|LC006:db.Users.Include(u => u.Orders).Include(u => u.Roles)|};
+        var users = q.InspectAndReturn().AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_IncludeLocalPassedByNamedArgumentBeforeSplit_NoDiagnostic()
+    {
+        var test = Usings + @"
+class Program
+{
+    List<User> Main()
+    {
+        var db = new DbContext();
+        var q = db.Users.Include(u => u.Orders).Include(u => u.Roles);
+        return Queryable.Where(predicate: u => u.Id > 0, source: q).AsSplitQuery().ToList();
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestInnocent_IncludeLocalParenthesizedBeforeSplit_NoDiagnostic()
     {
         var test = Usings + @"
