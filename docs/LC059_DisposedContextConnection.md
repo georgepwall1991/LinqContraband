@@ -86,6 +86,8 @@ A `using` that declares another resource as well (`using DbConnection a = ..., b
 using var connection = db.Database.GetDbConnection();
 await using (var connection = db.Database.GetDbConnection()) { await connection.OpenAsync(ct); }
 var connection = db.Database.GetDbConnection(); connection.Open(); connection.Dispose();
+using var connection = RelationalDatabaseFacadeExtensions.GetDbConnection(db.Database);
+((IDisposable)connection).Dispose();
 ```
 
 ### Valid

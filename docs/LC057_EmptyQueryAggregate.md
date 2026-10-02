@@ -75,6 +75,8 @@ db.Products.Max(p => p.Price);
 await db.Products.Where(p => p.CategoryId == id).AverageAsync(p => p.Rating, ct);
 db.Products.Select(p => p.Created).Min();
 repository.Query().Max(p => p.Price);
+db.Database.SqlQuery<decimal>($"SELECT Price FROM Products").Max();
+db.Database.SqlQueryRaw<int>("SELECT Id FROM Products").Min();
 ```
 
 ### Valid
@@ -83,5 +85,7 @@ repository.Query().Max(p => p.Price);
 db.Products.Max(p => (decimal?)p.Price);
 db.Products.Sum(p => p.Price);
 if (query.Any()) { var max = query.Max(p => p.Price); }
+if (query.LongCount() == 0) return; var max = query.Max(p => p.Price);
+if (await query.LongCountAsync(ct) == 0) return; var max = query.Max(p => p.Price);
 db.Products.GroupBy(p => p.CategoryId).Select(g => g.Max(p => p.Price));
 ```

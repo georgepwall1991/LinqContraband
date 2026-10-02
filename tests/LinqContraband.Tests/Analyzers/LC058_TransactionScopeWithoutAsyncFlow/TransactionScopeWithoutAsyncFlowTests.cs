@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC058_TransactionScopeWithoutAsyncFlow;
 
-public class TransactionScopeWithoutAsyncFlowTests
+public partial class TransactionScopeWithoutAsyncFlowTests
 {
     internal const string Usings = @"
 using System;

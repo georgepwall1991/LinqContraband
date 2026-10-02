@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC054_MigrateInsideTransaction;
 
-public class MigrateInsideTransactionTests
+public partial class MigrateInsideTransactionTests
 {
     private const string Usings = @"
 using System;
@@ -69,6 +69,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         public void CommitTransaction() { }
         public Task CommitTransactionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void RollbackTransaction() { }
+        public Task RollbackTransactionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public IDbContextTransaction CurrentTransaction => null;
         public IExecutionStrategy CreateExecutionStrategy() => null;
     }
