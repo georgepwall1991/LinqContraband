@@ -3,9 +3,9 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC052_NonDeterministicModelData;
 
-public class NonDeterministicModelDataTests
+public partial class NonDeterministicModelDataTests
 {
-    private const string EfCoreMock = @"
+    internal const string EfCoreMock = @"
 using System;
 using System.Linq.Expressions;
 
@@ -67,7 +67,7 @@ namespace TestApp
 }
 ";
 
-    private static string Wrap(string body, string members = "") => EfCoreMock + @"
+    internal static string Wrap(string body, string members = "") => EfCoreMock + @"
 namespace TestApp
 {
     using System;

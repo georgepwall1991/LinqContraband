@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC059_DisposedContextConnection;
 
-public class DisposedContextConnectionTests
+public partial class DisposedContextConnectionTests
 {
     private const string Usings = @"
 using System;

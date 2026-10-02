@@ -86,6 +86,11 @@ var items = await list.AsQueryable().Where(x => x.Active).ToListAsync(ct);
 var count = await array.AsQueryable().CountAsync(ct);
 var q = list.AsQueryable(); q = q.OrderBy(x => x.Id); var first = await q.FirstOrDefaultAsync(ct);
 await foreach (var item in list.AsQueryable().AsAsyncEnumerable()) { }
+var items = await new HashSet<Item>().AsQueryable().ToListAsync(ct);
+var items = await list.SelectMany(_ => array).AsQueryable().ToListAsync(ct);
+var items = await list.Concat(array).AsQueryable().ToListAsync(ct);
+var items = await list.OrderBy(x => x.Id).ThenBy(x => x.Price).AsQueryable().ToListAsync(ct);
+var items = await list.Distinct().AsQueryable().ToListAsync(ct);
 ```
 
 ### Valid
@@ -96,4 +101,8 @@ var items = await db.Items.AsQueryable().ToListAsync(ct);
 var items = await query.ToListAsync(ct);            // IQueryable<T> parameter
 var items = await list.BuildMock().ToListAsync(ct); // MockQueryable
 var items = list.AsQueryable().Where(x => x.Active).ToList();
+IList<Item> items = list; await items.AsQueryable().ToListAsync(ct);
+ICollection<Item> items = list; await items.AsQueryable().ToListAsync(ct);
+ISet<Item> items = new HashSet<Item>(); await items.AsQueryable().ToListAsync(ct);
+await sequence.OfType<Item>().AsQueryable().ToListAsync(ct);
 ```

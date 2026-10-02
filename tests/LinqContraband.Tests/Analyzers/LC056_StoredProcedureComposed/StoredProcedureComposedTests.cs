@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC056_StoredProcedureComposed;
 
-public class StoredProcedureComposedTests
+public partial class StoredProcedureComposedTests
 {
     private const string Usings = @"
 using System;
@@ -39,6 +39,11 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TEntity> FromSql<TEntity>(this DbSet<TEntity> source, FormattableString sql) where TEntity : class => source;
         public static IQueryable<TEntity> FromSqlInterpolated<TEntity>(this DbSet<TEntity> source, FormattableString sql) where TEntity : class => source;
         public static IQueryable<TEntity> AsSplitQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsSingleQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static int ExecuteDelete<TEntity>(this IQueryable<TEntity> source) => 0;
+        public static Task<int> ExecuteDeleteAsync<TEntity>(this IQueryable<TEntity> source, CancellationToken cancellationToken = default) => null;
+        public static int ExecuteUpdate<TEntity>(this IQueryable<TEntity> source) => 0;
+        public static Task<int> ExecuteUpdateAsync<TEntity>(this IQueryable<TEntity> source, CancellationToken cancellationToken = default) => null;
     }
 
     public static class RelationalDatabaseFacadeExtensions
@@ -50,9 +55,14 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) where T : class => source;
+        public static IQueryable<T> AsNoTrackingWithIdentityResolution<T>(this IQueryable<T> source) where T : class => source;
+        public static IQueryable<T> AsTracking<T>(this IQueryable<T> source) where T : class => source;
         public static IQueryable<T> TagWith<T>(this IQueryable<T> source, string tag) => source;
+        public static IQueryable<T> TagWithCallSite<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> IgnoreQueryFilters<T>(this IQueryable<T> source) where T : class => source;
+        public static IQueryable<T> IgnoreAutoIncludes<T>(this IQueryable<T> source) where T : class => source;
         public static IQueryable<T> Include<T, TProperty>(this IQueryable<T> source, Expression<Func<T, TProperty>> path) where T : class => source;
+        public static IQueryable<T> ThenInclude<T, TProperty>(this IQueryable<T> source, Expression<Func<T, TProperty>> path) where T : class => source;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<T> FirstOrDefaultAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;
         public static Task<int> CountAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken = default) => null;

@@ -5,7 +5,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC053_OverwrittenQueryFilter;
 
-public class OverwrittenQueryFilterTests
+public partial class OverwrittenQueryFilterTests
 {
     internal const string EfCoreMock = @"
 using System;

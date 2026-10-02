@@ -271,6 +271,26 @@ public class UncachedCompiledQueryFixerTests
     }
 
     [Fact]
+    public async Task CastThenInvoke_Hoists()
+    {
+        await VerifyFixAsync(@"
+    public Blog Get(int id) => ((Func<Ctx, int, Blog>){|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);",
+            @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", @"
+    public Blog Get(int id) => ((Func<Ctx, int, Blog>)GetQuery)(_db, id);");
+    }
+
+    [Fact]
+    public async Task EmptyPropertyPatternTrueBranch_Hoists()
+    {
+        await VerifyFixAsync(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { if (_byId is { }) _byId = {|LC061:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return _byId(_db, id); }",
+            @"    private static readonly Func<Ctx, int, Blog> GetQuery = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));", @"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) { if (_byId is { }) _byId = GetQuery; return _byId(_db, id); }");
+    }
+
+    [Fact]
     public async Task UserDefinedCache_Hoists()
     {
         await VerifyFixAsync(@"
