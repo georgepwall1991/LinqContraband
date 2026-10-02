@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LC062 no longer reports `.Result` guarded by a zero-timeout poll written as `task.Wait(0) == true`, `task.Wait(0) != false`, `task.Wait(0) is true` or as one side of `&&` (`if (ready && task.Wait(0))`, `task.Wait(0) && task.Result.Count > 0`), and no longer reports `Wait(TimeSpan.FromMilliseconds(0))` or the other `TimeSpan.FromXxx(0)` timeouts, which only poll. `== false`, `!= true` and `||` guards still report.
+
 ## [5.16.0] - 2026-09-27
 
 ### Added
