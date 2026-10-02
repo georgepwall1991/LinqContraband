@@ -353,6 +353,37 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FirstOrDefault_WhenSetQueryFilterIsNotOnEntityTypeMetadata_ShouldTrigger()
+    {
+        // A SetQueryFilter lookalike under an EF Core namespace that is not entity-type metadata does not
+        // configure a query filter, so it must not silence the rule for every entity.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Linq.Expressions;" + EFCoreMock + InvisibleFilterExtraMock + @"
+namespace Microsoft.EntityFrameworkCore.Diagnostics
+{
+    public class FilterLog { public void SetQueryFilter(string name) { } }
+}
+
+namespace LinqContraband.Test
+{
+    public class User { public int Id { get; set; } }
+
+    public class TestClass
+    {
+        public User TestMethod(DbSet<User> users, Microsoft.EntityFrameworkCore.Diagnostics.FilterLog log, int id)
+        {
+            log.SetQueryFilter(""soft-delete"");
+            return {|LC023:users.FirstOrDefault(x => x.Id == id)|};
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FirstOrDefault_WhenGenericHelperFiltersConstrainedEntities_ShouldOnlyTriggerOnUnconstrainedEntity()
     {
         // ApplySoftDelete<T>() where T : ISoftDeletable filters every entity that satisfies

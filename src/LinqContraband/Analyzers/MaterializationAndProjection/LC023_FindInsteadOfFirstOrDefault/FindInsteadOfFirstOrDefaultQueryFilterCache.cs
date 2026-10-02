@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -27,7 +28,7 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
             var methodName = invocation.TargetMethod.Name;
             if (methodName == "SetQueryFilter")
             {
-                if (IsEntityFrameworkCoreSymbol(invocation.TargetMethod.ContainingType))
+                if (IsEntityTypeMetadataMethod(invocation.TargetMethod))
                     hasUnresolvedQueryFilter = true;
 
                 return;
@@ -62,6 +63,32 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                 // types (fullstackhero's AppendGlobalQueryFilter<ISoftDeletable>).
                 hasUnresolvedQueryFilter = true;
             }
+        }
+
+        /// <summary>
+        /// EF Core's <c>SetQueryFilter</c> on entity-type metadata: an <c>IMutableEntityType</c> or
+        /// <c>IConventionEntityType</c> member, or an EF Core extension whose first parameter is one. A method of the
+        /// same name on any other type does not configure a query filter, so it does not silence the rule.
+        /// </summary>
+        private static bool IsEntityTypeMetadataMethod(IMethodSymbol method)
+        {
+            var original = method.ReducedFrom ?? method;
+            if (!IsEntityFrameworkCoreSymbol(original.ContainingType))
+                return false;
+
+            var receiverType = original.IsExtensionMethod && original.Parameters.Length > 0
+                ? original.Parameters[0].Type
+                : original.ContainingType;
+            return receiverType is INamedTypeSymbol named &&
+                   (IsEntityTypeMetadata(named) || named.AllInterfaces.Any(IsEntityTypeMetadata));
+        }
+
+        private static bool IsEntityTypeMetadata(INamedTypeSymbol type)
+        {
+            var namespaceName = type.ContainingNamespace?.ToDisplayString();
+            return namespaceName != null &&
+                   namespaceName.StartsWith("Microsoft.EntityFrameworkCore.Metadata", System.StringComparison.Ordinal) &&
+                   type.Name.EndsWith("EntityType", System.StringComparison.Ordinal);
         }
 
         private void RegisterFilteredEntity(ITypeSymbol entityType)
