@@ -98,7 +98,7 @@ internal static partial class NPlusOneLooperAnalysis
         if (resultType.IsValueType)
             return resultType.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T;
 
-        if (annotation == NullableAnnotation.Annotated)
+        if (annotation == NullableAnnotation.Annotated || HasMaybeNullReturn(method))
             return false;
 
         // A non-nullable reference result is trusted. Without nullable annotations, only the LINQ and EF Core
@@ -119,6 +119,20 @@ internal static partial class NPlusOneLooperAnalysis
         return (ns == "System.Threading.Tasks" && named.Name is "Task" or "ValueTask") ||
                (ns == "System.Runtime.CompilerServices" &&
                 named.Name is "ConfiguredTaskAwaitable" or "ConfiguredValueTaskAwaitable");
+    }
+
+    private static bool HasMaybeNullReturn(IMethodSymbol method)
+    {
+        foreach (var attribute in method.GetReturnTypeAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "MaybeNullAttribute" } attributeClass &&
+                attributeClass.ContainingNamespace?.ToDisplayString() == "System.Diagnostics.CodeAnalysis")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsLinqOrEfCoreMethod(IMethodSymbol method)
@@ -261,7 +275,8 @@ internal static partial class NPlusOneLooperAnalysis
             IVariableInitializerOperation { Parent: IVariableDeclaratorOperation { Symbol.IsRef: true } } => true,
             ISimpleAssignmentOperation { IsRef: true } refAssignment => ReferenceEquals(refAssignment.Value, value),
             IReturnOperation => reference.FindOwningExecutableRoot() is { } owner && ReturnsByRef(owner),
-            IArgumentOperation { Parameter.RefKind: RefKind.Ref or RefKind.Out } => !ReferenceEquals(value, reference),
+            // The callee can return the reference by ref or keep it, so the alias can outlive the call.
+            IArgumentOperation { Parameter.RefKind: RefKind.Ref or RefKind.Out } => true,
             _ => false
         };
     }

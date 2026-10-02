@@ -239,6 +239,29 @@ class Program
         return VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    [Fact]
+    public Task LoadOnceGuardWithRefAliasReturnedFromCall_StillReports()
+    {
+        // A method that takes the local by ref can hand the reference back, so the alias escapes through the call.
+        var test = Usings + @"
+class Program
+{
+    static ref User Identity(ref User user) => ref user;
+
+    void Run(MyDbContext db, int[] ids)
+    {
+        User first = null;
+        ref User alias = ref Identity(ref first);
+        foreach (var id in ids)
+        {
+            first ??= {|LC007:db.Users.First(u => u.Id == id)|};
+            alias = null;
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     [Theory]
     // FirstOrDefault, Find and their async forms leave the local null when nothing matches, so the guard stays open
     // and the query runs again on the next iteration.
@@ -308,5 +331,28 @@ class Program
     " + helper);
 
         await VerifyCS.VerifyAnalyzerAsync(test, HelperCall(0, "GetCustomerAsync", query));
+    }
+
+    [Fact]
+    public async Task LoadOnceGuardedHelperWithMaybeNullReturn_StillReports()
+    {
+        // [return: MaybeNull] lets a helper return null even though its declared type is non-nullable.
+        var test = HelperProgram(@"
+#nullable enable
+    void Run(List<User> orders)
+    {
+        User? root = null;
+        foreach (var order in orders)
+        {
+            if (root == null)
+                root = {|#0:GetCustomer(0)|};
+        }
+    }
+
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
+    private User GetCustomer(int id) => _db.Users.FirstOrDefault(c => c.Id == id)!;
+#nullable restore");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, HelperCall(0, "GetCustomer", "FirstOrDefault"));
     }
 }
