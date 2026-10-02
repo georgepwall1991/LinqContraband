@@ -52,17 +52,18 @@ Reports a call to an `EntityFrameworkQueryableExtensions` method whose name ends
 
 1. The chain starts at `Queryable.AsQueryable()` over an array, or over a class or struct that is neither queryable nor asynchronously enumerable (`List<T>`, `HashSet<T>`, ...), directly or through a cast.
 2. Or it starts at `AsQueryable()` over the result of a LINQ to Objects operator (`Where`, `Select`, `OrderBy`, `Skip`, `Take`, `Concat`, ...), which never returns a queryable.
-3. Or it starts at `new EnumerableQuery<T>(...)`.
-4. Between the root and the async call there are only `Queryable` operators (`Where`, `Select`, `OrderBy`, `Skip`, `Take`, ...), `AsQueryable()` on a query, and EF Core's non-executing operators (`AsNoTracking`, `Include`, `TagWith`, ...), which return a query that EF Core does not run unchanged.
-5. A local counts when every write to it in the method is such a chain, or a composition of the same local (`q = q.Where(...)`).
-6. A call to a non-overridable helper method in the same project counts when every `return` in it is such a chain, or composes one `IQueryable` parameter that the call passes such a chain.
+3. Or it starts at `AsQueryable()` over an interface-typed local (`IList<T>`, `ICollection<T>`, `IEnumerable<T>`, ...) whose every write in the method is one of the sources in 1 or 2, such as `IList<Item> items = new List<Item>();`.
+4. Or it starts at `new EnumerableQuery<T>(...)`.
+5. Between the root and the async call there are only `Queryable` operators (`Where`, `Select`, `OrderBy`, `Skip`, `Take`, ...), `AsQueryable()` on a query, and EF Core's non-executing operators (`AsNoTracking`, `Include`, `TagWith`, ...), which return a query that EF Core does not run unchanged.
+6. A local counts when every write to it in the method is such a chain, or a composition of the same local (`q = q.Where(...)`).
+7. A call to a non-overridable helper method in the same project counts when every `return` in it is such a chain, or composes one `IQueryable` parameter that the call passes such a chain.
 
 ## When it stays quiet (non-goals)
 
 - Queries from a `DbSet`, `Set<T>()`, or any other source EF Core runs.
 - `AsQueryable()` over something that is already queryable, such as `db.Items.AsQueryable()`. It is a cast, and the query stays an EF Core query.
 - Parameters, fields and properties of type `IQueryable<T>`, virtual or interface helpers, and locals that any path assigns from one of those. Their provenance is unknown.
-- `AsQueryable()` over an interface-typed sequence (`IEnumerable<T>`, `IList<T>`) that is a parameter, field or local, because it may be a `DbSet` at run time. `AsEnumerable()`, `Cast()` and `OfType()` can hand back their source, so they do not prove an in-memory source either.
+- `AsQueryable()` over an interface-typed sequence (`IEnumerable<T>`, `IList<T>`) that is a parameter, field or property, or a local that any write fills from one of those, because it may be a `DbSet` at run time. `AsEnumerable()`, `Cast()` and `OfType()` can hand back their source, so they do not prove an in-memory source either.
 - Sources that can be enumerated asynchronously: MockQueryable's `BuildMock()`, and collections that implement `IAsyncEnumerable<T>`.
 - Synchronous operators on an in-memory query, and EF Core methods that do not run the query, such as `ToQueryString()` and `AsNoTracking()`.
 - A `ToListAsync` from another library that handles in-memory queries itself.
@@ -91,6 +92,7 @@ var items = await list.SelectMany(_ => array).AsQueryable().ToListAsync(ct);
 var items = await list.Concat(array).AsQueryable().ToListAsync(ct);
 var items = await list.OrderBy(x => x.Id).ThenBy(x => x.Price).AsQueryable().ToListAsync(ct);
 var items = await list.Distinct().AsQueryable().ToListAsync(ct);
+IList<Item> items = new List<Item>(); var result = await items.AsQueryable().ToListAsync(ct);
 ```
 
 ### Valid
@@ -101,4 +103,5 @@ var items = await db.Items.AsQueryable().ToListAsync(ct);
 var items = await query.ToListAsync(ct);            // IQueryable<T> parameter
 var items = await list.BuildMock().ToListAsync(ct); // MockQueryable
 var items = list.AsQueryable().Where(x => x.Active).ToList();
+IEnumerable<Item> items = list; if (reload) items = sequence; await items.AsQueryable().ToListAsync(ct); // sequence may be a DbSet
 ```

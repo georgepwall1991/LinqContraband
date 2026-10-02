@@ -402,11 +402,18 @@ internal sealed class InMemoryQueryProvenance
 
     /// <summary>
     /// A source that <c>Queryable.AsQueryable()</c> wraps in an <c>EnumerableQuery&lt;T&gt;</c>: an array or a class
-    /// or struct that is neither queryable nor asynchronously enumerable, or the result of a LINQ to Objects operator,
-    /// which is never queryable. <c>AsEnumerable()</c>, <c>Cast()</c> and <c>OfType()</c> are not trusted because
-    /// they can hand back their source, and an interface-typed source may be a <c>DbSet</c> at run time.
+    /// or struct that is neither queryable nor asynchronously enumerable, the result of a LINQ to Objects operator,
+    /// which is never queryable, or an interface-typed local whose every write is one of those
+    /// (<c>IList&lt;T&gt; items = new List&lt;T&gt;()</c>). <c>AsEnumerable()</c>, <c>Cast()</c> and <c>OfType()</c>
+    /// are not trusted because they can hand back their source, and any other interface-typed source (a parameter,
+    /// field or property) may be a <c>DbSet</c> at run time.
     /// </summary>
     private static bool IsAsyncIncapableSequence(IOperation? receiver)
+    {
+        return IsAsyncIncapableSequence(receiver, new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default));
+    }
+
+    private static bool IsAsyncIncapableSequence(IOperation? receiver, HashSet<ILocalSymbol> localsInProgress)
     {
         var type = receiver?.Type;
         if (type is IArrayTypeSymbol)
@@ -415,7 +422,58 @@ internal sealed class InMemoryQueryProvenance
         if (type is INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } named)
             return !named.IsIQueryable() && !IsAsyncEnumerable(named);
 
-        return receiver is IInvocationOperation invocation && IsLinqToObjectsIterator(invocation.TargetMethod);
+        if (receiver is IInvocationOperation invocation)
+            return IsLinqToObjectsIterator(invocation.TargetMethod);
+
+        return receiver is ILocalReferenceOperation localReference &&
+               type is INamedTypeSymbol { TypeKind: TypeKind.Interface } interfaceType &&
+               !interfaceType.IsIQueryable() &&
+               IsAsyncIncapableLocal(localReference, localsInProgress);
+    }
+
+    /// <summary>
+    /// Every write to the local anywhere in its method, seen through a declaration initializer or a simple
+    /// assignment, is an async-incapable sequence. Any other write (ref or out argument, deconstruction, a
+    /// <c>foreach</c> or pattern variable) is not followed.
+    /// </summary>
+    private static bool IsAsyncIncapableLocal(ILocalReferenceOperation reference, HashSet<ILocalSymbol> localsInProgress)
+    {
+        var local = reference.Local;
+        if (local.RefKind != RefKind.None || !localsInProgress.Add(local))
+            return false;
+
+        try
+        {
+            var root = (IOperation)reference;
+            while (root.Parent != null)
+                root = root.Parent;
+
+            var writes = new List<IOperation>();
+            foreach (var descendant in root.DescendantsAndSelf())
+            {
+                switch (descendant)
+                {
+                    case IVariableDeclaratorOperation declarator
+                        when SymbolEqualityComparer.Default.Equals(declarator.Symbol, local):
+                        if (declarator.Initializer != null)
+                            writes.Add(declarator.Initializer.Value);
+                        break;
+
+                    case ILocalReferenceOperation other
+                        when SymbolEqualityComparer.Default.Equals(other.Local, local):
+                        if (!IsPlainReadOrSimpleWrite(other, writes))
+                            return false;
+                        break;
+                }
+            }
+
+            return writes.Count > 0 &&
+                   writes.All(write => IsAsyncIncapableSequence(write.UnwrapConversions(), localsInProgress));
+        }
+        finally
+        {
+            localsInProgress.Remove(local);
+        }
     }
 
     private static bool IsAsyncEnumerable(INamedTypeSymbol type)

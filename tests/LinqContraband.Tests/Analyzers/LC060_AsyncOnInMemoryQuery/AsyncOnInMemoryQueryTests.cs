@@ -206,7 +206,8 @@ class Program
     // An interface-typed sequence may be a DbSet at run time.
     [InlineData(@"var items = await sequence.AsQueryable().ToListAsync(ct);")]
     [InlineData(@"var items = await TestData.Wrapped(list).ToListAsync(ct);")]
-    [InlineData(@"IEnumerable<Item> items = list; var result = await items.AsQueryable().ToListAsync(ct);")]
+    [InlineData(@"IEnumerable<Item> items = list; if (ct.CanBeCanceled) items = sequence; var result = await items.AsQueryable().ToListAsync(ct);")]
+    [InlineData(@"IEnumerable<Item> items = db.Items; var result = await items.AsQueryable().ToListAsync(ct);")]
     // AsEnumerable() and Cast() hand back their source, which may be a DbSet.
     [InlineData(@"var items = await db.Items.AsEnumerable().AsQueryable().ToListAsync(ct);")]
     [InlineData(@"var items = await sequence.Cast<Item>().AsQueryable().ToListAsync(ct);")]
