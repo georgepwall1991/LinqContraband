@@ -105,7 +105,8 @@ public sealed partial class SaveChangesInLoopAnalyzer
 
     /// <summary>
     /// A non-overridable source method whose entire body is <c>new T(...)</c> (expression-bodied or a single
-    /// <c>return</c>) creates a new context per call. Anything else, such as returning a field, stays unproven.
+    /// <c>return</c>) of a DbContext type creates a new context per call. Anything else, such as returning a field
+    /// or a wrapper converted to a context, stays unproven.
     /// </summary>
     private static bool IsSameProjectFreshContextHelperCall(IInvocationOperation invocation)
     {
@@ -129,7 +130,20 @@ public sealed partial class SaveChangesInLoopAnalyzer
             returned = returnStatement.Expression;
         }
 
-        return returned is BaseObjectCreationExpressionSyntax;
+        if (returned is not BaseObjectCreationExpressionSyntax ||
+            invocation.SemanticModel?.Compilation is not { } compilation ||
+            !compilation.TryGetOwnedSemanticModel(returned.SyntaxTree, out var model))
+        {
+            return false;
+        }
+
+        // The object created must itself be a DbContext: a user-defined conversion from another type can hand back
+        // any context, including a cached one.
+        var created = model.GetOperation(returned);
+        while (created is IConversionOperation { Conversion.IsUserDefined: false } conversion)
+            created = conversion.Operand;
+
+        return created is IObjectCreationOperation { Type: { } createdType } && createdType.IsDbContext();
     }
 
     private static bool IsServiceResolvedFromFreshLoopScope(

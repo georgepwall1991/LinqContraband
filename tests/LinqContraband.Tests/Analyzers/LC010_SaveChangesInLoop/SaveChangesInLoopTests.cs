@@ -467,11 +467,19 @@ class Program
         return new();
     }
 
+    private static DbContext CreateBaseContext() => new MyDbContext();
+
     void Main(List<int> items)
     {
         foreach (var item in items)
         {
             using var db = CreateContext();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            using var db = CreateBaseContext();
             db.SaveChanges();
         }
 
@@ -506,6 +514,34 @@ class Program
             {|LC010:db.SaveChanges()|};
         }
 
+        foreach (var item in items)
+        {
+            var db = CreateContext();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_HelperReturningWrapperConvertedToCachedContext_ShouldTriggerLC010()
+    {
+        // new ContextHandle() is not a context: its user-defined conversion hands back one shared context.
+        var test = Usings + @"
+class ContextHandle
+{
+    private static readonly MyDbContext Shared = new MyDbContext();
+    public static implicit operator MyDbContext(ContextHandle handle) => Shared;
+}
+
+class Program
+{
+    private static MyDbContext CreateContext() => new ContextHandle();
+
+    void Main(List<int> items)
+    {
         foreach (var item in items)
         {
             var db = CreateContext();
