@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using LinqContraband.Catalog;
+using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -73,12 +76,107 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
             "ExecuteUpdate" or "ExecuteUpdateAsync";
     }
 
+    private static bool IsInsideExpressionTree(IOperation operation)
+    {
+        for (var current = operation.Parent; current != null; current = current.Parent)
+        {
+            if (current is not IAnonymousFunctionOperation)
+                continue;
+
+            if (current.Parent is { Type: INamedTypeSymbol { Name: "Expression", TypeArguments.Length: 1 } converted } conversion &&
+                converted.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions" &&
+                IsQueryOperatorArgument(conversion))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Only an expression tree handed to a query operator is translated; one held in a local or passed elsewhere (a
+    // model-building API such as HasConversion included) can be compiled and run in memory.
+    private static bool IsQueryOperatorArgument(IOperation conversion)
+    {
+        if (conversion.Parent is not IArgumentOperation { Parent: IInvocationOperation { TargetMethod: var method } queryOperator })
+            return false;
+
+        var containingType = method.ContainingType;
+        if (containingType == null)
+            return false;
+
+        var ns = containingType.ContainingNamespace?.ToDisplayString();
+        var isQueryOperator = ns == "System.Linq" && containingType.Name == "Queryable" ||
+                              ns == "Microsoft.EntityFrameworkCore" &&
+                              containingType.Name is "EntityFrameworkQueryableExtensions" or "RelationalQueryableExtensions";
+
+        // AsQueryable() over an in-memory sequence compiles the lambda and runs it locally, so the operator's own
+        // source has to reach a DbSet.
+        return isQueryOperator && IsEfBackedQuery(queryOperator);
+    }
+
+    private static bool IsEfBackedQuery(IInvocationOperation queryOperator)
+    {
+        var executableRoot = queryOperator.FindOwningExecutableRoot();
+        var visitedLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var current = queryOperator.GetInvocationReceiver();
+
+        while (current != null)
+        {
+            current = current.UnwrapConversions();
+
+            switch (current)
+            {
+                case ITranslatedQueryOperation translatedQuery:
+                    current = translatedQuery.Operation;
+                    continue;
+
+                case IInvocationOperation invocation:
+                    if (IsDbContextSetInvocation(invocation))
+                        return true;
+                    // A materializer or AsEnumerable() hands the rows to LINQ to Objects; a later AsQueryable() runs
+                    // in memory.
+                    if (!IsLinqOrEfCoreOperator(invocation.TargetMethod) ||
+                        invocation.IsQueryExecutingMaterializer() ||
+                        invocation.TargetMethod.Name == "AsEnumerable")
+                    {
+                        return false;
+                    }
+                    current = invocation.GetInvocationReceiver();
+                    continue;
+
+                case ILocalReferenceOperation localReference:
+                    if (executableRoot == null ||
+                        !visitedLocals.Add(localReference.Local) ||
+                        !TryResolveSingleAssignedValue(
+                            executableRoot,
+                            localReference.Local,
+                            queryOperator.Syntax.SpanStart,
+                            out var localValue))
+                    {
+                        return false;
+                    }
+
+                    current = localValue;
+                    continue;
+
+                default:
+                    return current.Type.IsDbSet();
+            }
+        }
+
+        return false;
+    }
+
     private void AnalyzeInvocation(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
         if (!IsCollectionMaterializer(method.Name)) return;
+
+        // Inside an expression tree the call is part of the query EF Core translates; only the outer terminal runs it.
+        if (IsInsideExpressionTree(invocation)) return;
 
         var querySource = ResolveQuerySource(invocation);
         if (querySource.FoundDbSet && !querySource.FoundBounding)

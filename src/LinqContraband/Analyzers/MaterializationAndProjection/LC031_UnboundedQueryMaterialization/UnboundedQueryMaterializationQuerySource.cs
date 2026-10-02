@@ -44,7 +44,9 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
 
                 if (IsAggregateMethod(prevMethod.Name) ||
                     IsBoundingMethod(prevMethod.Name) && IsServerSide(receiver) ||
-                    IsKeyLookup(prevInvocation))
+                    IsKeyLookup(prevInvocation) ||
+                    IsRowLimitedRawSqlRoot(prevInvocation) ||
+                    IsKeyedGroupAggregateProjection(prevInvocation))
                 {
                     foundBounding = true;
                     break;

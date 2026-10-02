@@ -20,6 +20,8 @@ Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToH
 
 The rule reports the materializer that runs the query. In `db.Orders.ToList().Where(o => o.Total > 1).ToList()` or `(await db.Orders.ToListAsync()).Where(...).ToList()` the table is loaded once, at the inner `ToList()`/`ToListAsync()`, and only that call is reported. The outer materializer copies a list that is already in memory, so it is not reported again, and neither is a later `ToList()` on a local that holds the loaded list.
 
+A materializer inside an expression-tree lambda is not reported. In `db.Blogs.Select(b => new BlogDto { Posts = db.Posts.Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList()` the inner `ToList()` is part of the query EF Core translates (a correlated subquery or collection projection), not a separate load, so LC031 judges only the outer terminal. The same holds for any lambda converted to `Expression<Func<...>>` and passed to a `Queryable` or EF Core query operator (`EntityFrameworkQueryableExtensions`, `RelationalQueryableExtensions`) whose source reaches a `DbSet` without first materializing or calling `AsEnumerable()`, including query-syntax `select` clauses. An expression tree over `AsQueryable()` of an in-memory sequence, held in a local or passed to another method can be compiled and run in memory, so a materializer inside it is still reported. The outer terminal still reports when it is unbounded. A materializer inside a delegate lambda (`Func<...>`) runs the query itself and is still reported.
+
 ## Why it matters
 
 LinqContraband reports this rule when the query shape suggests a risky or non-translatable pattern that is better made explicit before it reaches production.
@@ -46,6 +48,13 @@ It stays silent on bounded aliases and ambiguous reassigned locals rather than g
 
 - `Take`, `First`, `Single`, `Last`, `Find` and their async forms, applied while the source is still a query.
 - A primary-key lookup: `Where(u => u.Id == id)` (also with `&&` extra conditions, or with the operands swapped) or `Where(u => ids.Contains(u.Id))`. The key is a property named `Id`, `<EntityName>Id`, or marked `[Key]`. Foreign keys (`OrderId` on `OrderLine`) and `||` conditions can still match many rows and keep reporting.
+
+- A key-list filter grouped by the same key with an aggregate projection: `Where(p => ids.Contains(p.BlogId)).GroupBy(p => p.BlogId).Select(g => new { g.Key, Count = g.Count() })` returns at most one row per id in the in-memory list. The `Contains` must be collection membership (a list, set or array, not a custom method of that name), the grouping key must be the same property it filters on, the projection may read only `g.Key` and aggregates over `g` (`Count`, `Sum`, `Max`, ...), and only `Where`, ordering and query options may sit between the filter and the `GroupBy`. Materializing the groups themselves (`GroupBy(...).ToList()`), carrying their rows (`g.ToList()`, `SelectMany(g => g)`), or grouping by a different property keeps reporting.
+- A `FromSql`, `FromSqlRaw` or `FromSqlInterpolated` root whose constant SQL limits rows at the outer level: `LIMIT n` or `LIMIT offset, n`, `TOP n` or `TOP (n)`, `FETCH FIRST n ROWS ONLY`, or `OFFSET ... FETCH NEXT n ROWS ONLY`. The count may be a literal, a parameter (`@p0`, `{0}`, `$1`) or an interpolation hole of `FromSql`/`FromSqlInterpolated` (an interpolated string passed to `FromSqlRaw` pastes its holes into the SQL, so it keeps reporting). LC031 reads the SQL conservatively: a limit only inside parentheses (a subquery or CTE body), inside a comment (`--`, `/* */` including nested ones, or MySQL `#`; everything after a `#` is ignored, because a SQL Server `#Temp` name reads the same), a quoted literal or a PostgreSQL dollar-quoted string (`$tag$...$tag$`), `TOP n PERCENT`, a parenthesized `TOP` expression such as `TOP (@n * 1000)`, `TOP n WITH TIES` and `FETCH ... ROWS WITH TIES` (ties can return the whole table), SQL with a top-level `UNION`/`INTERSECT`/`EXCEPT` (the limit may cover only one branch), and SQL that is not a compile-time constant all keep reporting.
+
+```csharp
+var latest = db.Posts.FromSqlRaw("SELECT * FROM Posts ORDER BY CreatedAt DESC LIMIT 20").ToList(); // no LC031
+```
 
 LC031 walks back through LINQ (`System.Linq`) and EF Core operators only. A project's own `IQueryable` helper, such as a `Paginate(page, size)` extension or an Ardalis-style `WithSpecification(spec)`, may apply the bound itself, so LC031 stops there and stays quiet:
 

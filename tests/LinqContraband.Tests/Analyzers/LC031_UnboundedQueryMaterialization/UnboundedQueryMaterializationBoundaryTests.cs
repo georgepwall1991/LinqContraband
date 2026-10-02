@@ -25,6 +25,9 @@ namespace TestApp
 
     public interface ISpecification<T> { }
 
+    // A database-side match (for example a [DbFunction]) that happens to be named Contains.
+    public class TeamFilter { public bool Contains(int teamId) => true; }
+
     public static class QueryHelpers
     {
         public static IQueryable<T> Paginate<T>(this IQueryable<T> source, int page, int size) => source.Skip(page * size).Take(size);
