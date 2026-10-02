@@ -360,4 +360,58 @@ class Service
         var category = {|LC009:db.Categories.First(c => c.Alias == ""books"")|};
         product.Category = category;
     }");
+
+    [Fact]
+    public Task NegatedTrackingFlag_QueryInUntrackedBranch_StillReports() => VerifyAsync(@"
+    string Get(int id, bool tracking)
+    {
+        if (!tracking)
+        {
+            var order = {|LC009:db.Orders.First(o => o.Id == id)|};
+            return order.Status;
+        }
+        return null;
+    }");
+
+    [Fact]
+    public Task TrackingFlagEarlyReturn_QueryAfterUntrackedExit_StillReports() => VerifyAsync(@"
+    string Get(int id, bool tracking)
+    {
+        if (tracking)
+            return null;
+        var order = {|LC009:db.Orders.First(o => o.Id == id)|};
+        return order.Status;
+    }");
+
+    [Fact]
+    public Task NegatedTrackingFlag_QueryInElseBranch_IsQuiet() => VerifyAsync(@"
+    string Get(int id, bool tracking)
+    {
+        if (!tracking)
+            return null;
+        else
+        {
+            var order = db.Orders.First(o => o.Id == id);
+            return order.Status;
+        }
+    }");
+
+    [Fact]
+    public Task ProjectedCopyInNewObject_StillReports() => VerifyAsync(@"
+    void Seed()
+    {
+        var categories = {|LC009:db.Categories.ToList()|};
+        var product = new Product { Category = categories.Select(c => new Category { Id = c.Id }).First() };
+        Show(product);
+    }");
+
+    [Fact]
+    public Task NewLocalReassignedToExistingObject_StillReports() => VerifyAsync(@"
+    void Link(Product existing)
+    {
+        var category = {|LC009:db.Categories.First(c => c.Alias == ""books"")|};
+        var product = new Product();
+        product = existing;
+        product.Category = category;
+    }");
 }

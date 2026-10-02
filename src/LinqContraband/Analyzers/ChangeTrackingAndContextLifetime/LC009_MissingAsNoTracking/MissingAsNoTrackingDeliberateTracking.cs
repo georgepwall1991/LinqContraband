@@ -110,7 +110,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
             {
                 case IConditionalOperation conditional when child != conditional.Condition:
                 {
-                    if (ReadsTrackingFlag(conditional.Condition))
+                    // The branch the query sits in must be the one the flag selects for tracking.
+                    if (ImpliesTracking(conditional.Condition, whenTrue: child == conditional.WhenTrue))
                         return true;
 
                     if (entityType == null)
@@ -164,7 +165,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
 
                         if (statement is IConditionalOperation { WhenFalse: null } earlier &&
                             EndsWithJump(earlier.WhenTrue) &&
-                            (ReadsTrackingFlag(earlier.Condition) || ContainsUntrackedQuery(earlier.WhenTrue, entityType)))
+                            (ImpliesTracking(earlier.Condition, whenTrue: false) || ContainsUntrackedQuery(earlier.WhenTrue, entityType)))
                             return true;
                     }
 
@@ -186,27 +187,37 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         return null;
     }
 
-    private static bool ReadsTrackingFlag(IOperation condition)
+    /// <summary>
+    /// True when the condition evaluating to <paramref name="whenTrue"/> proves that a bool named like a tracking
+    /// switch is true: <c>tracking</c> or <c>tracking &amp;&amp; x</c> when true, <c>!tracking</c> or
+    /// <c>!tracking || x</c> when false.
+    /// </summary>
+    private static bool ImpliesTracking(IOperation condition, bool whenTrue)
     {
-        foreach (var operation in condition.DescendantsAndSelf())
+        condition = condition.UnwrapConversions();
+        switch (condition)
         {
-            if (operation.Type?.SpecialType != SpecialType.System_Boolean)
-                continue;
-
-            var name = operation switch
-            {
-                IParameterReferenceOperation parameter => parameter.Parameter.Name,
-                ILocalReferenceOperation local => local.Local.Name,
-                IFieldReferenceOperation field => field.Field.Name,
-                IPropertyReferenceOperation property => property.Property.Name,
-                _ => null
-            };
-
-            if (name != null && name.IndexOf("track", StringComparison.OrdinalIgnoreCase) >= 0)
-                return true;
+            case IUnaryOperation { OperatorKind: UnaryOperatorKind.Not, OperatorMethod: null } not:
+                return ImpliesTracking(not.Operand, !whenTrue);
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd, OperatorMethod: null } conjunction when whenTrue:
+                return ImpliesTracking(conjunction.LeftOperand, true) || ImpliesTracking(conjunction.RightOperand, true);
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalOr, OperatorMethod: null } disjunction when !whenTrue:
+                return ImpliesTracking(disjunction.LeftOperand, false) || ImpliesTracking(disjunction.RightOperand, false);
         }
 
-        return false;
+        if (!whenTrue || condition.Type?.SpecialType != SpecialType.System_Boolean)
+            return false;
+
+        var name = condition switch
+        {
+            IParameterReferenceOperation parameter => parameter.Parameter.Name,
+            ILocalReferenceOperation local => local.Local.Name,
+            IFieldReferenceOperation field => field.Field.Name,
+            IPropertyReferenceOperation property => property.Property.Name,
+            _ => null
+        };
+
+        return name != null && name.IndexOf("track", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool ContainsUntrackedQuery(IOperation operation, ITypeSymbol entityType)
@@ -321,6 +332,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
 
             if (parent is IArgumentOperation { Parent: IInvocationOperation linq } argument &&
                 IsLinqToObjectsSource(linq, argument) &&
+                PreservesSourceElements(linq) &&
                 ReachesEntities(linq.Type))
             {
                 current = linq;
@@ -354,6 +366,30 @@ public sealed partial class MissingAsNoTrackingAnalyzer
         }
     }
 
+    private static readonly HashSet<string> ElementPreservingOperators = new(StringComparer.Ordinal)
+    {
+        "First", "FirstOrDefault", "Single", "SingleOrDefault", "Last", "LastOrDefault", "ElementAt",
+        "ElementAtOrDefault", "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take",
+        "SkipWhile", "TakeWhile", "Distinct", "DistinctBy", "Reverse", "AsEnumerable", "ToList", "ToArray",
+        "ToHashSet", "MinBy", "MaxBy", "ToDictionary", "ToLookup"
+    };
+
+    // A projection such as Select(c => new Category { ... }) yields new objects, not the loaded entities. A keyed
+    // collection keeps the entities only when no element selector replaces them.
+    private static bool PreservesSourceElements(IInvocationOperation linq)
+    {
+        if (!ElementPreservingOperators.Contains(linq.TargetMethod.Name))
+            return false;
+
+        foreach (var parameter in linq.TargetMethod.Parameters)
+        {
+            if (parameter.Name == "elementSelector")
+                return false;
+        }
+
+        return true;
+    }
+
     // The receiver is an object created in this body: the implicit receiver of an object initializer, or a local
     // declared with a new expression. The created type must be application code, not a System or anonymous type.
     private static bool IsNewEntity(IOperation? instance, IOperation root)
@@ -377,7 +413,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     {
                         var initializer = declarator.Initializer?.Value ?? declarator.GetVariableInitializer()?.Value;
                         return initializer?.UnwrapConversions() is IObjectCreationOperation creation &&
-                               IsApplicationType(creation.Type);
+                               IsApplicationType(creation.Type) &&
+                               !IsLocalWritten(local.Local, root);
                     }
                 }
 
@@ -386,6 +423,30 @@ public sealed partial class MissingAsNoTrackingAnalyzer
             default:
                 return false;
         }
+    }
+
+    // A later write can point the local at an existing object, so the declaration alone no longer proves it is new.
+    private static bool IsLocalWritten(ILocalSymbol local, IOperation root)
+    {
+        foreach (var descendant in root.Descendants())
+        {
+            if (descendant is not ILocalReferenceOperation reference ||
+                !SymbolEqualityComparer.Default.Equals(reference.Local, local) ||
+                reference.IsDeclaration)
+            {
+                continue;
+            }
+
+            switch (reference.Parent)
+            {
+                case IAssignmentOperation assignment when assignment.Target == reference:
+                case IArgumentOperation { Parameter.RefKind: RefKind.Ref or RefKind.Out }:
+                case ITupleOperation:
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsApplicationType(ITypeSymbol? type) =>
