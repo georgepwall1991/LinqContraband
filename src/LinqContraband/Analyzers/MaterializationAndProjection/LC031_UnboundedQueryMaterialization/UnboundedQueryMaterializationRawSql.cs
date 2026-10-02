@@ -89,7 +89,10 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 case "UNION" or "INTERSECT" or "EXCEPT" or "MINUS":
                     return false;
 
-                case "LIMIT" when IsRowCount(tokens, i + 1, allowParen: false):
+                // LIMIT offset, count (MySQL, SQLite): the count comes second, and SQLite reads a negative one as
+                // no limit.
+                case "LIMIT" when IsRowCount(tokens, i + 1, allowParen: false) &&
+                                  (TokenAt(tokens, i + 2) != "," || IsRowCount(tokens, i + 3, allowParen: false)):
                     limited = true;
                     break;
 

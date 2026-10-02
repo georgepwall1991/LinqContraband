@@ -43,6 +43,7 @@ namespace TestApp
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users ORDER BY Id OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users FETCH FIRST 5 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(TopTen).ToList();")]
+    [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users LIMIT 20, 10"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users /* a /* b */ c */ LIMIT 10"").ToList();")]
     // A limit before a SQL Server ##Temp name still counts.
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT TOP (10) * FROM ##Shared"").ToList();")]
@@ -69,6 +70,8 @@ namespace TestApp
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw($""SELECT * FROM Users LIMIT {sql}"").ToList()|};")]
     // A backslash-escaped quote keeps the string open.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Name = 'x\\' LIMIT 10 -- y'"").ToList()|};")]
+    // LIMIT offset, count with SQLite's unlimited -1 count.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users LIMIT 5, -1"").ToList()|};")]
     // Nested block comments.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* outer /* inner */ LIMIT 10 */"").ToList()|};")]
     // A MySQL # line comment.
