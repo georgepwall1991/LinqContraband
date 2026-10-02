@@ -88,10 +88,20 @@ public sealed partial class FindInsteadOfFirstOrDefaultAnalyzer : DiagnosticAnal
             // Check the DbSet's entity type, not the key's declaring type: an inherited
             // Id puts property.ContainingType at the base class while the filter is
             // registered for the concrete entity.
+            // Filters the scan cannot read count too: a context whose OnModelCreating lives in
+            // another assembly (or a Finbuckle multi-tenant base), Entity(type) loops, generic
+            // helpers and [MultiTenant] entities.
+            var contextType = TryGetReceiverContext(receiver, context.CancellationToken, out var isFreshFactoryContext);
+
+            // A context fresh from IDbContextFactory has an empty change tracker, so Find would
+            // just run the same query: the advice is noise there.
+            if (isFreshFactoryContext)
+                return;
+
             var dbSetEntityType = receiver.Type is INamedTypeSymbol namedDbSet && namedDbSet.TypeArguments.Length == 1
                 ? namedDbSet.TypeArguments[0]
                 : property.ContainingType;
-            if (primaryKeyCache.HasQueryFilter(dbSetEntityType, context.CancellationToken))
+            if (primaryKeyCache.MayHaveQueryFilter(dbSetEntityType, contextType, context.CancellationToken))
                 return;
 
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));

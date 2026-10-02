@@ -3867,20 +3867,20 @@ public sealed class AnalyzerModularizationTests
         Assert.Contains("internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis", keyAnalysisSource);
         Assert.DoesNotContain("internal sealed partial class PrimaryKeyCache", keyAnalysisSource);
         Assert.DoesNotContain("public void RegisterQueryFilter", keyAnalysisSource);
-        Assert.DoesNotContain("public bool HasQueryFilter", keyAnalysisSource);
+        Assert.DoesNotContain("public bool MayHaveQueryFilter", keyAnalysisSource);
         Assert.DoesNotContain("private bool HasRegisteredQueryFilter", keyAnalysisSource);
 
         var primaryKeyCacheSource = File.ReadAllText(primaryKeyCachePath);
         Assert.Contains("internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis", primaryKeyCacheSource);
         Assert.Contains("internal sealed partial class PrimaryKeyCache", primaryKeyCacheSource);
         Assert.DoesNotContain("public void RegisterQueryFilter", primaryKeyCacheSource);
-        Assert.DoesNotContain("public bool HasQueryFilter", primaryKeyCacheSource);
+        Assert.DoesNotContain("public bool MayHaveQueryFilter", primaryKeyCacheSource);
 
         var queryFilterCacheSource = File.ReadAllText(queryFilterCachePath);
         Assert.Contains("internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis", queryFilterCacheSource);
         Assert.Contains("internal sealed partial class PrimaryKeyCache", queryFilterCacheSource);
         Assert.Contains("public void RegisterQueryFilter", queryFilterCacheSource);
-        Assert.Contains("public bool HasQueryFilter", queryFilterCacheSource);
+        Assert.Contains("public bool MayHaveQueryFilter", queryFilterCacheSource);
         Assert.Contains("private bool HasRegisteredQueryFilter", queryFilterCacheSource);
     }
 

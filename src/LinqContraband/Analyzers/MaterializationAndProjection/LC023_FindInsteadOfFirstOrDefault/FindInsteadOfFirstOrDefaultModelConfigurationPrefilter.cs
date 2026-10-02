@@ -10,8 +10,9 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
 {
     private const int PrefilterChunkLength = 4096;
 
-    // Longest needle ("HasQueryFilter") minus one: a match that starts in the last
-    // PrefilterChunkOverlap characters of a chunk is read again at the start of the next one.
+    // At least the longest needle ("HasQueryFilter", matched from "QueryFilter", or
+    // "IsMultiTenant") minus one: a match that starts in the last PrefilterChunkOverlap
+    // characters of a chunk is read again at the start of the next one.
     private const int PrefilterChunkOverlap = 13;
 
     private static readonly object MayConfigure = new();
@@ -32,8 +33,8 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
     }
 
     /// <summary>
-    /// Cheap text check for the EF calls the key scan registers: HasKey, HasNoKey and
-    /// HasQueryFilter. A match in a comment or string only costs a semantic scan of that
+    /// Cheap text check for the EF calls the key scan registers: HasKey, HasNoKey,
+    /// HasQueryFilter/SetQueryFilter and Finbuckle's IsMultiTenant. A match in a comment or string only costs a semantic scan of that
     /// tree; a tree without any of the names cannot contain one of those invocations.
     /// </summary>
     internal static bool MayContainModelConfiguration(SourceText text)
@@ -60,14 +61,27 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
     {
         for (var i = 0; i + 6 <= count; i++)
         {
-            if (buffer[i] != 'H' || buffer[i + 1] != 'a' || buffer[i + 2] != 's')
-                continue;
-
-            if (Matches(buffer, count, i + 3, "Key") ||
-                Matches(buffer, count, i + 3, "NoKey") ||
-                Matches(buffer, count, i + 3, "QueryFilter"))
+            switch (buffer[i])
             {
-                return true;
+                case 'H':
+                    if (buffer[i + 1] == 'a' && buffer[i + 2] == 's' &&
+                        (Matches(buffer, count, i + 3, "Key") || Matches(buffer, count, i + 3, "NoKey")))
+                    {
+                        return true;
+                    }
+
+                    break;
+                case 'Q':
+                    // HasQueryFilter and SetQueryFilter.
+                    if (Matches(buffer, count, i, "QueryFilter"))
+                        return true;
+
+                    break;
+                case 'I':
+                    if (Matches(buffer, count, i, "IsMultiTenant"))
+                        return true;
+
+                    break;
             }
         }
 
