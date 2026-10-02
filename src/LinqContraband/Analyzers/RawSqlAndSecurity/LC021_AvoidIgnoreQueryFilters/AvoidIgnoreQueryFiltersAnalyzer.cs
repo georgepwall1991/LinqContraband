@@ -234,22 +234,32 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
             return false;
         }
 
-        // A state, not a capability: IsDeleted, DeletedAt, ArchivedBy, but not CanDelete or AllowArchive.
-        var name = property.Property.Name;
-        if (name.IndexOf("Not", StringComparison.Ordinal) >= 0 ||
-            name.IndexOf("Undeleted", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.IndexOf("Unarchived", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.StartsWith("Non", StringComparison.Ordinal) ||
-            name.StartsWith("Can", StringComparison.Ordinal) ||
-            name.StartsWith("Allow", StringComparison.Ordinal) ||
-            name.StartsWith("Should", StringComparison.Ordinal) ||
-            name.StartsWith("May", StringComparison.Ordinal))
-        {
-            return false;
-        }
+        return IsRowDeletionStateName(property.Property.Name);
+    }
 
-        return name.IndexOf("Deleted", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               name.IndexOf("Archived", StringComparison.OrdinalIgnoreCase) >= 0;
+    // The row's own deletion state, by whole name: [Is][Soft]Deleted or [Is]Archived, optionally followed by a
+    // timestamp or actor suffix (IsDeleted, SoftDeletedAt, ArchivedOn, DeletedBy). A substring match would also take
+    // CanDelete, IsNotDeleted or HasDeletedComments, which do not say the row itself is deleted.
+    private static readonly ImmutableHashSet<string> DeletionStateSuffixes = ImmutableHashSet.Create(
+        "", "At", "AtUtc", "On", "OnUtc", "Date", "DateUtc", "Time", "Utc", "Timestamp", "By", "ById", "ByUserId");
+
+    private static bool IsRowDeletionStateName(string name)
+    {
+        var rest = name;
+        if (rest.StartsWith("Is", StringComparison.Ordinal))
+            rest = rest.Substring(2);
+
+        if (rest.StartsWith("Soft", StringComparison.Ordinal))
+            rest = rest.Substring(4);
+
+        if (rest.StartsWith("Deleted", StringComparison.Ordinal))
+            rest = rest.Substring("Deleted".Length);
+        else if (rest.StartsWith("Archived", StringComparison.Ordinal))
+            rest = rest.Substring("Archived".Length);
+        else
+            return false;
+
+        return DeletionStateSuffixes.Contains(rest);
     }
 
     private static bool IsConstant(IOperation operation, object? value)

@@ -360,6 +360,9 @@ namespace TestApp
         public bool Undeleted { get; set; }
         public bool CanDelete { get; set; }
         public bool AllowArchive { get; set; }
+        public bool HasDeletedComments { get; set; }
+        public bool IsSoftDeleted { get; set; }
+        public System.DateTime? ArchivedOn { get; set; }
     }
 
     public static class ProjectQueries
@@ -407,6 +410,8 @@ namespace LinqContraband.Test
     [InlineData("p => p.DeletedAt.HasValue")]
     [InlineData("p => null != p.DeletedBy")]
     [InlineData("p => p.Id == id && p.IsDeleted")]
+    [InlineData("p => p.IsSoftDeleted")]
+    [InlineData("p => p.ArchivedOn != null")]
     public Task WhereReadsDeletedRows_IsQuiet(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = posts.IgnoreQueryFilters().Where(" + predicate + @").ToList();"));
 
@@ -449,6 +454,7 @@ namespace LinqContraband.Test
     [InlineData("p => p.IsArchived != null")]
     [InlineData("p => p.CanDelete")]
     [InlineData("p => p.AllowArchive == true")]
+    [InlineData("p => p.HasDeletedComments")]
     public Task WhereDoesNotSelectDeletedRows_StillReports(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();"));
 
