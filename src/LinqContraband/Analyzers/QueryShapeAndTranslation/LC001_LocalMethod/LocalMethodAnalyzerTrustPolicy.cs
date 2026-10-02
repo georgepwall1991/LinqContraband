@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -135,7 +136,8 @@ public sealed partial class LocalMethodAnalyzer
     /// <summary>
     /// Methods this compilation maps with <c>modelBuilder.HasDbFunction(...)</c>, found on first use.
     /// Recognised arguments are <c>typeof(T).GetMethod(nameof(T.M), ...)</c> or a string name, which
-    /// trusts every overload of that name on <c>T</c>, and <c>() =&gt; T.M(...)</c>.
+    /// trusts every overload of that name on <c>T</c>, and <c>() =&gt; T.M(...)</c>. The <c>GetMethod</c>
+    /// call can also sit in the initializer of a local or a readonly field that is never assigned again.
     /// </summary>
     private sealed class MappedDbFunctions
     {
@@ -176,7 +178,7 @@ public sealed partial class LocalMethodAnalyzer
                     foreach (var argument in invocation.Arguments)
                     {
                         if (argument.Parameter?.Ordinal == 0)
-                            AddMappedMethods(argument.Value, result);
+                            AddMappedMethods(argument.Value, semanticModel, compilation, result, cancellationToken);
                     }
                 }
             }
@@ -184,41 +186,33 @@ public sealed partial class LocalMethodAnalyzer
             return result.ToImmutable();
         }
 
-        private static void AddMappedMethods(IOperation value, ImmutableHashSet<IMethodSymbol>.Builder result)
+        private static void AddMappedMethods(
+            IOperation value,
+            SemanticModel semanticModel,
+            Compilation compilation,
+            ImmutableHashSet<IMethodSymbol>.Builder result,
+            CancellationToken cancellationToken)
         {
             value = value.UnwrapConversions();
 
-            // typeof(T).GetMethod(nameof(T.M), ...) or typeof(T).GetMethod("M", ...)
-            if (value is IInvocationOperation { TargetMethod.Name: "GetMethod" or "GetRuntimeMethod" } getMethod &&
-                getMethod.TargetMethod.ContainingType?.ToDisplayString() is "System.Type" or "System.Reflection.RuntimeReflectionExtensions")
+            // var m = typeof(T).GetMethod(...); modelBuilder.HasDbFunction(m);
+            if (value is ILocalReferenceOperation localReference)
             {
-                var typeOperand = getMethod.Instance?.UnwrapConversions() is ITypeOfOperation instanceTypeOf
-                    ? instanceTypeOf.TypeOperand
-                    : getMethod.Arguments.Length > 0 && getMethod.Arguments[0].Value.UnwrapConversions() is ITypeOfOperation argumentTypeOf
-                        ? argumentTypeOf.TypeOperand
-                        : null;
-                string? name = null;
-                foreach (var argument in getMethod.Arguments)
-                {
-                    if (argument.Value.Type?.SpecialType == SpecialType.System_String &&
-                        argument.Value.ConstantValue is { HasValue: true, Value: string constantName })
-                    {
-                        name = constantName;
-                        break;
-                    }
-                }
-
-                if (typeOperand is INamedTypeSymbol type && name != null)
-                {
-                    foreach (var member in type.GetMembers(name))
-                    {
-                        if (member is IMethodSymbol method)
-                            result.Add(method.OriginalDefinition);
-                    }
-                }
-
+                if (GetSingleAssignmentInitializer(localReference.Local, semanticModel, compilation, cancellationToken) is { } localInitializer)
+                    AddGetMethodTargets(localInitializer, result);
                 return;
             }
+
+            // static readonly MethodInfo M = typeof(T).GetMethod(...); modelBuilder.HasDbFunction(M);
+            if (value is IFieldReferenceOperation fieldReference)
+            {
+                if (GetSingleAssignmentInitializer(fieldReference.Field, semanticModel, compilation, cancellationToken) is { } fieldInitializer)
+                    AddGetMethodTargets(fieldInitializer, result);
+                return;
+            }
+
+            if (AddGetMethodTargets(value, result))
+                return;
 
             // () => T.M(...)
             foreach (var descendant in value.DescendantsAndSelf())
@@ -236,6 +230,163 @@ public sealed partial class LocalMethodAnalyzer
 
                     return;
                 }
+            }
+        }
+
+        // typeof(T).GetMethod(nameof(T.M), ...) or typeof(T).GetMethod("M", ...); false when value is not such a call.
+        private static bool AddGetMethodTargets(IOperation value, ImmutableHashSet<IMethodSymbol>.Builder result)
+        {
+            value = value.UnwrapConversions();
+            if (value is not IInvocationOperation { TargetMethod.Name: "GetMethod" or "GetRuntimeMethod" } getMethod ||
+                getMethod.TargetMethod.ContainingType?.ToDisplayString() is not ("System.Type" or "System.Reflection.RuntimeReflectionExtensions"))
+            {
+                return false;
+            }
+
+            var typeOperand = getMethod.Instance?.UnwrapConversions() is ITypeOfOperation instanceTypeOf
+                ? instanceTypeOf.TypeOperand
+                : getMethod.Arguments.Length > 0 && getMethod.Arguments[0].Value.UnwrapConversions() is ITypeOfOperation argumentTypeOf
+                    ? argumentTypeOf.TypeOperand
+                    : null;
+            string? name = null;
+            foreach (var argument in getMethod.Arguments)
+            {
+                if (argument.Value.Type?.SpecialType == SpecialType.System_String &&
+                    argument.Value.ConstantValue is { HasValue: true, Value: string constantName })
+                {
+                    name = constantName;
+                    break;
+                }
+            }
+
+            if (typeOperand is INamedTypeSymbol type && name != null)
+            {
+                foreach (var member in type.GetMembers(name))
+                {
+                    if (member is IMethodSymbol method)
+                        result.Add(method.OriginalDefinition);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The initializer of a local, or of a readonly field declared in this compilation, when nothing
+        /// assigns it again: no assignment, deconstruction, <c>ref</c>/<c>out</c> argument or <c>ref</c> alias.
+        /// A local is checked across its syntax tree, a readonly field across its type's declarations
+        /// (the only places that can assign it).
+        /// </summary>
+        private static IOperation? GetSingleAssignmentInitializer(
+            ISymbol symbol,
+            SemanticModel semanticModel,
+            Compilation compilation,
+            CancellationToken cancellationToken)
+        {
+            symbol = symbol.OriginalDefinition;
+            IEnumerable<SyntaxReference> scopes;
+            switch (symbol)
+            {
+                case ILocalSymbol { IsRef: false, IsConst: false } local:
+                    scopes = local.DeclaringSyntaxReferences.Length == 1
+                        ? new[] { local.DeclaringSyntaxReferences[0].SyntaxTree.GetRoot(cancellationToken).GetReference() }
+                        : Array.Empty<SyntaxReference>();
+                    break;
+                case IFieldSymbol { IsReadOnly: true, IsConst: false } field when field.ContainingType != null:
+                    scopes = field.ContainingType.DeclaringSyntaxReferences;
+                    break;
+                default:
+                    return null;
+            }
+
+            if (symbol.DeclaringSyntaxReferences.Length != 1 ||
+                symbol.DeclaringSyntaxReferences[0].GetSyntax(cancellationToken) is not VariableDeclaratorSyntax { Initializer.Value: { } initializerSyntax } ||
+                !TryGetModel(initializerSyntax.SyntaxTree, semanticModel, compilation, out var initializerModel) ||
+                initializerModel.GetOperation(initializerSyntax, cancellationToken) is not { } initializer)
+            {
+                return null;
+            }
+
+            var any = false;
+            foreach (var scope in scopes)
+            {
+                any = true;
+                var scopeNode = scope.GetSyntax(cancellationToken);
+                if (!TryGetModel(scopeNode.SyntaxTree, semanticModel, compilation, out var scopeModel))
+                    return null;
+
+                foreach (var identifier in scopeNode.DescendantNodes().OfType<IdentifierNameSyntax>())
+                {
+                    if (identifier.Identifier.ValueText == symbol.Name &&
+                        IsWriteTarget(identifier) &&
+                        SymbolEqualityComparer.Default.Equals(
+                            scopeModel.GetSymbolInfo(identifier, cancellationToken).Symbol?.OriginalDefinition, symbol))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            return any ? initializer : null;
+        }
+
+        private static bool TryGetModel(SyntaxTree tree, SemanticModel current, Compilation compilation, out SemanticModel model)
+        {
+            if (tree == current.SyntaxTree)
+            {
+                model = current;
+                return true;
+            }
+
+            return compilation.TryGetOwnedSemanticModel(tree, out model);
+        }
+
+        private static bool IsWriteTarget(IdentifierNameSyntax identifier)
+        {
+            ExpressionSyntax expression = identifier;
+            while (true)
+            {
+                switch (expression.Parent)
+                {
+                    case MemberAccessExpressionSyntax memberAccess when memberAccess.Name == expression:
+                    case ParenthesizedExpressionSyntax:
+                    case PostfixUnaryExpressionSyntax { RawKind: (int)Microsoft.CodeAnalysis.CSharp.SyntaxKind.SuppressNullableWarningExpression }:
+                        expression = (ExpressionSyntax)expression.Parent;
+                        continue;
+                }
+
+                break;
+            }
+
+            switch (expression.Parent)
+            {
+                case AssignmentExpressionSyntax assignment:
+                    return assignment.Left == expression;
+                case RefExpressionSyntax:
+                    return true;
+                case PrefixUnaryExpressionSyntax { RawKind: (int)Microsoft.CodeAnalysis.CSharp.SyntaxKind.AddressOfExpression }:
+                    return true;
+                case ArgumentSyntax argument:
+                    if (!argument.RefKindKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None) &&
+                        !argument.RefKindKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.InKeyword))
+                    {
+                        return true;
+                    }
+
+                    // (m, _) = ...; possibly nested in other tuples.
+                    SyntaxNode node = argument;
+                    while (node.Parent is TupleExpressionSyntax tuple)
+                    {
+                        if (tuple.Parent is AssignmentExpressionSyntax tupleAssignment && tupleAssignment.Left == tuple)
+                            return true;
+                        if (tuple.Parent is not ArgumentSyntax outer)
+                            break;
+                        node = outer;
+                    }
+
+                    return false;
+                default:
+                    return false;
             }
         }
     }
