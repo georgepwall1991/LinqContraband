@@ -101,11 +101,24 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         "AsTracking", "Include", "ThenInclude", "AsSplitQuery", "AsSingleQuery", "TagWith", "TagWithCallSite",
         "IgnoreAutoIncludes", "IgnoreQueryFilters");
 
+    // Only the real System.Linq.Queryable and EF Core operators: a project's own Where could ignore its predicate.
+    private static bool IsChainOperator(IMethodSymbol method)
+    {
+        if (!ChainOperators.Contains(method.Name))
+            return false;
+
+        var containingType = method.ContainingType?.Name;
+        var containingNamespace = method.ContainingNamespace?.ToString();
+        return containingType == "Queryable" && containingNamespace == "System.Linq" ||
+               containingNamespace == "Microsoft.EntityFrameworkCore" &&
+               containingType is "EntityFrameworkQueryableExtensions" or "RelationalQueryableExtensions";
+    }
+
     private static bool QueryChainSelectsDeletedRows(IInvocationOperation invocation)
     {
         // Calls before IgnoreQueryFilters() in the same chain.
         var current = GetChainSource(invocation);
-        while (current is IInvocationOperation earlier && ChainOperators.Contains(earlier.TargetMethod.Name))
+        while (current is IInvocationOperation earlier && IsChainOperator(earlier.TargetMethod))
         {
             if (IsWhereSelectingDeletedRows(earlier))
                 return true;
@@ -132,7 +145,7 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
                 _ => null
             };
 
-            if (later == null || !ChainOperators.Contains(later.TargetMethod.Name))
+            if (later == null || !IsChainOperator(later.TargetMethod))
                 return false;
 
             if (IsWhereSelectingDeletedRows(later))
@@ -144,7 +157,8 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
     private static bool IsWhereSelectingDeletedRows(IInvocationOperation invocation)
     {
-        if (invocation.TargetMethod.Name != "Where" || invocation.Arguments.Length < 2)
+        if (invocation.TargetMethod.Name != "Where" || !IsChainOperator(invocation.TargetMethod) ||
+            invocation.Arguments.Length < 2)
             return false;
 
         // The predicate is the parameter after the source, wherever a named argument puts it.
@@ -220,17 +234,22 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
             return false;
         }
 
+        // A state, not a capability: IsDeleted, DeletedAt, ArchivedBy, but not CanDelete or AllowArchive.
         var name = property.Property.Name;
         if (name.IndexOf("Not", StringComparison.Ordinal) >= 0 ||
-            name.IndexOf("Undelete", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.IndexOf("Unarchiv", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.StartsWith("Non", StringComparison.Ordinal))
+            name.IndexOf("Undeleted", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            name.IndexOf("Unarchived", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            name.StartsWith("Non", StringComparison.Ordinal) ||
+            name.StartsWith("Can", StringComparison.Ordinal) ||
+            name.StartsWith("Allow", StringComparison.Ordinal) ||
+            name.StartsWith("Should", StringComparison.Ordinal) ||
+            name.StartsWith("May", StringComparison.Ordinal))
         {
             return false;
         }
 
-        return name.IndexOf("Delete", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               name.IndexOf("Archiv", StringComparison.OrdinalIgnoreCase) >= 0;
+        return name.IndexOf("Deleted", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("Archived", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool IsConstant(IOperation operation, object? value)

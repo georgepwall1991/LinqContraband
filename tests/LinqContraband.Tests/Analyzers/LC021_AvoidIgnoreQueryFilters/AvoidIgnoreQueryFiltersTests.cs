@@ -358,6 +358,13 @@ namespace TestApp
         public string DeletedBy { get; set; }
         public bool IsNotDeleted { get; set; }
         public bool Undeleted { get; set; }
+        public bool CanDelete { get; set; }
+        public bool AllowArchive { get; set; }
+    }
+
+    public static class ProjectQueries
+    {
+        public static IQueryable<T> Where<T>(this IQueryable<T> source, System.Linq.Expressions.Expression<System.Func<T, bool>> predicate) => source;
     }
 
     public static class Settings
@@ -440,8 +447,14 @@ namespace LinqContraband.Test
     [InlineData("p => TestApp.Settings.IncludeDeleted && p.TenantId == id")]
     [InlineData("p => p.IsArchived.HasValue")]
     [InlineData("p => p.IsArchived != null")]
+    [InlineData("p => p.CanDelete")]
+    [InlineData("p => p.AllowArchive == true")]
     public Task WhereDoesNotSelectDeletedRows_StillReports(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();"));
+
+    [Fact]
+    public Task DeletedFilterThroughProjectWhere_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = TestApp.ProjectQueries.Where({|LC021:posts.IgnoreQueryFilters()|}, p => p.IsDeleted).ToList();"));
 
     [Fact]
     public Task DeletedFilterBeforeConcat_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
