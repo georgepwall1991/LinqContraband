@@ -84,6 +84,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         if (HasWriteOperations(context.Operation, writeOperationCache))
             return;
 
+        // if (tracking) return db.X.First(...); return db.X.AsNoTracking().First(...);
+        // The caller picked tracking on purpose, so the tracked branch is not a missed AsNoTracking().
+        if (IsDeliberatelyTrackedBranch(invocation, chain.DbSetType))
+            return;
+
         // db.Orders.ToList().Where(...).ToList(): the entities live on in the outer, in-memory
         // materializer, so that is where they are followed.
         var resultAnchor = FindInMemoryResultAnchor(invocation);
@@ -97,6 +102,11 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         // SaveChanges lives in a helper the analyzer cannot see — suggesting AsNoTracking
         // would break that cross-method save.
         if (root != null && MaterializedEntityIsMutated(resultAnchor, root, entityLocals, context.CancellationToken))
+            return;
+
+        // new Product { Category = category }: an untracked category would be inserted again with the new
+        // product, so the loaded entity must stay tracked.
+        if (root != null && MaterializedEntityIsAttachedToNewEntity(resultAnchor, root, entityLocals, context.CancellationToken))
             return;
 
         // Returned entities are usually changed and saved by the caller (a repository getter), so they report
@@ -162,7 +172,14 @@ public sealed partial class MissingAsNoTrackingAnalyzer : DiagnosticAnalyzer
         // AutoMapper's ProjectTo<Dto>() or an extension that selects IDs. EF Core does not track it.
         public bool MaterializesNonEntity { get; set; }
 
+        // FromSqlRaw("UPDATE ... RETURNING *"): the query is a write that hands back the changed rows.
+        public bool IsRawSqlWrite { get; set; }
+
+        // The DbSet<T> the query starts from, used to pair a tracked branch with an untracked sibling.
+        public ITypeSymbol? DbSetType { get; set; }
+
         public bool IsTrackedEfRead =>
-            IsEfQuery && !IsAmbiguousSource && !HasAsNoTracking && !HasAsTracking && !HasSelect && !MaterializesNonEntity;
+            IsEfQuery && !IsAmbiguousSource && !HasAsNoTracking && !HasAsTracking && !HasSelect && !MaterializesNonEntity &&
+            !IsRawSqlWrite;
     }
 }

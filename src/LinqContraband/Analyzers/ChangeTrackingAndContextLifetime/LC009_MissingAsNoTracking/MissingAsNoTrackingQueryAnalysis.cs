@@ -32,6 +32,8 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                         result.HasAsTracking = true;
                     if (method.Name == "Select")
                         result.HasSelect = true;
+                    if (IsRawSqlWrite(prevInvocation))
+                        result.IsRawSqlWrite = true;
 
                     // An invocation whose return type is a DbSet (e.g. DbContext.Set<T>(), the
                     // generic-repository read path) is itself the EF source. Without this the
@@ -39,6 +41,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (prevInvocation.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.DbSetType = prevInvocation.Type;
                         result.ContextIsLocal = IsLocalContext(prevInvocation.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, prevInvocation.Type, prevInvocation.Instance?.Type);
                         return result;
@@ -52,6 +55,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (propRef.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.DbSetType = propRef.Type;
                         result.ContextIsLocal = IsLocalContext(propRef.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, propRef.Type, propRef.Instance?.Type);
                     }
@@ -61,6 +65,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (fieldRef.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.DbSetType = fieldRef.Type;
                         result.ContextIsLocal = IsLocalContext(fieldRef.Instance);
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, fieldRef.Type, fieldRef.Instance?.Type);
                     }
@@ -80,6 +85,7 @@ public sealed partial class MissingAsNoTrackingAnalyzer
                     if (current.Type.IsDbSet())
                     {
                         result.IsEfQuery = true;
+                        result.DbSetType = current.Type;
                         result.MaterializesNonEntity = MaterializesNonEntity(invocation, current.Type, null);
                     }
                     else if (current.Type.IsIQueryable())
