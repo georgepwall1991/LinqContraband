@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Immutable;
+using System.Linq;
 using LinqContraband.Catalog;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -44,7 +46,15 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
         if (!GetQuerySourceType(invocation).IsIQueryable()) return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
+        // posts.IgnoreQueryFilters().Where(p => p.IsDeleted): restore or purge code that reads soft-deleted rows on
+        // purpose. It still reports, because the parameterless call also turns off any tenant filter, but the fix
+        // is withheld: removing the call would make the query always empty. Named overloads keep their fix, since
+        // IgnoreQueryFilters(["Tenant"]) may not touch the soft-delete filter at all.
+        var properties = IsParameterlessOverload(method) && QueryChainSelectsDeletedRows(invocation)
+            ? SelectsDeletedRowsProperties
+            : ImmutableDictionary<string, string?>.Empty;
+
+        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), properties));
     }
 
     private static ITypeSymbol? GetQuerySourceType(IInvocationOperation invocation)
@@ -61,6 +71,225 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         return invocation.Arguments.Length > 0
             ? invocation.Arguments[0].Value.UnwrapConversions().Type
             : null;
+    }
+
+    internal const string SelectsDeletedRowsKey = "SelectsDeletedRows";
+
+    private static readonly ImmutableDictionary<string, string?> SelectsDeletedRowsProperties =
+        ImmutableDictionary<string, string?>.Empty.Add(SelectsDeletedRowsKey, "true");
+
+    private static bool IsParameterlessOverload(IMethodSymbol method)
+    {
+        return method.ReducedFrom != null ? method.Parameters.Length == 0 : method.Parameters.Length == 1;
+    }
+
+    // The query an operator runs on: the instance, or the extension method's first parameter wherever a named
+    // argument puts it (Queryable.Where(predicate: ..., source: ...)).
+    private static IOperation? GetChainSource(IInvocationOperation invocation)
+    {
+        if (invocation.Instance != null)
+            return invocation.Instance.UnwrapConversions();
+
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Ordinal == 0)
+                return argument.Value.UnwrapConversions();
+        }
+
+        return null;
+    }
+
+    // Operators over one query source that keep its rows as they are, so a deleted-rows Where on either side of
+    // IgnoreQueryFilters() still constrains every row the call exposes. Concat, Union, Join or SelectMany bring
+    // in another source, and Select changes what a later Where filters, so the walk stops at them. FromSql* over a
+    // DbSet is an entity root that global filters still apply to, so the walk passes through it to the DbSet.
+    private static readonly ImmutableHashSet<string> ChainOperators = ImmutableHashSet.Create(
+        "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take", "SkipWhile",
+        "TakeWhile", "Distinct", "Reverse", "OfType", "Cast", "AsQueryable", "AsNoTracking", "AsNoTrackingWithIdentityResolution",
+        "AsTracking", "Include", "ThenInclude", "AsSplitQuery", "AsSingleQuery", "TagWith", "TagWithCallSite",
+        "IgnoreAutoIncludes", "IgnoreQueryFilters", "FromSql", "FromSqlRaw", "FromSqlInterpolated");
+
+    // Only the real System.Linq.Queryable and EF Core operators: a project's own Where could ignore its predicate.
+    private static bool IsChainOperator(IMethodSymbol method)
+    {
+        if (!ChainOperators.Contains(method.Name))
+            return false;
+
+        var containingType = method.ContainingType?.Name;
+        var containingNamespace = method.ContainingNamespace?.ToString();
+        return containingType == "Queryable" && containingNamespace == "System.Linq" ||
+               containingNamespace == "Microsoft.EntityFrameworkCore" &&
+               containingType is "EntityFrameworkQueryableExtensions" or "RelationalQueryableExtensions";
+    }
+
+    private static bool QueryChainSelectsDeletedRows(IInvocationOperation invocation)
+    {
+        // Calls before IgnoreQueryFilters() in the same chain. The whole chain back to its root has to be
+        // row-preserving: posts.Select(p => new { IsDeleted = true }).Where(p => p.IsDeleted) filters a projection,
+        // not the entity's soft-delete column, so a Select or Concat anywhere upstream disqualifies every Where.
+        var selectsDeletedRows = false;
+        var current = GetChainSource(invocation);
+        while (current is IInvocationOperation earlier && IsChainOperator(earlier.TargetMethod))
+        {
+            selectsDeletedRows |= IsWhereSelectingDeletedRows(earlier);
+            current = GetChainSource(earlier);
+        }
+
+        // The root is a DbSet property, field, local or parameter, or a call that returns a DbSet (db.Set<Post>()).
+        if (current is IInvocationOperation root && !root.Type.IsDbSet())
+            return false;
+
+        if (selectsDeletedRows)
+            return true;
+
+        // Calls after it.
+        IOperation link = invocation;
+        while (true)
+        {
+            var parent = link.Parent;
+            while (parent is IConversionOperation)
+            {
+                link = parent;
+                parent = parent.Parent;
+            }
+
+            IInvocationOperation? later = parent switch
+            {
+                IInvocationOperation instanceCall when instanceCall.Instance == link => instanceCall,
+                IArgumentOperation { Parent: IInvocationOperation extensionCall, Parameter.Ordinal: 0 }
+                    when extensionCall.TargetMethod.IsExtensionMethod => extensionCall,
+                _ => null
+            };
+
+            if (later == null || !IsChainOperator(later.TargetMethod))
+                return false;
+
+            if (IsWhereSelectingDeletedRows(later))
+                return true;
+
+            link = later;
+        }
+    }
+
+    private static bool IsWhereSelectingDeletedRows(IInvocationOperation invocation)
+    {
+        if (invocation.TargetMethod.Name != "Where" || !IsChainOperator(invocation.TargetMethod) ||
+            invocation.Arguments.Length < 2)
+            return false;
+
+        // The predicate is the parameter after the source, wherever a named argument puts it.
+        IOperation? predicate = null;
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Ordinal == 1)
+                predicate = argument.Value.UnwrapConversions();
+        }
+
+        if (predicate == null)
+            return false;
+
+        if (predicate is IDelegateCreationOperation delegateCreation)
+            predicate = delegateCreation.Target.UnwrapConversions();
+
+        if (predicate is not IAnonymousFunctionOperation { Body.Operations.Length: 1 } lambda ||
+            lambda.Body.Operations[0] is not IReturnOperation { ReturnedValue: { } body })
+            return false;
+
+        return SelectsDeletedRows(body, lambda.Symbol.Parameters);
+    }
+
+    // p.IsDeleted, p.IsDeleted == true, p.DeletedAt != null, p.DeletedAt.HasValue, or any of these as one side
+    // of &&. Expression trees cannot hold pattern matching, so 'is true' and 'is not null' never reach here.
+    private static bool SelectsDeletedRows(IOperation expression, ImmutableArray<IParameterSymbol> rowParameters)
+    {
+        switch (Unwrap(expression))
+        {
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } and:
+                return SelectsDeletedRows(and.LeftOperand, rowParameters) || SelectsDeletedRows(and.RightOperand, rowParameters);
+
+            case IPropertyReferenceOperation { Property.Name: "HasValue" } hasValue:
+                return hasValue.Instance != null && IsPresenceMarker(hasValue.Instance, rowParameters);
+
+            case IPropertyReferenceOperation property when property.Type?.SpecialType == SpecialType.System_Boolean:
+                return IsDeletedMarker(property, rowParameters);
+
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals } equals:
+                return IsDeletedMarker(equals.LeftOperand, rowParameters) && IsConstant(equals.RightOperand, true) ||
+                       IsDeletedMarker(equals.RightOperand, rowParameters) && IsConstant(equals.LeftOperand, true);
+
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.NotEquals } notEquals:
+                return IsPresenceMarker(notEquals.LeftOperand, rowParameters) && IsConstant(notEquals.RightOperand, null) ||
+                       IsPresenceMarker(notEquals.RightOperand, rowParameters) && IsConstant(notEquals.LeftOperand, null);
+
+            default:
+                return false;
+        }
+    }
+
+    // p.DeletedAt != null proves deletion; p.IsArchived != null on a bool? does not, because false is a value too.
+    private static bool IsPresenceMarker(IOperation operation, ImmutableArray<IParameterSymbol> rowParameters)
+    {
+        if (!IsDeletedMarker(operation, rowParameters))
+            return false;
+
+        return Unwrap(operation).Type is not INamedTypeSymbol
+        {
+            OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1
+        } nullable || nullable.TypeArguments[0].SpecialType != SpecialType.System_Boolean;
+    }
+
+    // A soft-delete column on the row itself: p.IsDeleted, not a captured options.IncludeDeleted switch, and not a
+    // negated name such as p.IsNotDeleted or p.Undeleted, which selects the rows the filter already keeps.
+    private static bool IsDeletedMarker(IOperation operation, ImmutableArray<IParameterSymbol> rowParameters)
+    {
+        if (Unwrap(operation) is not IPropertyReferenceOperation { Property.IsIndexer: false } property ||
+            property.Instance == null ||
+            Unwrap(property.Instance) is not IParameterReferenceOperation { Parameter: var parameter } ||
+            !rowParameters.Contains(parameter, SymbolEqualityComparer.Default))
+        {
+            return false;
+        }
+
+        return IsRowDeletionStateName(property.Property.Name);
+    }
+
+    // The row's own deletion state, by whole name: [Is][Soft]Deleted or [Is]Archived, optionally followed by a
+    // timestamp or actor suffix (IsDeleted, SoftDeletedAt, ArchivedOn, DeletedBy). A substring match would also take
+    // CanDelete, IsNotDeleted or HasDeletedComments, which do not say the row itself is deleted.
+    private static readonly ImmutableHashSet<string> DeletionStateSuffixes = ImmutableHashSet.Create(
+        "", "At", "AtUtc", "On", "OnUtc", "Date", "DateUtc", "Time", "Utc", "Timestamp", "By", "ById", "ByUserId");
+
+    private static bool IsRowDeletionStateName(string name)
+    {
+        var rest = name;
+        if (rest.StartsWith("Is", StringComparison.Ordinal))
+            rest = rest.Substring(2);
+
+        if (rest.StartsWith("Soft", StringComparison.Ordinal))
+            rest = rest.Substring(4);
+
+        if (rest.StartsWith("Deleted", StringComparison.Ordinal))
+            rest = rest.Substring("Deleted".Length);
+        else if (rest.StartsWith("Archived", StringComparison.Ordinal))
+            rest = rest.Substring("Archived".Length);
+        else
+            return false;
+
+        return DeletionStateSuffixes.Contains(rest);
+    }
+
+    private static bool IsConstant(IOperation operation, object? value)
+    {
+        var constant = Unwrap(operation).ConstantValue;
+        return constant.HasValue && Equals(constant.Value, value);
+    }
+
+    private static IOperation Unwrap(IOperation operation)
+    {
+        while (operation is IConversionOperation or IParenthesizedOperation)
+            operation = operation is IConversionOperation conversion ? conversion.Operand : ((IParenthesizedOperation)operation).Operand;
+
+        return operation;
     }
 
     private static bool IsEfCoreIgnoreQueryFiltersMethod(IMethodSymbol method)
