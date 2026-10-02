@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.16.0</Version>
+        <Version>5.17.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Four new rules: LC060 reports EF Core async operators such as ToListAsync on a query built with AsQueryable() over an in-memory list, which throw at run time; LC061 reports EF.CompileQuery and EF.CompileAsyncQuery calls that compile the query again on every call; LC062 reports blocking on an EF Core async call with .Result, .Wait() or .GetAwaiter().GetResult(); LC063 reports a user-started transaction on a context configured with a retrying execution strategy, which EF Core rejects. LC060, LC062 and LC063 join the critical preset. False positives found by scanning real apps are fixed in LC001, LC004, LC008, LC011, LC016, LC020, LC022, LC024 (EF Core 8+ GroupBy translation), LC035 and LC039.</PackageReleaseNotes>
+        <PackageReleaseNotes>False-positive and accuracy fixes across 14 rules. LC022 stays quiet on nested ToList/ToArray/ToHashSet on EF Core 8+ and reports ToDictionary as untranslatable. LC001, LC006, LC007, LC009, LC010, LC021, LC023, LC031, LC040, LC061, LC062 and LC063 stay quiet on code shapes found to be safe in real apps (load-once guards, factory-created contexts, split queries applied downstream, row-limited FromSql roots, query filters configured out of sight and more). LC059 now reports connection?.Dispose() on the context's connection, and LC060 follows interface-typed locals filled only from in-memory collections.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
