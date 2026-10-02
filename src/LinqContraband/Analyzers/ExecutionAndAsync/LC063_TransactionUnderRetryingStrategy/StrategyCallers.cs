@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -307,7 +308,7 @@ internal sealed class StrategyCallers
         CancellationToken cancellationToken)
     {
         return expression.Parent is ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax } } argument &&
-               semanticModel.GetOperation(argument, cancellationToken) is IArgumentOperation
+               GetArgumentOperation(argument, semanticModel, cancellationToken) is
                {
                    Parent: IInvocationOperation call
                } argumentOperation &&
@@ -318,16 +319,71 @@ internal sealed class StrategyCallers
                    cancellationToken);
     }
 
-    /// <summary>True when <paramref name="lambda"/>, through parentheses and casts, is the expression an invocation calls.</summary>
+    /// <summary>
+    /// The argument operation for <paramref name="argument"/>. Roslyn binds no operation to an argument whose
+    /// expression is parenthesized (<c>Execute((work))</c>), so that case climbs from the expression's operation.
+    /// </summary>
+    private static IArgumentOperation? GetArgumentOperation(
+        ArgumentSyntax argument,
+        SemanticModel semanticModel,
+        CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(argument, cancellationToken) is IArgumentOperation argumentOperation)
+            return argumentOperation;
+
+        var expression = argument.Expression;
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        for (var current = semanticModel.GetOperation(expression, cancellationToken)?.Parent;
+             current != null;
+             current = current.Parent)
+        {
+            if (current is IArgumentOperation found)
+                return found;
+            if (current is not (IConversionOperation or IDelegateCreationOperation))
+                return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="lambda"/>, through parentheses and casts, is the expression an invocation calls, and
+    /// its whole body runs there: an async lambda returns at its first <c>await</c> and the rest runs later, outside
+    /// any enclosing strategy delegate, unless the invocation's task is awaited right there.
+    /// </summary>
     private static bool IsInvokedInPlace(AnonymousFunctionExpressionSyntax lambda)
     {
         ExpressionSyntax current = lambda;
         while (current.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
             current = (ExpressionSyntax)current.Parent;
 
-        return current != lambda &&
-               current.Parent is InvocationExpressionSyntax invocation &&
-               invocation.Expression == current;
+        if (current == lambda ||
+            current.Parent is not InvocationExpressionSyntax invocation ||
+            invocation.Expression != current)
+        {
+            return false;
+        }
+
+        return lambda.AsyncKeyword.IsKind(SyntaxKind.None) || IsAwaited(invocation);
+    }
+
+    private static bool IsAwaited(ExpressionSyntax expression)
+    {
+        while (expression.Parent is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized;
+
+        return expression.Parent is AwaitExpressionSyntax;
+    }
+
+    /// <summary>Climbs out of parentheses and casts around <paramref name="expression"/>.</summary>
+    private static ExpressionSyntax ClimbParenthesesAndCasts(ExpressionSyntax expression)
+    {
+        while (expression.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            expression = (ExpressionSyntax)expression.Parent;
+
+        return expression;
     }
 
     /// <summary>
@@ -340,18 +396,21 @@ internal sealed class StrategyCallers
         SemanticModel semanticModel,
         CancellationToken cancellationToken)
     {
-        ExpressionSyntax value = lambda;
-        while (value.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
-            value = (ExpressionSyntax)value.Parent;
-
+        var value = ClimbParenthesesAndCasts(lambda);
         if (value.Parent is not EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } ||
             semanticModel.GetDeclaredSymbol(declarator, cancellationToken) is not ILocalSymbol { RefKind: RefKind.None } local)
         {
             return false;
         }
 
-        var scope = declarator.FirstAncestorOrSelf<BlockSyntax>() as SyntaxNode ??
-                    declarator.FirstAncestorOrSelf<MemberDeclarationSyntax>();
+        // A top-level statement local is in scope for every later top-level statement of the file.
+        SyntaxNode? scope = declarator.FirstAncestorOrSelf<BlockSyntax>();
+        if (scope == null)
+        {
+            var member = declarator.FirstAncestorOrSelf<MemberDeclarationSyntax>();
+            scope = member is GlobalStatementSyntax ? member.Parent : member;
+        }
+
         if (scope == null)
             return false;
 
@@ -364,7 +423,7 @@ internal sealed class StrategyCallers
                 continue;
             }
 
-            if (!IsStrategyDelegateArgument(identifier, semanticModel, cancellationToken))
+            if (!IsStrategyDelegateArgument(ClimbParenthesesAndCasts(identifier), semanticModel, cancellationToken))
                 return false;
 
             handedToStrategy = true;
