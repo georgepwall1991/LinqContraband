@@ -46,13 +46,15 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
         if (!GetQuerySourceType(invocation).IsIQueryable()) return;
 
-        // posts.IgnoreQueryFilters().Where(p => p.IsDeleted): maintenance code that reads soft-deleted or
-        // archived rows on purpose. Removing the call would make the query always empty. Only the parameterless
-        // overload: IgnoreQueryFilters(["Tenant"]) names the filters it turns off, and a deleted-rows predicate
-        // says nothing about whether a named filter guards tenancy instead.
-        if (IsParameterlessOverload(method) && QueryChainSelectsDeletedRows(invocation)) return;
+        // posts.IgnoreQueryFilters().Where(p => p.IsDeleted): restore or purge code that reads soft-deleted rows on
+        // purpose. It still reports, because the parameterless call also turns off any tenant filter, but the fix
+        // is withheld: removing the call would make the query always empty. Named overloads keep their fix, since
+        // IgnoreQueryFilters(["Tenant"]) may not touch the soft-delete filter at all.
+        var properties = IsParameterlessOverload(method) && QueryChainSelectsDeletedRows(invocation)
+            ? SelectsDeletedRowsProperties
+            : ImmutableDictionary<string, string?>.Empty;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
+        context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), properties));
     }
 
     private static ITypeSymbol? GetQuerySourceType(IInvocationOperation invocation)
@@ -70,6 +72,11 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
             ? invocation.Arguments[0].Value.UnwrapConversions().Type
             : null;
     }
+
+    internal const string SelectsDeletedRowsKey = "SelectsDeletedRows";
+
+    private static readonly ImmutableDictionary<string, string?> SelectsDeletedRowsProperties =
+        ImmutableDictionary<string, string?>.Empty.Add(SelectsDeletedRowsKey, "true");
 
     private static bool IsParameterlessOverload(IMethodSymbol method)
     {

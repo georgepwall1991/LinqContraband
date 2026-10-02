@@ -52,13 +52,17 @@ EntityFrameworkQueryableExtensions.IgnoreQueryFilters(db.Users).ToList();
 ### Valid
 ```csharp
 db.Users.Where(x => x.Active);
+```
 
-// Maintenance code that reads soft-deleted or archived rows on purpose.
+### Restore and purge code
+
+```csharp
+// Still reported, but no fix is offered: without the call this query is always empty.
 db.Posts.IgnoreQueryFilters().Where(p => p.IsDeleted).ToList();
 db.Posts.IgnoreQueryFilters().Where(p => p.Id == id && p.DeletedAt != null).ToList();
 ```
 
-LC021 stays quiet when a `Where` in the same query chain (before or after `IgnoreQueryFilters()`) selects deleted or archived rows: a `bool` property named for the row's own deletion state (`[Is][Soft]Deleted` or `[Is]Archived`, optionally followed by `At`, `On`, `Date`, `Utc`, `By` and similar, so `CanDelete`, `IsNotDeleted` and `HasDeletedComments` do not count) (`p.Deleted`, `p.IsDeleted`, `p.IsDeleted == true`, `p.IsArchived == true`), a nullable one compared to `null` (`p.DeletedAt != null`, `p.DeletedAt.HasValue`, `p.DeletedBy != null`), or any of these as one side of `&&`. The property must belong to the `Where` lambda's own row (a captured `options.IncludeDeleted` does not count), and negated names such as `IsNotDeleted` or `Undeleted` do not count. This applies only to the parameterless `IgnoreQueryFilters()`: a named overload such as `IgnoreQueryFilters(["Tenant"])` keeps reporting even with a deleted-rows `Where`, because the named filter may guard something else. Only `System.Linq.Queryable` and EF Core operators count; a project's own `Where` does not. The `Where` must sit in a chain of single-source operators that keep rows as they are (`Where`, ordering, paging, `Distinct`, `Include`, tracking calls): any `Select`, `Concat` or `Union` between the query root and the filter or the call means the filter does not count. `!= null` and `.HasValue` count only on non-Boolean columns such as `DeletedAt`, since a `bool? IsArchived` can also be `false`. Without the call such a query is always empty, so removing it, as the fixer would, breaks the restore or purge code. A predicate that excludes deleted rows (`!p.IsDeleted`, `p.DeletedAt == null`), an `||`, or a `Where` applied in a later statement keeps the report, because the call may still be there to cross a tenant or security filter.
+LC021 still reports `IgnoreQueryFilters()` when a `Where` in the same query chain (before or after the call) selects deleted or archived rows, because the parameterless call also turns off any tenant or security filter and a reviewer should confirm that is intended. It does not offer its fix there, because removing the call would leave a query that is always empty. The `Where` counts when it tests a property of its own row named for the row's deletion state (`[Is][Soft]Deleted` or `[Is]Archived`, optionally followed by `At`, `On`, `Date`, `Utc`, `By` and similar) as a bare `bool`, `== true`, `!= null` or `.HasValue` (presence checks only on non-Boolean columns such as `DeletedAt`), or as one side of `&&`. Capability or aggregate flags (`CanDelete`, `HasDeletedComments`), negated names (`IsNotDeleted`), captured switches (`options.IncludeDeleted`), a project's own `Where`, a filter in a later statement, and any `Select`, `Concat` or `Union` between the query root and the call keep the fix. Named overloads such as `IgnoreQueryFilters(["Tenant"])` keep the fix too, because the named filter may not be the soft-delete one. To silence a reviewed restore query, use a narrow pragma.
 
 LC021 intentionally stays quiet for lookalikes that are not the EF Core extension method:
 

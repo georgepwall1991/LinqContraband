@@ -1,5 +1,10 @@
+using System.Text.RegularExpressions;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersAnalyzer>;
+using FixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
+    LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersAnalyzer,
+    LinqContraband.Analyzers.LC021_AvoidIgnoreQueryFilters.AvoidIgnoreQueryFiltersFixer,
+    Microsoft.CodeAnalysis.Testing.Verifiers.XUnitVerifier>;
 
 namespace LinqContraband.Tests.Analyzers.LC021_AvoidIgnoreQueryFilters;
 
@@ -420,8 +425,9 @@ namespace LinqContraband.Test
     public Task NamedFilterOverload_CollectionExpression_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = {|LC021:posts.IgnoreQueryFilters([""SoftDelete""])|}.ToList();"));
 
-    // Maintenance code that reads soft-deleted or archived rows on purpose: without IgnoreQueryFilters() the
-    // query would always be empty.
+    // Restore and purge code that reads soft-deleted or archived rows on purpose. It still reports, because the
+    // parameterless call also turns off any tenant filter, but the fix is withheld: without IgnoreQueryFilters()
+    // the query would always be empty.
     [Theory]
     [InlineData("p => p.Deleted")]
     [InlineData("p => p.IsDeleted")]
@@ -433,33 +439,42 @@ namespace LinqContraband.Test
     [InlineData("p => p.Id == id && p.IsDeleted")]
     [InlineData("p => p.IsSoftDeleted")]
     [InlineData("p => p.ArchivedOn != null")]
-    public Task WhereReadsDeletedRows_IsQuiet(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = posts.IgnoreQueryFilters().Where(" + predicate + @").ToList();"));
+    public Task WhereReadsDeletedRows_ReportsWithoutFix(string predicate) => VerifyFixWithheld(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_BeforeIgnoreQueryFilters_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = posts.Where(p => p.IsDeleted).IgnoreQueryFilters().ToList();"));
-
-    // A deleted-rows predicate does not justify turning off a named filter that may guard tenancy.
-    [Fact]
-    public Task WhereReadsDeletedRows_NamedOverload_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.IgnoreQueryFilters(new[] { ""Tenant"" })|}.Where(p => p.IsDeleted).ToList();"));
+    public Task WhereReadsDeletedRows_BeforeIgnoreQueryFilters_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = {|LC021:posts.Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_NamedOverloadCollectionExpression_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.IgnoreQueryFilters([""Tenant""])|}.Where(p => p.IsDeleted).ToList();"));
+    public Task WhereReadsDeletedRows_ParenthesizedChain_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = ({|LC021:posts.IgnoreQueryFilters()|}).Where(p => p.IsDeleted).ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_ParenthesizedChain_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = (posts.IgnoreQueryFilters()).Where(p => p.IsDeleted).ToList();"));
+    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = Queryable.Where(predicate: p => p.IsDeleted, source: {|LC021:posts.IgnoreQueryFilters()|}).ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = Queryable.Where(predicate: p => p.IsDeleted, source: posts.IgnoreQueryFilters()).ToList();"));
+    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_BeforeCall_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = {|LC021:Queryable.Where(predicate: p => p.IsDeleted, source: posts).IgnoreQueryFilters()|}.ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_BeforeCall_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = Queryable.Where(predicate: p => p.IsDeleted, source: posts).IgnoreQueryFilters().ToList();"));
+    public Task WhereReadsDeletedRows_SetRoot_ReportsWithoutFix() => VerifyFixWithheld(@"
+            TestApp.BlogContext db = null;
+            var result = {|LC021:db.Set<TestApp.Post>().Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
+
+    [Fact]
+    public Task DeletedFilterAcrossOrderingAndPaging_ReportsWithoutFix() => VerifyFixWithheld(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.OrderBy(p => p.Id).Skip(10).Take(10).Where(p => p.IsDeleted).ToList();");
+
+    // A deleted-rows predicate does not show the named filter is the soft-delete one, so the fix stays.
+    [Fact]
+    public Task WhereReadsDeletedRows_NamedOverload_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.IgnoreQueryFilters(new[] { ""Tenant"" })|}.Where(p => p.IsDeleted).ToList();");
+
+    [Fact]
+    public Task WhereReadsDeletedRows_NamedOverloadCollectionExpression_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.IgnoreQueryFilters([""Tenant""])|}.Where(p => p.IsDeleted).ToList();");
 
     [Theory]
     [InlineData("p => !p.IsDeleted")]
@@ -476,40 +491,45 @@ namespace LinqContraband.Test
     [InlineData("p => p.CanDelete")]
     [InlineData("p => p.AllowArchive == true")]
     [InlineData("p => p.HasDeletedComments")]
-    public Task WhereDoesNotSelectDeletedRows_StillReports(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();"));
+    public Task WhereDoesNotSelectDeletedRows_KeepsFix(string predicate) => VerifyFixOffered(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();");
 
     [Fact]
-    public Task DeletedFilterThroughProjectWhere_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = TestApp.ProjectQueries.Where({|LC021:posts.IgnoreQueryFilters()|}, p => p.IsDeleted).ToList();"));
+    public Task DeletedFilterThroughProjectWhere_KeepsFix() => VerifyFixOffered(@"
+            var result = TestApp.ProjectQueries.Where({|LC021:posts.IgnoreQueryFilters()|}, p => p.IsDeleted).ToList();");
 
     [Fact]
-    public Task WhereReadsDeletedRows_SetRoot_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            TestApp.BlogContext db = null;
-            var result = db.Set<TestApp.Post>().Where(p => p.IsDeleted).IgnoreQueryFilters().ToList();"));
+    public Task DeletedFilterOnProjectionBeforeCall_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
 
     [Fact]
-    public Task DeletedFilterOnProjectionBeforeCall_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();"));
+    public Task DeletedFilterAfterCallOnProjectedSource_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).IgnoreQueryFilters()|}.Where(p => p.IsDeleted).ToList();");
 
     [Fact]
-    public Task DeletedFilterAfterCallOnProjectedSource_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.Select(p => new TestApp.Post { IsDeleted = true }).IgnoreQueryFilters()|}.Where(p => p.IsDeleted).ToList();"));
+    public Task DeletedFilterBeforeConcat_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.Where(p => p.IsDeleted).Concat(posts.Where(p => p.Id == id)).IgnoreQueryFilters()|}.ToList();");
 
     [Fact]
-    public Task DeletedFilterBeforeConcat_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.Where(p => p.IsDeleted).Concat(posts.Where(p => p.Id == id)).IgnoreQueryFilters()|}.ToList();"));
+    public Task DeletedFilterOnProjectedRows_KeepsFix() => VerifyFixOffered(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.Select(p => new TestApp.Post { IsDeleted = p.Deleted }).Where(p => p.IsDeleted).ToList();");
 
     [Fact]
-    public Task DeletedFilterOnProjectedRows_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = {|LC021:posts.IgnoreQueryFilters()|}.Select(p => new TestApp.Post { IsDeleted = p.Deleted }).Where(p => p.IsDeleted).ToList();"));
-
-    [Fact]
-    public Task DeletedFilterAcrossOrderingAndPaging_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = posts.IgnoreQueryFilters().OrderBy(p => p.Id).Skip(10).Take(10).Where(p => p.IsDeleted).ToList();"));
-
-    [Fact]
-    public Task DeletedFilterInSeparateStatement_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+    public Task DeletedFilterInSeparateStatement_KeepsFix() => VerifyFixOffered(@"
             var all = {|LC021:posts.IgnoreQueryFilters()|};
-            var result = all.Where(p => p.IsDeleted).ToList();"));
+            var result = all.Where(p => p.IsDeleted).ToList();");
+
+    private static Task VerifyFixWithheld(string body)
+    {
+        var code = SoftDeleteCode(body);
+        return new FixTest { TestCode = code, FixedCode = code }.RunAsync();
+    }
+
+    // The expected fix drops the reported IgnoreQueryFilters(...) call and keeps its receiver.
+    private static Task VerifyFixOffered(string body)
+    {
+        var fixedBody = Regex.Replace(body, @"\{\|LC021:(?<call>.*?)\|\}",
+            match => Regex.Replace(match.Groups["call"].Value, @"\.IgnoreQueryFilters\(.*\)$", ""));
+        return new FixTest { TestCode = SoftDeleteCode(body), FixedCode = SoftDeleteCode(fixedBody) }.RunAsync();
+    }
 }

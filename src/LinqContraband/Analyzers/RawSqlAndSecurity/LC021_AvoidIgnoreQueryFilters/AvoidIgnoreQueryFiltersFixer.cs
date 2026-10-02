@@ -30,6 +30,9 @@ public sealed class AvoidIgnoreQueryFiltersFixer : CodeFixProvider
         if (root is null) return;
 
         var diagnostic = context.Diagnostics.First();
+
+        // The query reads soft-deleted rows on purpose; without the call it would always be empty.
+        if (diagnostic.Properties.ContainsKey(AvoidIgnoreQueryFiltersAnalyzer.SelectsDeletedRowsKey)) return;
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
         var node = root.FindNode(diagnosticSpan, getInnermostNodeForTie: true);
