@@ -43,7 +43,7 @@ namespace Microsoft.EntityFrameworkCore
     }
 }
 
-public class User { public int Id { get; set; } public List<Order> Orders { get; set; } }
+public class User { public int Id { get; set; } public List<Order> Orders { get; set; } [System.ComponentModel.DataAnnotations.Schema.NotMapped] public List<Order> Transient { get; set; } public List<Order> Recent => Orders; }
 public class Order { public int Id { get; set; } public int Total { get; set; } }
 
 class TestClass
@@ -93,6 +93,22 @@ class TestClass
                 "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.");
         await VerifyCS.VerifyAnalyzerAsync(
             Source("10.0.0.0", @"var a = users.Select(u => {|#0:u.Orders.AsQueryable().ToListAsync()|}).ToList();"),
+            expected);
+    }
+
+    [Theory]
+    [InlineData("u.Transient")]
+    [InlineData("u.Recent")]
+    public async Task NestedToDictionaryOverUnmappedCollection_KeepsAdvisoryWording(string collection)
+    {
+        // A [NotMapped] or computed collection is evaluated on the client in the final projection.
+        var expected = new DiagnosticResult("LC022", DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(
+                "ToDictionary",
+                "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.");
+        await VerifyCS.VerifyAnalyzerAsync(
+            Source("10.0.0.0", @"var a = users.Select(u => new { u.Id, ById = {|#0:" + collection + @".ToDictionary(o => o.Id, o => o.Total)|} }).ToList();"),
             expected);
     }
 

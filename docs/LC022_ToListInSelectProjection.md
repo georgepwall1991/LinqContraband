@@ -18,7 +18,8 @@ A collection materializer called on a nested collection inside a `Select` projec
 
 - `ToDictionary` (and `ToDictionaryAsync`) on every EF Core version. From EF Core 3.0 on, EF Core cannot translate it
   and throws "The LINQ expression ... could not be translated" when the query runs, and the message says so. On EF Core
-  2.x, which evaluates such fragments on the client, or in a project without EF Core, it is an advisory.
+  2.x, which evaluates such fragments on the client, in a project without EF Core, or over a `[NotMapped]` or computed
+  (get-only) collection, which EF Core evaluates on the client in the final projection, it is an advisory.
 - `ToListAsync`, `ToArrayAsync` and `ToHashSetAsync` on every EF Core version, as an advisory. They return tasks, and
   EF Core does not strip them from a projection.
 - `ToList`, `ToArray` and `ToHashSet` only when the project references EF Core 7 or older, or when the EF Core version

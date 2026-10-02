@@ -79,6 +79,26 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
                compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.CosmosDbContextOptionsExtensions") == null;
     }
 
+    /// <summary>
+    /// True when the materialized sequence starts at a settable collection property without <c>[NotMapped]</c>, the
+    /// shape EF Core maps as a navigation. A computed or unmapped collection is evaluated on the client in the final
+    /// projection instead of failing translation.
+    /// </summary>
+    private static bool IsOverMappedNavigation(IInvocationOperation invocation)
+    {
+        var current = invocation.GetInvocationReceiver();
+        while (current is IInvocationOperation earlier)
+            current = earlier.GetInvocationReceiver();
+
+        if (current?.UnwrapConversions() is not IPropertyReferenceOperation { Property: { IsIndexer: false } property } ||
+            property.SetMethod == null)
+        {
+            return false;
+        }
+
+        return !property.GetAttributes().Any(attribute => attribute.AttributeClass?.Name == "NotMappedAttribute");
+    }
+
     private static bool IsDictionaryMaterializer(string methodName)
     {
         return methodName is "ToDictionary" or "ToDictionaryAsync";
@@ -152,7 +172,7 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
                                 Rule,
                                 invocation.Syntax.GetLocation(),
                                 method.Name,
-                                isDictionary && referencesEfCore ? UntranslatableReason : ReviewReason));
+                                isDictionary && referencesEfCore && IsOverMappedNavigation(invocation) ? UntranslatableReason : ReviewReason));
                     }
                 }
                 break;
