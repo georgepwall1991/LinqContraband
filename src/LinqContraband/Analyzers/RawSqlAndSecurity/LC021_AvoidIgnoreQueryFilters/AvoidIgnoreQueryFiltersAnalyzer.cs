@@ -92,11 +92,20 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         return null;
     }
 
+    // Operators over one query source that keep its rows as they are, so a deleted-rows Where on either side of
+    // IgnoreQueryFilters() still constrains every row the call exposes. Concat, Union, Join or SelectMany bring
+    // in another source, and Select changes what a later Where filters, so the walk stops at them.
+    private static readonly ImmutableHashSet<string> ChainOperators = ImmutableHashSet.Create(
+        "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take", "SkipWhile",
+        "TakeWhile", "Distinct", "Reverse", "AsQueryable", "AsNoTracking", "AsNoTrackingWithIdentityResolution",
+        "AsTracking", "Include", "ThenInclude", "AsSplitQuery", "AsSingleQuery", "TagWith", "TagWithCallSite",
+        "IgnoreAutoIncludes", "IgnoreQueryFilters");
+
     private static bool QueryChainSelectsDeletedRows(IInvocationOperation invocation)
     {
         // Calls before IgnoreQueryFilters() in the same chain.
         var current = GetChainSource(invocation);
-        while (current is IInvocationOperation earlier)
+        while (current is IInvocationOperation earlier && ChainOperators.Contains(earlier.TargetMethod.Name))
         {
             if (IsWhereSelectingDeletedRows(earlier))
                 return true;
@@ -123,7 +132,7 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
                 _ => null
             };
 
-            if (later == null)
+            if (later == null || !ChainOperators.Contains(later.TargetMethod.Name))
                 return false;
 
             if (IsWhereSelectingDeletedRows(later))
@@ -169,7 +178,7 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
                 return SelectsDeletedRows(and.LeftOperand, rowParameters) || SelectsDeletedRows(and.RightOperand, rowParameters);
 
             case IPropertyReferenceOperation { Property.Name: "HasValue" } hasValue:
-                return hasValue.Instance != null && IsDeletedMarker(hasValue.Instance, rowParameters);
+                return hasValue.Instance != null && IsPresenceMarker(hasValue.Instance, rowParameters);
 
             case IPropertyReferenceOperation property when property.Type?.SpecialType == SpecialType.System_Boolean:
                 return IsDeletedMarker(property, rowParameters);
@@ -179,12 +188,24 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
                        IsDeletedMarker(equals.RightOperand, rowParameters) && IsConstant(equals.LeftOperand, true);
 
             case IBinaryOperation { OperatorKind: BinaryOperatorKind.NotEquals } notEquals:
-                return IsDeletedMarker(notEquals.LeftOperand, rowParameters) && IsConstant(notEquals.RightOperand, null) ||
-                       IsDeletedMarker(notEquals.RightOperand, rowParameters) && IsConstant(notEquals.LeftOperand, null);
+                return IsPresenceMarker(notEquals.LeftOperand, rowParameters) && IsConstant(notEquals.RightOperand, null) ||
+                       IsPresenceMarker(notEquals.RightOperand, rowParameters) && IsConstant(notEquals.LeftOperand, null);
 
             default:
                 return false;
         }
+    }
+
+    // p.DeletedAt != null proves deletion; p.IsArchived != null on a bool? does not, because false is a value too.
+    private static bool IsPresenceMarker(IOperation operation, ImmutableArray<IParameterSymbol> rowParameters)
+    {
+        if (!IsDeletedMarker(operation, rowParameters))
+            return false;
+
+        return Unwrap(operation).Type is not INamedTypeSymbol
+        {
+            OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1
+        } nullable || nullable.TypeArguments[0].SpecialType != SpecialType.System_Boolean;
     }
 
     // A soft-delete column on the row itself: p.IsDeleted, not a captured options.IncludeDeleted switch, and not a

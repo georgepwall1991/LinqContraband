@@ -438,8 +438,22 @@ namespace LinqContraband.Test
     [InlineData("p => p.Undeleted == true")]
     [InlineData("p => TestApp.Settings.IncludeDeleted")]
     [InlineData("p => TestApp.Settings.IncludeDeleted && p.TenantId == id")]
+    [InlineData("p => p.IsArchived.HasValue")]
+    [InlineData("p => p.IsArchived != null")]
     public Task WhereDoesNotSelectDeletedRows_StillReports(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();"));
+
+    [Fact]
+    public Task DeletedFilterBeforeConcat_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.Where(p => p.IsDeleted).Concat(posts.Where(p => p.Id == id)).IgnoreQueryFilters()|}.ToList();"));
+
+    [Fact]
+    public Task DeletedFilterOnProjectedRows_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.Select(p => new TestApp.Post { IsDeleted = p.Deleted }).Where(p => p.IsDeleted).ToList();"));
+
+    [Fact]
+    public Task DeletedFilterAcrossOrderingAndPaging_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = posts.IgnoreQueryFilters().OrderBy(p => p.Id).Skip(10).Take(10).Where(p => p.IsDeleted).ToList();"));
 
     [Fact]
     public Task DeletedFilterInSeparateStatement_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
