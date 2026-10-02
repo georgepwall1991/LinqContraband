@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.17.0] - 2026-10-02
+
 ### Fixed
 
 - LC060 now reports an async EF Core operator over `AsQueryable()` on an interface-typed local, such as `IList<Item> items = new List<Item>();`, when every write to the local in the method is an array, a concrete in-memory collection or a LINQ to Objects iterator. A local that any write fills from a parameter, field or `DbSet` still stays quiet.
