@@ -47,8 +47,10 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         if (!GetQuerySourceType(invocation).IsIQueryable()) return;
 
         // posts.IgnoreQueryFilters().Where(p => p.IsDeleted): maintenance code that reads soft-deleted or
-        // archived rows on purpose. Removing the call would make the query always empty.
-        if (QueryChainSelectsDeletedRows(invocation)) return;
+        // archived rows on purpose. Removing the call would make the query always empty. Only the parameterless
+        // overload: IgnoreQueryFilters(["Tenant"]) names the filters it turns off, and a deleted-rows predicate
+        // says nothing about whether a named filter guards tenancy instead.
+        if (IsParameterlessOverload(method) && QueryChainSelectsDeletedRows(invocation)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
     }
@@ -69,16 +71,37 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
             : null;
     }
 
+    private static bool IsParameterlessOverload(IMethodSymbol method)
+    {
+        return method.ReducedFrom != null ? method.Parameters.Length == 0 : method.Parameters.Length == 1;
+    }
+
+    // The query an operator runs on: the instance, or the extension method's first parameter wherever a named
+    // argument puts it (Queryable.Where(predicate: ..., source: ...)).
+    private static IOperation? GetChainSource(IInvocationOperation invocation)
+    {
+        if (invocation.Instance != null)
+            return invocation.Instance.UnwrapConversions();
+
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Ordinal == 0)
+                return argument.Value.UnwrapConversions();
+        }
+
+        return null;
+    }
+
     private static bool QueryChainSelectsDeletedRows(IInvocationOperation invocation)
     {
         // Calls before IgnoreQueryFilters() in the same chain.
-        var current = invocation.GetInvocationReceiver();
+        var current = GetChainSource(invocation);
         while (current is IInvocationOperation earlier)
         {
             if (IsWhereSelectingDeletedRows(earlier))
                 return true;
 
-            current = earlier.GetInvocationReceiver();
+            current = GetChainSource(earlier);
         }
 
         // Calls after it.
@@ -95,10 +118,8 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
             IInvocationOperation? later = parent switch
             {
                 IInvocationOperation instanceCall when instanceCall.Instance == link => instanceCall,
-                IArgumentOperation { Parent: IInvocationOperation extensionCall } argument
-                    when extensionCall.TargetMethod.IsExtensionMethod &&
-                         extensionCall.Arguments.Length > 0 &&
-                         extensionCall.Arguments[0] == argument => extensionCall,
+                IArgumentOperation { Parent: IInvocationOperation extensionCall, Parameter.Ordinal: 0 }
+                    when extensionCall.TargetMethod.IsExtensionMethod => extensionCall,
                 _ => null
             };
 
@@ -117,7 +138,17 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
         if (invocation.TargetMethod.Name != "Where" || invocation.Arguments.Length < 2)
             return false;
 
-        var predicate = invocation.Arguments[invocation.Arguments.Length - 1].Value.UnwrapConversions();
+        // The predicate is the parameter after the source, wherever a named argument puts it.
+        IOperation? predicate = null;
+        foreach (var argument in invocation.Arguments)
+        {
+            if (argument.Parameter?.Ordinal == 1)
+                predicate = argument.Value.UnwrapConversions();
+        }
+
+        if (predicate == null)
+            return false;
+
         if (predicate is IDelegateCreationOperation delegateCreation)
             predicate = delegateCreation.Target.UnwrapConversions();
 

@@ -407,9 +407,26 @@ namespace LinqContraband.Test
     public Task WhereReadsDeletedRows_BeforeIgnoreQueryFilters_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
             var result = posts.Where(p => p.IsDeleted).IgnoreQueryFilters().ToList();"));
 
+    // A deleted-rows predicate does not justify turning off a named filter that may guard tenancy.
     [Fact]
-    public Task WhereReadsDeletedRows_NamedOverload_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
-            var result = posts.IgnoreQueryFilters(new[] { ""SoftDelete"" }).Where(p => p.IsDeleted).ToList();"));
+    public Task WhereReadsDeletedRows_NamedOverload_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters(new[] { ""Tenant"" })|}.Where(p => p.IsDeleted).ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_NamedOverloadCollectionExpression_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters([""Tenant""])|}.Where(p => p.IsDeleted).ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_ParenthesizedChain_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = (posts.IgnoreQueryFilters()).Where(p => p.IsDeleted).ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = Queryable.Where(predicate: p => p.IsDeleted, source: posts.IgnoreQueryFilters()).ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_StaticWhereWithReorderedNamedArguments_BeforeCall_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = Queryable.Where(predicate: p => p.IsDeleted, source: posts).IgnoreQueryFilters().ToList();"));
 
     [Theory]
     [InlineData("p => !p.IsDeleted")]
