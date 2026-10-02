@@ -396,6 +396,11 @@ namespace Microsoft.EntityFrameworkCore
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
+    public static class RelationalQueryableExtensions
+    {
+        public static IQueryable<T> FromSqlRaw<T>(this DbSet<T> source, string sql, params object[] parameters) where T : class => source;
+    }
+
     public class DbContext
     {
         public DbSet<T> Set<T>() where T : class => null;
@@ -474,6 +479,11 @@ namespace LinqContraband.Test
     [Fact]
     public Task DeletedFilterAfterCast_ReportsWithoutFix() => VerifyFixWithheld(@"
             var result = {|LC021:posts.Cast<TestApp.Post>().Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
+
+    [Fact]
+    public Task DeletedFilterOverFromSqlRawRoot_ReportsWithoutFix() => VerifyFixWithheld(@"
+            TestApp.BlogContext db = null;
+            var result = {|LC021:db.Set<TestApp.Post>().FromSqlRaw(""SELECT * FROM Posts"").Where(p => p.IsDeleted).IgnoreQueryFilters()|}.ToList();");
 
     // A deleted-rows predicate does not show the named filter is the soft-delete one, so the fix stays.
     [Fact]

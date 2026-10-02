@@ -101,12 +101,13 @@ public sealed class AvoidIgnoreQueryFiltersAnalyzer : DiagnosticAnalyzer
 
     // Operators over one query source that keep its rows as they are, so a deleted-rows Where on either side of
     // IgnoreQueryFilters() still constrains every row the call exposes. Concat, Union, Join or SelectMany bring
-    // in another source, and Select changes what a later Where filters, so the walk stops at them.
+    // in another source, and Select changes what a later Where filters, so the walk stops at them. FromSql* over a
+    // DbSet is an entity root that global filters still apply to, so the walk passes through it to the DbSet.
     private static readonly ImmutableHashSet<string> ChainOperators = ImmutableHashSet.Create(
         "Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "Skip", "Take", "SkipWhile",
         "TakeWhile", "Distinct", "Reverse", "OfType", "Cast", "AsQueryable", "AsNoTracking", "AsNoTrackingWithIdentityResolution",
         "AsTracking", "Include", "ThenInclude", "AsSplitQuery", "AsSingleQuery", "TagWith", "TagWithCallSite",
-        "IgnoreAutoIncludes", "IgnoreQueryFilters");
+        "IgnoreAutoIncludes", "IgnoreQueryFilters", "FromSql", "FromSqlRaw", "FromSqlInterpolated");
 
     // Only the real System.Linq.Queryable and EF Core operators: a project's own Where could ignore its predicate.
     private static bool IsChainOperator(IMethodSymbol method)
