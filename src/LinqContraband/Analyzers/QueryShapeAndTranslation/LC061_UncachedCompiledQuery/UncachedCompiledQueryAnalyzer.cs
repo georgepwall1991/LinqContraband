@@ -525,11 +525,16 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         cacheBuiltPerCall = false;
         var boundary = node.Ancestors()
             .FirstOrDefault(ancestor => ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
-        if (boundary is not AnonymousFunctionExpressionSyntax lambda ||
-            lambda.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } argumentList } argument)
-        {
+        if (boundary is not AnonymousFunctionExpressionSyntax lambda)
             return false;
-        }
+
+        // GetOrAdd(key, (Func<string, Query>)(_ => EF.CompileQuery(...))): the cast only fixes the delegate type.
+        ExpressionSyntax factory = lambda;
+        while (factory.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            factory = (ExpressionSyntax)factory.Parent;
+
+        if (factory.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: { } owner } argumentList } argument)
+            return false;
 
         switch (owner)
         {
@@ -597,10 +602,18 @@ public sealed class UncachedCompiledQueryAnalyzer : DiagnosticAnalyzer
         if (!method.IsStatic || method.MethodKind == MethodKind.ReducedExtension)
             return call.Expression is MemberAccessExpressionSyntax access && IsKeptReceiver(access.Expression, semanticModel);
 
-        if (call.ArgumentList.Arguments.Count == 0)
+        // The cache is the method's first parameter, wherever named arguments put it in the call.
+        if (method.Parameters.Length == 0)
             return false;
 
-        var first = call.ArgumentList.Arguments[0];
+        var cacheParameter = method.Parameters[0].Name;
+        var arguments = call.ArgumentList.Arguments;
+        var first = arguments.Count > 0 && arguments[0].NameColon == null
+            ? arguments[0]
+            : arguments.FirstOrDefault(argument => argument.NameColon?.Name.Identifier.ValueText == cacheParameter);
+        if (first == null)
+            return false;
+
         return first.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
             ? IsKeptRefTarget(first.Expression, semanticModel)
             : IsKeptReceiver(first.Expression, semanticModel);

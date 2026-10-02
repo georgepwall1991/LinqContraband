@@ -155,6 +155,8 @@ class Repo
     private static readonly ConcurrentDictionary<string, Func<Ctx, int, Blog>> Cache = new();
     public Blog Get(string key, int id) { var cache = Cache; return cache.GetOrAdd(key, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
     [InlineData(@"public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return System.Threading.LazyInitializer.EnsureInitialized(ref q, () => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }")]
+    [InlineData(@"public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return System.Threading.LazyInitializer.EnsureInitialized(valueFactory: () => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)), target: ref q)(_db, id); }")]
+    [InlineData(@"public Blog Get(string key, int id) => new ConcurrentDictionary<string, Blog>().GetOrAdd(key, (Func<string, Blog>)(_ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)));")]
     [InlineData(@"public Lazy<Func<Ctx, int, Blog>> Make() => new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));")]
     [InlineData(@"public Blog Get(int id) { var lazy = new Lazy<Func<Ctx, int, Blog>>(() => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i))); Keep(lazy); return lazy.Value(_db, id); } private void Keep(object o) { }")]
     // A computed property builds a new cache on every read.
@@ -297,6 +299,20 @@ class Repo
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId != null || id > 0) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (!(_byId == null && id > 0)) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); } return _byId(_db, id); }")]
     [InlineData(@"private Func<Ctx, int, Blog> _byId; public Blog Get(int id) { if (_byId == null) this._byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); return this._byId(_db, id); }")]
+    // A cast or parentheses around the factory lambda, and named arguments in any order.
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Blog> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, (Func<string, Blog>)(_ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)));")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Blog> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(key, (_ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id)));")]
+    [InlineData(@"
+    private static readonly ConcurrentDictionary<string, Blog> Cache = new();
+    public Blog Get(string key, int id) => Cache.GetOrAdd(valueFactory: _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(_db, id), key: key);")]
+    [InlineData(@"
+    private Func<Ctx, int, Blog> _byId;
+    public Blog Get(int id) => System.Threading.LazyInitializer.EnsureInitialized(valueFactory: () => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)), target: ref _byId)(_db, id);")]
+    [InlineData(@"private static readonly Lazy<Blog> First = new((Func<Blog>)(() => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i))(new Ctx(), 1)));")]
     // A private factory called only from static initializers or a static constructor runs once.
     [InlineData(@"
     private static readonly Blog First = Build()(new Ctx(), 1);
