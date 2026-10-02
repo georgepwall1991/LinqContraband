@@ -112,8 +112,8 @@ public sealed partial class SaveChangesInLoopAnalyzer
             .OfType<IVariableDeclaratorOperation>()
             .FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(candidate.Symbol, local));
 
-        return declaration?.Initializer?.Value is IObjectCreationOperation objectCreation &&
-               objectCreation.Type?.IsDbContext() == true &&
+        return declaration?.Initializer?.Value is { } initializer &&
+               IsFreshContextCreation(initializer, loop, saveOperation, executionOperation) &&
                !IsLocalWrittenBeforeSaveExecution(loop.Body, saveOperation, executionOperation, local);
     }
 
