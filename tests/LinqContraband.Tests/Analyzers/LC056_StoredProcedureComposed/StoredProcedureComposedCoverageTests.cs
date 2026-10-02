@@ -65,7 +65,14 @@ public partial class StoredProcedureComposedTests
     {
         // ExecuteUpdate is composing. Dropping it from EfComposing leaves a set-based write over EXEC quiet.
         await VerifyCS.VerifyAnalyzerAsync(Wrap(
-            @"var updated = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:ExecuteUpdate|}();"));
+            @"var updated = db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:ExecuteUpdate|}(s => s.SetProperty(b => b.Rating, 0));"));
+    }
+
+    [Fact]
+    public async Task ExecuteUpdateAsync_Composer_Reports()
+    {
+        await VerifyCS.VerifyAnalyzerAsync(Wrap(
+            @"var updated = await db.Blogs.FromSqlRaw(""EXEC dbo.GetBlogs"").{|LC056:ExecuteUpdateAsync|}(s => s.SetProperty(b => b.Rating, 0), ct);"));
     }
 
     [Fact]

@@ -42,8 +42,16 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<TEntity> AsSingleQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
         public static int ExecuteDelete<TEntity>(this IQueryable<TEntity> source) => 0;
         public static Task<int> ExecuteDeleteAsync<TEntity>(this IQueryable<TEntity> source, CancellationToken cancellationToken = default) => null;
-        public static int ExecuteUpdate<TEntity>(this IQueryable<TEntity> source) => 0;
-        public static Task<int> ExecuteUpdateAsync<TEntity>(this IQueryable<TEntity> source, CancellationToken cancellationToken = default) => null;
+        public static int ExecuteUpdate<TEntity>(this IQueryable<TEntity> source, Expression<Func<Query.SetPropertyCalls<TEntity>, Query.SetPropertyCalls<TEntity>>> setPropertyCalls) => 0;
+        public static Task<int> ExecuteUpdateAsync<TEntity>(this IQueryable<TEntity> source, Expression<Func<Query.SetPropertyCalls<TEntity>, Query.SetPropertyCalls<TEntity>>> setPropertyCalls, CancellationToken cancellationToken = default) => null;
+    }
+
+    namespace Query
+    {
+        public sealed class SetPropertyCalls<TSource>
+        {
+            public SetPropertyCalls<TSource> SetProperty<TProperty>(Func<TSource, TProperty> propertyExpression, TProperty valueExpression) => this;
+        }
     }
 
     public static class RelationalDatabaseFacadeExtensions

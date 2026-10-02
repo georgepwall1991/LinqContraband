@@ -101,5 +101,5 @@ Cache.GetOrAdd(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.
 if (_byId is { }) { } else { _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)); }
 if (_byId == default) _byId = EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i));
 _cache.GetOrCreate(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
-ImmutableInterlocked.GetOrAdd(ref _byId, 0, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
+ImmutableInterlocked.GetOrAdd(ref _queries, id, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)));
 ```

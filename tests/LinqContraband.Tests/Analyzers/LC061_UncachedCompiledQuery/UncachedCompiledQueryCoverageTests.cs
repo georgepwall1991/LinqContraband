@@ -28,23 +28,25 @@ namespace Microsoft.Extensions.Caching.Memory
     public static class CacheExtensions
     {
         public static TItem GetOrCreate<TItem>(this IMemoryCache cache, object key, System.Func<ICacheEntry, TItem> factory) => factory(null);
-        public static TItem GetOrCreateAsync<TItem>(this IMemoryCache cache, object key, System.Func<ICacheEntry, TItem> factory) => factory(null);
+        public static System.Threading.Tasks.Task<TItem> GetOrCreateAsync<TItem>(this IMemoryCache cache, object key, System.Func<ICacheEntry, System.Threading.Tasks.Task<TItem>> factory) => factory(null);
     }
 }
 
 namespace Microsoft.Extensions.Caching.Hybrid
 {
-    public class HybridCache
+    public abstract class HybridCache
     {
-        public T GetOrCreateAsync<T>(string key, System.Func<string, T> factory) => factory(key);
+        public System.Threading.Tasks.ValueTask<T> GetOrCreateAsync<T>(string key, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<T>> factory, System.Threading.CancellationToken cancellationToken = default) => factory(cancellationToken);
     }
 }
 
 namespace System.Collections.Immutable
 {
+    public sealed class ImmutableDictionary<TKey, TValue> { }
+
     public static class ImmutableInterlocked
     {
-        public static TValue GetOrAdd<TKey, TValue>(ref TValue location, TKey key, System.Func<TKey, TValue> valueFactory) => valueFactory(key);
+        public static TValue GetOrAdd<TKey, TValue>(ref ImmutableDictionary<TKey, TValue> location, TKey key, System.Func<TKey, TValue> valueFactory) => valueFactory(key);
     }
 }
 ";
@@ -133,7 +135,7 @@ namespace System.Collections.Immutable
     public async Task IMemoryCache_GetOrCreateAsync_StaysQuiet()
     {
         await VerifyCS.VerifyAnalyzerAsync(WrapMembersWithCaches(@"
-    public Blog Get(IMemoryCache cache, string key, int id) => cache.GetOrCreateAsync(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);"));
+    public async Task<Blog> Get(IMemoryCache cache, string key, int id) => (await cache.GetOrCreateAsync(key, _ => Task.FromResult(EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))))(_db, id);"));
     }
 
     [Fact]
@@ -141,15 +143,15 @@ namespace System.Collections.Immutable
     {
         await VerifyCS.VerifyAnalyzerAsync(WrapMembersWithCaches(@"
     private readonly HybridCache _cache;
-    public Blog Get(string key, int id) => _cache.GetOrCreateAsync(key, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);"));
+    public async Task<Blog> Get(string key, int id) => (await _cache.GetOrCreateAsync(key, _ => new ValueTask<Func<Ctx, int, Blog>>(EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))))(_db, id);"));
     }
 
     [Fact]
     public async Task ImmutableInterlocked_GetOrAdd_StaysQuiet()
     {
         await VerifyCS.VerifyAnalyzerAsync(WrapMembersWithCaches(@"
-    private static Func<Ctx, int, Blog> _byId;
-    public Blog Get(int id) => ImmutableInterlocked.GetOrAdd(ref _byId, 0, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);"));
+    private static ImmutableDictionary<int, Func<Ctx, int, Blog>> _queries;
+    public Blog Get(int id) => ImmutableInterlocked.GetOrAdd(ref _queries, 0, _ => EF.CompileQuery((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id);"));
     }
 
     [Fact]
@@ -167,7 +169,7 @@ namespace System.Collections.Immutable
     {
         await VerifyCS.VerifyAnalyzerAsync(
             WrapMembersWithCaches(@"
-    public Blog Get(int id) { Func<Ctx, int, Blog> q = null; return ImmutableInterlocked.GetOrAdd(ref q, 0, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }"),
+    public Blog Get(int id) { ImmutableDictionary<int, Func<Ctx, int, Blog>> q = null; return ImmutableInterlocked.GetOrAdd(ref q, 0, _ => {|#0:EF.CompileQuery|}((Ctx c, int i) => c.Blogs.First(b => b.Id == i)))(_db, id); }"),
             VerifyCS.Diagnostic().WithLocation(0).WithArguments("CompileQuery"));
     }
 }
