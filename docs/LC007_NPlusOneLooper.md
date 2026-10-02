@@ -93,6 +93,7 @@ The code fix is not offered for helper calls.
 - Invocations nested inside lambdas or local functions declared in the loop body (a call to such a local function from the loop is a helper call, see above)
 - Loop-source materialization that happens once before iteration, such as the `db.Users.ToList()` part of a `foreach`
 - `while`, `do` and `for` loops that run until the database says they are done, as long as the loop condition does not walk an item source of its own (see below)
+- Load-once guards that run the query at most once (see below)
 
 ### Batch, polling and retry loops
 
@@ -180,6 +181,23 @@ while (pending.Count > 0)
     foreach (var child in children) pending.Enqueue(child);
 }
 ```
+
+### Load-once guards
+
+A query that only fills a local the first time the loop needs it runs once, not once per item:
+
+```csharp
+CategoryDefinition definition = null;
+foreach (var item in items)
+{
+    if (definition == null)
+        definition = await db.Definitions.FirstAsync(d => d.Key == key, ct); // quiet: runs once
+    // or: definition ??= await db.Definitions.FirstAsync(d => d.Key == key, ct);
+    Apply(definition, item);
+}
+```
+
+This applies when the query's result is assigned to a local declared before the loop, the assignment is `??=` or sits directly in the then-branch of an `if` whose condition is `x == null` or `x is null` (optionally combined with `&&`), and nothing else writes that local inside the loop or from a lambda or local function. The same holds for a guarded helper call. A local declared inside the loop (or inside an outer loop that repeats the guard), a local reset inside the loop, a guard on a different local, an `||` or `!= null` condition, and an assignment in the `else` branch still report. The assignment must leave the local non-null, or the guard stays open: `FirstOrDefault`, `SingleOrDefault`, `Find` and their async forms (which return `null` when no row matches), a helper whose result is nullable, marked `[return: MaybeNull]`, or carries no nullable annotations, a value passed through an `as` or user-defined conversion, a `Select` projection or in-memory source in code without nullable annotations (its element can be null), a guard using a user-defined `==` or conversion, an assignment inside a `try` whose `catch` lets the loop continue, and a local also reachable through a `ref` alias or passed by `ref` to a call still report.
 
 ## Fixer Behavior
 LC007 offers a fixer only for conservative, analyzer-proven explicit-loading cases.
