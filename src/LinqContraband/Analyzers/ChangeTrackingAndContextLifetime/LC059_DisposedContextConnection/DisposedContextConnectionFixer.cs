@@ -16,8 +16,8 @@ namespace LinqContraband.Analyzers.LC059_DisposedContextConnection;
 /// <summary>
 /// Provides code fixes for LC059. Leaves disposal of the context's connection to the <c>DbContext</c>: a
 /// <c>using</c>/<c>await using</c> declaration becomes a plain local declaration, a <c>using</c> statement becomes a
-/// block that starts with a plain declaration, and an explicit <c>Dispose()</c>/<c>DisposeAsync()</c> statement is
-/// removed.
+/// block that starts with a plain declaration, and an explicit <c>Dispose()</c>/<c>DisposeAsync()</c> statement,
+/// including a conditional <c>connection?.Dispose()</c>, is removed.
 /// </summary>
 /// <remarks>
 /// A using that also disposes another resource, and a disposal that is not a statement of its own in a block (the
@@ -76,6 +76,19 @@ public sealed class DisposedContextConnectionFixer : CodeFixProvider
             })
         {
             return RemoveDisposeStatement(root, invocation);
+        }
+
+        // connection?.Dispose().
+        if (node.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>() is
+            {
+                WhenNotNull: InvocationExpressionSyntax
+                {
+                    Expression: MemberBindingExpressionSyntax { Name.Identifier.ValueText: "Dispose" or "DisposeAsync" }
+                }
+            } conditional &&
+            conditional.Span == node.Span)
+        {
+            return RemoveDisposeStatement(root, conditional);
         }
 
         var expression = node as ExpressionSyntax ?? node.FirstAncestorOrSelf<ExpressionSyntax>();
@@ -149,7 +162,7 @@ public sealed class DisposedContextConnectionFixer : CodeFixProvider
             .WithAdditionalAnnotations(Formatter.Annotation);
     }
 
-    private static SyntaxNode? RemoveDisposeStatement(SyntaxNode root, InvocationExpressionSyntax invocation)
+    private static SyntaxNode? RemoveDisposeStatement(SyntaxNode root, ExpressionSyntax invocation)
     {
         SyntaxNode current = invocation;
         if (current.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ConfigureAwait" } configureAwait &&

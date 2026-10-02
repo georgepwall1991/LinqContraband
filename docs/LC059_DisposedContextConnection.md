@@ -58,7 +58,7 @@ Reports when the connection from `GetDbConnection()`, directly, through a cast, 
 
 1. The resource of a `using` or `await using` declaration: `using var connection = db.Database.GetDbConnection();`.
 2. The resource of a `using` or `await using` statement: `using (var connection = ...)`, `using (connection)`, `using (db.Database.GetDbConnection())`.
-3. The receiver of `Dispose()` or `DisposeAsync()`.
+3. The receiver of `Dispose()` or `DisposeAsync()`, including the receiver of a conditional `connection?.Dispose()`.
 
 ## When it stays quiet (non-goals)
 
@@ -66,7 +66,6 @@ Reports when the connection from `GetDbConnection()`, directly, through a cast, 
 - `Close()` and `CloseAsync()`. Closing a connection the code opened is correct.
 - Connections the code creates itself, such as `new SqlConnection(...)` or a factory call.
 - A local that can hold another connection, because it is assigned more than once.
-- Conditional disposal through `?.`.
 
 ## Code Fix
 
@@ -74,7 +73,7 @@ Removes the disposal and leaves it to the `DbContext`:
 
 - `using var connection = db.Database.GetDbConnection();` and `await using var ...` become `var connection = db.Database.GetDbConnection();`.
 - A `using` or `await using` statement becomes a plain block that starts with the declaration, so the local keeps its scope: `using (var c = ...) { ... }` becomes `{ var c = ...; ... }`. A statement without a declaration (`using (connection) { ... }`) keeps just its body.
-- A `connection.Dispose();` or `await connection.DisposeAsync();` statement is removed.
+- A `connection.Dispose();`, `connection?.Dispose();` or `await connection.DisposeAsync();` statement is removed.
 
 A `using` that declares another resource as well (`using DbConnection a = ..., b = ...;`) and a disposal that is not a statement of its own in a block (the body of an `if` without braces, a lambda body) get no fix. The fixer compiles the result and offers nothing when the rewrite would add an error.
 
@@ -88,6 +87,7 @@ await using (var connection = db.Database.GetDbConnection()) { await connection.
 var connection = db.Database.GetDbConnection(); connection.Open(); connection.Dispose();
 using var connection = RelationalDatabaseFacadeExtensions.GetDbConnection(db.Database);
 ((IDisposable)connection).Dispose();
+connection?.Dispose();
 ```
 
 ### Valid
