@@ -52,6 +52,8 @@ namespace TestApp
     [InlineData("return db.Blogs.Select(b => new { b.Name, Posts = db.Set<Post>().Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList();")]
     // Query syntax projection.
     [InlineData("return (from b in db.Blogs select new { b.Name, Posts = db.Posts.Where(p => p.BlogId == b.Id).ToList() }).Take(10).ToList();")]
+    // The query source reached through a local or DbContext.Set<T>().
+    [InlineData("var blogs = db.Blogs.Where(b => b.Id > 0); return blogs.Select(b => new BlogDto { Posts = db.Posts.Where(p => p.BlogId == b.Id).ToArray() }).Take(10).ToList();")]
     public Task NestedMaterializerInsideExpressionTree_IsQuiet(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 
@@ -67,6 +69,8 @@ namespace TestApp
     [InlineData("Expression<Func<Blog, List<Post>>> selector = b => {|LC031:db.Posts.Where(p => p.BlogId == b.Id).ToList()|}; return selector;")]
     [InlineData("return Execute(() => {|LC031:db.Posts.ToList()|});")]
     [InlineData("new object().HasConversion<int>(id => {|LC031:db.Posts.ToList()|}); return null;")]
+    // AsQueryable() over an in-memory sequence compiles the selector and runs it locally.
+    [InlineData("return new[] { 1 }.AsQueryable().Select(_ => {|LC031:db.Posts.ToList()|}).ToList();")]
     public Task OuterUnboundedTerminalOrDelegateLambda_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 }

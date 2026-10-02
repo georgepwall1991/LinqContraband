@@ -165,9 +165,9 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
         {
             var c = sql[i];
 
-            // -- line comment, or a MySQL # line comment (#Temp and ##Temp are SQL Server temp tables).
-            if (c == '-' && i + 1 < sql.Length && sql[i + 1] == '-' ||
-                c == '#' && (i + 1 >= sql.Length || !IsWordChar(sql[i + 1]) && sql[i + 1] != '#'))
+            // -- line comment, or a MySQL # line comment. A SQL Server #Temp table name reads the same, so everything
+            // after a # is ignored; a limit written after one does not count.
+            if (c == '-' && i + 1 < sql.Length && sql[i + 1] == '-' || c == '#')
             {
                 while (i < sql.Length && sql[i] != '\n')
                     i++;
