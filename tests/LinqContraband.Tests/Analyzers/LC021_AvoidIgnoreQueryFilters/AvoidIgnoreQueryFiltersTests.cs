@@ -343,4 +343,89 @@ namespace LinqContraband.Test
 
         await test.RunAsync();
     }
+
+    private const string SoftDeleteTypes = @"
+namespace TestApp
+{
+    public class Post
+    {
+        public int Id { get; set; }
+        public int TenantId { get; set; }
+        public bool Deleted { get; set; }
+        public bool IsDeleted { get; set; }
+        public bool? IsArchived { get; set; }
+        public System.DateTime? DeletedAt { get; set; }
+        public string DeletedBy { get; set; }
+        public bool IsNotDeleted { get; set; }
+        public bool Undeleted { get; set; }
+    }
+
+    public static class Settings
+    {
+        public static bool IncludeDeleted { get; set; }
+    }
+}
+";
+
+    private static string SoftDeleteCode(string body) => @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + SoftDeleteTypes + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod(IQueryable<TestApp.Post> posts, int id)
+        {
+" + body + @"
+        }
+    }
+}";
+
+    // EF Core 10 named filters: IgnoreQueryFilters([""SoftDelete""]) still turns the named filters off, and a
+    // filter name says nothing about what the filter guards, so the named overload keeps reporting.
+    [Fact]
+    public Task NamedFilterOverload_InlineArray_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters(new[] { ""SoftDelete"" })|}.ToList();"));
+
+    [Fact]
+    public Task NamedFilterOverload_CollectionExpression_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters([""SoftDelete""])|}.ToList();"));
+
+    // Maintenance code that reads soft-deleted or archived rows on purpose: without IgnoreQueryFilters() the
+    // query would always be empty.
+    [Theory]
+    [InlineData("p => p.Deleted")]
+    [InlineData("p => p.IsDeleted")]
+    [InlineData("p => p.IsDeleted == true")]
+    [InlineData("p => p.IsArchived == true")]
+    [InlineData("p => p.DeletedAt != null")]
+    [InlineData("p => p.DeletedAt.HasValue")]
+    [InlineData("p => null != p.DeletedBy")]
+    [InlineData("p => p.Id == id && p.IsDeleted")]
+    public Task WhereReadsDeletedRows_IsQuiet(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = posts.IgnoreQueryFilters().Where(" + predicate + @").ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_BeforeIgnoreQueryFilters_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = posts.Where(p => p.IsDeleted).IgnoreQueryFilters().ToList();"));
+
+    [Fact]
+    public Task WhereReadsDeletedRows_NamedOverload_IsQuiet() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = posts.IgnoreQueryFilters(new[] { ""SoftDelete"" }).Where(p => p.IsDeleted).ToList();"));
+
+    [Theory]
+    [InlineData("p => !p.IsDeleted")]
+    [InlineData("p => p.IsDeleted == false")]
+    [InlineData("p => p.DeletedAt == null")]
+    [InlineData("p => p.IsDeleted || p.TenantId == id")]
+    [InlineData("p => p.TenantId == id")]
+    [InlineData("p => p.IsNotDeleted")]
+    [InlineData("p => p.Undeleted == true")]
+    [InlineData("p => TestApp.Settings.IncludeDeleted")]
+    [InlineData("p => TestApp.Settings.IncludeDeleted && p.TenantId == id")]
+    public Task WhereDoesNotSelectDeletedRows_StillReports(string predicate) => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var result = {|LC021:posts.IgnoreQueryFilters()|}.Where(" + predicate + @").ToList();"));
+
+    [Fact]
+    public Task DeletedFilterInSeparateStatement_StillReports() => VerifyCS.VerifyAnalyzerAsync(SoftDeleteCode(@"
+            var all = {|LC021:posts.IgnoreQueryFilters()|};
+            var result = all.Where(p => p.IsDeleted).ToList();"));
 }

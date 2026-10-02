@@ -357,6 +357,39 @@ namespace LinqContraband.Test
         await VerifyFix(test, fixedCode);
     }
 
+    // EF Core 10 named filters: removing IgnoreQueryFilters([""SoftDelete""]) puts the named filter back, which is
+    // the same bypass removal as for the parameterless overload, and the collection expression goes with the call.
+    [Fact]
+    public async Task IgnoreQueryFilters_NamedFilterCollectionExpression_ShouldRemoveBypassCall()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = {|LC021:query.IgnoreQueryFilters([""SoftDelete""])|}.Where(x => x > 0).ToList();
+        }
+    }
+}";
+        var fixedCode = @"using Microsoft.EntityFrameworkCore;" + EFCoreMock + @"
+namespace LinqContraband.Test
+{
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var query = new int[0].AsQueryable();
+            var result = query.Where(x => x > 0).ToList();
+        }
+    }
+}";
+
+        await VerifyFix(test, fixedCode);
+    }
+
     private static async Task VerifyFix(string test, string fixedCode)
     {
         var testObj = new CodeFixTest

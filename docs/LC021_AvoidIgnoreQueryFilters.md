@@ -52,7 +52,13 @@ EntityFrameworkQueryableExtensions.IgnoreQueryFilters(db.Users).ToList();
 ### Valid
 ```csharp
 db.Users.Where(x => x.Active);
+
+// Maintenance code that reads soft-deleted or archived rows on purpose.
+db.Posts.IgnoreQueryFilters().Where(p => p.IsDeleted).ToList();
+db.Posts.IgnoreQueryFilters().Where(p => p.Id == id && p.DeletedAt != null).ToList();
 ```
+
+LC021 stays quiet when a `Where` in the same query chain (before or after `IgnoreQueryFilters()`) selects deleted or archived rows: a `bool` property whose name contains `Delete` or `Archiv` (`p.Deleted`, `p.IsDeleted`, `p.IsDeleted == true`, `p.IsArchived == true`), a nullable one compared to `null` (`p.DeletedAt != null`, `p.DeletedAt.HasValue`, `p.DeletedBy != null`), or any of these as one side of `&&`. The property must belong to the `Where` lambda's own row (a captured `options.IncludeDeleted` does not count), and negated names such as `IsNotDeleted` or `Undeleted` do not count. Without the call such a query is always empty, so removing it, as the fixer would, breaks the restore or purge code. A predicate that excludes deleted rows (`!p.IsDeleted`, `p.DeletedAt == null`), an `||`, or a `Where` applied in a later statement keeps the report, because the call may still be there to cross a tenant or security filter.
 
 LC021 intentionally stays quiet for lookalikes that are not the EF Core extension method:
 
@@ -67,7 +73,7 @@ values.IgnoreQueryFilters();
 
 ## Shipped Behavior
 
-LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. That includes EF Core's named-filter overload, because `IgnoreQueryFilters(filterKeys)` still disables the named filters passed to it. The fixer removes the call when the bypass is accidental, including static extension-method syntax such as `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)` and named-filter syntax such as `query.IgnoreQueryFilters(filterKeys)`; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
+LC021 reports EF Core `IgnoreQueryFilters()` calls so filter bypasses are visible during review. That includes EF Core's named-filter overload, because `IgnoreQueryFilters(filterKeys)` still disables the named filters passed to it. EF Core 10 code such as `IgnoreQueryFilters(["SoftDelete"])` or `IgnoreQueryFilters(new[] { "SoftDelete" })` keeps reporting: a filter's name is only a string and says nothing reliable about what the filter guards (a filter named `SoftDelete` can also scope by tenant), so the analyzer does not guess from it. Removing the named call is still a well-defined fix: it turns the named filters back on and leaves the others as they were. The fixer removes the call when the bypass is accidental, including static extension-method syntax such as `EntityFrameworkQueryableExtensions.IgnoreQueryFilters(query)` and named-filter syntax such as `query.IgnoreQueryFilters(filterKeys)`; keep the diagnostic suppressed or documented only when the query intentionally crosses tenant, soft-delete, or security-filter boundaries.
 
 Intentional bypasses should be local and auditable:
 
