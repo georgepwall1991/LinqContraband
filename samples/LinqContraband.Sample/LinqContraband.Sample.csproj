@@ -14,7 +14,7 @@
 
     <ItemGroup>
         <!-- EF Core's SQLite provider pulls SQLitePCLRaw 2.1.11, which has a known vulnerability (GHSA-2m69-gcr7-jv3q). -->
-        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13"/>
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5"/>
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
