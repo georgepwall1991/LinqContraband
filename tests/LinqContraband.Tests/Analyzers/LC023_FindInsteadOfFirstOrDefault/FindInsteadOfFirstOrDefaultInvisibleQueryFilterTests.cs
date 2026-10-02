@@ -454,6 +454,43 @@ namespace LinqContraband.Test
     }
 
     [Fact]
+    public async Task FirstOrDefault_WhenIsMultiTenantIsNotFinbuckle_ShouldTrigger()
+    {
+        // An IsMultiTenant() lookalike from another library does not install a tenant query filter.
+        var test = @"using Microsoft.EntityFrameworkCore;
+using System.Linq;" + EFCoreMock + @"
+namespace Contoso.Tenancy
+{
+    public static class EntityTypeBuilderExtensions
+    {
+        public static Microsoft.EntityFrameworkCore.EntityTypeBuilder<T> IsMultiTenant<T>(this Microsoft.EntityFrameworkCore.EntityTypeBuilder<T> builder) where T : class => builder;
+    }
+}
+
+namespace LinqContraband.Test
+{
+    using Contoso.Tenancy;
+
+    public class User { public int Id { get; set; } }
+
+    public class AppDbContext : DbContext
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<User>().IsMultiTenant();
+        }
+    }
+
+    public class TestClass
+    {
+        public User UserById(DbSet<User> users, int id) => {|LC023:users.FirstOrDefault(x => x.Id == id)|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task FirstOrDefault_WhenEntityHasFinbuckleMultiTenantAttribute_ShouldNotTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;

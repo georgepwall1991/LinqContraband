@@ -34,9 +34,18 @@ internal static partial class FindInsteadOfFirstOrDefaultKeyAnalysis
                 return;
             }
 
-            // Finbuckle's IsMultiTenant() adds a tenant query filter to the entity.
-            if (methodName is not ("HasQueryFilter" or "IsMultiTenant"))
+            // Finbuckle's IsMultiTenant() adds a tenant query filter to the entity. A lookalike from
+            // any other library does not.
+            if (methodName == "IsMultiTenant")
+            {
+                var original = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+                if (original.ContainingType == null || !IsFinbuckleSymbol(original.ContainingType))
+                    return;
+            }
+            else if (methodName != "HasQueryFilter")
+            {
                 return;
+            }
 
             if (TryGetEntityTypeBuilderEntity(invocation.GetInvocationReceiverType(), out var entityType))
             {
