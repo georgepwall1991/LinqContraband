@@ -71,6 +71,9 @@ namespace TestApp
     [InlineData("new object().HasConversion<int>(id => {|LC031:db.Posts.ToList()|}); return null;")]
     // AsQueryable() over an in-memory sequence compiles the selector and runs it locally.
     [InlineData("return new[] { 1 }.AsQueryable().Select(_ => {|LC031:db.Posts.ToList()|}).ToList();")]
+    [InlineData("return db.Blogs.Take(1).ToList().AsQueryable().Select(_ => {|LC031:db.Posts.ToList()|}).ToList();")]
+    // Here the outer terminal also loads the whole Blogs table through AsEnumerable().
+    [InlineData("return {|LC031:db.Blogs.AsEnumerable().AsQueryable().Select(_ => {|LC031:db.Posts.ToList()|}).ToList()|};")]
     public Task OuterUnboundedTerminalOrDelegateLambda_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 }

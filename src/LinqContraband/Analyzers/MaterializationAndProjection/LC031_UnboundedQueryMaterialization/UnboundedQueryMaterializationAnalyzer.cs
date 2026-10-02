@@ -134,8 +134,14 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
                 case IInvocationOperation invocation:
                     if (IsDbContextSetInvocation(invocation))
                         return true;
-                    if (!IsLinqOrEfCoreOperator(invocation.TargetMethod))
+                    // A materializer or AsEnumerable() hands the rows to LINQ to Objects; a later AsQueryable() runs
+                    // in memory.
+                    if (!IsLinqOrEfCoreOperator(invocation.TargetMethod) ||
+                        invocation.IsQueryExecutingMaterializer() ||
+                        invocation.TargetMethod.Name == "AsEnumerable")
+                    {
                         return false;
+                    }
                     current = invocation.GetInvocationReceiver();
                     continue;
 
