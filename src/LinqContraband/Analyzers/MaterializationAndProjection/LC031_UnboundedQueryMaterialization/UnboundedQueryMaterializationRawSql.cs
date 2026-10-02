@@ -32,13 +32,17 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
         foreach (var argument in invocation.Arguments)
         {
             if (argument.Parameter?.Name == "sql")
-                return TryGetConstantSqlText(argument.Value, out var sql) && HasOuterRowLimit(sql);
+            {
+                // Holes become SQL parameters only for a FormattableString; FromSqlRaw($"...") pastes them in.
+                var holesAreParameters = argument.Parameter.Type is { Name: "FormattableString" };
+                return TryGetConstantSqlText(argument.Value, holesAreParameters, out var sql) && HasOuterRowLimit(sql);
+            }
         }
 
         return false;
     }
 
-    private static bool TryGetConstantSqlText(IOperation value, out string sql)
+    private static bool TryGetConstantSqlText(IOperation value, bool holesAreParameters, out string sql)
     {
         if (value.ConstantValue is { HasValue: true, Value: string constant })
         {
@@ -58,7 +62,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 case IInterpolatedStringTextOperation { Text.ConstantValue: { HasValue: true, Value: string text } }:
                     builder.Append(text);
                     break;
-                case IInterpolationOperation:
+                case IInterpolationOperation when holesAreParameters:
                     // Each hole becomes a SQL parameter.
                     builder.Append(" {0} ");
                     break;
@@ -211,6 +215,14 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 {
                     if (i >= sql.Length)
                         return null;
+                    // MySQL escapes a quote with a backslash. Elsewhere a trailing backslash is literal, and reading it
+                    // as an escape can only leave the text unbalanced, so the limit is not trusted.
+                    if (sql[i] == '\\' && close != ']')
+                    {
+                        i += 2;
+                        continue;
+                    }
+
                     if (sql[i] == close)
                     {
                         // A doubled quote is an escaped quote inside the literal.

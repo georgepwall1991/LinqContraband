@@ -65,6 +65,10 @@ namespace TestApp
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* TOP 10 */"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Name = 'LIMIT 10'"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT [Limit], [Top] FROM Users"").ToList()|};")]
+    // FromSqlRaw pastes interpolation holes into the SQL text, so the count could be anything.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw($""SELECT * FROM Users LIMIT {sql}"").ToList()|};")]
+    // A backslash-escaped quote keeps the string open.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Name = 'x\\' LIMIT 10 -- y'"").ToList()|};")]
     // Nested block comments.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* outer /* inner */ LIMIT 10 */"").ToList()|};")]
     // A MySQL # line comment.
