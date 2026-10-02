@@ -565,6 +565,8 @@ class Program
 
     private static DbContext CreateBaseContext() => new MyDbContext();
 
+    private static DbContext CreateWrappedContext() => ((DbContext)(new MyDbContext()));
+
     void Main(List<int> items)
     {
         foreach (var item in items)
@@ -576,6 +578,12 @@ class Program
         foreach (var item in items)
         {
             using var db = CreateBaseContext();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            using var db = CreateWrappedContext();
             db.SaveChanges();
         }
 

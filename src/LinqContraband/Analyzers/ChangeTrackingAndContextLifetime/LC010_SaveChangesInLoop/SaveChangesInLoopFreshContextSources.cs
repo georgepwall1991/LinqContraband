@@ -130,12 +130,16 @@ public sealed partial class SaveChangesInLoopAnalyzer
             returned = returnStatement.Expression;
         }
 
-        if (returned is not BaseObjectCreationExpressionSyntax ||
+        if (returned == null ||
             invocation.SemanticModel?.Compilation is not { } compilation ||
             !compilation.TryGetOwnedSemanticModel(returned.SyntaxTree, out var model))
         {
             return false;
         }
+
+        // C# binds parentheses to the operation inside them, so strip them from the syntax first.
+        while (returned is ParenthesizedExpressionSyntax parenthesized)
+            returned = parenthesized.Expression;
 
         // The object created must itself be a DbContext: a user-defined conversion from another type can hand back
         // any context, including a cached one.
