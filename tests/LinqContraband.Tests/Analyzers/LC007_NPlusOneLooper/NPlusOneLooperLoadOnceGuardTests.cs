@@ -266,6 +266,57 @@ class Program
     }
 
     [Fact]
+    public Task LoadOnceGuardOnUserConvertedOperand_StillReports()
+    {
+        // The guard tests a user-defined conversion of the local, which can be null after the local is loaded.
+        var test = Usings + @"
+class Holder
+{
+    public Holder(User user) { }
+    public static explicit operator User(Holder holder) => null;
+}
+
+class Program
+{
+    void Run(MyDbContext db, int[] ids)
+    {
+        Holder cached = null;
+        foreach (var id in ids)
+        {
+            if ((User)cached == null)
+                cached = new Holder({|LC007:db.Users.First(u => u.Id == id)|});
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public Task LoadOnceGuardResetThroughRefExtensionReceiver_StillReports()
+    {
+        // A `this ref` extension can reset the local it is called on.
+        var test = Usings + @"
+static class Resets
+{
+    public static void Reset(this ref int? value) => value = null;
+}
+
+class Program
+{
+    void Run(MyDbContext db, int[] ids)
+    {
+        int? total = null;
+        foreach (var id in ids)
+        {
+            total ??= {|LC007:db.Users.Count()|};
+            total.Reset();
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public Task LoadOnceGuardWithRefAliasReturnedFromCall_StillReports()
     {
         // A method that takes the local by ref can hand the reference back, so the alias escapes through the call.

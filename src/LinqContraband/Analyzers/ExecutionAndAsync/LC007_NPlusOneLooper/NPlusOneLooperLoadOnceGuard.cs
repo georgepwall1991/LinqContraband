@@ -263,7 +263,11 @@ internal static partial class NPlusOneLooperAnalysis
 
     private static bool IsLocalRead(IOperation operation, ILocalSymbol local)
     {
-        return operation.UnwrapConversions() is ILocalReferenceOperation reference &&
+        // A user-defined conversion can map a loaded value to null, so only built-in conversions are peeled.
+        while (operation is IConversionOperation { Conversion.IsUserDefined: false } conversion)
+            operation = conversion.Operand;
+
+        return operation is ILocalReferenceOperation reference &&
                SymbolEqualityComparer.Default.Equals(reference.Local, local);
     }
 
