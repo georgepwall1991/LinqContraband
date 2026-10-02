@@ -43,6 +43,9 @@ namespace TestApp
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users ORDER BY Id OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users FETCH FIRST 5 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(TopTen).ToList();")]
+    // #Temp and ##Temp are SQL Server temp tables, not comments.
+    [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM #Recent ORDER BY Id OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY"").ToList();")]
+    [InlineData(@"return db.Users.FromSqlRaw(""SELECT TOP (10) * FROM ##Shared"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT $q$a$q$ AS marker, * FROM Users WHERE Id > $1 LIMIT 10"", n).ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Id IN (SELECT UserId FROM Logins) LIMIT 50"").Where(u => u.IsActive).ToList();")]
     [InlineData(@"return db.Users.FromSqlInterpolated($""SELECT * FROM Users LIMIT {n}"").ToList();")]
@@ -62,6 +65,11 @@ namespace TestApp
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* TOP 10 */"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Name = 'LIMIT 10'"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT [Limit], [Top] FROM Users"").ToList()|};")]
+    // A MySQL # line comment.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users # LIMIT 10"").ToList()|};")]
+    // A parenthesized TOP expression, not a count.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP ((SELECT COUNT(*) FROM Users)) * FROM Users"").ToList()|};")]
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP (@n * 1000000) * FROM Users"", n).ToList()|};")]
     // TOP n PERCENT scales with the table.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT TOP 10 PERCENT * FROM Users"").ToList()|};")]
     // WITH TIES can return every row that ties with the last one.

@@ -92,8 +92,8 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
         return false;
     }
 
-    // Only an expression tree handed to a query operator is translated; one held in a local or passed elsewhere can be
-    // compiled and run in memory.
+    // Only an expression tree handed to a query operator is translated; one held in a local or passed elsewhere (a
+    // model-building API such as HasConversion included) can be compiled and run in memory.
     private static bool IsQueryOperatorArgument(IOperation conversion)
     {
         if (conversion.Parent is not IArgumentOperation { Parent: IInvocationOperation { TargetMethod: var method } })
@@ -103,11 +103,10 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer : DiagnosticAn
         if (containingType == null)
             return false;
 
-        if (containingType.Name == "Queryable" && containingType.ContainingNamespace?.ToDisplayString() == "System.Linq")
-            return true;
-
         var ns = containingType.ContainingNamespace?.ToDisplayString();
-        return ns != null && (ns == "Microsoft.EntityFrameworkCore" || ns.StartsWith("Microsoft.EntityFrameworkCore.", StringComparison.Ordinal));
+        return ns == "System.Linq" && containingType.Name == "Queryable" ||
+               ns == "Microsoft.EntityFrameworkCore" &&
+               containingType.Name is "EntityFrameworkQueryableExtensions" or "RelationalQueryableExtensions";
     }
 
     private void AnalyzeInvocation(OperationAnalysisContext context)

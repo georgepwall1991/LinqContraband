@@ -17,6 +17,9 @@ public partial class UnboundedQueryMaterializationTests
     [InlineData("var result = db.Users.Where(u => ids.Contains(u.TeamId)).GroupBy(u => u.TeamId).Select(g => new { g.Key, Count = g.Count() }).ToDictionary(x => x.Key, x => x.Count);")]
     [InlineData("var result = db.Users.Where(u => ids.Contains(u.TeamId)).GroupBy(u => u.TeamId).Select(g => new { g.Key, Count = g.Count() }).OrderBy(x => x.Count).ToList();")]
     [InlineData("var result = (from u in db.Users where ids.Contains(u.TeamId) group u by u.TeamId into g select new { g.Key, Count = g.Count() }).ToList();")]
+    // Array keys bind to Enumerable.Contains or MemoryExtensions.Contains.
+    [InlineData("var keys = ids.ToArray(); var result = db.Users.Where(u => keys.Contains(u.TeamId)).GroupBy(u => u.TeamId).Select(g => new { g.Key, Count = g.Count() }).ToList();")]
+    [InlineData("var result = db.Users.Where(u => Enumerable.Contains(ids, u.TeamId)).GroupBy(u => u.TeamId).Select(g => new { g.Key, Count = g.Count() }).ToList();")]
     public Task ContainsFilterGroupedBySameKeyWithAggregateProjection_IsQuiet(string body) =>
         VerifyCS.VerifyAnalyzerAsync(BoundaryProgram(body));
 
@@ -32,6 +35,8 @@ public partial class UnboundedQueryMaterializationTests
     [InlineData("var result = {|LC031:db.Users.Where(u => ids.Contains(u.TeamId)).GroupBy(u => u.TeamId).SelectMany(g => g).ToList()|};")]
     // A Select between the filter and the GroupBy changes what the key refers to.
     [InlineData("var result = {|LC031:db.Users.Where(u => ids.Contains(u.TeamId)).Select(u => new User { Id = u.Id, TeamId = u.Id }).GroupBy(u => u.TeamId).Select(g => g.Count()).ToList()|};")]
+    // A Contains that is not collection membership may match every key.
+    [InlineData("var filter = new TeamFilter(); var result = {|LC031:db.Users.Where(u => filter.Contains(u.TeamId)).GroupBy(u => u.TeamId).Select(g => new { g.Key, Count = g.Count() }).ToList()|};")]
     public Task KeyedGroupShapesThatAreNotBounded_StillReport(string body) =>
         VerifyCS.VerifyAnalyzerAsync(BoundaryProgram(body));
 }

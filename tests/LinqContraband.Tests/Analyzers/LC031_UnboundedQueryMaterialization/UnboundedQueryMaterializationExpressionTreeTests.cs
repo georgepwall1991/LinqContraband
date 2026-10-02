@@ -10,6 +10,15 @@ namespace LinqContraband.Tests.Analyzers.LC031_UnboundedQueryMaterialization;
 public partial class UnboundedQueryMaterializationTests
 {
     private static string ExpressionTreeProgram(string body) => Usings + EFCoreMock + @"
+namespace Microsoft.EntityFrameworkCore
+{
+    // A model-building API whose expression is compiled and run in .NET, not translated.
+    public static class ConversionBuilderExtensions
+    {
+        public static void HasConversion<T>(this object builder, Expression<Func<T, object>> convert) { }
+    }
+}
+
 namespace TestApp
 {
     public class Post { public int Id { get; set; } public int BlogId { get; set; } public string Title { get; set; } }
@@ -57,6 +66,7 @@ namespace TestApp
     [InlineData("Expression<Func<List<Post>>> load = () => {|LC031:db.Posts.ToList()|}; return load.Compile()();")]
     [InlineData("Expression<Func<Blog, List<Post>>> selector = b => {|LC031:db.Posts.Where(p => p.BlogId == b.Id).ToList()|}; return selector;")]
     [InlineData("return Execute(() => {|LC031:db.Posts.ToList()|});")]
+    [InlineData("new object().HasConversion<int>(id => {|LC031:db.Posts.ToList()|}); return null;")]
     public Task OuterUnboundedTerminalOrDelegateLambda_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(ExpressionTreeProgram(body));
 }

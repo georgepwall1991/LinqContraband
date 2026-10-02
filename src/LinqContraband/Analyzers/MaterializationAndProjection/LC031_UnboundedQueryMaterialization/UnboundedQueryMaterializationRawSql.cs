@@ -12,6 +12,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
     private const string ParameterToken = "?";
     private const string NumberToken = "#";
     private const string OpenParenToken = "(";
+    private const string CountGroupToken = "(#)";
 
     /// <summary>
     /// <c>FromSql</c>/<c>FromSqlRaw</c>/<c>FromSqlInterpolated</c> over constant SQL that limits rows at the outer level
@@ -119,7 +120,36 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
 
     private static bool IsRowCount(List<string> tokens, int index, bool allowParen) =>
         TokenAt(tokens, index) is NumberToken or ParameterToken ||
-        allowParen && TokenAt(tokens, index) == OpenParenToken;
+        allowParen && TokenAt(tokens, index) == CountGroupToken;
+
+    // (10), (@n), ({0}) or ($1): a parenthesized count that is a single number or parameter, not an expression.
+    private static bool IsSimpleCountGroup(string sql, int open)
+    {
+        var close = sql.IndexOf(')', open + 1);
+        if (close < 0)
+            return false;
+
+        var content = sql.Substring(open + 1, close - open - 1).Trim();
+        if (content.Length == 0)
+            return false;
+
+        var start = 0;
+        if (content[0] is '@' or ':' or '$' or '?')
+            start = 1;
+        else if (content[0] == '{' && content[content.Length - 1] == '}')
+            content = content.Substring(1, content.Length - 2);
+
+        if (start == content.Length)
+            return content == "?";
+
+        for (var i = start; i < content.Length; i++)
+        {
+            if (start == 0 ? !char.IsDigit(content[i]) : !IsWordChar(content[i]))
+                return false;
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// Upper-cased words, numbers (<c>#</c>), parameters (<c>?</c>) and parenthesized groups (<c>(</c>) at nesting depth
@@ -135,7 +165,9 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
         {
             var c = sql[i];
 
-            if (c == '-' && i + 1 < sql.Length && sql[i + 1] == '-')
+            // -- line comment, or a MySQL # line comment (#Temp and ##Temp are SQL Server temp tables).
+            if (c == '-' && i + 1 < sql.Length && sql[i + 1] == '-' ||
+                c == '#' && (i + 1 >= sql.Length || !IsWordChar(sql[i + 1]) && sql[i + 1] != '#'))
             {
                 while (i < sql.Length && sql[i] != '\n')
                     i++;
@@ -183,7 +215,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
             if (c == '(')
             {
                 if (depth == 0)
-                    tokens.Add(OpenParenToken);
+                    tokens.Add(IsSimpleCountGroup(sql, i) ? CountGroupToken : OpenParenToken);
                 depth++;
                 i++;
                 continue;

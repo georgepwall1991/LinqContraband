@@ -141,6 +141,7 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 }
 
                 return keys != null &&
+                       IsCollectionContains(contains, keys) &&
                        value?.UnwrapConversions() is IPropertyReferenceOperation
                        {
                            Instance: IParameterReferenceOperation parameterReference
@@ -155,4 +156,37 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
                 return false;
         }
     }
+
+    // Enumerable/MemoryExtensions.Contains, or an instance Contains on a collection. A [DbFunction] or other custom
+    // Contains may match every key.
+    private static bool IsCollectionContains(IInvocationOperation contains, IOperation keys)
+    {
+        var method = contains.TargetMethod;
+        if (method.IsStatic || method.ReducedFrom != null)
+        {
+            var type = (method.ReducedFrom ?? method).ContainingType;
+            return type?.ContainingNamespace?.ToDisplayString() is "System.Linq" or "System" &&
+                   type.Name is "Enumerable" or "MemoryExtensions";
+        }
+
+        return keys.UnwrapConversions().Type is { } keysType && ImplementsGenericEnumerable(keysType);
+    }
+
+    private static bool ImplementsGenericEnumerable(ITypeSymbol type)
+    {
+        if (IsGenericEnumerable(type))
+            return true;
+
+        foreach (var iface in type.AllInterfaces)
+        {
+            if (IsGenericEnumerable(iface))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsGenericEnumerable(ITypeSymbol type) =>
+        type is INamedTypeSymbol { Name: "IEnumerable", TypeArguments.Length: 1 } named &&
+        named.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic";
 }
