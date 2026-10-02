@@ -766,4 +766,31 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TrackedAndNoTrackingOverDerivedNonGenericDbSet_Triggers()
+    {
+        var test = EFCoreMock + @"
+namespace TestApp
+{
+    public class Account { public int Id { get; set; } }
+    public sealed class AccountSet : Microsoft.EntityFrameworkCore.DbSet<Account> { }
+
+    public class AccountDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public AccountSet Accounts { get; set; }
+    }
+}
+
+class Program
+{
+    void Run(TestApp.AccountDbContext db)
+    {
+        var accounts = db.Accounts.ToList();
+        var detached = {|LC040:db.Accounts.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
