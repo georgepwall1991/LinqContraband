@@ -68,29 +68,35 @@ public sealed partial class SaveChangesInLoopAnalyzer
             returnType = taskType.TypeArguments[0];
         }
 
-        return returnType.IsDbContext() && IsDbContextFactoryMember(method);
+        return returnType.IsDbContext() &&
+               IsInterfaceMemberOrImplementation(method, invocation.Instance?.Type, IsDbContextFactoryInterface);
     }
 
     /// <summary>
-    /// The <c>IDbContextFactory&lt;T&gt;</c> member itself, or the method a class uses to implement it. Another
-    /// method of the same name on an implementing class (one that hands back a cached context while the interface
-    /// member is implemented explicitly) is not the factory API.
+    /// The interface member itself, or the method the receiver's type (or the method's own type) uses to implement
+    /// it. Another method of the same name on an implementing class (one that hands back a cached instance while the
+    /// interface member is implemented explicitly) is not the interface API.
     /// </summary>
-    private static bool IsDbContextFactoryMember(IMethodSymbol method)
+    private static bool IsInterfaceMemberOrImplementation(
+        IMethodSymbol method,
+        ITypeSymbol? receiverType,
+        System.Func<INamedTypeSymbol, bool> isInterface)
     {
-        var type = method.ContainingType;
-        if (type == null)
-            return false;
-
-        if (IsDbContextFactoryInterface(type))
+        if (method.ContainingType is { } containingType && isInterface(containingType))
             return true;
 
-        foreach (var factoryInterface in type.AllInterfaces.Where(IsDbContextFactoryInterface))
+        foreach (var type in new[] { receiverType, method.ContainingType })
         {
-            foreach (var member in factoryInterface.GetMembers(method.Name))
+            if (type == null)
+                continue;
+
+            foreach (var candidateInterface in type.AllInterfaces.Where(isInterface))
             {
-                if (SymbolEqualityComparer.Default.Equals(type.FindImplementationForInterfaceMember(member), method))
-                    return true;
+                foreach (var member in candidateInterface.GetMembers(method.Name))
+                {
+                    if (SymbolEqualityComparer.Default.Equals(type.FindImplementationForInterfaceMember(member), method))
+                        return true;
+                }
             }
         }
 
@@ -183,20 +189,28 @@ public sealed partial class SaveChangesInLoopAnalyzer
 
         return scopeDeclaration?.Initializer?.Value.UnwrapConversions() is IInvocationOperation scopeCreation &&
                scopeCreation.TargetMethod.Name is "CreateScope" or "CreateAsyncScope" &&
-               IsDependencyInjectionScopeApi(scopeCreation.TargetMethod) &&
+               IsDependencyInjectionScopeApi(scopeCreation) &&
                scopeCreation.TargetMethod.ReturnType is { Name: "IServiceScope" or "AsyncServiceScope" } scopeType &&
                scopeType.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace &&
                !IsLocalWrittenBeforeSaveExecution(loop.Body, saveOperation, executionOperation, scopeLocal);
     }
 
     /// <summary>
-    /// <c>IServiceScopeFactory.CreateScope</c>/<c>CreateAsyncScope</c> or the
+    /// <c>IServiceScopeFactory.CreateScope</c> (or a class's implementation of it), <c>CreateAsyncScope</c>, or the
     /// <c>Microsoft.Extensions.DependencyInjection</c> extensions over it. A project method of the same name that
     /// returns an <c>IServiceScope</c> may hand back a cached scope.
     /// </summary>
-    private static bool IsDependencyInjectionScopeApi(IMethodSymbol method)
+    private static bool IsDependencyInjectionScopeApi(IInvocationOperation scopeCreation)
     {
+        var method = scopeCreation.TargetMethod;
         var original = method.ReducedFrom ?? method;
-        return original.ContainingType?.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace;
+        return original.ContainingType?.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace ||
+               IsInterfaceMemberOrImplementation(method, scopeCreation.Instance?.Type, IsServiceScopeFactoryInterface);
+    }
+
+    private static bool IsServiceScopeFactoryInterface(INamedTypeSymbol type)
+    {
+        return type.Name == "IServiceScopeFactory" &&
+               type.ContainingNamespace?.ToDisplayString() == DependencyInjectionNamespace;
     }
 }

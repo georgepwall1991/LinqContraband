@@ -285,6 +285,67 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_FactoryImplementationInheritedFromBaseClass_ShouldNotTrigger()
+    {
+        // The base class has the implementing methods; only the derived class declares the interface.
+        var test = Usings + @"
+class FactoryBase
+{
+    public MyDbContext CreateDbContext()
+    {
+        var options = 0;
+        return options >= 0 ? new MyDbContext() : null;
+    }
+
+    public Task<MyDbContext> CreateDbContextAsync() => Task.FromResult(new MyDbContext());
+}
+
+class AppFactory : FactoryBase, IDbContextFactory<MyDbContext>
+{
+}
+
+class Program
+{
+    void Main(AppFactory factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = factory.CreateDbContext();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ScopeFromConcreteServiceScopeFactory_ShouldNotTrigger()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class AppScopeFactory : IServiceScopeFactory
+{
+    public IServiceScope CreateScope() => null;
+}
+
+class Program
+{
+    void Main(AppScopeFactory scopeFactory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_FactoryContextCreatedOutsideLoop_ShouldTriggerLC010()
     {
         var test = Usings + @"
