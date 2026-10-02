@@ -93,6 +93,17 @@ public sealed class DisposedContextConnectionAnalyzer : DiagnosticAnalyzer
             return;
         }
 
+        // connection?.Dispose(): the instance stands for the receiver of the conditional access, which is disposed
+        // whenever it is not null.
+        if (invocation.Instance.UnwrapConversions() is IConditionalAccessInstanceOperation &&
+            invocation.Parent is IConditionalAccessOperation conditional &&
+            conditional.WhenNotNull == invocation)
+        {
+            if (IsContextConnection(conditional.Operation))
+                context.ReportDiagnostic(Diagnostic.Create(Rule, conditional.Syntax.GetLocation()));
+            return;
+        }
+
         if (IsContextConnection(invocation.Instance))
             context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.Syntax.GetLocation()));
     }

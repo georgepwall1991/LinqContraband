@@ -116,6 +116,8 @@ public class DisposedContextConnectionFixerTests
     [InlineData(@"using DbConnection connection = {|LC059:db.Database.GetDbConnection()|}, owned = ConnectionFactory.Create();")]
     // The disposal is part of a larger expression.
     [InlineData(@"var connection = db.Database.GetDbConnection(); Action close = () => {|LC059:connection.Dispose()|};")]
+    // A discarded conditional DisposeAsync is an assignment, not a statement of its own.
+    [InlineData(@"var connection = db.Database.GetDbConnection(); _ = {|LC059:connection?.DisposeAsync()|};")]
     public async Task NoSafeRewrite_OffersNoFix(string code)
     {
         await VerifyNoFixAsync(code);
@@ -158,6 +160,12 @@ public class DisposedContextConnectionFixerTests
     [InlineData(
         @"var connection = db.Database.GetDbConnection(); {|LC059:((IDisposable)connection).Dispose()|};",
         @"var connection = db.Database.GetDbConnection();")]
+    [InlineData(
+        @"var connection = db.Database.GetDbConnection(); connection.Open(); {|LC059:connection?.Dispose()|};",
+        @"var connection = db.Database.GetDbConnection(); connection.Open();")]
+    [InlineData(
+        @"var timeout = 30; {|LC059:db.Database.GetDbConnection()?.Dispose()|};",
+        @"var timeout = 30;")]
     public async Task ReportedShapes_FixCompiles(string before, string after)
     {
         await VerifyFixAsync(before, after);
