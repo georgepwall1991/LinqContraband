@@ -207,6 +207,9 @@ class Program
     [InlineData(@"var done = db.SaveChangesAsync().Wait(new TimeSpan(0));")]
     [InlineData(@"var done = db.SaveChangesAsync().Wait(default(int));")]
     [InlineData(@"const int NoWait = 0; var done = db.SaveChangesAsync().Wait(NoWait);")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(TimeSpan.FromMilliseconds(0));")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(0));")]
+    [InlineData(@"var done = db.SaveChangesAsync().Wait(TimeSpan.FromTicks(0));")]
     public async Task ZeroTimeoutWait_OnlyPolls_DoesNotReport(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body));
@@ -216,6 +219,7 @@ class Program
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(1)|};")]
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromMilliseconds(1))|};")]
     [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(new TimeSpan(1))|};")]
+    [InlineData(@"var done = {|#0:db.SaveChangesAsync().Wait(TimeSpan.FromSeconds(0.5))|};")]
     public async Task NonZeroTimeoutWait_Reports(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());
@@ -227,6 +231,13 @@ class Program
     [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(TimeSpan.Zero)) { users = task.Result; }")]
     [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.IsCompleted) users = task.Result;")]
     [InlineData(@"var task = db.Users.ToListAsync(); var users = task.Wait(0) ? task.Result : null;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0) == true) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (true == task.Wait(0)) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0) != false) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0) is true) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var ready = id > 0; List<User> users = null; if (ready && task.Wait(0)) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var ready = id > 0; List<User> users = null; if (task.Wait(0) && ready) users = task.Result;")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var any = task.Wait(TimeSpan.FromMilliseconds(0)) && task.Result.Count > 0;")]
     public async Task ResultGuardedByAPollOrCompletionCheck_DoesNotReport(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body));
@@ -236,6 +247,10 @@ class Program
     // The false branch, or code after the if, is not guarded.
     [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0)) { } else users = {|#0:task.Result|};")]
     [InlineData(@"var task = db.Users.ToListAsync(); if (task.Wait(0)) { } var users = {|#0:task.Result|};")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0) == false) users = {|#0:task.Result|};")]
+    [InlineData(@"var task = db.Users.ToListAsync(); List<User> users = null; if (task.Wait(0) != true) users = {|#0:task.Result|};")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var ready = id > 0; List<User> users = null; if (task.Wait(0) || ready) users = {|#0:task.Result|};")]
+    [InlineData(@"var task = db.Users.ToListAsync(); var any = task.Wait(0) || {|#0:task.Result|}.Count > 0;")]
     public async Task ResultOutsideThePollsTrueBranch_Reports(string body)
     {
         await VerifyCS.VerifyAnalyzerAsync(Wrap(body), Reported());

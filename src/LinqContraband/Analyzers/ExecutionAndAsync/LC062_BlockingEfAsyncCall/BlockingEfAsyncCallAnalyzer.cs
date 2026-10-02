@@ -118,6 +118,16 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
 
             if (value is IFieldReferenceOperation { Field: { Name: "Zero", IsStatic: true } field } && IsTimeSpan(field.ContainingType))
                 return true;
+
+            // TimeSpan.FromMilliseconds(0), TimeSpan.FromSeconds(0) and the other TimeSpan.FromXxx factories.
+            if (value is IInvocationOperation { Instance: null, TargetMethod: { IsStatic: true } factory } fromCall &&
+                factory.Name.StartsWith("From", System.StringComparison.Ordinal) &&
+                IsTimeSpan(factory.ContainingType) &&
+                fromCall.Arguments.Length > 0 &&
+                fromCall.Arguments.All(factoryArgument => IsConstantZero(factoryArgument.Value)))
+            {
+                return true;
+            }
         }
 
         return false;
@@ -125,8 +135,8 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
 
     private static bool IsConstantZero(IOperation value)
     {
-        return value.UnwrapConversions().ConstantValue is { HasValue: true, Value: int or long } constant &&
-               System.Convert.ToInt64(constant.Value, System.Globalization.CultureInfo.InvariantCulture) == 0;
+        return value.UnwrapConversions().ConstantValue is { HasValue: true, Value: int or long or short or double or float } constant &&
+               System.Convert.ToDouble(constant.Value, System.Globalization.CultureInfo.InvariantCulture) == 0;
     }
 
     private static bool IsTimeSpan(ITypeSymbol type)
@@ -283,16 +293,57 @@ public sealed partial class BlockingEfAsyncCallAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
-    /// <summary>True when <paramref name="poll"/> is the condition of an <c>if</c> or <c>?:</c> whose true branch holds the site.</summary>
+    /// <summary>
+    /// True when <paramref name="poll"/> being true is required for the site to run: the poll is the condition of an
+    /// <c>if</c> or <c>?:</c> whose true branch holds the site, possibly through <c>== true</c>, <c>!= false</c>,
+    /// <c>is true</c> or an operand of <c>&amp;&amp;</c>, or the left operand of an <c>&amp;&amp;</c> whose right operand holds the site.
+    /// </summary>
     private static bool GuardsSite(IInvocationOperation poll, IOperation site)
     {
         IOperation condition = poll;
-        while (condition.Parent is IConversionOperation conversion && ReferenceEquals(conversion.Operand, condition))
-            condition = conversion;
+        while (true)
+        {
+            while (condition.Parent is IConversionOperation conversion && ReferenceEquals(conversion.Operand, condition))
+                condition = conversion;
+
+            switch (condition.Parent)
+            {
+                case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } conjunction:
+                    if (ReferenceEquals(conjunction.LeftOperand, condition) &&
+                        conjunction.RightOperand.Syntax.Span.Contains(site.Syntax.Span))
+                    {
+                        return true;
+                    }
+
+                    condition = conjunction;
+                    continue;
+
+                case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals or BinaryOperatorKind.NotEquals } comparison
+                    when IsBooleanConstantOperand(comparison, condition, comparison.OperatorKind == BinaryOperatorKind.Equals):
+                    condition = comparison;
+                    continue;
+
+                case IIsPatternOperation { Pattern: IConstantPatternOperation { Value: { } constant } } isPattern
+                    when ReferenceEquals(isPattern.Value, condition) &&
+                         constant.UnwrapConversions().ConstantValue is { HasValue: true, Value: true }:
+                    condition = isPattern;
+                    continue;
+            }
+
+            break;
+        }
 
         return condition.Parent is IConditionalOperation { WhenTrue: { } whenTrue } conditional &&
                ReferenceEquals(conditional.Condition, condition) &&
                whenTrue.Syntax.Span.Contains(site.Syntax.Span);
+    }
+
+    /// <summary>True when the other operand of <paramref name="comparison"/> is the constant that keeps <paramref name="operand"/>'s truth (<c>== true</c> or <c>!= false</c>).</summary>
+    private static bool IsBooleanConstantOperand(IBinaryOperation comparison, IOperation operand, bool expected)
+    {
+        var other = ReferenceEquals(comparison.LeftOperand, operand) ? comparison.RightOperand :
+            ReferenceEquals(comparison.RightOperand, operand) ? comparison.LeftOperand : null;
+        return other?.UnwrapConversions().ConstantValue is { HasValue: true, Value: bool value } && value == expected;
     }
 
     private static bool IsAssignmentTarget(ILocalReferenceOperation reference)

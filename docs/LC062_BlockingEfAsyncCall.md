@@ -58,11 +58,11 @@ Reports `.Result` on `Task<T>` or `ValueTask<T>`, any `Task.Wait(...)` overload,
 
 ## When it stays quiet (non-goals)
 
-- A task already awaited, or proven complete, before the blocking access: `await task;`, `await Task.WhenAll(t1, t2);`, `task.Wait();` (which reports itself), or a check such as `task.IsCompletedSuccessfully ? task.Result : ...`. Any other use of the local before the access, and any `await` between the assignment and the access, count as possibly completing it; a zero-timeout poll such as `task.Wait(0)` does not, so a later `task.Result` still reports, except in the true branch of an `if` or `?:` whose condition is that poll: `if (task.Wait(0)) users = task.Result;` stays quiet, as does `if (task.IsCompleted) users = task.Result;`.
+- A task already awaited, or proven complete, before the blocking access: `await task;`, `await Task.WhenAll(t1, t2);`, `task.Wait();` (which reports itself), or a check such as `task.IsCompletedSuccessfully ? task.Result : ...`. Any other use of the local before the access, and any `await` between the assignment and the access, count as possibly completing it; a zero-timeout poll such as `task.Wait(0)` does not, so a later `task.Result` still reports, except in the true branch of an `if` or `?:` whose condition is that poll, also written as `task.Wait(0) == true`, `!= false`, `is true` or one side of `&&` (and in the right operand of that `&&`): `if (task.Wait(0)) users = task.Result;` stays quiet, as do `if (ready && task.Wait(0)) users = task.Result;` and `if (task.IsCompleted) users = task.Result;`. A `== false`, `!= true` or `||` condition does not guard the access.
 - Tasks that do not come straight from EF Core: `Task.FromResult`, the application's own `...Async` methods, `Task.Run(() => db.Users.ToListAsync()).Result`, fields and properties that hold a task, and locals assigned more than once or copied from another local.
 - Queries over an in-memory collection wrapped with `AsQueryable()`: the EF Core async operators throw on those instead (LC060's case).
 - A task stored in a local outside the lambda that blocks on it.
-- `task.Wait(0)`, `task.Wait(TimeSpan.Zero)` and other zero timeouts (`default`, `default(TimeSpan)`, `new TimeSpan()`, `new TimeSpan(0)`, a constant 0), which only check whether the task has finished. Any other timeout blocks and is reported.
+- `task.Wait(0)`, `task.Wait(TimeSpan.Zero)` and other zero timeouts (`default`, `default(TimeSpan)`, `new TimeSpan()`, `new TimeSpan(0)`, `TimeSpan.FromMilliseconds(0)` and the other `TimeSpan.FromXxx(0)` factories, a constant 0), which only check whether the task has finished. Any other timeout blocks and is reported.
 
 ## Code Fix
 
