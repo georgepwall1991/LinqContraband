@@ -62,7 +62,7 @@ internal static partial class NPlusOneLooperAnalysis
         {
             if (value is IConversionOperation { IsTryCast: false, Conversion.IsUserDefined: false } conversion)
                 value = conversion.Operand;
-            else if (value is IAwaitOperation awaitOperation)
+            else if (value is IAwaitOperation awaitOperation && IsStandardTaskAwaitable(awaitOperation.Operation.Type))
                 value = awaitOperation.Operation;
             else if (value is IInvocationOperation { TargetMethod.Name: "ConfigureAwait", Instance: { } awaited } &&
                      value.Type?.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices")
@@ -104,6 +104,21 @@ internal static partial class NPlusOneLooperAnalysis
         // A non-nullable reference result is trusted. Without nullable annotations, only the LINQ and EF Core
         // executors, which throw or return a collection rather than null, are.
         return annotation == NullableAnnotation.NotAnnotated || IsLinqOrEfCoreMethod(method);
+    }
+
+    /// <summary>
+    /// Task, ValueTask and their ConfigureAwait wrappers hand back the task's own result. A custom awaitable's
+    /// GetResult can return anything, so it is not stepped through.
+    /// </summary>
+    private static bool IsStandardTaskAwaitable(ITypeSymbol? type)
+    {
+        if (type is not INamedTypeSymbol named)
+            return false;
+
+        var ns = named.ContainingNamespace?.ToDisplayString();
+        return (ns == "System.Threading.Tasks" && named.Name is "Task" or "ValueTask") ||
+               (ns == "System.Runtime.CompilerServices" &&
+                named.Name is "ConfiguredTaskAwaitable" or "ConfiguredValueTaskAwaitable");
     }
 
     private static bool IsLinqOrEfCoreMethod(IMethodSymbol method)
@@ -233,11 +248,20 @@ internal static partial class NPlusOneLooperAnalysis
     /// </summary>
     private static bool IsRefAlias(ILocalReferenceOperation reference)
     {
-        return reference.Parent switch
+        // `ref (flag ? ref x : ref y)` passes the reference through a conditional ref expression.
+        IOperation value = reference;
+        while (value.Parent is IConditionalOperation { IsRef: true } conditional &&
+               !ReferenceEquals(conditional.Condition, value))
+        {
+            value = conditional;
+        }
+
+        return value.Parent switch
         {
             IVariableInitializerOperation { Parent: IVariableDeclaratorOperation { Symbol.IsRef: true } } => true,
-            ISimpleAssignmentOperation { IsRef: true } refAssignment => ReferenceEquals(refAssignment.Value, reference),
+            ISimpleAssignmentOperation { IsRef: true } refAssignment => ReferenceEquals(refAssignment.Value, value),
             IReturnOperation => reference.FindOwningExecutableRoot() is { } owner && ReturnsByRef(owner),
+            IArgumentOperation { Parameter.RefKind: RefKind.Ref or RefKind.Out } => !ReferenceEquals(value, reference),
             _ => false
         };
     }

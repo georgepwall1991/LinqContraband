@@ -134,6 +134,62 @@ public partial class NPlusOneLooperTests
         VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));
 
     [Fact]
+    public Task LoadOnceGuardWithConditionalRefAlias_StillReports()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Run(MyDbContext db, int[] ids, bool flag)
+    {
+        User first = null;
+        User other = null;
+        ref User alias = ref (flag ? ref first : ref other);
+        foreach (var id in ids)
+        {
+            first ??= {|LC007:db.Users.First(u => u.Id == id)|};
+            alias = null;
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public Task LoadOnceGuardAwaitingCustomAwaitable_StillReports()
+    {
+        // A custom awaitable's GetResult can return null whatever the wrapped call returns.
+        var test = Usings + @"
+using System.Runtime.CompilerServices;
+
+struct MaybeAwaitable
+{
+    public MaybeAwaiter GetAwaiter() => default;
+}
+
+struct MaybeAwaiter : INotifyCompletion
+{
+    public bool IsCompleted => true;
+    public User GetResult() => null;
+    public void OnCompleted(Action continuation) { }
+}
+
+class Program
+{
+    static MaybeAwaitable Wrap(User user) => default;
+
+    async Task Run(MyDbContext db, int[] ids)
+    {
+        User cached = null;
+        foreach (var id in ids)
+        {
+            cached ??= await Wrap({|LC007:db.Users.First(u => u.Id == id)|});
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public Task LoadOnceGuardWithUserDefinedEquality_StillReports()
     {
         // A user-defined == can report a loaded value as null, so the guard does not prove the query runs once.
