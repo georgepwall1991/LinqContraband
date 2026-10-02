@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LC063 no longer reports a transaction in a method called from a lambda that is invoked in place inside the strategy delegate (`strategy.Execute(() => ((Action)(() => Save()))())`), or from a lambda kept in a local whose only use is the strategy's delegate argument (`Action work = () => Save(); strategy.Execute(work);`). The local may be passed in parentheses or through a cast, and declared in top-level statements. If it is also invoked, passed elsewhere or reassigned, it still reports. A lambda invoked in place that is `async` counts when its task is awaited right there (directly or through `ConfigureAwait`), or for code before its first `await` outside any loop that awaits; the rest of its body runs after the strategy delegate returns, so a transaction there now reports. A derived context's `OnConfiguring` override now inherits the base context's retries only when its `base.OnConfiguring(...)` call binds to the overridden method, not to another overload.
 - LC062 no longer reports `.Result` guarded by a zero-timeout poll written as `task.Wait(0) == true`, `task.Wait(0) != false`, `task.Wait(0) is true` or as one side of `&&` (`if (ready && task.Wait(0))`, `task.Wait(0) && task.Result.Count > 0`), and no longer reports `Wait(TimeSpan.FromMilliseconds(0))` or the other `TimeSpan.FromXxx(0)` timeouts, which only poll. `== false`, `!= true` and `||` guards still report.
 
+### Changed
+
+- LC022 no longer reports nested `ToList()`, `ToArray()` or `ToHashSet()` in a `Select` projection when the project references EF Core 8 or later with a relational provider (not Cosmos). EF Core 8 and later translate these to the same SQL as the bare navigation. A nested `ToDictionary(...)` still reports there, with a message saying EF Core cannot translate it and it throws at run time (on EF Core 3.0 or later), and nested `ToListAsync`/`ToArrayAsync`/`ToHashSetAsync` still report as an advisory. Projects on EF Core 7 or older keep the advisory report.
+
 ## [5.16.0] - 2026-09-27
 
 ### Added

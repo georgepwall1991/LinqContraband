@@ -533,7 +533,7 @@ body_class: page-rule-catalog
         <span class="pill pill--info">Info</span>
       </span>
       <h3>Nested collection materialization inside projection</h3>
-      <p class="rule-card__summary">Flags ToList or ToArray on nested collections inside EF Core Select projections, which can be expensive or translate differently per provider.</p>
+      <p class="rule-card__summary">Flags ToDictionary on a nested collection in an EF Core Select projection, which throws, and nested ToList on EF Core 7 or older.</p>
       <span class="rule-card__meta">
         <span>Performance</span>
         <span class="pill pill--fix">Code fix</span>

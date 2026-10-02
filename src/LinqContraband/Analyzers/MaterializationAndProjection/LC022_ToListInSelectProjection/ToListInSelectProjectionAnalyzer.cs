@@ -12,6 +12,11 @@ namespace LinqContraband.Analyzers.LC022_ToListInSelectProjection;
 /// Detects ToList/ToArray/ToDictionary/ToHashSet calls inside Select projections on IQueryable,
 /// which can be expensive or provider-version sensitive. Diagnostic ID: LC022
 /// </summary>
+/// <remarks>
+/// EF Core 8 and later with a relational provider drop a nested <c>ToList</c>, <c>ToArray</c> or <c>ToHashSet</c>
+/// from the translation (the SQL is the same with or without it), so only <c>ToDictionary</c>, which EF Core cannot
+/// translate and throws on, is reported there.
+/// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyzer
 {
@@ -20,7 +25,13 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
     private static readonly LocalizableString Title = "Nested collection materialization inside projection";
 
     private static readonly LocalizableString MessageFormat =
-        "'{0}' inside a Select projection can be expensive. Consider projecting directly or using split queries.";
+        "'{0}' inside a Select projection {1}";
+
+    private const string ReviewReason =
+        "can be expensive or provider-version sensitive. Consider projecting directly or using split queries.";
+
+    private const string UntranslatableReason =
+        "cannot be translated by EF Core and throws at run time. Project a list and build the dictionary after the query.";
 
     private static readonly LocalizableString Description =
         "Calling collection materializers (ToList, ToArray, etc.) inside a Select projection on IQueryable can be expensive or provider-version sensitive.";
@@ -41,7 +52,56 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            var translatesNestedCollections = TranslatesNestedCollections(compilationContext.Compilation);
+            // Only claim a translation failure on EF Core 3.0 or later, which throws instead of evaluating on the client.
+            var dbContext = compilationContext.Compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext");
+            var referencesEfCore = dbContext?.ContainingAssembly.Identity.Version.Major >= 3;
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, translatesNestedCollections, referencesEfCore),
+                OperationKind.Invocation);
+        });
+    }
+
+    /// <summary>
+    /// EF Core 8 and later (checked on 8 and 10 with SQLite) translate a correlated collection projection to the same
+    /// SQL whether or not it ends in <c>ToList</c>, <c>ToArray</c> or <c>ToHashSet</c>, and strip those calls from
+    /// <c>c.Orders.ToList().Count</c> and similar chains. Older EF Core, or a compilation where the EF Core version
+    /// cannot be read, keeps the advisory behavior. Correlated collections need EF Core's relational layer and no
+    /// Cosmos provider.
+    /// </summary>
+    private static bool TranslatesNestedCollections(Compilation compilation)
+    {
+        var dbContext = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbContext");
+        return dbContext?.ContainingAssembly.Identity.Version.Major >= 8 &&
+               compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions") != null &&
+               compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.CosmosDbContextOptionsExtensions") == null;
+    }
+
+    /// <summary>
+    /// True when the materialized sequence starts at a settable collection property without <c>[NotMapped]</c>, the
+    /// shape EF Core maps as a navigation. A computed or unmapped collection is evaluated on the client in the final
+    /// projection instead of failing translation.
+    /// </summary>
+    private static bool IsOverMappedNavigation(IInvocationOperation invocation)
+    {
+        var current = invocation.GetInvocationReceiver();
+        while (current is IInvocationOperation earlier)
+            current = earlier.GetInvocationReceiver();
+
+        if (current?.UnwrapConversions() is not IPropertyReferenceOperation { Property: { IsIndexer: false } property } ||
+            property.SetMethod == null)
+        {
+            return false;
+        }
+
+        return !property.GetAttributes().Any(attribute => attribute.AttributeClass?.Name == "NotMappedAttribute");
+    }
+
+    private static bool IsDictionaryMaterializer(string methodName)
+    {
+        return methodName is "ToDictionary" or "ToDictionaryAsync";
     }
 
     private static bool IsCollectionMaterializer(string methodName)
@@ -53,12 +113,16 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
             "ToHashSet" or "ToHashSetAsync";
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private static void AnalyzeInvocation(OperationAnalysisContext context, bool translatesNestedCollections, bool referencesEfCore)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
         if (!IsCollectionMaterializer(method.Name)) return;
+
+        var isDictionary = IsDictionaryMaterializer(method.Name);
+        // Only the synchronous ToList/ToArray/ToHashSet are stripped; async terminals return tasks.
+        if (translatesNestedCollections && method.Name is ("ToList" or "ToArray" or "ToHashSet")) return;
 
         // Walk up to find if inside a lambda
         var parent = invocation.Parent;
@@ -104,7 +168,11 @@ public sealed partial class ToListInSelectProjectionAnalyzer : DiagnosticAnalyze
                             return;
 
                         context.ReportDiagnostic(
-                            Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+                            Diagnostic.Create(
+                                Rule,
+                                invocation.Syntax.GetLocation(),
+                                method.Name,
+                                isDictionary && referencesEfCore && IsOverMappedNavigation(invocation) ? UntranslatableReason : ReviewReason));
                     }
                 }
                 break;

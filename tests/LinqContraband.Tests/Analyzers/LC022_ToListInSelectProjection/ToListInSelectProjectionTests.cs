@@ -320,11 +320,11 @@ class TestClass
         testObj.ExpectedDiagnostics.Add(
             VerifyFix.Diagnostic("LC022")
                 .WithLocation(0)
-                .WithArguments("ToList"));
+                .WithArguments("ToList", "can be expensive or provider-version sensitive. Consider projecting directly or using split queries."));
         testObj.ExpectedDiagnostics.Add(
             VerifyFix.Diagnostic("LC022")
                 .WithLocation(1)
-                .WithArguments("ToList"));
+                .WithArguments("ToList", "can be expensive or provider-version sensitive. Consider projecting directly or using split queries."));
 
         await testObj.RunAsync();
     }
