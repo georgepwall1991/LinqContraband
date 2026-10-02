@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- LC062 coverage now pins leftover 5.16.0 arms: `.Result` after an `await foreach`, `await using` statement or `await using` declaration on another resource stays quiet (those awaits can complete the stored task; the shipped fixtures only `await` the task or `Task.Delay`). `nameof(task.Result)` stays quiet. `Wait(CancellationToken)` still reports, and the fixer withholds an await rewrite the same way it does for `Wait(timeout)`.
+
 ### Fixed
 
 - LC061 no longer reports a compiled query inside a cache factory lambda wrapped in a cast or parentheses (`Cache.GetOrAdd(key, (Func<string, Blog>)(_ => ...))`), or inside `LazyInitializer.EnsureInitialized(valueFactory: ..., target: ref _byId)` and other static cache calls whose named arguments put the cache after the factory.
