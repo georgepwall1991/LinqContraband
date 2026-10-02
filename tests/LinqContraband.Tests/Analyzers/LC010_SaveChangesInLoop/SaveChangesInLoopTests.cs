@@ -266,6 +266,25 @@ class Program
     }
 
     [Fact]
+    public async Task TestInnocent_AsyncFactoryContextWithConfigureAwaitCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main(IDbContextFactory<MyDbContext> factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = await factory.CreateDbContextAsync().ConfigureAwait(false);
+            await db.SaveChangesAsync().ConfigureAwait(false);
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TestCrime_FactoryContextCreatedOutsideLoop_ShouldTriggerLC010()
     {
         var test = Usings + @"
@@ -332,6 +351,29 @@ class Program
         {
             var scope = services.CreateScope(0);
             var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedFromOuterContext_ShouldTriggerLC010()
+    {
+        // GetService can return null, and ??= then hands every iteration the same outer context.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            db ??= fallback;
             {|LC010:db.SaveChanges()|};
         }
     }

@@ -22,9 +22,8 @@ public sealed partial class SaveChangesInLoopAnalyzer
         IOperation saveOperation,
         IOperation executionOperation)
     {
-        var value = initializer.UnwrapConversions();
-        if (value is IAwaitOperation awaitOperation)
-            value = awaitOperation.Operation.UnwrapConversions();
+        // UnwrapConversions also steps through await, so this is the awaited call for an async initializer.
+        var value = UnwrapConfigureAwait(initializer.UnwrapConversions());
 
         return value switch
         {
@@ -35,6 +34,20 @@ public sealed partial class SaveChangesInLoopAnalyzer
                 IsServiceResolvedFromFreshLoopScope(invocation, loop, saveOperation, executionOperation),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// <c>await task.ConfigureAwait(...)</c> awaits the same task, so the call that created the task is what counts.
+    /// </summary>
+    private static IOperation UnwrapConfigureAwait(IOperation value)
+    {
+        while (value is IInvocationOperation { TargetMethod.Name: "ConfigureAwait", Instance: { } instance } invocation &&
+               invocation.TargetMethod.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
+        {
+            value = instance.UnwrapConversions();
+        }
+
+        return value;
     }
 
     private static bool IsDbContextFactoryCreateCall(IInvocationOperation invocation)

@@ -167,7 +167,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var operationStart = operation.Syntax.SpanStart;
 
         return scope.Descendants()
-                   .OfType<ISimpleAssignmentOperation>()
+                   .OfType<IAssignmentOperation>()
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
@@ -213,7 +213,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var operationStart = operation.Syntax.SpanStart;
 
         return scope.Descendants()
-                   .OfType<ISimpleAssignmentOperation>()
+                   .OfType<IAssignmentOperation>()
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
