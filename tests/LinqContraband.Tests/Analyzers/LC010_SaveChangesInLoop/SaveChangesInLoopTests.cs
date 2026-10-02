@@ -190,6 +190,534 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    private const string FactoryAndScopeMocks = @"
+namespace Microsoft.EntityFrameworkCore
+{
+    public interface IDbContextFactory<TContext> where TContext : DbContext
+    {
+        TContext CreateDbContext();
+        Task<TContext> CreateDbContextAsync();
+    }
+}
+
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public interface IServiceScope : IDisposable
+    {
+        IServiceProvider ServiceProvider { get; }
+    }
+
+    public interface IServiceScopeFactory
+    {
+        IServiceScope CreateScope();
+    }
+
+    public struct AsyncServiceScope : IAsyncDisposable
+    {
+        public IServiceProvider ServiceProvider => null;
+        public ValueTask DisposeAsync() => default;
+    }
+
+    public static class ServiceProviderServiceExtensions
+    {
+        public static T GetRequiredService<T>(this IServiceProvider provider) => default;
+        public static T GetService<T>(this IServiceProvider provider) => default;
+        public static IServiceScope CreateScope(this IServiceProvider provider) => null;
+        public static AsyncServiceScope CreateAsyncScope(this IServiceScopeFactory factory) => default;
+    }
+}";
+
+    [Fact]
+    public async Task TestInnocent_FactoryContextCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(IDbContextFactory<MyDbContext> factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = factory.CreateDbContext();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_AsyncFactoryContextCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main(IDbContextFactory<MyDbContext> factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = await factory.CreateDbContextAsync();
+            await db.SaveChangesAsync();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_AsyncFactoryContextWithConfigureAwaitCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    async Task Main(IDbContextFactory<MyDbContext> factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = await factory.CreateDbContextAsync().ConfigureAwait(false);
+            await db.SaveChangesAsync().ConfigureAwait(false);
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_FactoryImplementationInheritedFromBaseClass_ShouldNotTrigger()
+    {
+        // The base class has the implementing methods; only the derived class declares the interface.
+        var test = Usings + @"
+class FactoryBase
+{
+    public MyDbContext CreateDbContext()
+    {
+        var options = 0;
+        return options >= 0 ? new MyDbContext() : null;
+    }
+
+    public Task<MyDbContext> CreateDbContextAsync() => Task.FromResult(new MyDbContext());
+}
+
+class AppFactory : FactoryBase, IDbContextFactory<MyDbContext>
+{
+}
+
+class Program
+{
+    void Main(AppFactory factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = factory.CreateDbContext();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ScopeFromConcreteServiceScopeFactory_ShouldNotTrigger()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class AppScopeFactory : IServiceScopeFactory
+{
+    public IServiceScope CreateScope() => null;
+}
+
+class Program
+{
+    void Main(AppScopeFactory scopeFactory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_FactoryContextCreatedOutsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(IDbContextFactory<MyDbContext> factory, List<int> items)
+    {
+        using var db = factory.CreateDbContext();
+        foreach (var item in items)
+        {
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_FactoryClassNonInterfaceCreateDbContextReturningCachedContext_ShouldTriggerLC010()
+    {
+        // The interface member is implemented explicitly; the public CreateDbContext hands back one cached context.
+        var test = Usings + @"
+class CachingFactory : IDbContextFactory<MyDbContext>
+{
+    private readonly MyDbContext _cached = new MyDbContext();
+    public MyDbContext CreateDbContext(int unused = 0) => _cached;
+    MyDbContext IDbContextFactory<MyDbContext>.CreateDbContext() => new MyDbContext();
+    Task<MyDbContext> IDbContextFactory<MyDbContext>.CreateDbContextAsync() => Task.FromResult(new MyDbContext());
+}
+
+class Program
+{
+    void Main(CachingFactory factory, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = factory.CreateDbContext(1);
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ProjectCreateScopeReturningCachedScope_ShouldTriggerLC010()
+    {
+        // A project method named CreateScope that returns a cached IServiceScope is not a fresh DI scope.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+static class ScopeCache
+{
+    private static IServiceScope _scope;
+    public static IServiceScope CreateScope(this IServiceProvider provider, int unused) => _scope;
+}
+
+class Program
+{
+    void Main(IServiceProvider services, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var scope = services.CreateScope(0);
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedFromOuterContext_ShouldTriggerLC010()
+    {
+        // GetService can return null, and ??= then hands every iteration the same outer context.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            db ??= fallback;
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_FreshContextReassignedByDeconstruction_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = new MyDbContext();
+            int count;
+            (db, count) = (fallback, item);
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedInCalledLocalFunction_ShouldTriggerLC010()
+    {
+        // The ??= runs inside a local function called before the save, so later iterations can save the fallback.
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            void UseFallback() => db ??= fallback;
+            UseFallback();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextCoalesceAssignedTwoLocalFunctionsDeep_ShouldTriggerLC010()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceProvider services, MyDbContext fallback, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            void UseFallback() => db ??= fallback;
+            void Prepare() { if (item > 0) Prepare2(); UseFallback(); }
+            void Prepare2() => Prepare();
+            Prepare();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_DelegateParameterCoalesceAssignedInCalledLocalFunction_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    void Main(MyDbContext fallback, List<int> items)
+    {
+        Action<MyDbContext> saveCurrent = db =>
+        {
+            void UseFallback() => db ??= fallback;
+            UseFallback();
+            {|LC010:db.SaveChanges()|};
+        };
+
+        foreach (var item in items)
+        {
+            using var db = new MyDbContext();
+            saveCurrent(db);
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ScopedContextResolvedFromScopeCreatedInsideLoop_ShouldNotTrigger()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    async Task Main(IServiceScopeFactory scopeFactory, IServiceProvider services, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetService<MyDbContext>();
+            await db.SaveChangesAsync();
+        }
+
+        foreach (var item in items)
+        {
+            using (var scope = scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+                db.SaveChanges();
+            }
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ScopedContextResolvedFromScopeCreatedOutsideLoop_ShouldTriggerLC010()
+    {
+        var test = @"
+using Microsoft.Extensions.DependencyInjection;" + Usings + @"
+class Program
+{
+    void Main(IServiceScopeFactory scopeFactory, IServiceProvider services, List<int> items)
+    {
+        using var scope = scopeFactory.CreateScope();
+        foreach (var item in items)
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+
+        foreach (var item in items)
+        {
+            var db = services.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+
+        foreach (var item in items)
+        {
+            var innerScope = scopeFactory.CreateScope();
+            innerScope = scope;
+            var db = innerScope.ServiceProvider.GetRequiredService<MyDbContext>();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace + FactoryAndScopeMocks;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestInnocent_ContextFromSameProjectFactoryHelperInsideLoop_ShouldNotTrigger()
+    {
+        var test = Usings + @"
+class Program
+{
+    private static MyDbContext CreateContext() => new MyDbContext();
+
+    private MyDbContext NewContext()
+    {
+        return new();
+    }
+
+    private static DbContext CreateBaseContext() => new MyDbContext();
+
+    private static DbContext CreateWrappedContext() => ((DbContext)(new MyDbContext()));
+
+    void Main(List<int> items)
+    {
+        foreach (var item in items)
+        {
+            using var db = CreateContext();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            using var db = CreateBaseContext();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            using var db = CreateWrappedContext();
+            db.SaveChanges();
+        }
+
+        foreach (var item in items)
+        {
+            using var db = NewContext();
+            db.SaveChanges();
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_ContextFromHelperReturningSharedContextInsideLoop_ShouldTriggerLC010()
+    {
+        var test = Usings + @"
+class Program
+{
+    private readonly MyDbContext _db = new MyDbContext();
+
+    private MyDbContext GetContext() => _db;
+
+    protected virtual MyDbContext CreateContext() => new MyDbContext();
+
+    void Main(List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = GetContext();
+            {|LC010:db.SaveChanges()|};
+        }
+
+        foreach (var item in items)
+        {
+            var db = CreateContext();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_HelperReturningWrapperConvertedToCachedContext_ShouldTriggerLC010()
+    {
+        // new ContextHandle() is not a context: its user-defined conversion hands back one shared context.
+        var test = Usings + @"
+class ContextHandle
+{
+    private static readonly MyDbContext Shared = new MyDbContext();
+    public static implicit operator MyDbContext(ContextHandle handle) => Shared;
+}
+
+class Program
+{
+    private static MyDbContext CreateContext() => new ContextHandle();
+
+    void Main(List<int> items)
+    {
+        foreach (var item in items)
+        {
+            var db = CreateContext();
+            {|LC010:db.SaveChanges()|};
+        }
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     [Fact]
     public async Task TestCrime_ContextAliasDeclaredInsideLoop_ShouldTriggerLC010()
     {

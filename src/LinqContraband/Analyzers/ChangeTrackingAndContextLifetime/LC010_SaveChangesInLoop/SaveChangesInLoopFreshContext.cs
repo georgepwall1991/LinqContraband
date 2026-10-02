@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -112,8 +113,8 @@ public sealed partial class SaveChangesInLoopAnalyzer
             .OfType<IVariableDeclaratorOperation>()
             .FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(candidate.Symbol, local));
 
-        return declaration?.Initializer?.Value is IObjectCreationOperation objectCreation &&
-               objectCreation.Type?.IsDbContext() == true &&
+        return declaration?.Initializer?.Value is { } initializer &&
+               IsFreshContextCreation(initializer, loop, saveOperation, executionOperation) &&
                !IsLocalWrittenBeforeSaveExecution(loop.Body, saveOperation, executionOperation, local);
     }
 
@@ -167,11 +168,11 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var operationStart = operation.Syntax.SpanStart;
 
         return scope.Descendants()
-                   .OfType<ISimpleAssignmentOperation>()
+                   .OfType<IAssignmentOperation>()
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
-                                      IsLocalReference(assignment.Target, local)) ||
+                                      AssignmentTargets(assignment).Any(target => IsLocalReference(target, local))) ||
                scope.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => argument.Syntax.SpanStart < operationStart &&
@@ -213,11 +214,11 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var operationStart = operation.Syntax.SpanStart;
 
         return scope.Descendants()
-                   .OfType<ISimpleAssignmentOperation>()
+                   .OfType<IAssignmentOperation>()
                    .Any(assignment => assignment.Syntax.SpanStart < operationStart &&
                                       IsRelevantWriteRoot(assignment, ignoredRoot, requiredRoot) &&
                                       CanReachDestination(assignment, operation) &&
-                                      IsParameterReference(assignment.Target, parameter)) ||
+                                      AssignmentTargets(assignment).Any(target => IsParameterReference(target, parameter))) ||
                scope.Descendants()
                    .OfType<IArgumentOperation>()
                    .Any(argument => argument.Syntax.SpanStart < operationStart &&
@@ -250,7 +251,11 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsParameterWrittenInsideRoot(localFunction, parameter));
+                               IsWrittenInsideLocalFunctionChain(
+                                   localFunctionLookupScope,
+                                   localFunction,
+                                   root => IsParameterWrittenInsideRoot(root, parameter, includeCompoundAssignments: true),
+                                   new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
     }
 
     private static bool IsLocalWrittenByCalledLocalFunctionBeforeOperation(
@@ -269,7 +274,39 @@ public sealed partial class SaveChangesInLoopAnalyzer
                                IsRelevantWriteRoot(invocation, ignoredRoot, requiredRoot) &&
                                CanReachDestination(invocation, operation) &&
                                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var localFunction) &&
-                               IsLocalWrittenInsideRoot(localFunction, local));
+                               IsWrittenInsideLocalFunctionChain(
+                                   localFunctionLookupScope,
+                                   localFunction,
+                                   root => IsLocalWrittenInsideRoot(root, local, includeCompoundAssignments: true),
+                                   new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
+    }
+
+    /// <summary>
+    /// Whether a called local function, or a local function it calls in turn, writes the variable.
+    /// </summary>
+    private static bool IsWrittenInsideLocalFunctionChain(
+        IOperation localFunctionLookupScope,
+        ILocalFunctionOperation localFunction,
+        System.Func<IOperation, bool> isWrittenInsideRoot,
+        HashSet<IMethodSymbol> visited)
+    {
+        if (!visited.Add(localFunction.Symbol))
+            return false;
+
+        if (isWrittenInsideRoot(localFunction))
+            return true;
+
+        foreach (var invocation in localFunction.Descendants().OfType<IInvocationOperation>())
+        {
+            if (ReferenceEquals(invocation.FindOwningExecutableRoot(), localFunction) &&
+                TryFindLocalFunction(localFunctionLookupScope, invocation.TargetMethod, out var calledFunction) &&
+                IsWrittenInsideLocalFunctionChain(localFunctionLookupScope, calledFunction, isWrittenInsideRoot, visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsRelevantWriteRoot(IOperation write, IOperation? ignoredRoot, IOperation? requiredRoot)
@@ -277,6 +314,26 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var writeRoot = write.FindOwningExecutableRoot();
         return !ReferenceEquals(writeRoot, ignoredRoot) &&
                (requiredRoot == null || ReferenceEquals(writeRoot, requiredRoot));
+    }
+
+    /// <summary>
+    /// The variables an assignment writes: its target, or each element of a deconstruction's tuple target.
+    /// </summary>
+    private static IEnumerable<IOperation> AssignmentTargets(IAssignmentOperation assignment)
+    {
+        if (assignment is not IDeconstructionAssignmentOperation)
+            return new[] { assignment.Target };
+
+        return TupleElements(assignment.Target);
+
+        static IEnumerable<IOperation> TupleElements(IOperation target)
+        {
+            var value = target is IDeclarationExpressionOperation declaration ? declaration.Expression : target;
+            if (value is not ITupleOperation tuple)
+                return new[] { value };
+
+            return tuple.Elements.SelectMany(TupleElements);
+        }
     }
 
     private static bool IsLocalReference(IOperation operation, ILocalSymbol local)
