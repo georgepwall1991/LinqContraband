@@ -43,6 +43,7 @@ namespace TestApp
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users ORDER BY Id OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users FETCH FIRST 5 ROWS ONLY"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(TopTen).ToList();")]
+    [InlineData(@"return db.Users.FromSqlRaw(""SELECT * FROM Users /* a /* b */ c */ LIMIT 10"").ToList();")]
     // A limit before a SQL Server ##Temp name still counts.
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT TOP (10) * FROM ##Shared"").ToList();")]
     [InlineData(@"return db.Users.FromSqlRaw(""SELECT $q$a$q$ AS marker, * FROM Users WHERE Id > $1 LIMIT 10"", n).ToList();")]
@@ -64,6 +65,8 @@ namespace TestApp
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* TOP 10 */"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users WHERE Name = 'LIMIT 10'"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT [Limit], [Top] FROM Users"").ToList()|};")]
+    // Nested block comments.
+    [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users /* outer /* inner */ LIMIT 10 */"").ToList()|};")]
     // A MySQL # line comment.
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users # LIMIT 10"").ToList()|};")]
     [InlineData(@"return {|LC031:db.Users.FromSqlRaw(""SELECT * FROM Users #comment LIMIT 10"").ToList()|};")]

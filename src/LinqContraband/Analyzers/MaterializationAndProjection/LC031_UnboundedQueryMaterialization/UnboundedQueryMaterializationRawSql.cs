@@ -176,10 +176,30 @@ public sealed partial class UnboundedQueryMaterializationAnalyzer
 
             if (c == '/' && i + 1 < sql.Length && sql[i + 1] == '*')
             {
-                var end = sql.IndexOf("*/", i + 2, StringComparison.Ordinal);
-                if (end < 0)
-                    return null;
-                i = end + 2;
+                // SQL Server and PostgreSQL nest block comments. MySQL does not, but reading them as nested only
+                // hides more text, so a limit in the ambiguous part does not count.
+                var commentDepth = 1;
+                i += 2;
+                while (commentDepth > 0)
+                {
+                    if (i + 1 >= sql.Length)
+                        return null;
+                    if (sql[i] == '/' && sql[i + 1] == '*')
+                    {
+                        commentDepth++;
+                        i += 2;
+                    }
+                    else if (sql[i] == '*' && sql[i + 1] == '/')
+                    {
+                        commentDepth--;
+                        i += 2;
+                    }
+                    else
+                    {
+                        i++;
+                    }
+                }
+
                 continue;
             }
 
