@@ -103,7 +103,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
             if (!MaterializesRootEntity(invocation, rootEntityType))
                 return;
 
-            _records.Add(new MaterializationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, trackingMode));
+            _records.Add(new MaterializationRecord(root, invocation.Syntax, invocation.Syntax.GetLocation(), invocation.Syntax.SpanStart, contextSymbol, rootEntityType, trackingMode));
         }
 
     }
@@ -122,13 +122,14 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
 
     private sealed class MaterializationRecord
     {
-        public MaterializationRecord(IOperation root, SyntaxNode syntax, Location location, int position, ISymbol? contextSymbol, TrackingMode mode)
+        public MaterializationRecord(IOperation root, SyntaxNode syntax, Location location, int position, ISymbol? contextSymbol, ITypeSymbol? entityType, TrackingMode mode)
         {
             Root = root;
             Syntax = syntax;
             Location = location;
             Position = position;
             ContextSymbol = contextSymbol;
+            EntityType = entityType;
             Mode = mode;
         }
 
@@ -137,6 +138,9 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer : DiagnosticAnaly
         public Location Location { get; }
         public int Position { get; }
         public ISymbol? ContextSymbol { get; }
+
+        // The entity type of the DbSet the query starts from.
+        public ITypeSymbol? EntityType { get; }
         public TrackingMode Mode { get; }
     }
 

@@ -12,7 +12,7 @@ Imagine half your soccer team is wearing jerseys with numbers and the other
 half is invisible. The coach cannot tell who is on the field anymore.
 
 ## Goal
-Detect methods that mix tracked and no-tracking materialization from the same `DbContext`.
+Detect methods that mix tracked and no-tracking materialization of the same entity type from the same `DbContext`.
 
 ## The Problem
 Switching between tracked and `AsNoTracking()` queries in one scope is easy to miss and can make later update behavior inconsistent.
@@ -31,6 +31,8 @@ var noTrackingUsers = db.Users.AsNoTracking().ToList();
 
 ### Notes
 This advisory reports only when the query provenance and materialization mode are both provable. It only counts reads that materialize the entity type of the `DbSet` they start from; a query a helper reshapes into DTOs or scalars, such as AutoMapper's `ProjectTo<Dto>()`, is not tracked either way.
+
+The tracked and the no-tracking read must be over the same entity type, or over a base type and a type derived from it (which can return the same rows). Tracked `db.AclRecords` next to an `AsNoTracking()` lookup of `db.CustomerRoles` on the same context does not report: no entity can end up both tracked and untracked, so the modes do not conflict. This was the main source of noise on Smartstore and fullstackhero.
 
 Only EF Core `EntityFrameworkQueryableExtensions.AsNoTracking`, `AsNoTrackingWithIdentityResolution`, and `AsTracking` calls are treated as tracking-mode markers. Custom extension methods with the same names are followed as ordinary query-chain calls and do not create mixed-mode evidence by themselves.
 
@@ -52,4 +54,4 @@ LC040 is manual-only because the correct resolution depends on intent:
 - choose fully no-tracking queries for read-only work;
 - split the workflow across separate methods, contexts, or scopes when one operation genuinely needs both modes.
 
-The analyzer deliberately stays quiet for different context instances and for mutually exclusive branches where one execution path does not actually mix modes.
+The analyzer deliberately stays quiet for different context instances, for unrelated entity types, and for mutually exclusive branches where one execution path does not actually mix modes.

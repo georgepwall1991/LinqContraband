@@ -39,6 +39,7 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                         {
                             var previous = records[previousIndex];
                             if (previous.Mode == current.Mode ||
+                                !AreInSameEntityHierarchy(previous.EntityType, current.EntityType) ||
                                 AreMutuallyExclusiveBranches(previous.Syntax, current.Syntax))
                             {
                                 continue;
@@ -52,6 +53,28 @@ public sealed partial class MixedTrackingAndNoTrackingAnalyzer
                     }
                 }
             }
+        }
+
+        // Tracked AclRecords next to an AsNoTracking() CustomerRole lookup cannot conflict: no entity can be both a
+        // tracked and an untracked instance. Only reads over one entity type, or over a base and a derived type
+        // (which can return the same rows), mix tracking modes for the same entities.
+        private static bool AreInSameEntityHierarchy(ITypeSymbol? left, ITypeSymbol? right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            return DerivesFromOrEquals(left, right) || DerivesFromOrEquals(right, left);
+        }
+
+        private static bool DerivesFromOrEquals(ITypeSymbol type, ITypeSymbol baseType)
+        {
+            for (var current = type; current != null; current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, baseType))
+                    return true;
+            }
+
+            return false;
         }
     }
 }

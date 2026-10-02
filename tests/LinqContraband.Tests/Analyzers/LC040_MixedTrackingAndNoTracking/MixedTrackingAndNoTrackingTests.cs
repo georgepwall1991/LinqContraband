@@ -694,4 +694,76 @@ class Program
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    private const string HierarchyTypes = @"
+namespace TestApp
+{
+    public class AclRecord { public int Id { get; set; } }
+    public class CustomerRole { public int Id { get; set; } public string Name { get; set; } }
+    public class Person { public int Id { get; set; } }
+    public class Employee : Person { }
+
+    public class ShopDbContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public Microsoft.EntityFrameworkCore.DbSet<AclRecord> AclRecords { get; set; }
+        public Microsoft.EntityFrameworkCore.DbSet<CustomerRole> CustomerRoles { get; set; }
+        public Microsoft.EntityFrameworkCore.DbSet<Person> People { get; set; }
+        public Microsoft.EntityFrameworkCore.DbSet<Employee> Employees { get; set; }
+    }
+}
+";
+
+    [Fact]
+    public async Task TrackedAndNoTrackingOverUnrelatedEntityTypes_DoNotTrigger()
+    {
+        // Smartstore: tracked AclRecords are edited while CustomerRoles are only looked up.
+        var test = EFCoreMock + HierarchyTypes + @"
+
+class Program
+{
+    void Run(TestApp.ShopDbContext db)
+    {
+        var records = db.AclRecords.ToList();
+        var roles = db.CustomerRoles.AsNoTracking().ToList();
+        var role = db.Set<TestApp.CustomerRole>().AsNoTracking().FirstOrDefault();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TrackedAndNoTrackingInSameHierarchy_Triggers()
+    {
+        var test = EFCoreMock + HierarchyTypes + @"
+
+class Program
+{
+    void Run(TestApp.ShopDbContext db)
+    {
+        var people = db.People.ToList();
+        var employees = {|LC040:db.Employees.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task UnrelatedTypeBetweenMixedReadsOfSameType_StillTriggers()
+    {
+        var test = EFCoreMock + HierarchyTypes + @"
+
+class Program
+{
+    void Run(TestApp.ShopDbContext db)
+    {
+        var records = db.AclRecords.ToList();
+        var roles = db.CustomerRoles.AsNoTracking().ToList();
+        var detached = {|LC040:db.AclRecords.AsNoTracking().ToList()|};
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }
