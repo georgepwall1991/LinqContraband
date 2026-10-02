@@ -112,8 +112,55 @@ public partial class NPlusOneLooperTests
             Action reset = () => first = null;
             reset();
         }")]
+    // A query that throws inside a try whose catch lets the loop go on leaves the local null for the next iteration.
+    [InlineData(@"User first = null;
+        foreach (var id in ids)
+        {
+            try
+            {
+                first ??= {|LC007:db.Users.First(u => u.Id == id)|};
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }")]
+    // An `as` cast can turn the non-null row into null, leaving the guard open.
+    [InlineData(@"IDisposable cached = null;
+        foreach (var id in ids)
+        {
+            cached ??= {|LC007:db.Users.First(u => u.Id == id)|} as IDisposable;
+        }")]
     public Task LoadOnceGuardThatCanRearm_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));
+
+    [Fact]
+    public Task LoadOnceGuardWithUserDefinedEquality_StillReports()
+    {
+        // A user-defined == can report a loaded value as null, so the guard does not prove the query runs once.
+        var test = Usings + @"
+class Holder
+{
+    public Holder(User user) { }
+    public static bool operator ==(Holder left, Holder right) => true;
+    public static bool operator !=(Holder left, Holder right) => false;
+    public override bool Equals(object obj) => true;
+    public override int GetHashCode() => 0;
+}
+
+class Program
+{
+    void Run(MyDbContext db, int[] ids)
+    {
+        Holder holder = null;
+        foreach (var id in ids)
+        {
+            if (holder == null)
+                holder = new Holder({|LC007:db.Users.First(u => u.Id == id)|});
+        }
+    }
+}" + MockNamespace;
+        return VerifyCS.VerifyAnalyzerAsync(test);
+    }
 
     [Fact]
     public Task LoadOnceGuardWithRefAlias_StillReports()

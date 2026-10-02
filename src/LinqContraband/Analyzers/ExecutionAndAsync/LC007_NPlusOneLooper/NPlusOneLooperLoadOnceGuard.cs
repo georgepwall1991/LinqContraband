@@ -46,6 +46,7 @@ internal static partial class NPlusOneLooperAnalysis
         }
 
         return AssignedValueIsNeverNull(assignment.Value) &&
+               !IsInsideTryWithCatchInLoop(statement, loop) &&
                !HasOtherWriteThatCanRearm(local, assignment, loop);
     }
 
@@ -56,11 +57,18 @@ internal static partial class NPlusOneLooperAnalysis
     /// </summary>
     private static bool AssignedValueIsNeverNull(IOperation value)
     {
-        value = value.UnwrapConversions();
-        while (value is IInvocationOperation { TargetMethod.Name: "ConfigureAwait", Instance: { } awaited } &&
-               value.Type?.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices")
+        // Step only through what keeps a non-null value non-null: `as` and user-defined conversions can yield null.
+        while (true)
         {
-            value = awaited.UnwrapConversions();
+            if (value is IConversionOperation { IsTryCast: false, Conversion.IsUserDefined: false } conversion)
+                value = conversion.Operand;
+            else if (value is IAwaitOperation awaitOperation)
+                value = awaitOperation.Operation;
+            else if (value is IInvocationOperation { TargetMethod.Name: "ConfigureAwait", Instance: { } awaited } &&
+                     value.Type?.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices")
+                value = awaited;
+            else
+                break;
         }
 
         if (value is IObjectCreationOperation or IArrayCreationOperation)
@@ -104,6 +112,26 @@ internal static partial class NPlusOneLooperAnalysis
         return ns is "System.Linq" or "Microsoft.EntityFrameworkCore";
     }
 
+    /// <summary>
+    /// A query that throws inside a <c>try</c> whose <c>catch</c> lets the loop go on leaves the local unassigned,
+    /// so the next iteration queries again.
+    /// </summary>
+    private static bool IsInsideTryWithCatchInLoop(IOperation statement, ILoopOperation loop)
+    {
+        IOperation child = statement;
+        for (var current = statement.Parent; current != null && !ReferenceEquals(current, loop); child = current, current = current.Parent)
+        {
+            if (current is ITryOperation tryOperation &&
+                ReferenceEquals(tryOperation.Body, child) &&
+                !tryOperation.Catches.IsEmpty)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static IExpressionStatementOperation? FindEnclosingExpressionStatement(IOperation operation)
     {
         for (var current = operation.Parent; current != null; current = current.Parent)
@@ -142,7 +170,8 @@ internal static partial class NPlusOneLooperAnalysis
             case IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } conjunction:
                 return ConditionImpliesNull(conjunction.LeftOperand, local) ||
                        ConditionImpliesNull(conjunction.RightOperand, local);
-            case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals } equals:
+            // A user-defined == can answer true for a non-null value, so only the built-in comparison proves null.
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals, OperatorMethod: null } equals:
                 return (IsLocalRead(equals.LeftOperand, local) && IsNullConstant(equals.RightOperand)) ||
                        (IsLocalRead(equals.RightOperand, local) && IsNullConstant(equals.LeftOperand));
             case IIsPatternOperation { Pattern: IConstantPatternOperation constantPattern } isPattern:
