@@ -5,11 +5,12 @@ namespace LinqContraband.Tests.Analyzers.LC063_TransactionUnderRetryingStrategy;
 
 /// <summary>
 /// Leftover 5.16.0 LC063 <c>StrategyCallers</c> arms the original caller-lambda cases do not isolate.
-/// <c>IsInsideNameof</c> drops <c>nameof(Save)</c> so a logging mention does not look like an unprotected
-/// caller. <c>MemberBindingExpressionSyntax</c> treats <c>target?.Save()</c> as the invocation it is.
+/// <c>MemberBindingExpressionSyntax</c> treats <c>target?.Save()</c> as the invocation it is.
 /// <c>IsAwaitPoint</c> treats <c>await foreach</c> and both <c>await using</c> forms as a suspension, so
 /// a transaction after one in an un-awaited in-place async lambda still reports.
-/// Factory method-group custom strategies stay a documented false negative; do not lock them as quiet.
+/// Statement and declaration isolate independently. <c>nameof(Save)</c> does not isolate
+/// <c>IsInsideNameof</c>: <c>GetSymbolInfo</c> already skips it in this harness. Factory method-group
+/// custom strategies stay a documented false negative; do not lock them as quiet.
 /// </summary>
 public class TransactionUnderRetryingStrategyCoverageTests
 {
@@ -36,28 +37,6 @@ public class TransactionUnderRetryingStrategyCoverageTests
     {
         yield break;
     }";
-
-    [Theory]
-    [InlineData("_ = nameof(SaveInTransaction);")]
-    [InlineData("_ = nameof(Service.SaveInTransaction);")]
-    public async Task Nameof_BesideStrategyCaller_StaysQuiet(string nameofUse)
-    {
-        // nameof is not a call. Without the skip it is an unprotected method-group reference.
-        await VerifyAsync(TransactionUnderRetryingStrategyTests.Wrap(
-            @"var strategy = db.Database.CreateExecutionStrategy();
-        strategy.Execute(SaveInTransaction);
-        " + nameofUse,
-            extraMembers: ProtectedSave));
-    }
-
-    [Fact]
-    public async Task Nameof_DoesNotHideUnprotectedCaller_Reports()
-    {
-        await VerifyAsync(TransactionUnderRetryingStrategyTests.Wrap(
-            @"_ = nameof(SaveInTransaction);
-        SaveInTransaction();",
-            extraMembers: ReportedSave));
-    }
 
     [Fact]
     public async Task ConditionalAccessHelperCall_InsideStrategy_StaysQuiet()
