@@ -27,6 +27,20 @@ dotnet add package LinqContraband
 The package is source-linked to the official GitHub repository and is intended to run as a compile-time analyzer in your
 project.
 
+## Reporting a Vulnerability
+
+Use the [private vulnerability reporting form](https://github.com/georgepwall1991/LinqContraband/security/advisories/new)
+for the official analyzer or scanner. Reports stay private to repository security maintainers. Include the affected
+version, reproduction steps and likely impact; avoid publishing credentials or exploit details in an ordinary issue.
+The maintainer aims to acknowledge reports within 14 days and prioritizes confirmed critical issues immediately.
+
+Security fixes target the latest stable release. The [security policy](https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md)
+explains supported versions, response targets and disclosure. Published fixes are documented in
+[security advisories](https://github.com/georgepwall1991/LinqContraband/security/advisories) and release notes.
+
+The scanner runs the target's .NET build, which can execute project-supplied code. Scan trusted repositories or use
+an isolated environment; the scanner does not sandbox an untrusted build.
+
 ## If You Find an Impersonating Download
 
 - Do not download, unzip, or run the suspicious file.
