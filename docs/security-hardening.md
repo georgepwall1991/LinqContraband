@@ -15,6 +15,18 @@ analyzer rules. No findings were dismissed to hide an unresolved condition.
 | Code review | 1 | Historical approved-change ratio cannot be repaired by editing code. Only the owner is currently a collaborator. Add an eligible independent reviewer and require approvals; future approved PRs will improve this finding. Do not manufacture approvals or rewrite history. |
 | OpenSSF best practices | 1 | Maintainer enrollment and evidence-backed self-assessment at [OpenSSF Best Practices](https://www.bestpractices.dev/) remain required. Do not add an unearned badge. |
 
+## Best-practices follow-up
+
+The [67-criterion draft assessment](https://georgepwall1991.github.io/LinqContraband/openssf-assessment.html) and [submission data](openssf-assessment.json) map repository
+and live configuration evidence to the passing-badge requirements. George Wall confirmed the developer-knowledge
+declarations on 2026-10-05. Enrollment remains pending; the draft is not an earned badge. The [secure-development guide](https://georgepwall1991.github.io/LinqContraband/secure-development.html)
+covers the complete design principles and common-error mitigations.
+
+Private vulnerability reporting, Dependabot alerts/security updates, secret scanning and push protection were enabled
+and read back on 2026-10-05. The public [security page](security-and-authenticity.md) links to the private reporting route.
+George Wall will review contributions from other authors. The gate remains at zero required approvals while his account
+is the sole collaborator because GitHub does not permit approving a PR authored by the same account.
+
 ## Necessary write grants
 
 `release.yml` grants `contents: write` only to its release job, after a successful

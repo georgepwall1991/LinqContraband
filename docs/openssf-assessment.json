@@ -1,0 +1,869 @@
+{
+  "assessment_version": 1,
+  "assessed_at": "2026-10-05",
+  "repository": "https://github.com/georgepwall1991/LinqContraband",
+  "source_commit": "faf8429d49afe581d3e984975cabb520dc23589e",
+  "criteria_source": "https://www.bestpractices.dev/en/criteria/0",
+  "submission_state": "draft - not enrolled or submitted",
+  "identity": {
+    "name": "LinqContraband",
+    "homepage_url": "https://georgepwall1991.github.io/LinqContraband/",
+    "repo_url": "https://github.com/georgepwall1991/LinqContraband",
+    "description": "Compile-time EF Core LINQ performance and safety analyzers, code fixes, and a .NET solution scanner.",
+    "programming_languages": "C#",
+    "license": "MIT"
+  },
+  "counts": {
+    "Met": 59,
+    "N/A": 7,
+    "Unmet": 1
+  },
+  "pending_dependencies": [
+    "OpenSSF GitHub sign-in and project enrollment",
+    "Merge evidence/documentation changes before claiming their published URLs",
+    "Independent human review history: owner George Wall will review PRs from other authors; GitHub does not allow self-approval"
+  ],
+  "criteria": [
+    {
+      "id": "description_good",
+      "group": "Basics",
+      "subgroup": "Basic project website content",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The README and public documentation describe the EF Core analyzer, official NuGet installation, scanner, feedback and contribution routes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/README.md",
+        "https://georgepwall1991.github.io/LinqContraband/"
+      ]
+    },
+    {
+      "id": "interact",
+      "group": "Basics",
+      "subgroup": "Basic project website content",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The README and public documentation describe the EF Core analyzer, official NuGet installation, scanner, feedback and contribution routes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/README.md",
+        "https://georgepwall1991.github.io/LinqContraband/"
+      ]
+    },
+    {
+      "id": "contribution",
+      "group": "Basics",
+      "subgroup": "Basic project website content",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "CONTRIBUTING describes fork/branch/PR flow, coding conventions, the rule catalog contract, tests and required CI checks.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "contribution_requirements",
+      "group": "Basics",
+      "subgroup": "Basic project website content",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "CONTRIBUTING describes fork/branch/PR flow, coding conventions, the rule catalog contract, tests and required CI checks.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "floss_license",
+      "group": "Basics",
+      "subgroup": "FLOSS license",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The source and packages use the OSI-approved MIT license. LICENSE is in the repository root and the package declares MIT.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband/LinqContraband.csproj"
+      ]
+    },
+    {
+      "id": "floss_license_osi",
+      "group": "Basics",
+      "subgroup": "FLOSS license",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "The source and packages use the OSI-approved MIT license. LICENSE is in the repository root and the package declares MIT.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband/LinqContraband.csproj"
+      ]
+    },
+    {
+      "id": "license_location",
+      "group": "Basics",
+      "subgroup": "FLOSS license",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The source and packages use the OSI-approved MIT license. LICENSE is in the repository root and the package declares MIT.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband/LinqContraband.csproj"
+      ]
+    },
+    {
+      "id": "documentation_basics",
+      "group": "Basics",
+      "subgroup": "Documentation",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Documentation covers installation, rule diagnostic inputs/outputs, fixes, severity/configuration, scanner options and report formats.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/README.md",
+        "https://georgepwall1991.github.io/LinqContraband/rule-catalog.html",
+        "https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/"
+      ]
+    },
+    {
+      "id": "documentation_interface",
+      "group": "Basics",
+      "subgroup": "Documentation",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Documentation covers installation, rule diagnostic inputs/outputs, fixes, severity/configuration, scanner options and report formats.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/README.md",
+        "https://georgepwall1991.github.io/LinqContraband/rule-catalog.html",
+        "https://georgepwall1991.github.io/LinqContraband/ef-core-query-scanner/"
+      ]
+    },
+    {
+      "id": "sites_https",
+      "group": "Basics",
+      "subgroup": "Other",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "GitHub source/releases, GitHub Pages documentation and the official NuGet distribution endpoints use HTTPS.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband",
+        "https://georgepwall1991.github.io/LinqContraband/",
+        "https://www.nuget.org/packages/LinqContraband"
+      ]
+    },
+    {
+      "id": "discussion",
+      "group": "Basics",
+      "subgroup": "Other",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Public GitHub issues and PR discussions have addressable URLs, searchable archives and browser participation. Project documentation and discussion are in English.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "english",
+      "group": "Basics",
+      "subgroup": "Other",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "Public GitHub issues and PR discussions have addressable URLs, searchable archives and browser participation. Project documentation and discussion are in English.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "maintained",
+      "group": "Basics",
+      "subgroup": "Other",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Release 5.17.0 was published on 2026-10-02; the repository has recent merged work and functioning CI.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/releases/tag/v5.17.0",
+        "https://github.com/georgepwall1991/LinqContraband/pull/669"
+      ]
+    },
+    {
+      "id": "repo_public",
+      "group": "Change Control",
+      "subgroup": "Public version-controlled source repository",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The public Git repository preserves authors, timestamps and diffs, and exposes commits and PR branches between releases.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband",
+        "https://github.com/georgepwall1991/LinqContraband/commits/master",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "repo_track",
+      "group": "Change Control",
+      "subgroup": "Public version-controlled source repository",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The public Git repository preserves authors, timestamps and diffs, and exposes commits and PR branches between releases.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband",
+        "https://github.com/georgepwall1991/LinqContraband/commits/master",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "repo_interim",
+      "group": "Change Control",
+      "subgroup": "Public version-controlled source repository",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The public Git repository preserves authors, timestamps and diffs, and exposes commits and PR branches between releases.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband",
+        "https://github.com/georgepwall1991/LinqContraband/commits/master",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "repo_distributed",
+      "group": "Change Control",
+      "subgroup": "Public version-controlled source repository",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "The public Git repository preserves authors, timestamps and diffs, and exposes commits and PR branches between releases.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband",
+        "https://github.com/georgepwall1991/LinqContraband/commits/master",
+        "https://github.com/georgepwall1991/LinqContraband/pulls"
+      ]
+    },
+    {
+      "id": "version_unique",
+      "group": "Change Control",
+      "subgroup": "Unique version numbering",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Releases use unique semantic versions and matching vX.Y.Z tags. Automated release metadata checks reject a mismatched package version and tag.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/tags",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/release_info.py",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/release.yml"
+      ]
+    },
+    {
+      "id": "version_semver",
+      "group": "Change Control",
+      "subgroup": "Unique version numbering",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "Releases use unique semantic versions and matching vX.Y.Z tags. Automated release metadata checks reject a mismatched package version and tag.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/tags",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/release_info.py",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/release.yml"
+      ]
+    },
+    {
+      "id": "version_tags",
+      "group": "Change Control",
+      "subgroup": "Unique version numbering",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "Releases use unique semantic versions and matching vX.Y.Z tags. Automated release metadata checks reject a mismatched package version and tag.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/tags",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/release_info.py",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/release.yml"
+      ]
+    },
+    {
+      "id": "release_notes",
+      "group": "Change Control",
+      "subgroup": "Release notes",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "CHANGELOG and GitHub Releases describe behavior changes and upgrade impact; automated releases extract the matching version section.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CHANGELOG.md",
+        "https://github.com/georgepwall1991/LinqContraband/releases/tag/v5.17.0"
+      ]
+    },
+    {
+      "id": "release_notes_vulns",
+      "group": "Change Control",
+      "subgroup": "Release notes",
+      "category": "MUST",
+      "status": "N/A",
+      "justification": "No published vulnerability advisories or CVE/GHSA assignments for the two project packages were found on 2026-10-05. SECURITY and CONTRIBUTING require assigned identifiers in future applicable release notes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories"
+      ]
+    },
+    {
+      "id": "report_process",
+      "group": "Reporting",
+      "subgroup": "Bug-reporting process",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "GitHub Issues is the public bug/enhancement submission route and searchable archive, linked from CONTRIBUTING and README.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "report_tracker",
+      "group": "Reporting",
+      "subgroup": "Bug-reporting process",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "GitHub Issues is the public bug/enhancement submission route and searchable archive, linked from CONTRIBUTING and README.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "report_responses",
+      "group": "Reporting",
+      "subgroup": "Bug-reporting process",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "All 17 non-PR issues returned by the complete issue listing are closed or have a response. They were opened in March/April 2026, within the current 2-12 month assessment window. Closure is evidence of acknowledgement; not every request required implementation.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues?q=is%3Aissue+is%3Aclosed"
+      ]
+    },
+    {
+      "id": "enhancement_responses",
+      "group": "Reporting",
+      "subgroup": "Bug-reporting process",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "All 17 non-PR issues returned by the complete issue listing are closed or have a response. They were opened in March/April 2026, within the current 2-12 month assessment window. Closure is evidence of acknowledgement; not every request required implementation.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues?q=is%3Aissue+is%3Aclosed"
+      ]
+    },
+    {
+      "id": "report_archive",
+      "group": "Reporting",
+      "subgroup": "Bug-reporting process",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "GitHub Issues is the public bug/enhancement submission route and searchable archive, linked from CONTRIBUTING and README.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/issues",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "vulnerability_report_process",
+      "group": "Reporting",
+      "subgroup": "Vulnerability report process",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "SECURITY and the public authenticity page link to GitHub private vulnerability reporting, which was enabled and read back on 2026-10-05. Sensitive reports are kept out of ordinary public issues.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://georgepwall1991.github.io/LinqContraband/security-and-authenticity/",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories/new"
+      ]
+    },
+    {
+      "id": "vulnerability_report_private",
+      "group": "Reporting",
+      "subgroup": "Vulnerability report process",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "SECURITY and the public authenticity page link to GitHub private vulnerability reporting, which was enabled and read back on 2026-10-05. Sensitive reports are kept out of ordinary public issues.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://georgepwall1991.github.io/LinqContraband/security-and-authenticity/",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories/new"
+      ]
+    },
+    {
+      "id": "vulnerability_report_response",
+      "group": "Reporting",
+      "subgroup": "Vulnerability report process",
+      "category": "MUST",
+      "status": "N/A",
+      "justification": "No project security advisories/private vulnerability reports were returned by the repository admin API on 2026-10-05. There is no report-response history to measure. The public response target is acknowledgement within 14 calendar days.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories"
+      ]
+    },
+    {
+      "id": "build",
+      "group": "Quality",
+      "subgroup": "Working build system",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The source builds with the FLOSS .NET SDK/MSBuild/Roslyn toolchain; proprietary IDEs are optional. CONTRIBUTING now correctly documents the .NET 10 SDK and multi-target runtime requirements.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/global.json",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LinqContraband.sln",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "build_common_tools",
+      "group": "Quality",
+      "subgroup": "Working build system",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "The source builds with the FLOSS .NET SDK/MSBuild/Roslyn toolchain; proprietary IDEs are optional. CONTRIBUTING now correctly documents the .NET 10 SDK and multi-target runtime requirements.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/global.json",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LinqContraband.sln",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "build_floss_tools",
+      "group": "Quality",
+      "subgroup": "Working build system",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "The source builds with the FLOSS .NET SDK/MSBuild/Roslyn toolchain; proprietary IDEs are optional. CONTRIBUTING now correctly documents the .NET 10 SDK and multi-target runtime requirements.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/global.json",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/LinqContraband.sln",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md"
+      ]
+    },
+    {
+      "id": "test",
+      "group": "Quality",
+      "subgroup": "Automated test suite",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The MIT-licensed test suite uses xUnit and is run with standard dotnet test commands documented in CONTRIBUTING and CI.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/dotnet.yml",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj"
+      ]
+    },
+    {
+      "id": "test_invocation",
+      "group": "Quality",
+      "subgroup": "Automated test suite",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "The MIT-licensed test suite uses xUnit and is run with standard dotnet test commands documented in CONTRIBUTING and CI.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/dotnet.yml",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj"
+      ]
+    },
+    {
+      "id": "test_most",
+      "group": "Quality",
+      "subgroup": "Automated test suite",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "The 2026-10-05 net10.0 run passed 5,950 tests with 90.96% line and 78.53% branch coverage. This supports most-code coverage; it is not a claim of complete coverage or 80% branch coverage.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950658",
+        "https://github.com/georgepwall1991/LinqContraband/tree/master/tests/LinqContraband.Tests"
+      ]
+    },
+    {
+      "id": "test_continuous_integration",
+      "group": "Quality",
+      "subgroup": "Automated test suite",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "GitHub Actions builds and tests PRs and master pushes. Master protection requires passing build and CodeQL checks before merge.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/dotnet.yml",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/codeql.yml"
+      ]
+    },
+    {
+      "id": "test_policy",
+      "group": "Quality",
+      "subgroup": "New functionality testing",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "CONTRIBUTING requires tests for changed/new rule behavior and newly reporting code shapes. Recent release PRs include rule tests; PR 669 adds the scanner fuzz properties.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/pull/666",
+        "https://github.com/georgepwall1991/LinqContraband/pull/669",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/Scan/ScanOptionsFuzzTests.cs"
+      ]
+    },
+    {
+      "id": "tests_are_added",
+      "group": "Quality",
+      "subgroup": "New functionality testing",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "CONTRIBUTING requires tests for changed/new rule behavior and newly reporting code shapes. Recent release PRs include rule tests; PR 669 adds the scanner fuzz properties.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/pull/666",
+        "https://github.com/georgepwall1991/LinqContraband/pull/669",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/Scan/ScanOptionsFuzzTests.cs"
+      ]
+    },
+    {
+      "id": "tests_documented_added",
+      "group": "Quality",
+      "subgroup": "New functionality testing",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "CONTRIBUTING requires tests for changed/new rule behavior and newly reporting code shapes. Recent release PRs include rule tests; PR 669 adds the scanner fuzz properties.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/CONTRIBUTING.md",
+        "https://github.com/georgepwall1991/LinqContraband/pull/666",
+        "https://github.com/georgepwall1991/LinqContraband/pull/669",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/Scan/ScanOptionsFuzzTests.cs"
+      ]
+    },
+    {
+      "id": "warnings",
+      "group": "Quality",
+      "subgroup": "Warning flags",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The primary analyzer and scanner enable TreatWarningsAsErrors. The standard solution build has zero warnings/errors and hosted CI passed. The optional stricter analyzer-enabled build is separately disclosed below.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband/LinqContraband.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/LinqContraband.Scan.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950658"
+      ]
+    },
+    {
+      "id": "warnings_fixed",
+      "group": "Quality",
+      "subgroup": "Warning flags",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The primary analyzer and scanner enable TreatWarningsAsErrors. The standard solution build has zero warnings/errors and hosted CI passed. The optional stricter analyzer-enabled build is separately disclosed below.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband/LinqContraband.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/LinqContraband.Scan.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950658"
+      ]
+    },
+    {
+      "id": "warnings_strict",
+      "group": "Quality",
+      "subgroup": "Warning flags",
+      "category": "SUGGESTED",
+      "status": "Unmet",
+      "justification": "Compiler warnings are errors, but the optional ContinuousIntegrationBuild=true analyzer-enabled build still reports 143 existing code-quality errors, reproduced on unchanged HEAD. Do not claim maximal static-warning strictness. This is a SUGGESTED criterion, not a mandatory passing requirement.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/Directory.Build.props",
+        "https://github.com/georgepwall1991/LinqContraband/pull/669"
+      ]
+    },
+    {
+      "id": "know_secure_design",
+      "group": "Security",
+      "subgroup": "Secure development knowledge",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "On 2026-10-05 primary developer George Wall explicitly confirmed that he understands and applies secure-design and common-error mitigation practices. The secure-development guide records the full principles and repository-specific mitigations; publishing the guide alone is not the basis for this declaration.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/secure-development.md",
+        "https://www.bestpractices.dev/en/criteria/0#know_secure_design",
+        "https://www.bestpractices.dev/en/criteria/0#know_common_errors"
+      ]
+    },
+    {
+      "id": "know_common_errors",
+      "group": "Security",
+      "subgroup": "Secure development knowledge",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "On 2026-10-05 primary developer George Wall explicitly confirmed that he understands and applies secure-design and common-error mitigation practices. The secure-development guide records the full principles and repository-specific mitigations; publishing the guide alone is not the basis for this declaration.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/secure-development.md",
+        "https://www.bestpractices.dev/en/criteria/0#know_secure_design",
+        "https://www.bestpractices.dev/en/criteria/0#know_common_errors"
+      ]
+    },
+    {
+      "id": "crypto_published",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The scanner uses the FLOSS .NET SHA256 API for stable SARIF fingerprints. Build-integrity checks use standard SHA-256/SHA-512, not custom cryptography. No project-owned security mechanism requires a broken or weak algorithm.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh"
+      ]
+    },
+    {
+      "id": "crypto_call",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "The scanner uses the FLOSS .NET SHA256 API for stable SARIF fingerprints. Build-integrity checks use standard SHA-256/SHA-512, not custom cryptography. No project-owned security mechanism requires a broken or weak algorithm.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh"
+      ]
+    },
+    {
+      "id": "crypto_floss",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The scanner uses the FLOSS .NET SHA256 API for stable SARIF fingerprints. Build-integrity checks use standard SHA-256/SHA-512, not custom cryptography. No project-owned security mechanism requires a broken or weak algorithm.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh"
+      ]
+    },
+    {
+      "id": "crypto_keylength",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "N/A",
+      "justification": "The analyzer/scanner does not implement key agreement, generate cryptographic keys/security nonces, or store external-user authentication passwords. The non-secret SARIF fingerprint is not a key or authentication mechanism. Hosted GitHub/NuGet transport and accounts are separate services.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md"
+      ]
+    },
+    {
+      "id": "crypto_working",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "The scanner uses the FLOSS .NET SHA256 API for stable SARIF fingerprints. Build-integrity checks use standard SHA-256/SHA-512, not custom cryptography. No project-owned security mechanism requires a broken or weak algorithm.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh"
+      ]
+    },
+    {
+      "id": "crypto_weaknesses",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "The scanner uses the FLOSS .NET SHA256 API for stable SARIF fingerprints. Build-integrity checks use standard SHA-256/SHA-512, not custom cryptography. No project-owned security mechanism requires a broken or weak algorithm.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/LinqContraband.Tests.csproj",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh"
+      ]
+    },
+    {
+      "id": "crypto_pfs",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "SHOULD",
+      "status": "N/A",
+      "justification": "The analyzer/scanner does not implement key agreement, generate cryptographic keys/security nonces, or store external-user authentication passwords. The non-secret SARIF fingerprint is not a key or authentication mechanism. Hosted GitHub/NuGet transport and accounts are separate services.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md"
+      ]
+    },
+    {
+      "id": "crypto_password_storage",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "N/A",
+      "justification": "The analyzer/scanner does not implement key agreement, generate cryptographic keys/security nonces, or store external-user authentication passwords. The non-secret SARIF fingerprint is not a key or authentication mechanism. Hosted GitHub/NuGet transport and accounts are separate services.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md"
+      ]
+    },
+    {
+      "id": "crypto_random",
+      "group": "Security",
+      "subgroup": "Use basic good cryptographic practices",
+      "category": "MUST",
+      "status": "N/A",
+      "justification": "The analyzer/scanner does not implement key agreement, generate cryptographic keys/security nonces, or store external-user authentication passwords. The non-secret SARIF fingerprint is not a key or authentication mechanism. Hosted GitHub/NuGet transport and accounts are separate services.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/src/LinqContraband.Scan/ScanReport.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md"
+      ]
+    },
+    {
+      "id": "delivery_mitm",
+      "group": "Security",
+      "subgroup": "Secured delivery against man-in-the-middle (MITM) attacks",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Official packages/source are delivered over HTTPS or authenticated Git transport. Lock-file content hashes and metadata/download checksums are committed in the HTTPS-delivered source; no security checksum is fetched over plain HTTP.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/security-hardening.md",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/publish.yml"
+      ]
+    },
+    {
+      "id": "delivery_unsigned",
+      "group": "Security",
+      "subgroup": "Secured delivery against man-in-the-middle (MITM) attacks",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Official packages/source are delivered over HTTPS or authenticated Git transport. Lock-file content hashes and metadata/download checksums are committed in the HTTPS-delivered source; no security checksum is fetched over plain HTTP.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/docs/security-hardening.md",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/scripts/check-links.sh",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/publish.yml"
+      ]
+    },
+    {
+      "id": "vulnerabilities_fixed_60_days",
+      "group": "Security",
+      "subgroup": "Publicly known vulnerabilities fixed",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "On 2026-10-05 no project advisories, GitHub Advisory Database entries for either package, or Dependabot vulnerabilities were reported. The two remaining Scorecard alerts are process findings. SECURITY sets immediate prioritization for critical issues and a 60-day limit from confirmation or public disclosure, whichever comes first, for confirmed medium-or-higher issues.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories",
+        "https://github.com/georgepwall1991/LinqContraband/security/code-scanning"
+      ]
+    },
+    {
+      "id": "vulnerabilities_critical_fixed",
+      "group": "Security",
+      "subgroup": "Publicly known vulnerabilities fixed",
+      "category": "SHOULD",
+      "status": "Met",
+      "justification": "On 2026-10-05 no project advisories, GitHub Advisory Database entries for either package, or Dependabot vulnerabilities were reported. The two remaining Scorecard alerts are process findings. SECURITY sets immediate prioritization for critical issues and a 60-day limit from confirmation or public disclosure, whichever comes first, for confirmed medium-or-higher issues.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://github.com/georgepwall1991/LinqContraband/security/advisories",
+        "https://github.com/georgepwall1991/LinqContraband/security/code-scanning"
+      ]
+    },
+    {
+      "id": "no_leaked_credentials",
+      "group": "Security",
+      "subgroup": "Other security issues",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "Secret scanning and push protection are enabled and read back. The admin secret-scanning API returned zero alerts on 2026-10-05. No known valid leaked private credentials were found; this is not a guarantee that scanning detects all secrets.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md",
+        "https://github.com/georgepwall1991/LinqContraband/security/secret-scanning"
+      ]
+    },
+    {
+      "id": "static_analysis",
+      "group": "Analysis",
+      "subgroup": "Static code analysis",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "CodeQL C# security analysis runs on PRs, master pushes and weekly schedules. CodeQL passed for the 5.17.0 release commit and security-hardening commit; required checks block a PR merge until it passes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/codeql.yml",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37068663744",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950480"
+      ]
+    },
+    {
+      "id": "static_analysis_common_vulnerabilities",
+      "group": "Analysis",
+      "subgroup": "Static code analysis",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "CodeQL C# security analysis runs on PRs, master pushes and weekly schedules. CodeQL passed for the 5.17.0 release commit and security-hardening commit; required checks block a PR merge until it passes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/codeql.yml",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37068663744",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950480"
+      ]
+    },
+    {
+      "id": "static_analysis_fixed",
+      "group": "Analysis",
+      "subgroup": "Static code analysis",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "No confirmed medium-or-higher exploitable static-analysis finding remains. All actionable supply-chain findings from the audit were fixed in PR 669 and closure verified by the master Scorecard scan; remaining findings concern enrollment and human review.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/pull/669",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308951026",
+        "https://github.com/georgepwall1991/LinqContraband/security/code-scanning"
+      ]
+    },
+    {
+      "id": "static_analysis_often",
+      "group": "Analysis",
+      "subgroup": "Static code analysis",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "CodeQL C# security analysis runs on PRs, master pushes and weekly schedules. CodeQL passed for the 5.17.0 release commit and security-hardening commit; required checks block a PR merge until it passes.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/codeql.yml",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37068663744",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950480"
+      ]
+    },
+    {
+      "id": "dynamic_analysis",
+      "group": "Analysis",
+      "subgroup": "Dynamic code analysis",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "The suite now includes FsCheck properties that vary and shrink scanner argument inputs, and the publish workflow runs the suite before packing a release. These properties were first added after 5.17.0; no retrospective fuzzing claim is made. The 78.53% branch rate alone would not satisfy the alternative 80%-branch-coverage route.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/Scan/ScanOptionsFuzzTests.cs",
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/.github/workflows/publish.yml"
+      ]
+    },
+    {
+      "id": "dynamic_analysis_unsafe",
+      "group": "Analysis",
+      "subgroup": "Dynamic code analysis",
+      "category": "SUGGESTED",
+      "status": "N/A",
+      "justification": "Project-produced code is managed C#; this repository does not produce a C/C++ or other memory-unsafe native component. Native implementations inside the .NET runtime are upstream dependencies, not code produced here.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/tree/master/src"
+      ]
+    },
+    {
+      "id": "dynamic_analysis_enable_assertions",
+      "group": "Analysis",
+      "subgroup": "Dynamic code analysis",
+      "category": "SUGGESTED",
+      "status": "Met",
+      "justification": "xUnit and FsCheck properties make explicit assertions about results, invariants and errors. Failures include replay/shrunk-input information and fail the normal suite.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/blob/master/tests/LinqContraband.Tests/Scan/ScanOptionsFuzzTests.cs"
+      ]
+    },
+    {
+      "id": "dynamic_analysis_fixed",
+      "group": "Analysis",
+      "subgroup": "Dynamic code analysis",
+      "category": "MUST",
+      "status": "Met",
+      "justification": "All 5,950 net10.0 tests passed. No confirmed exploitable medium-or-higher issue from dynamic tests remains; the first run exposed a macOS temporary-path assertion mismatch and passed using the canonical /private/tmp directory.",
+      "evidence": [
+        "https://github.com/georgepwall1991/LinqContraband/pull/669",
+        "https://github.com/georgepwall1991/LinqContraband/actions/runs/37308950658"
+      ]
+    }
+  ],
+  "target_badge_level": "passing",
+  "earned_badge_level": null
+}
