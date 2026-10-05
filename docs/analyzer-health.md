@@ -10,6 +10,8 @@ Release metadata:
 - Base audited commit: 5b3eda84697d190855e173c6df026eb458a81e22
 - Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.17.0-final`
 
+The 2026-10-05 supply-chain hardening adds three scanner argument-parser fuzz properties (1,000 generated cases each), bringing the net10.0 suite to **5,950 tests**. No rule scores changed. See [security hardening](security-hardening.md) for alert coverage and remaining process gates.
+
 ## Rubric
 
 | Metric | Meaning |

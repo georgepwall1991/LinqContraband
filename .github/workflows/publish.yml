@@ -1,8 +1,7 @@
 name: Publish to NuGet
 
-# Runs for every published GitHub Release: the ones release.yml creates (it dispatches
-# this workflow, because GITHUB_TOKEN-created releases do not fire `release: published`)
-# and any release created by hand.
+# Runs for published GitHub Releases and as a reusable workflow from release.yml
+# (GITHUB_TOKEN-created releases do not fire `release: published`).
 #
 # Publishing uses NuGet Trusted Publishing: NuGet/login exchanges this job's GitHub OIDC
 # token for a short-lived API key, so no long-lived NuGet key is stored in the repo.
@@ -11,6 +10,15 @@ name: Publish to NuGet
 # and store the nuget.org profile name in the NUGET_USER repository secret.
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish (vX.Y.Z)"
+        required: true
+        type: string
+    secrets:
+      NUGET_USER:
+        required: true
   release:
     types: [published]
   workflow_dispatch:
@@ -36,8 +44,9 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
+        persist-credentials: false
         ref: ${{ github.event.release.tag_name || inputs.tag }}
 
     # Refuse to ship a package whose version disagrees with the tag it is released under.
@@ -45,7 +54,7 @@ jobs:
       run: python3 scripts/release_info.py check --tag "$RELEASE_TAG"
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v6
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
       with:
         dotnet-version: |
           8.0.x
@@ -53,15 +62,15 @@ jobs:
           10.0.x
 
     - name: Cache NuGet packages
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
         restore-keys: |
           ${{ runner.os }}-nuget-
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore --locked-mode
 
     - name: Build
       run: dotnet build -c Release --no-restore
@@ -88,11 +97,11 @@ jobs:
 
     - name: NuGet login (Trusted Publishing)
       id: nuget_login
-      uses: NuGet/login@v1
+      uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
       with:
         user: ${{ secrets.NUGET_USER }}
 
     - name: Push to NuGet
       env:
         NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
-      run: dotnet nuget push *.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+      run: dotnet nuget push ./*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

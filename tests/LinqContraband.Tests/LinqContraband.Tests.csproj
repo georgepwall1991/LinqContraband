@@ -13,6 +13,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="FsCheck.Xunit" Version="3.4.0" />
         <PackageReference Include="coverlet.collector" Version="10.1.0"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" Version="1.1.2"/>
@@ -48,18 +49,18 @@
          and copied to efcore/ so they stay out of the test host's trusted platform assemblies: the
          verifier tests reference every trusted assembly next to their own EF mocks. -->
     <ItemGroup>
-        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore" Version="8.0.31" />
-        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.31" />
-        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.31" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
-        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
-        <EfCoreTestReference Include="Microsoft.Extensions.Primitives" Version="8.0.0" />
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore" Version="8.0.31" Sha512="72EAD400DF7804AEEE7490EC18F23A683DC94717B91DD486FABC8FE419ABEC6B662CCE68042595573ADD29952C8D1CD210F8EE8481372FB030296430554AC721" />
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.31" Sha512="84E6B1D64FE42DA5898E2A9B15E88C4E98F8DE10274BA8D06A673985347446A7FD1FED4F6F59A49E9B1CC94D83BB527E63E5C7912E8A24435827F6D1CF0FC9F9" />
+        <EfCoreTestReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.31" Sha512="E7E8097B758076B67153B10C5425EB6360D4AC32B572F404FE9290688154191E53831F8ACA890FED2663D490BEEA3C61C01695C0AADBB02EA683D0DAB6899174" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" Sha512="1FDC30912CC1EAD9362F70853DE219A9DC7070BC28F621E387185670E605746EE2F13B0DF9DB03D0B1F8919D4BDAAD40EBE9F8203E3A0CBB61145AA8848BE136" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" Sha512="39D053A5A92F413D012F910DF6716CDAC2F1CACFD234531B956DFCD10F1A83EA8CB84D017D4C72E011F87C53DB27E33E9DC7C86F842EACDB1907CB895B448817" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" Sha512="3316170910A94290C8DF4FED26FA884A47DD9BF974EB7AD22368D5A63308660A01D2DAB4A44662061DACAECCF4BA09CDABFCCD4636F76AB3178BECEC5AD31A2F" />
+        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" Sha512="B6D2C496CE68BF91AC7499EB2A8AAE34347E648B9BE853E535A36044AFCF8173561650ABA33068346F458062F29C8E0C1F5859F73800D512EC0F464DD467D00F" />
+        <EfCoreTestReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" Sha512="BA1960EF110AC7387A2A06EEFC02C59CE57B0FE58B3E0CCCB79B1C8F2150105C5D1F4B65E0ED95FF50D70F28142917C6A735B83F4E5406BB1D8F9DD1F9635D7D" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Logging" Version="8.0.1" Sha512="AB3363C4E103963EE5013ADA55FDDCD771961E48E5124F41E70589E589DACF27D20CFF7E04BFC214DB79FD937CBAD80E99CEF565F72E0CC10B84D9B3AC0619FD" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" Sha512="F8B9DF3FA7B837CB5F2FA53A86BFD47279F81BC332DB55B8BB7EA14F55DFE2158F351D35199C0CC0E01C735F394DED2A3A8F1C85C3FF6EA1C3AB785BFBF362FD" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Options" Version="8.0.2" Sha512="CC0C10336580C9519740A042B1E42D391BCB32B63732163AE1161E1C5B55A4CD4A736E1902EB2A4DBB89D784B0ACF584B5042B4F3481A61DD30A4E229FB523C5" />
+        <EfCoreTestReference Include="Microsoft.Extensions.Primitives" Version="8.0.0" Sha512="1F5475CA3D3CE18463456DD135AFAC502D6F82FEA6E4E4814A61F86616C348DECF28B73D15C2BB276D1A3C039EA6064F75E1329F6F3A64CAA3520D70AB92C32D" />
         <PackageDownload Include="Microsoft.EntityFrameworkCore" Version="[8.0.31]" />
         <PackageDownload Include="Microsoft.EntityFrameworkCore.Abstractions" Version="[8.0.31]" />
         <PackageDownload Include="Microsoft.EntityFrameworkCore.Relational" Version="[8.0.31]" />
@@ -73,6 +74,20 @@
         <PackageDownload Include="Microsoft.Extensions.Options" Version="[8.0.2]" />
         <PackageDownload Include="Microsoft.Extensions.Primitives" Version="[8.0.0]" />
     </ItemGroup>
+
+    <!-- PackageDownload is not covered by packages.lock.json. Verify the restored
+         package bytes against reviewed hashes before using their test metadata. -->
+    <Target Name="VerifyEfCoreTestReferenceHashes" BeforeTargets="CopyEfCoreTestReferences">
+        <ItemGroup>
+            <_EfCoreTestPackage Include="$(NuGetPackageRoot)$([System.String]::Copy('%(EfCoreTestReference.Identity)').ToLowerInvariant())/%(EfCoreTestReference.Version)/$([System.String]::Copy('%(EfCoreTestReference.Identity)').ToLowerInvariant()).%(EfCoreTestReference.Version).nupkg"
+                                ExpectedHash="%(EfCoreTestReference.Sha512)" />
+        </ItemGroup>
+        <GetFileHash Files="@(_EfCoreTestPackage)" Algorithm="SHA512">
+            <Output TaskParameter="Items" ItemName="_HashedEfCoreTestPackage" />
+        </GetFileHash>
+        <Error Condition="'%(_HashedEfCoreTestPackage.FileHash)' != '%(_HashedEfCoreTestPackage.ExpectedHash)'"
+               Text="EF Core test package hash mismatch: %(_HashedEfCoreTestPackage.Identity). Review the package update and its SHA512 before using it." />
+    </Target>
 
     <Target Name="CopyEfCoreTestReferences" AfterTargets="Build">
         <ItemGroup>

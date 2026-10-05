@@ -111,3 +111,6 @@ terminals/
 
 # Local Jekyll build of docs/ (scripts/check-links.sh)
 _site/
+
+# EF Core test metadata is restored from NuGet and copied into bin/<tfm>/efcore.
+/tests/LinqContraband.Tests/efcore/

@@ -6,8 +6,7 @@ on:
   pull_request:
     branches: [ "master" ]
 
-# Cancel superseded runs on PR branches; never cancel master runs (the badge
-# commit step must not be interrupted mid-push).
+# Cancel superseded runs on PR branches; never cancel master validation.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -18,14 +17,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: |
             8.0.x
@@ -33,10 +32,10 @@ jobs:
             10.0.x
 
       - name: Cache NuGet packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -44,7 +43,7 @@ jobs:
         run: python3 scripts/release_info.py check
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore --locked-mode
 
       - name: Verify generated rule catalog docs and README rule table
         run: dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check
@@ -59,7 +58,7 @@ jobs:
         run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
       - name: ReportGenerator
-        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.10
+        uses: danielpalme/ReportGenerator-GitHub-Action@049f7ec958c672fd31d5cc1cb01622dc8d2e23ab # 5.5.10
         with:
           reports: 'coverage/**/coverage.cobertura.xml'
           targetdir: 'coverage-report'
@@ -75,20 +74,11 @@ jobs:
             exit 1
           fi
 
-      - name: Commit Coverage Badge
-        if: github.ref == 'refs/heads/master'
-        run: |
-          mkdir -p .github/badges
-          cp coverage-report/badge_linecoverage.svg .github/badges/coverage.svg
-          
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@github.com'
-          git add .github/badges/coverage.svg
-          
-          # Check if there are staged changes to commit
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update coverage badge"
-            git push
-          fi
+      - name: Upload coverage report and badges
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-report
+          path: |
+            coverage/
+            coverage-report/
+          retention-days: 14

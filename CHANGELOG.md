@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
+- Verify SHA-512 hashes of EF Core test metadata packages and SHA-256 hashes of downloaded link-check executables before use.
+- Add FsCheck fuzz coverage for scanner argument parsing and update Scorecard to recognize C# property tests.
+- Limit workflow token permissions, publish coverage as artifacts instead of pushing to master, and invoke NuGet publishing as a reusable workflow without Actions write permission.
+
 ## [5.17.0] - 2026-10-02
 
 ### Fixed
