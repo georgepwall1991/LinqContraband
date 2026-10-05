@@ -5,7 +5,7 @@ name: Release
 # A `chore: release X.Y.Z` PR bumps <Version> in src/LinqContraband/LinqContraband.csproj
 # and adds a `## [X.Y.Z]` section to CHANGELOG.md. After it merges and "Build and Test"
 # passes on master, this workflow creates the annotated vX.Y.Z tag and the GitHub Release
-# (notes = that CHANGELOG section), then dispatches publish.yml for the tag.
+# (notes = that CHANGELOG section), then calls publish.yml for the tag.
 #
 # Commits whose Version already has a release are a no-op, so this is safe to run after
 # every green master build. Run it by hand (workflow_dispatch) to release master's HEAD.
@@ -32,12 +32,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # push the tag and create the release
-      actions: write    # dispatch publish.yml
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      needed: ${{ steps.meta.outputs.needed }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.TARGET_SHA }}
 
@@ -94,12 +96,16 @@ jobs:
             --title "$VERSION" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
 
-      # Releases created with GITHUB_TOKEN do not fire `release: published`, so start the
-      # NuGet publish explicitly. workflow_dispatch is the one event GITHUB_TOKEN may trigger.
-      - name: Dispatch NuGet publish
-        if: steps.meta.outputs.needed == 'true'
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
-          echo "Dispatched publish.yml for ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+  # A reusable workflow preserves the automatic release -> publish path without
+  # granting the release job permission to dispatch arbitrary Actions workflows.
+  publish:
+    needs: release
+    if: needs.release.outputs.needed == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets:
+      NUGET_USER: ${{ secrets.NUGET_USER }}

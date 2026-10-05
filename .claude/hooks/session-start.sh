@@ -36,4 +36,4 @@ fi
 
 dotnet --version
 dotnet tool restore
-dotnet restore LinqContraband.sln
+dotnet restore LinqContraband.sln --locked-mode

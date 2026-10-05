@@ -57,5 +57,5 @@ if ! grep -qF "$marker" "$profile" 2>/dev/null; then
 fi
 
 dotnet --info
-dotnet restore LinqContraband.sln
+dotnet restore LinqContraband.sln --locked-mode
 dotnet build LinqContraband.sln --no-restore

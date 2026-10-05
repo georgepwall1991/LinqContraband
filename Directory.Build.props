@@ -3,6 +3,8 @@
        can still override (this repo's csproj already sets TreatWarningsAsErrors=true
        globally — that stricter choice is preserved). Added 2026-07-08. -->
   <PropertyGroup>
+    <!-- Commit NuGet dependency graphs and content hashes; CI restores in locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
 

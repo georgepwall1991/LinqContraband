@@ -23,10 +23,32 @@ fi
 
 lychee_bin="$(command -v lychee || true)"
 if [[ -z "$lychee_bin" ]]; then
+  # Pin downloaded executable bytes before extracting or running them.
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64)
+      target="x86_64-unknown-linux-gnu"
+      sha256="1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a"
+      ;;
+    Darwin-arm64)
+      target="aarch64-apple-darwin"
+      sha256="c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977"
+      ;;
+    *)
+      echo "Install lychee ${LYCHEE_VERSION} for this platform before running the link check." >&2
+      exit 1
+      ;;
+  esac
   tmp="$(mktemp -d)"
-  curl -sSfL "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar xz -C "$tmp"
-  lychee_bin="$(find "$tmp" -type f -name lychee | head -1)"
+  trap 'rm -rf "$tmp"' EXIT
+  archive="$tmp/lychee.tar.gz"
+  curl -sSfL "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-${target}.tar.gz" -o "$archive"
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    printf '%s  %s\n' "$sha256" "$archive" | sha256sum -c
+  else
+    printf '%s  %s\n' "$sha256" "$archive" | shasum -a 256 -c
+  fi
+  tar xzf "$archive" -C "$tmp"
+  lychee_bin="$tmp/lychee-${target}/lychee"
 fi
 
 "$lychee_bin" --version

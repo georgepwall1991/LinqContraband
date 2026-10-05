@@ -10,7 +10,7 @@
 [![Downloads](https://img.shields.io/nuget/dt/LinqContraband.svg)](https://www.nuget.org/packages/LinqContraband)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/georgepwall1991/LinqContraband/blob/master/LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/georgepwall1991/LinqContraband/dotnet.yml?label=build)](https://github.com/georgepwall1991/LinqContraband/actions/workflows/dotnet.yml)
-[![Coverage](https://raw.githubusercontent.com/georgepwall1991/LinqContraband/master/.github/badges/coverage.svg)](https://github.com/georgepwall1991/LinqContraband/actions/workflows/dotnet.yml)
+[Coverage reports and badges](https://github.com/georgepwall1991/LinqContraband/actions/workflows/dotnet.yml)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/georgepwall1991/LinqContraband?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/georgepwall1991/LinqContraband)
 
 </div>
