@@ -58,7 +58,7 @@ jobs:
         run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
       - name: ReportGenerator
-        uses: danielpalme/ReportGenerator-GitHub-Action@049f7ec958c672fd31d5cc1cb01622dc8d2e23ab # 5.5.10
+        uses: danielpalme/ReportGenerator-GitHub-Action@d3ebf1f760f7d8ab92cc44d9bcfee7ad73722a31 # 5.5.11
         with:
           reports: 'coverage/**/coverage.cobertura.xml'
           targetdir: 'coverage-report'
@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Upload coverage report and badges
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
           path: |
