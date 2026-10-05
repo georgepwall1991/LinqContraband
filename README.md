@@ -268,6 +268,11 @@ Use the `security` or `critical` preset (see Configuration) to block pull reques
 promote individual rules to `error` in `.editorconfig`. The
 [CI guide](https://georgepwall1991.github.io/LinqContraband/ef-core-query-analyzer-ci/) covers a gradual rollout.
 
+## Security
+
+Report vulnerabilities using the [private reporting form](https://github.com/georgepwall1991/LinqContraband/security/advisories/new).
+The [security policy](https://github.com/georgepwall1991/LinqContraband/blob/master/SECURITY.md) describes supported versions, response targets, and safe scanner use.
+
 ## Contributing
 
 Found a new way to smuggle bad queries? [Open an issue](https://github.com/georgepwall1991/LinqContraband/issues) or

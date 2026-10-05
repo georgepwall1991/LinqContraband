@@ -6,7 +6,7 @@ Thank you for your interest in contributing to LinqContraband! This document pro
 
 ### Prerequisites
 
-- .NET 8.0 SDK or later
+- .NET 10 SDK (matching `global.json`), plus .NET 8/9/10 runtimes for the full multi-target test suite
 - An IDE with Roslyn support (Visual Studio 2022, JetBrains Rider, or VS Code with C# extension)
 
 ### Getting Started
@@ -19,7 +19,7 @@ Thank you for your interest in contributing to LinqContraband! This document pro
 
 2. Restore dependencies and build:
    ```bash
-   dotnet restore
+   dotnet restore --locked-mode
    dotnet build
    ```
 
@@ -138,6 +138,26 @@ Before submitting a PR, ensure:
 - [ ] RuleCatalog entry was added or updated
 - [ ] Architecture integrity tests pass
 - [ ] Commit messages follow conventional format
+
+## Review and Security Expectations
+
+All changes use pull requests with passing build/test and CodeQL checks before merge. Security-sensitive changes
+also need a review of token permissions, trust boundaries, dependency integrity and any external process or HTML output.
+Use the [secure-development guide](docs/secure-development.md) for the relevant design principles and mitigations.
+An AI review is useful additional analysis, but it is not an independent human approval for OpenSSF's review-history metric.
+
+A human reviewer must be distinct from the PR author. Once an eligible reviewer accepts the collaboration invitation,
+require at least one approval, dismiss approvals after new changes, and require approval of the latest push. Do not
+turn that gate on while only one eligible maintainer exists: it would prevent the author from merging their own PRs.
+Historical unreviewed changes are not repaired by retroactive approval or rewritten commit metadata.
+
+Report vulnerabilities through the [private reporting form](https://github.com/georgepwall1991/LinqContraband/security/advisories/new),
+following [SECURITY.md](SECURITY.md). Document confirmed security fixes and assigned vulnerability identifiers in release notes.
+
+Before a major production release, run CodeQL/static analysis and the full automated suite, including the FsCheck
+scanner-input properties. The existing publish workflow executes that suite before packing and publishing. Address
+confirmed exploitable findings before release. Update dependency lock files and test-metadata SHA-512 hashes with
+intentional package updates; do not bypass their integrity checks.
 
 ## Releasing
 
