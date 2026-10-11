@@ -98,7 +98,7 @@ runs:
 
     - name: Upload SARIF to code scanning
       if: ${{ !cancelled() && inputs.upload-sarif == 'true' && hashFiles(inputs.sarif) != '' }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.sarif }}
         category: ${{ inputs.category }}
