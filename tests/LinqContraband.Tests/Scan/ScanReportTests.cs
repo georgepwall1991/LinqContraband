@@ -393,6 +393,39 @@ public sealed class ScanReportTests
     }
 
     [Fact]
+    public void Markdown_WithABaseline_SaysNewProblemsAndNotesKnownFindings()
+    {
+        // HasBaseline and BaselineFindings are leftover GitHub-banner arms: the shipped Markdown
+        // cases never applied a baseline, so dropping "new" or the known-finding note stayed green.
+        var root = Directory.CreateTempSubdirectory("scan-md-baseline-").FullName;
+        try
+        {
+            var known = Path.Combine(root, "Known.cs");
+            var added = Path.Combine(root, "Added.cs");
+            File.WriteAllLines(known, ["class Known {", "  void A() => db.Orders.ToList();", "}"]);
+            File.WriteAllLines(added, ["class Added {", "  void B() => db.Orders.ToList();", "}"]);
+
+            var before = ReportIn(root, Result("LC031", "note", known, 2, 15));
+            var after = ReportIn(root,
+                Result("LC031", "note", known, 2, 15),
+                Result("LC007", "warning", added, 2, 15));
+            var report = after.ApplyBaseline(ScanBaseline.Parse(SarifText(before)));
+
+            var markdown = GitHubOutput.Markdown(report, findingsPerRule: 3, blobUri: null);
+            Assert.StartsWith("## LinqContraband: 1 new EF Core query problem (1 rule, 1 file)", markdown);
+            Assert.Contains("1 finding already in the baseline is not listed.", markdown);
+
+            var empty = GitHubOutput.Markdown(before.ApplyBaseline(ScanBaseline.Parse(SarifText(before))), 3, null);
+            Assert.StartsWith("## LinqContraband: no new EF Core query problems", empty);
+            Assert.Contains("1 finding already in the baseline is not listed.", empty);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Annotations_PutTheMostSevereFirstAndEscapeCommandText()
     {
         var outside = Path.Combine(Path.GetTempPath(), "elsewhere", "Shared.cs");
@@ -455,6 +488,41 @@ public sealed class ScanReportTests
 
             var empty = HtmlReport.Render(ReportIn(root), "9.9.9", root, DateTimeOffset.UnixEpoch);
             Assert.Contains("LinqContraband found no EF Core query problems.", empty);
+            Assert.DoesNotContain("<details", empty);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Html_WithABaseline_SaysNewProblemsAndNotesKnownFindings()
+    {
+        // HasBaseline and BaselineFindings are leftover HTML-banner arms: the shipped HTML
+        // cases never applied a baseline, so dropping "new problems" or the known-finding note stayed green.
+        var root = Directory.CreateTempSubdirectory("scan-html-baseline-").FullName;
+        try
+        {
+            var known = Path.Combine(root, "Known.cs");
+            var added = Path.Combine(root, "Added.cs");
+            File.WriteAllLines(known, ["class Known {", "  void A() => db.Orders.ToList();", "}"]);
+            File.WriteAllLines(added, ["class Added {", "  void B() => db.Orders.ToList();", "}"]);
+
+            var before = ReportIn(root, Result("LC031", "note", known, 2, 15));
+            var after = ReportIn(root,
+                Result("LC031", "note", known, 2, 15),
+                Result("LC007", "warning", added, 2, 15));
+            var report = after.ApplyBaseline(ScanBaseline.Parse(SarifText(before)));
+
+            var html = HtmlReport.Render(report, "9.9.9", root, DateTimeOffset.UnixEpoch);
+            Assert.Contains("<span class=\"value\">1</span><span class=\"label\">new problems</span>", html);
+            Assert.Contains("1 finding already in the baseline is not listed.", html);
+            Assert.Contains("<span class=\"value\">1</span><span class=\"label\">warnings</span>", html);
+
+            var empty = HtmlReport.Render(before.ApplyBaseline(ScanBaseline.Parse(SarifText(before))), "9.9.9", root, DateTimeOffset.UnixEpoch);
+            Assert.Contains("LinqContraband found no new EF Core query problems.", empty);
+            Assert.Contains("1 finding already in the baseline is not listed.", empty);
             Assert.DoesNotContain("<details", empty);
         }
         finally
