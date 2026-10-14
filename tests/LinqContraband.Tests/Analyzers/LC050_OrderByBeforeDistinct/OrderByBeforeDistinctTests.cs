@@ -34,7 +34,7 @@ namespace TestApp
             var result = db.Orders.OrderByDescending(o => o.PlacedAt).ThenBy(o => o.Id).Distinct().ToList();");
 
         var expected = VerifyCS.Diagnostic("LC050")
-            .WithSpan(128, 89, 128, 97)
+            .WithSpan(135, 89, 135, 97)
             .WithArguments("OrderByDescending");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
