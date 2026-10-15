@@ -48,13 +48,19 @@ namespace Microsoft.EntityFrameworkCore
         public static IIncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(this IIncludableQueryable<TEntity, IEnumerable<TPreviousProperty>> source, Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
         public static IIncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(this IIncludableQueryable<TEntity, TPreviousProperty> source, Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class => new IncludableQueryable<TEntity, TProperty>();
         public static IQueryable<TEntity> AsNoTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsNoTrackingWithIdentityResolution<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
         public static IQueryable<TEntity> TagWith<TEntity>(this IQueryable<TEntity> source, string tag) => source;
+        public static IQueryable<TEntity> TagWithCallSite<TEntity>(this IQueryable<TEntity> source) => source;
+        public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> IgnoreAutoIncludes<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
         public static List<TSource> ToList<TSource>(this IQueryable<TSource> source) => new List<TSource>();
     }
 
     public static class RelationalQueryableExtensions
     {
         public static IQueryable<TEntity> AsSplitQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> AsSingleQuery<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
     }
 }
 
@@ -92,6 +98,7 @@ namespace TestApp
         public decimal Total { get; set; }
         public DateTime PlacedAt { get; set; }
         public Customer Customer { get; set; }
+        public Customer CustomerField;
         public List<OrderLine> Lines { get; set; }
         public Order Parent { get; set; }
     }
@@ -159,7 +166,7 @@ namespace TestApp
             var ids = db.Orders.Include(o => o.Customer).Select(o => o.Id).ToList();");
 
         var expected = VerifyCS.Diagnostic("LC049")
-            .WithSpan(128, 33, 128, 40)
+            .WithSpan(135, 33, 135, 40)
             .WithArguments("Include", "Order");
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);

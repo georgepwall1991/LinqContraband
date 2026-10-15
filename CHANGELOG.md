@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC050 pass-throughs (`Include`/`ThenInclude`, `AsTracking`, `AsNoTrackingWithIdentityResolution`, `TagWithCallSite`, `IgnoreQueryFilters`, `IgnoreAutoIncludes`, `AsSplitQuery`/`AsSingleQuery`) and `ThenByDescending` between `OrderBy` and `Distinct()` so dropping any of those walk arms is visible. No analyzer behavior change.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
