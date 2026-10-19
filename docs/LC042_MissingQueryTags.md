@@ -100,7 +100,9 @@ In a multi-line chain the tag goes on its own line. A comment or `#pragma` above
 
 ```csharp
 db.Orders.Where(o => o.Total > 0).OrderBy(o => o.Id).Take(10).ToList();
+db.Orders.Where(o => o.Total > 0).OrderBy(o => o.Id).Take(10).ToHashSet();
 db.Orders.Join(db.Customers, o => o.CustomerId, c => c.Id, (o, c) => c.Name).Where(n => n != null).ToList();
+db.Orders.GroupJoin(db.Customers, o => o.CustomerId, c => c.Id, (o, cs) => o).Where(o => o.Total > 0).ToList();
 await db.Orders.Where(o => o.Total > 0).Distinct().CountAsync(o => o.CustomerId == 1);
 ```
 
