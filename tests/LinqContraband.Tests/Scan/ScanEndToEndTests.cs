@@ -87,6 +87,22 @@ public sealed class ScanEndToEndTests
             Assert.True(failing.ExitCode == ScanCommand.FindingsFound, failing.Output + failing.Error);
             Assert.Contains("Failing: 1 finding is warning severity or higher (--fail-on warning).", failing.Error);
 
+            // --baseline of this scan plus --fail-on warning stays green: known findings do not fail CI.
+            // Skipping ApplyBaseline in ScanCommand.Run would leave the finding counted and exit FindingsFound.
+            var baselinedSarif = Path.Combine(directory, "out", "baselined.sarif");
+            var baselinedHtml = Path.Combine(directory, "out", "baselined.html");
+            var baselinedSummary = Path.Combine(directory, "out", "baselined.md");
+            var baselined = Run(
+                [directory, "--sarif", baselinedSarif, "--no-restore", "--fail-on", "warning", "--baseline", sarif, "--html", baselinedHtml, "--summary", baselinedSummary],
+                BuiltAnalyzerPath());
+            Assert.True(baselined.ExitCode == ScanCommand.Success, baselined.Output + baselined.Error);
+            Assert.Contains("found no new EF Core query problems", baselined.Output);
+            Assert.Contains("1 finding already in the baseline is not listed", baselined.Output);
+            Assert.Contains("LinqContraband found no new EF Core query problems.", File.ReadAllText(baselinedHtml));
+            Assert.Contains("1 finding already in the baseline is not listed.", File.ReadAllText(baselinedHtml));
+            Assert.StartsWith("## LinqContraband: no new EF Core query problems", File.ReadAllText(baselinedSummary));
+            Assert.Contains("1 finding already in the baseline is not listed.", File.ReadAllText(baselinedSummary));
+
             var excluded = Run([directory, "--sarif", sarif, "--no-restore", "--fail-on", "warning", "--exclude", "Queries.cs"], BuiltAnalyzerPath());
             Assert.True(excluded.ExitCode == ScanCommand.Success, excluded.Output + excluded.Error);
             Assert.Contains("LinqContraband found no EF Core query problems.", excluded.Output);
