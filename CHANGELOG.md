@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Pin leftover LC013 materializing LINQ names (`ToArray`, `ToDictionary`, `ToHashSet`, `ToLookup`) so dropping those names from `IsMaterializingLinqOperator` reports a disposed-context leak on `materializer().AsQueryable()` while the shipped `ToList` fixture stays green.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
