@@ -16,7 +16,7 @@ should have said "Give me the first 10 books" instead.
 
 Flags materialization of an apparently unbounded query because loading an entire table or broad result set usually indicates missing filters, missing pagination, or an accidental scan.
 
-Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToHashSet()`, `ToLookup()`, and the async EF variants where EF provides one.
+Collection materializers include `ToList()`, `ToArray()`, `ToDictionary()`, `ToHashSet()`, `ToLookup()`, and the async EF variants where EF provides one. Leftover materializer names (`ToArrayAsync`, `ToDictionary`, `ToHashSet` and their async twins), `TakeWhile` as a bounding operator, leftover keyed-group aggregates (`All`, `Any`, `Sum`, `Average`, `Min`, `LongCount` and async twins), and the `ExecuteUpdate`/`ExecuteUpdateAsync` keyed-group exclusions are pinned so dropping one name fails only that pin.
 
 The rule reports the materializer that runs the query. In `db.Orders.ToList().Where(o => o.Total > 1).ToList()` or `(await db.Orders.ToListAsync()).Where(...).ToList()` the table is loaded once, at the inner `ToList()`/`ToListAsync()`, and only that call is reported. The outer materializer copies a list that is already in memory, so it is not reported again, and neither is a later `ToList()` on a local that holds the loaded list.
 
