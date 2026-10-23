@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Pin leftover LC031 row-preserving names between a keyed `Contains` filter and `GroupBy` (`OrderByDescending`, `ThenBy`, `ThenByDescending`, `AsNoTracking`, `AsNoTrackingWithIdentityResolution`, `AsTracking`, `AsSplitQuery`, `AsSingleQuery`, `IgnoreQueryFilters`, `IgnoreAutoIncludes`, `TagWith`, `TagWithCallSite`, `Include`, `ThenInclude`) so dropping one name fails only that pin while the shipped `Where`/`OrderBy` keyed-group fixtures stay green.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
