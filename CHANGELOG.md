@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Pin leftover LC002 immutable/set materializer names (`ToImmutableArray`/`ToImmutableList` redundant pairs, the `ToImmutableArray` `OrderBy` move-before-materialization fixer, and de-duplicating `ToImmutableSortedSet`/`ToHashSetAsync` sources) so dropping one name fails only that pin while the shipped `ToImmutableList`/`ToImmutableHashSet`/`ToHashSet` fixtures stay green.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
