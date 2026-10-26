@@ -17,7 +17,7 @@
         <PackageReference Include="coverlet.collector" Version="10.1.0"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" Version="1.1.2"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
 
         <!-- The analyzer compiles against the Roslyn 4.3 API surface for broad consumer
              compatibility, but the tests host it on a current Roslyn so test sources can use
@@ -29,7 +29,7 @@
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" />
 
         <PackageReference Include="xunit" Version="2.9.3"/>
-        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
