@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC045 query-preserving and query-root materializer names (`IgnoreQueryFilters`, `TagWithCallSite`, `AsTracking`, `AsNoTrackingWithIdentityResolution`, query-root `Skip`/`OrderByDescending`/`Distinct`/`ThenBy*`, query-root `Last`/`Single` and leftover async terminals, and `DistinctBy` callbacks) so dropping one name fails only that pin while the shipped `IgnoreAutoIncludes`/`FromSql*`/`AsSplitQuery`/`TagWith` chain fixtures and collection-extraction `orders.Last()` proofs stay green.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
