@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- LC041 now pins leftover query-step names (`OrderBy`/`ThenBy`/`Skip`/`Take`/`Distinct`/`Include`/`ThenInclude`, tracking, split-query, filter and `TagWith` options), `DbContext.Set<T>()`, leftover `FirstOrDefaultAsync`/`SingleOrDefault`/`SingleOrDefaultAsync` terminals, and unreduced static `First`, so dropping a name from the chain walk no longer silently skips those over-fetches.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
