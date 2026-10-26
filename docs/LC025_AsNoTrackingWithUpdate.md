@@ -34,6 +34,11 @@ db.Users.UpdateRange(users);
 ```
 
 ```csharp
+var stale = db.Users.AsNoTracking().Where(u => u.Age > 20).ToList();
+db.Users.RemoveRange(stale);
+```
+
+```csharp
 var user = db.Users.AsNoTracking().First(u => u.Id == id);
 db.Entry(user).State = EntityState.Modified;
 ```
