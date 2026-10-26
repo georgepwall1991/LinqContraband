@@ -43,8 +43,8 @@ ProcessUsers(db.Users.Where(user => user.IsActive).ToList());
 - Reports only when the target method is inspectable in the current compilation.
 - Treats a parameter as hazardous only when the method body proves one of these:
   - `foreach` or manual enumerator consumption.
-  - terminal or materializing `Enumerable` calls such as `Any`, `Count`, `ToList`, or `ToArray`.
-  - known BCL collection constructors such as `new List<T>(users)` or `new HashSet<T>(users)`.
+  - terminal or materializing `Enumerable` calls such as `Any`, `Count`, `ToList`, `ToArray`, `MaxBy`, `MinBy`, `ToLookup`, or `SequenceEqual`.
+  - known BCL collection constructors such as `new List<T>(users)`, `new HashSet<T>(users)`, `new Queue<T>(users)`, or `new Stack<T>(users)`.
   - forwarding into another same-compilation parameter already proven hazardous.
   - A C# query expression on the parameter (`from u in users where … select …`) is followed to its enumeration just like the fluent equivalent (`users.Where(...)`).
 - Does not report for framework methods, delegate invocations, parameters already typed as `IQueryable`, custom constructors, or callees without source bodies.
