@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Pin leftover LC042 terminal names (`ToHashSet`, `LongCount`, `First`/`Single`/`Last`/`Any`/`All`/`Min`/`Max`/`Average`/`ToDictionary` and leftover async twins), `GroupJoin`, `ThenInclude`, and leftover zero-weight query options so dropping those names from the analyzer sets fails a dedicated fixture.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
