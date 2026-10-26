@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Pin leftover LC031 materializer names (`ToArrayAsync`, `ToDictionary`, `ToDictionaryAsync`, `ToHashSet`, `ToHashSetAsync`), bounding name `TakeWhile`, keyed-group aggregates (`All`, `Any`, `Sum`, `Average`, `Min`, `LongCount` and their async twins), and the `ExecuteUpdate`/`ExecuteUpdateAsync` keyed-group exclusions so dropping one name fails only that pin while the shipped `ToList`/`Take`/`Count` fixtures stay green.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
