@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC025 `RemoveRange` write-path names (`DbSet.RemoveRange`, `DbContext.RemoveRange`, and `AsNoTrackingWithIdentityResolution` collections) so dropping that `TrackingMethods` entry fails only those pins while the shipped `Update`/`UpdateRange`/`Remove` fixtures stay green. A tracked collection passed to `RemoveRange` stays quiet.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
