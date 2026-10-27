@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC014 `ToUpperInvariant` and leftover `Queryable` / EF-async predicate operator names (`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Count`/`LongCount`, `Any`/`All`, `First`/`Single`/`Last` and their `OrDefault` forms, `GroupJoin`, and the leftover `*Async` terminals besides the shipped `AnyAsync`) so dropping one of those names fails only its pin while the shipped `Where`/`OrderBy`/`Join`/`AnyAsync` fixtures stay green. An in-memory `GroupJoin` inner key selector stays quiet.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
