@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC016 `TargetLinqMethods` names (`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Count`/`LongCount`, `All`, `First`/`Single`/`Last` and their `OrDefault` forms, `TakeWhile`, `SelectMany`, `GroupJoin`) so dropping one of those names fails only its pin while the shipped `Where`/`Select`/`OrderBy`/`SkipWhile`/`Join`/`Any` fixtures stay green. An in-memory `AsQueryable()` `OrderByDescending` stays quiet.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
