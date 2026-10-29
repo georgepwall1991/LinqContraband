@@ -111,9 +111,16 @@ db.SaveChanges();
 - **Async context without an `ExecuteUpdateAsync` overload** (or `SaveChangesAsync(token)` with no
   token-accepting `ExecuteUpdateAsync` overload), to avoid a blocking call or a dropped token.
 - **Query receiver chains that contain `Skip`, `Take`, or `Distinct`**, including static
-  `Queryable` spellings such as `Queryable.Take(db.Users, 100)`. EF Core cannot translate those
-  operators as part of an `ExecuteUpdate` receiver, so the diagnostic remains a manual review prompt
-  instead of offering a code fix that would turn working tracked-loop code into a runtime exception.
+  `Queryable` spellings such as `Queryable.Take(db.Users, 100)` and the matching `Skip`/`Distinct`
+  forms. EF Core cannot translate those operators as part of an `ExecuteUpdate` receiver, so the
+  diagnostic remains a manual review prompt instead of offering a code fix that would turn working
+  tracked-loop code into a runtime exception.
+
+Coverage pins leftover query steps the analyzer walks through to the `DbSet` (`OrderByDescending`,
+`ThenBy`/`ThenByDescending`, `Include`/`ThenInclude`, `IgnoreQueryFilters`, `AsSplitQuery`/
+`AsSingleQuery`, `AsTracking`, `IgnoreAutoIncludes`, `TagWith`/`TagWithCallSite`) and leftover
+inline materializers (`ToArray`/`ToArrayAsync`). A `Select` in the loop source stays quiet because
+it is not an allowed query step.
 
 ### Safety contract
 
