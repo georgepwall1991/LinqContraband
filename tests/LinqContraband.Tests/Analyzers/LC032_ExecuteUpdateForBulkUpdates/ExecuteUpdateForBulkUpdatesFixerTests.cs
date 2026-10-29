@@ -56,6 +56,7 @@ namespace Microsoft.EntityFrameworkCore
     public static class EntityFrameworkQueryableExtensions
     {
         public static Task<List<TSource>> ToListAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(new List<TSource>());
+        public static Task<TSource[]> ToArrayAsync<TSource>(this IQueryable<TSource> source) => Task.FromResult(Array.Empty<TSource>());
         public static int ExecuteUpdate<TSource>(this IQueryable<TSource> source, Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>> setPropertyCalls) => 0;
         public static Task<int> ExecuteUpdateAsync<TSource>(this IQueryable<TSource> source, Func<SetPropertyCalls<TSource>, SetPropertyCalls<TSource>> setPropertyCalls, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }

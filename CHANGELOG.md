@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC032 `AllowedQuerySteps` names (`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Include`/`ThenInclude`, `IgnoreQueryFilters`, `AsSplitQuery`/`AsSingleQuery`, `AsTracking`, `IgnoreAutoIncludes`, `TagWith`/`TagWithCallSite`) and leftover materializers (`ToArray`/`ToArrayAsync`) so dropping one of those names fails only its pin while the shipped `Where`/`OrderBy`/`Take`/`ToList`/`ToListAsync` fixtures stay green. `Skip` and `Distinct` now have the same fluent and static fixer-decline pins as `Take`. A `Select` chain stays quiet.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.

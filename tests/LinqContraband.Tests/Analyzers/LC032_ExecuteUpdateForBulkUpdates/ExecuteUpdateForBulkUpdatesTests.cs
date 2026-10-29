@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC032_ExecuteUpdateForBulkUpdates;
 
-public class ExecuteUpdateForBulkUpdatesTests
+public partial class ExecuteUpdateForBulkUpdatesTests
 {
     private const string Usings = @"
 using System;
