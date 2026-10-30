@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC040 `MaterializerNames` (`ToArray`/`ToArrayAsync`, `ToHashSet`/`ToHashSetAsync`, `ToDictionary`/`ToDictionaryAsync`, `Last`/`LastAsync`/`LastOrDefault`/`LastOrDefaultAsync`, `FirstOrDefault`/`FirstOrDefaultAsync`, `Single`/`SingleAsync`/`SingleOrDefault`/`SingleOrDefaultAsync`, `ToListAsync`, `FirstAsync`, `AsEnumerable`) so dropping one of those names fails only its pin while the shipped `ToList`/`First` fixtures stay green. A no-tracking `Count` next to a tracked `ToList` stays quiet because `Count` is not a tracking materializer.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
