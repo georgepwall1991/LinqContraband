@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin leftover LC035 `TargetMethods` (`ExecuteUpdateAsync` without a filter) and leftover named-intent names (`Truncate`, whole-set nouns `Rows`/`Entries`/`Items`/`Entities`/`Tables`, handler suffixes `RequestHandler`/`Handler`/`Command`, generic entry points `Execute`/`Run`/`Invoke`/`Process`) so dropping one of those names fails only its pin. A lookalike `ExecuteUpdateAsync` stays quiet.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
