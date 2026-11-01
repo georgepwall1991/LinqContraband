@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LC007 and LC010 skip loops that cannot run the query or save twice: a `foreach` over a LanguageExt `Option<T>`, a body that always ends in `return`/`throw`/`break`, and a call on the path that leaves the loop (`await db.SaveChangesAsync(); return;`). A `continue`, `goto` or `switch` `break` on the call's path before the exit, or a call inside a `try` whose `catch` is in the loop, still counts as another pass. An outer per-item loop still reports. Found in ErsatzTV (LC010 24 to 1, LC007 164 to 127).
+
 ### Changed
 
 - Coverage tests pin previously untested operator, materializer and name arms for LC002, LC004, LC013, LC014, LC016, LC017, LC025, LC031, LC032, LC035, LC039, LC040, LC041, LC042, LC045, LC048, LC049, LC050, LC051, LC055, LC062, LC063 and the scanner, so dropping one of those names fails its own test. Rule docs list the newly pinned shapes. No analyzer behavior changes.

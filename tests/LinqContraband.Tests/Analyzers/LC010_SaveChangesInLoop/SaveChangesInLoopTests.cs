@@ -3871,7 +3871,7 @@ class Program
         while (true)
         {
             db.SaveChanges();
-            break;
+            if (db == null) break;
         }
     }
 }" + MockNamespace;
