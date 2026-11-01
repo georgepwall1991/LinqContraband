@@ -169,6 +169,20 @@ namespace Lookalike
             {
             }
         }")]
+    // A switch break before the return leaves the case, not the loop.
+    [InlineData(@"foreach (var id in ids)
+        {
+            switch (id)
+            {
+                case 1:
+                {
+                    Console.WriteLine(await {|LC007:db.Users.CountAsync()|});
+                    if (count > 0)
+                        break;
+                    return;
+                }
+            }
+        }")]
     public Task QueryThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(SinglePassProgram(body));
 }

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- LC007 and LC010 skip loops that cannot run the query or save twice: a `foreach` over a LanguageExt `Option<T>`, a body that always ends in `return`/`throw`/`break`, and a call on the path that leaves the loop (`await db.SaveChangesAsync(); return;`). A `continue` in the statement that makes the call, or a call inside a `try` whose `catch` is in the loop, still counts as another pass. An outer per-item loop still reports. Found in ErsatzTV (LC010 24 to 1, LC007 164 to 127).
+- LC007 and LC010 skip loops that cannot run the query or save twice: a `foreach` over a LanguageExt `Option<T>`, a body that always ends in `return`/`throw`/`break`, and a call on the path that leaves the loop (`await db.SaveChangesAsync(); return;`). A `continue`, `goto` or `switch` `break` on the call's path before the exit, or a call inside a `try` whose `catch` is in the loop, still counts as another pass. An outer per-item loop still reports. Found in ErsatzTV (LC010 24 to 1, LC007 164 to 127).
 
 ### Changed
 

@@ -131,6 +131,11 @@ public static partial class AnalysisExtensions
         return false;
     }
 
+    /// <summary>
+    /// The statement can leave its block without leaving <paramref name="loopSyntax"/>: a <c>goto</c>, a <c>continue</c>
+    /// of a loop outside the statement, or a <c>break</c> of a <c>switch</c> or loop outside the statement other than
+    /// <paramref name="loopSyntax"/> itself. Either way a later exit in the block can be skipped.
+    /// </summary>
     private static bool CanRestartOrJump(StatementSyntax statement, SyntaxNode loopSyntax)
     {
         foreach (var node in statement.DescendantNodesAndSelf(descendIntoChildren: node => !IsNestedFunction(node)))
@@ -138,11 +143,22 @@ public static partial class AnalysisExtensions
             if (node is GotoStatementSyntax)
                 return true;
 
-            if (node is ContinueStatementSyntax continueStatement && ReferenceEquals(NearestLoop(continueStatement), loopSyntax))
+            if (node is ContinueStatementSyntax continueStatement && IsOutside(NearestLoop(continueStatement), statement))
+                return true;
+
+            if (node is BreakStatementSyntax breakStatement &&
+                NearestBreakTarget(breakStatement) is { } target &&
+                !ReferenceEquals(target, loopSyntax) &&
+                IsOutside(target, statement))
                 return true;
         }
 
         return false;
+    }
+
+    private static bool IsOutside(SyntaxNode? target, SyntaxNode statement)
+    {
+        return target != null && !statement.Span.Contains(target.Span);
     }
 
     private static SyntaxNode? NearestBreakTarget(SyntaxNode node)

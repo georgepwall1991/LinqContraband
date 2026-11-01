@@ -151,6 +151,19 @@ namespace Lookalike
             {
             }
         }")]
+    [InlineData(@"foreach (var id in ids)
+        {
+            switch (id)
+            {
+                case 1:
+                {
+                    {|LC010:db.SaveChanges()|};
+                    if (id > 0)
+                        break;
+                    return null;
+                }
+            }
+        }")]
     public Task SaveThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 }
