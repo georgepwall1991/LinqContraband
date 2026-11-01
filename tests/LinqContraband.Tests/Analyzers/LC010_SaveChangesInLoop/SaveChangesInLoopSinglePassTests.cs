@@ -135,6 +135,22 @@ namespace Lookalike
             {
             }
         }")]
+    [InlineData(@"foreach (var id in ids)
+        {
+            try
+            {
+                if (id > 0)
+                {
+                    {|LC010:db.SaveChanges()|};
+                    if (id == 1)
+                        throw new InvalidOperationException();
+                    break;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }")]
     public Task SaveThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 }

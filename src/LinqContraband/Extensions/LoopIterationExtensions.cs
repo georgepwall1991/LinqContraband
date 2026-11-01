@@ -50,8 +50,9 @@ public static partial class AnalysisExtensions
     /// the operation sits in a <c>return</c> or <c>throw</c>, or a later statement of a block it is in is a
     /// <c>return</c>, <c>throw</c>, <c>yield break</c> or a <c>break</c> out of this loop, with no <c>continue</c> or
     /// <c>goto</c> in between (<c>if (match) { await db.SaveChangesAsync(); return; }</c>). A statement that holds the
-    /// operation and can itself <c>continue</c> (<c>if (db.SaveChanges() &gt; 0) continue; break;</c>) and a <c>throw</c>
-    /// that a <c>catch</c> inside the loop may handle do not count as leaving.
+    /// operation and can itself <c>continue</c> (<c>if (db.SaveChanges() &gt; 0) continue; break;</c>) does not count, and
+    /// neither does any operation inside a <c>try</c> whose <c>catch</c> is inside the loop: an exception thrown before
+    /// the exit lands in that <c>catch</c>, which can carry on to another pass.
     /// </summary>
     public static bool LeavesLoopAfter(this IOperation operation, ILoopOperation loop)
     {
@@ -65,7 +66,7 @@ public static partial class AnalysisExtensions
             _ => null
         };
 
-        if (loopBody == null || !loopBody.Span.Contains(operation.Syntax.Span))
+        if (loopBody == null || !loopBody.Span.Contains(operation.Syntax.Span) || IsInsideTryWithCatch(operation.Syntax, loopSyntax))
             return false;
 
         for (SyntaxNode? current = operation.Syntax; current != null && current != loopSyntax; current = current.Parent)
@@ -73,11 +74,8 @@ public static partial class AnalysisExtensions
             if (IsNestedFunction(current))
                 return false;
 
-            if (current is ReturnStatementSyntax)
+            if (current is ReturnStatementSyntax or ThrowStatementSyntax)
                 return true;
-
-            if (current is ThrowStatementSyntax)
-                return !MayBeCaughtInsideLoop(current, loopSyntax);
 
             // A catch or finally block runs on a path the try body may not have taken; stop looking there.
             if (current is CatchClauseSyntax or FinallyClauseSyntax)
@@ -107,11 +105,8 @@ public static partial class AnalysisExtensions
 
     private static bool IsExitOf(StatementSyntax statement, SyntaxNode loopSyntax)
     {
-        if (statement is ReturnStatementSyntax)
+        if (statement is ReturnStatementSyntax or ThrowStatementSyntax)
             return true;
-
-        if (statement is ThrowStatementSyntax)
-            return !MayBeCaughtInsideLoop(statement, loopSyntax);
 
         if (statement is YieldStatementSyntax yieldStatement)
             return yieldStatement.IsKind(SyntaxKind.YieldBreakStatement);
@@ -119,10 +114,13 @@ public static partial class AnalysisExtensions
         return statement is BreakStatementSyntax && ReferenceEquals(NearestBreakTarget(statement), loopSyntax);
     }
 
-    /// <summary>A <c>try</c> with a <c>catch</c> between the throw and the loop may handle it and start another pass.</summary>
-    private static bool MayBeCaughtInsideLoop(SyntaxNode throwStatement, SyntaxNode loopSyntax)
+    /// <summary>
+    /// The node is in the body of a <c>try</c> with a <c>catch</c> inside the loop. Every later exit on the node's path is
+    /// inside that <c>try</c> too, so an exception before the exit can be handled and the loop carries on.
+    /// </summary>
+    private static bool IsInsideTryWithCatch(SyntaxNode node, SyntaxNode loopSyntax)
     {
-        for (SyntaxNode? child = throwStatement, current = throwStatement.Parent;
+        for (SyntaxNode? child = node, current = node.Parent;
              current != null && current != loopSyntax;
              child = current, current = current.Parent)
         {

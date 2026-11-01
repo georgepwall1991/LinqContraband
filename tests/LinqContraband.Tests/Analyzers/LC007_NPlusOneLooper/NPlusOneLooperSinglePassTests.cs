@@ -152,6 +152,23 @@ namespace Lookalike
             {
             }
         }")]
+    // A conditional throw before the break lands in the catch, and the loop carries on.
+    [InlineData(@"foreach (var id in ids)
+        {
+            try
+            {
+                if (id > 0)
+                {
+                    var user = await {|LC007:db.Users.FindAsync(id)|};
+                    if (id == 1)
+                        throw new InvalidOperationException(user.Id.ToString());
+                    break;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }")]
     public Task QueryThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(SinglePassProgram(body));
 }
