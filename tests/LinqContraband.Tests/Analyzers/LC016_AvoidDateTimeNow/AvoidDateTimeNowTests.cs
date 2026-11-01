@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC016_AvoidDateTimeNow;
 
-public class AvoidDateTimeNowTests
+public partial class AvoidDateTimeNowTests
 {
     [Fact]
     public async Task Diagnostic_DateTimeNow_InWhere()

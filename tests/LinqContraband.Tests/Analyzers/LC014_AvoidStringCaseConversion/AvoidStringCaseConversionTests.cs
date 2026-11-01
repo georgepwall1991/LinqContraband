@@ -30,7 +30,7 @@ namespace Microsoft.EntityFrameworkCore
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
 
-    public static class EntityFrameworkQueryableExtensions
+    public static partial class EntityFrameworkQueryableExtensions
     {
         public static System.Threading.Tasks.Task<bool> AnyAsync<TSource>(
             this IQueryable<TSource> source,

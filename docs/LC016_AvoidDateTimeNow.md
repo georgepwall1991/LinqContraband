@@ -62,3 +62,6 @@ The fixer does not introduce an injected clock service, change `Now` to `UtcNow`
 ### ID: `LC016`
 ### Category: `Performance`
 ### Severity: `Warning`
+
+### Notes
+LC016 reports clock members (`DateTime.Now`/`UtcNow`, `DateTimeOffset.Now`/`UtcNow`) inside `IQueryable` lambdas passed to `Queryable` operators: `Where`, `Select`/`SelectMany`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `SkipWhile`/`TakeWhile`, `Any`/`All`, `Count`/`LongCount`, `First`/`Single`/`Last` and their `OrDefault` forms, `Join`, and `GroupJoin`. It stays quiet for explicit LINQ-to-Objects sources such as `new List<T>().AsQueryable()`. Query-syntax `orderby` lowers to `OrderBy` and is not a separate name.

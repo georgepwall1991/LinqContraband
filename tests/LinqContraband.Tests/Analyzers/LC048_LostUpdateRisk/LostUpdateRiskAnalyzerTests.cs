@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.Testing.Verifiers;
 
 namespace LinqContraband.Tests.Analyzers.LC048_LostUpdateRisk;
 
-public sealed class LostUpdateRiskAnalyzerTests
+public sealed partial class LostUpdateRiskAnalyzerTests
 {
     private const string EfCoreMock = """
 using System;
@@ -124,6 +124,19 @@ namespace Microsoft.EntityFrameworkCore
                 Task.FromResult(new Storage.IDbContextTransaction());
     }
 
+    public interface IIncludableQueryable<out TEntity, out TProperty> : IQueryable<TEntity>
+    {
+    }
+
+    public sealed class IncludableQueryable<TEntity, TProperty> : IIncludableQueryable<TEntity, TProperty>
+    {
+        public Type ElementType => typeof(TEntity);
+        public Expression Expression => null;
+        public IQueryProvider Provider => null;
+        public IEnumerator<TEntity> GetEnumerator() => null;
+        IEnumerator IEnumerable.GetEnumerator() => null;
+    }
+
     public class DbSet<T> : IQueryable<T> where T : class
     {
         public virtual T Find(params object[] keys) => default;
@@ -171,6 +184,24 @@ namespace Microsoft.EntityFrameworkCore
         public static IQueryable<T> AsTracking<T>(
             this IQueryable<T> source,
             QueryTrackingBehavior behavior) where T : class => source;
+        public static IIncludableQueryable<TEntity, TProperty> Include<TEntity, TProperty>(
+            this IQueryable<TEntity> source,
+            Expression<Func<TEntity, TProperty>> navigationPropertyPath) where TEntity : class =>
+            new IncludableQueryable<TEntity, TProperty>();
+        public static IIncludableQueryable<TEntity, TProperty> ThenInclude<TEntity, TPreviousProperty, TProperty>(
+            this IIncludableQueryable<TEntity, TPreviousProperty> source,
+            Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath) where TEntity : class =>
+            new IncludableQueryable<TEntity, TProperty>();
+        public static IQueryable<TEntity> IgnoreAutoIncludes<TEntity>(this IQueryable<TEntity> source)
+            where TEntity : class => source;
+        public static IQueryable<TEntity> IgnoreQueryFilters<TEntity>(this IQueryable<TEntity> source)
+            where TEntity : class => source;
+        public static IQueryable<TEntity> TagWith<TEntity>(this IQueryable<TEntity> source, string tag) =>
+            source;
+        public static IQueryable<TEntity> TagWithCallSite<TEntity>(
+            this IQueryable<TEntity> source,
+            string filePath = "",
+            int lineNumber = 0) => source;
         public static Task<T> FirstAsync<T>(
             this IQueryable<T> source,
             CancellationToken cancellationToken = default) => Task.FromResult(default(T));
@@ -183,6 +214,24 @@ namespace Microsoft.EntityFrameworkCore
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) =>
             Task.FromResult(new List<T>());
         public static int ExecuteUpdate<T>(this IQueryable<T> source, Expression<Func<T, T>> update) => 0;
+    }
+
+    public static class RelationalQueryableExtensions
+    {
+        public static IQueryable<TEntity> AsSplitQuery<TEntity>(this IQueryable<TEntity> source)
+            where TEntity : class => source;
+        public static IQueryable<TEntity> AsSingleQuery<TEntity>(this IQueryable<TEntity> source)
+            where TEntity : class => source;
+        public static IQueryable<TEntity> FromSqlRaw<TEntity>(
+            this IQueryable<TEntity> source,
+            string sql,
+            params object[] parameters) where TEntity : class => source;
+        public static IQueryable<TEntity> FromSql<TEntity>(
+            this IQueryable<TEntity> source,
+            FormattableString sql) where TEntity : class => source;
+        public static IQueryable<TEntity> FromSqlInterpolated<TEntity>(
+            this IQueryable<TEntity> source,
+            FormattableString sql) where TEntity : class => source;
     }
 
     public class ModelBuilder
@@ -371,6 +420,7 @@ namespace Test
         public int Quantity { get; set; }
         public int Status { get; set; }
         public string Name { get; set; }
+        public Order Parent { get; set; }
     }
 
     public sealed class AppDbContext : DbContext

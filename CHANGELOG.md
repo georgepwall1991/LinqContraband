@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin previously untested operator, materializer and name arms for LC002, LC004, LC013, LC014, LC016, LC017, LC025, LC031, LC032, LC035, LC039, LC040, LC041, LC042, LC045, LC048, LC049, LC050, LC051, LC055, LC062, LC063 and the scanner, so dropping one of those names fails its own test. Rule docs list the newly pinned shapes. No analyzer behavior changes.
+
 ### Security
 
 - Pin CI actions to verified commit hashes and NuGet dependency graphs to content hashes; require locked restores in CI and agent setup. Remove committed EF Core test binaries in favor of the existing NuGet restore.
