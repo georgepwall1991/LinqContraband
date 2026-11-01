@@ -37,10 +37,12 @@ permissions:
 
 jobs:
   build:
+    name: Build, attest and publish
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # NuGet Trusted Publishing (OIDC)
+      id-token: write       # NuGet Trusted Publishing and attestation signing (OIDC)
+      attestations: write   # store the build provenance attestation for the packages
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
@@ -61,14 +63,8 @@ jobs:
           9.0.x
           10.0.x
 
-    - name: Cache NuGet packages
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
+    # No NuGet package cache here: a release build restores from nuget.org so a
+    # poisoned Actions cache entry can never end up inside a published package.
     - name: Restore dependencies
       run: dotnet restore --locked-mode
 
@@ -105,3 +101,68 @@ jobs:
       env:
         NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
       run: dotnet nuget push ./*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    # nuget.org adds its repository signature to each package, which changes the file's bytes, so attesting the
+    # local build would not match what consumers download. Download the published packages instead, check that
+    # their content is this build's (everything except the signature and NuGet's per-pack metadata), and attest
+    # those bytes. Verify a download with
+    # `gh attestation verify LinqContraband.X.Y.Z.nupkg --repo georgepwall1991/LinqContraband`.
+    # The provenance records the commit of this run's OIDC token (GITHUB_SHA), not the checkout. Under release.yml
+    # that is master's HEAD when the release ran, which is a later commit if master moved on, and a manual dispatch
+    # from master for an older tag has the same gap. Attest only when the two agree; otherwise publish without an
+    # attestation and add it later by dispatching this workflow from the tag itself:
+    # `gh workflow run publish.yml --ref vX.Y.Z -f tag=vX.Y.Z` (the push step skips the existing packages).
+    - name: Check this run's commit is the release commit
+      id: source
+      run: |
+        head="$(git rev-parse HEAD)"
+        if [ "$head" = "$GITHUB_SHA" ]; then
+          echo "attest=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "attest=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::This run's commit ${GITHUB_SHA} is not the release commit ${head}, so no provenance attestation was created. Run: gh workflow run publish.yml --ref ${RELEASE_TAG} -f tag=${RELEASE_TAG}"
+        fi
+
+    - name: Download the published packages
+      if: steps.source.outputs.attest == 'true'
+      timeout-minutes: 30
+      run: |
+        set -euo pipefail
+        version="${RELEASE_TAG#v}"
+        mkdir -p published
+        for id in LinqContraband LinqContraband.Scan; do
+          lower="$(echo "$id" | tr '[:upper:]' '[:lower:]')"
+          url="https://api.nuget.org/v3-flatcontainer/${lower}/${version}/${lower}.${version}.nupkg"
+          for attempt in $(seq 1 50); do
+            if curl -fsSL "$url" -o "published/${id}.${version}.nupkg"; then
+              break
+            fi
+            if [ "$attempt" -eq 50 ]; then
+              echo "::error::${id} ${version} did not appear on nuget.org in time; no attestation was created."
+              exit 1
+            fi
+            sleep 30
+          done
+        done
+
+    - name: Check the published packages match this build
+      if: steps.source.outputs.attest == 'true'
+      run: |
+        set -euo pipefail
+        version="${RELEASE_TAG#v}"
+        for id in LinqContraband LinqContraband.Scan; do
+          rm -rf "check/${id}"
+          mkdir -p "check/${id}/built" "check/${id}/published"
+          unzip -q "./${id}.${version}.nupkg" -d "check/${id}/built"
+          unzip -q "published/${id}.${version}.nupkg" -d "check/${id}/published"
+          for side in built published; do
+            rm -rf "check/${id}/${side}/.signature.p7s" "check/${id}/${side}/package" "check/${id}/${side}/_rels" "check/${id}/${side}/[Content_Types].xml"
+          done
+          diff -r "check/${id}/built" "check/${id}/published"
+        done
+
+    - name: Attest build provenance of the published packages
+      if: steps.source.outputs.attest == 'true'
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: published/*.nupkg

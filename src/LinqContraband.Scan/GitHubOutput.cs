@@ -70,9 +70,10 @@ internal static class GitHubOutput
                         var code = report.SourceLine(finding);
                         if (code is not null)
                         {
-                            text.AppendLine("  ```csharp");
+                            var fence = Fence(code);
+                            text.AppendLine("  " + fence + "csharp");
                             text.AppendLine("  " + code);
-                            text.AppendLine("  ```");
+                            text.AppendLine("  " + fence);
                         }
                     }
 
@@ -140,6 +141,22 @@ internal static class GitHubOutput
     private static string Data(string value) => value.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
 
     private static string Property(string value) => Data(value).Replace(":", "%3A").Replace(",", "%2C");
+
+    /// <summary>
+    /// A code fence longer than any backtick run in <paramref name="code"/>, so a scanned source line can never close
+    /// the fence and have the rest of it rendered as Markdown in the job summary.
+    /// </summary>
+    internal static string Fence(string code)
+    {
+        int longest = 0, run = 0;
+        foreach (var c in code)
+        {
+            run = c == '`' ? run + 1 : 0;
+            longest = Math.Max(longest, run);
+        }
+
+        return new string('`', Math.Max(3, longest + 1));
+    }
 
     private static string Html(string value) => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 

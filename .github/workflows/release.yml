@@ -11,7 +11,10 @@ name: Release
 # every green master build. Run it by hand (workflow_dispatch) to release master's HEAD.
 
 on:
-  workflow_run:
+  # Safe use of workflow_run: the job only runs for a successful `push` build of master
+  # (never a pull request), checks out that pushed master commit and executes nothing
+  # from a fork.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: ["Build and Test"]
     types: [completed]
     branches: [master]
@@ -26,6 +29,7 @@ permissions:
 
 jobs:
   release:
+    name: Tag and create the GitHub Release
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
@@ -39,9 +43,12 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
+      # Keeps checkout credentials: the job pushes the release tag with them. It uploads
+      # no artifacts, so the persisted token never leaves the runner.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.TARGET_SHA }}
+          persist-credentials: true # zizmor: ignore[artipacked]
 
       - name: Read release metadata
         id: meta
@@ -103,8 +110,9 @@ jobs:
     if: needs.release.outputs.needed == 'true'
     permissions:
       contents: read
-      id-token: write
-    uses: ./.github/workflows/publish.yml
+      id-token: write       # NuGet Trusted Publishing and attestation signing (OIDC)
+      attestations: write   # build provenance for the published packages
+    uses: ./.github/workflows/publish.yml # zizmor: ignore[self-repository]
     with:
       tag: ${{ needs.release.outputs.tag }}
     secrets:

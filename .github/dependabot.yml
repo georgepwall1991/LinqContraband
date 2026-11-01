@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # Wait before adopting a fresh release, so a hijacked or yanked version is
+    # usually caught upstream before it reaches a pull request here.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     labels:
       - "dependencies"
       - "nuget"
@@ -53,6 +58,11 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
+    # Wait before adopting a fresh release, so a hijacked or yanked version is
+    # usually caught upstream before it reaches a pull request here.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     labels:
       - "dependencies"
       - "github-actions"

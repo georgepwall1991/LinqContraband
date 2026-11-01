@@ -392,6 +392,16 @@ public sealed class ScanReportTests
         Assert.StartsWith("## LinqContraband: no EF Core query problems", GitHubOutput.Markdown(ReadReport(CompilerLog()), 3, null));
     }
 
+    [Theory]
+    [InlineData("var x = 1;", "```")]
+    [InlineData("var s = \"``\";", "```")]
+    [InlineData("var s = \"```\"; // ``", "````")]
+    [InlineData("var s = \"`````\";", "``````")]
+    public void Fence_IsLongerThanAnyBacktickRunInTheSourceLine(string code, string expected)
+    {
+        Assert.Equal(expected, GitHubOutput.Fence(code));
+    }
+
     [Fact]
     public void Annotations_PutTheMostSevereFirstAndEscapeCommandText()
     {

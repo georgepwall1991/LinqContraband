@@ -27,6 +27,23 @@ and read back on 2026-10-05. The public [security page](security-and-authenticit
 George Wall will review contributions from other authors. The gate remains at zero required approvals while his account
 is the sole collaborator because GitHub does not permit approving a PR authored by the same account.
 
+## Workflow audit and provenance (2026-11-01)
+
+- [zizmor](https://docs.zizmor.sh) audits every workflow, the root `action.yml` and `dependabot.yml` on each change and
+  weekly, uploading results to code scanning. The four deliberate exceptions carry an inline `# zizmor: ignore[...]`
+  with the reason: `release.yml`'s `workflow_run` trigger (gated to a successful master `push` build), the persisted
+  checkout credentials in `release.yml` (tag push) and `claude.yml` (requested fixes), neither of which uploads
+  artifacts, and the fixed runner-temp `GITHUB_PATH` entry in `action.yml`.
+- `publish.yml` no longer restores the NuGet package cache, so an Actions cache entry written by another run cannot end
+  up inside a published package. After pushing, it downloads both packages back from nuget.org, checks
+  their content matches the build, and attests SLSA build provenance for those signed bytes (`attestations: write` and
+  OIDC only), so the attestation matches what consumers download. It only attests when the run's commit (the one the
+  provenance records) is the release commit. If master moved on before the release ran, it publishes with a warning
+  and the attestation is added by dispatching `publish.yml` from the tag. See [verifying a package](security-and-authenticity.md).
+- The root `action.yml`, which other repositories run, pins `github/codeql-action/upload-sarif` to a commit hash.
+- Scorecard runs with an empty workflow-level grant and job-scoped read permissions instead of `read-all`.
+- Dependabot cooldown: 7 days for minor and patch releases, 14 for majors.
+
 ## Necessary write grants
 
 `release.yml` grants `contents: write` only to its release job, after a successful

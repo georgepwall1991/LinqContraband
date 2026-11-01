@@ -50,7 +50,7 @@ runs:
       env:
         INPUT_VERSION: ${{ inputs.version }}
         ACTION_REF: ${{ github.action_ref }}
-      run: |
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
         version="$INPUT_VERSION"
         if [ -z "$version" ] && [[ "$ACTION_REF" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
@@ -62,6 +62,7 @@ runs:
         else
           dotnet tool install LinqContraband.Scan --tool-path "$tool_path"
         fi
+        # Only the fixed runner-temp tool path is written; no input reaches GITHUB_PATH.
         echo "$tool_path" >> "$GITHUB_PATH"
 
     - name: Scan
@@ -81,7 +82,9 @@ runs:
           arguments+=(--baseline "$INPUT_BASELINE")
         fi
         while IFS= read -r glob; do
-          glob="$(echo "$glob" | xargs)"
+          # Trim surrounding whitespace without xargs, which chokes on quotes.
+          glob="${glob#"${glob%%[![:space:]]*}"}"
+          glob="${glob%"${glob##*[![:space:]]}"}"
           if [ -n "$glob" ]; then
             arguments+=(--exclude "$glob")
           fi
@@ -98,7 +101,7 @@ runs:
 
     - name: Upload SARIF to code scanning
       if: ${{ !cancelled() && inputs.upload-sarif == 'true' && hashFiles(inputs.sarif) != '' }}
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: ${{ inputs.sarif }}
         category: ${{ inputs.category }}
