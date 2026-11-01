@@ -46,6 +46,8 @@ Transparent EF query options such as `AsSplitQuery()` and `TagWith(...)` do not 
 
 An explicit transaction does not make mixed tracking modes safer by itself. Transactions coordinate database writes; they do not change whether EF tracks the materialized entities. If a transactional workflow needs both read-only and write paths, split the workflow into clearly named scopes or contexts, or document why the mixed mode is intentional.
 
+Coverage pins leftover materializers the shipped `ToList`/`First` fixtures do not isolate (`ToArray`/`ToArrayAsync`, `ToHashSet`/`ToHashSetAsync`, `ToDictionary`/`ToDictionaryAsync`, `Last`/`LastAsync`/`LastOrDefault`/`LastOrDefaultAsync`, `FirstOrDefault`/`FirstOrDefaultAsync`, `Single`/`SingleAsync`/`SingleOrDefault`/`SingleOrDefaultAsync`, `ToListAsync`, `FirstAsync`, `AsEnumerable`). A no-tracking `Count` next to a tracked `ToList` stays quiet because `Count` is not a tracking materializer. Try/catch path modelling and `Select` short-circuit remain documented residuals.
+
 ## No automatic fixer
 
 LC040 is manual-only because the correct resolution depends on intent:

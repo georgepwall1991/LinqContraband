@@ -69,6 +69,8 @@ The fix renames the call to `AsAsyncEnumerable()` and adds `using Microsoft.Enti
 ```csharp
 db.Orders.ToAsyncEnumerable();
 db.Orders.AsNoTracking().Where(o => o.Total > 0).Select(o => o.Id).ToAsyncEnumerable();
+db.Orders.Include(o => o.Lines).ToAsyncEnumerable();
+db.Orders.TagWith("orders").ToAsyncEnumerable();
 (from o in db.Orders where o.Total > 0 select o.Id).ToAsyncEnumerable();
 ```
 

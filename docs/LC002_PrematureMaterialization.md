@@ -42,12 +42,15 @@ var usersAgain = db.Users.ToArray().ToList();   // ToArray is redundant; collaps
 var distinct = db.Users.ToList().ToHashSet();    // ToList is redundant; collapses to ToHashSet()
 ```
 
-A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) as the **source** of a second materializer is **not** redundant and is left quiet. The fix removes the source call, which would silently drop de-duplication (`ToHashSet().ToList()`) or drop a custom equality comparer (`ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet()`):
+A de-duplicating set materializer (`ToHashSet`, `ToHashSetAsync`, `ToImmutableHashSet`, `ToImmutableSortedSet`) as the **source** of a second materializer is **not** redundant and is left quiet. The fix removes the source call, which would silently drop de-duplication (`ToHashSet().ToList()`, `(await q.ToHashSetAsync()).ToList()`, `ToImmutableSortedSet().ToList()`) or drop a custom equality comparer (`ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet()`):
 
 ```csharp
 var distinctList = db.Users.ToHashSet().ToList();                                  // NOT reported — ToHashSet de-duplicates
+var distinctIds = db.Users.Select(u => u.Id).ToImmutableSortedSet().ToList();      // NOT reported — ToImmutableSortedSet de-duplicates
 var ci = db.Users.Select(u => u.Name).ToHashSet(StringComparer.OrdinalIgnoreCase).ToHashSet(); // NOT reported — comparer would be lost
 ```
+
+`ToImmutableArray().Where(...)` binds to `System.Linq.ImmutableArrayExtensions.Where`, not `Enumerable.Where`, so LC002 stays quiet on that spelling. `ToImmutableArray().OrderBy(...)` still reports, and the fixer moves the sort before `ToImmutableArray()`.
 
 A keyed (`ToDictionary`) or grouped (`ToLookup`) materializer as the **source** of a second materializer is likewise **not** redundant: the source produces a structure whose element type differs from the sequence, so the trailing call transforms its shape rather than re-materializing the same data. Removing the source would change the result type, so these are left quiet:
 
@@ -122,7 +125,8 @@ LC002 intentionally avoids chasing locals, fields, properties, constructor mater
 - Already materialized locals, aliases, constructors, arrays, DTO lists, fields, properties, and other post-processing shapes where in-memory work may be intentional
 - `AsEnumerable()` by itself when it is used only as an explicit client boundary
 - Overloads or lambdas that do not have a clear `IQueryable`-safe equivalent, such as index-aware predicates/selectors, comparer-based overloads, delegated predicates, local/source methods, `Regex`, or `StringComparison` string calls
-- A de-duplicating set materializer (`ToHashSet`, `ToImmutableHashSet`, `ToImmutableSortedSet`) used as the source of a second materializer (`ToHashSet().ToList()`, `ToImmutableHashSet().ToArray()`, `ToHashSet(comparer).ToHashSet()`), where removing the source would drop de-duplication or a custom comparer
+- A de-duplicating set materializer (`ToHashSet`, `ToHashSetAsync`, `ToImmutableHashSet`, `ToImmutableSortedSet`) used as the source of a second materializer (`ToHashSet().ToList()`, `(await q.ToHashSetAsync()).ToList()`, `ToImmutableSortedSet().ToList()`, `ToHashSet(comparer).ToHashSet()`), where removing the source would drop de-duplication or a custom comparer
+- `ToImmutableArray().Where(...)`, which binds to `ImmutableArrayExtensions.Where` rather than `Enumerable.Where`
 - A keyed (`ToDictionary`) or grouped (`ToLookup`) materializer used as the source of a second materializer (`ToDictionary().ToList()`, `ToLookup().ToList()`), where the trailing call transforms the keyed/grouped shape and is not a redundant re-materialization
 - Pure in-memory sequences that never came from `IQueryable`
 - An in-memory predicate that only repeats a `Where` filter the query already applied (`(await q.Where(x => x.Key == key).ToArrayAsync()).SingleOrDefault(x => x.Key == key)`), which is a deliberate exact-match re-check

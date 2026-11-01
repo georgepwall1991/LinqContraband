@@ -142,12 +142,21 @@ namespace Microsoft.EntityFrameworkCore
             => null;
 
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> AsTracking<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsSplitQuery<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsSingleQuery<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsNoTrackingWithIdentityResolution<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> TagWith<T>(this IQueryable<T> source, string tag) => source;
+        public static IQueryable<T> TagWithCallSite<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> IgnoreAutoIncludes<T>(this IQueryable<T> source) => source;
+        public static IQueryable<T> IgnoreQueryFilters<T>(this IQueryable<T> source) => source;
         public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T[]> ToArrayAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T> FirstAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T> LastAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T> LastOrDefaultAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T> SingleAsync<T>(this IQueryable<T> source) => null;
+        public static Task<T> SingleOrDefaultAsync<T>(this IQueryable<T> source) => null;
         public static Task<HashSet<T>> ToHashSetAsync<T>(
             this IQueryable<T> source,
             System.Threading.CancellationToken cancellationToken = default) => null;

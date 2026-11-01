@@ -3,7 +3,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC040_MixedTrackingAndNoTracking;
 
-public class MixedTrackingAndNoTrackingTests
+public partial class MixedTrackingAndNoTrackingTests
 {
     private const string EFCoreMock = @"
 using System;
@@ -38,7 +38,7 @@ namespace Microsoft.EntityFrameworkCore
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    public static class EntityFrameworkQueryableExtensions
+    public static partial class EntityFrameworkQueryableExtensions
     {
         public static IQueryable<TSource> AsNoTracking<TSource>(this IQueryable<TSource> source) => source;
         public static IQueryable<TSource> AsNoTrackingWithIdentityResolution<TSource>(this IQueryable<TSource> source) => source;

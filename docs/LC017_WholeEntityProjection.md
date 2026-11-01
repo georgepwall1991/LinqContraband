@@ -169,8 +169,8 @@ LC017 provides an automatic code fix that adds a `.Select()` projection before t
 
 1. **Analyzes property accesses**: Determines which properties of the entity are actually used in subsequent code
 2. **Generates anonymous type projection**: Creates a `.Select(e => new { e.Prop1, e.Prop2 })` with only the accessed properties
-3. **Preserves supported access shapes**: Includes properties used through direct foreach access, null-conditional access, and indexed collection access
-4. **Declines unsafe conversion shapes**: Keeps cast, interface, or conversion-based entity property access such as `((IHasName)e).Name` or `((IHasName)e)?.Name` diagnostic-only so the fix does not project a partial anonymous type while later code still needs the original entity
+3. **Preserves supported access shapes**: Includes properties used through direct foreach access, null-conditional access, indexed collection access, indexed null-conditional access (`entities[0]?.Name`), and properties declared on a base type
+4. **Declines unsafe conversion shapes**: Keeps cast, interface, `as`, or conversion-based entity property access such as `((IHasName)e).Name`, `((IHasName)e)?.Name`, or `(e as IHasName)?.Name` diagnostic-only so the fix does not project a partial anonymous type while later code still needs the original entity
 5. **Sorts properties alphabetically**: Ensures consistent, predictable output
 
 ### Before Fix

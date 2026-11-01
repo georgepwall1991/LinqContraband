@@ -4,7 +4,7 @@ using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
 
 namespace LinqContraband.Tests.Analyzers.LC051_ToAsyncEnumerableOnQuery;
 
-public class ToAsyncEnumerableOnQueryTests
+public partial class ToAsyncEnumerableOnQueryTests
 {
     /// <summary>EF Core surface used by the tests. Kept separate so it can also be compiled as its own assembly.</summary>
     internal const string EfCoreMock = @"
@@ -34,6 +34,8 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static IAsyncEnumerable<TSource> AsAsyncEnumerable<TSource>(this IQueryable<TSource> source) => null;
         public static IQueryable<TEntity> AsNoTracking<TEntity>(this IQueryable<TEntity> source) where TEntity : class => source;
+        public static IQueryable<TEntity> Include<TEntity, TProperty>(this IQueryable<TEntity> source, Expression<Func<TEntity, TProperty>> navigationPropertyPath) where TEntity : class => source;
+        public static IQueryable<TEntity> TagWith<TEntity>(this IQueryable<TEntity> source, string tag) where TEntity : class => source;
     }
 }
 ";
