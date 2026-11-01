@@ -165,7 +165,7 @@ Releases are driven by the version in `src/LinqContraband/LinqContraband.csproj`
 
 1. Open a `chore: release X.Y.Z` PR that bumps `<Version>` and `<PackageReleaseNotes>` and renames the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`. CI fails if the csproj version has no CHANGELOG section (`python3 scripts/release_info.py check`).
 2. Merge it. When **Build and Test** passes on `master`, `.github/workflows/release.yml` creates the annotated `vX.Y.Z` tag and a GitHub Release whose notes are that CHANGELOG section, then invokes `.github/workflows/publish.yml` as a reusable workflow.
-3. `publish.yml` refuses to publish if the tag is not `v<csproj Version>`, runs the full build and tests, and pushes the package to NuGet with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (no stored API key).
+3. `publish.yml` refuses to publish if the tag is not `v<csproj Version>`, runs the full build and tests, and pushes the package to NuGet with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (no stored API key). After the push it downloads both packages back from nuget.org and attests their build provenance. If another commit landed on `master` before the release ran, the run warns that it skipped the attestation. Add it with `gh workflow run publish.yml --ref vX.Y.Z -f tag=vX.Y.Z`.
 
 Do not create tags or releases by hand. Green `master` builds whose version is already released are a no-op. To retry a failed publish, run **Publish to NuGet** manually with the tag. Every release pushes to NuGet as soon as it is published; there is no cooldown between releases, and `--skip-duplicate` makes a re-run for an already-pushed version a no-op.
 

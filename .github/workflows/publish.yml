@@ -107,7 +107,24 @@ jobs:
     # their content is this build's (everything except the signature and NuGet's per-pack metadata), and attest
     # those bytes. Verify a download with
     # `gh attestation verify LinqContraband.X.Y.Z.nupkg --repo georgepwall1991/LinqContraband`.
+    # The provenance records the commit of this run's OIDC token (GITHUB_SHA), not the checkout. Under release.yml
+    # that is master's HEAD when the release ran, which is a later commit if master moved on, and a manual dispatch
+    # from master for an older tag has the same gap. Attest only when the two agree; otherwise publish without an
+    # attestation and add it later by dispatching this workflow from the tag itself:
+    # `gh workflow run publish.yml --ref vX.Y.Z -f tag=vX.Y.Z` (the push step skips the existing packages).
+    - name: Check this run's commit is the release commit
+      id: source
+      run: |
+        head="$(git rev-parse HEAD)"
+        if [ "$head" = "$GITHUB_SHA" ]; then
+          echo "attest=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "attest=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::This run's commit ${GITHUB_SHA} is not the release commit ${head}, so no provenance attestation was created. Run: gh workflow run publish.yml --ref ${RELEASE_TAG} -f tag=${RELEASE_TAG}"
+        fi
+
     - name: Download the published packages
+      if: steps.source.outputs.attest == 'true'
       timeout-minutes: 30
       run: |
         set -euo pipefail
@@ -129,6 +146,7 @@ jobs:
         done
 
     - name: Check the published packages match this build
+      if: steps.source.outputs.attest == 'true'
       run: |
         set -euo pipefail
         version="${RELEASE_TAG#v}"
@@ -144,6 +162,7 @@ jobs:
         done
 
     - name: Attest build provenance of the published packages
+      if: steps.source.outputs.attest == 'true'
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
       with:
         subject-path: published/*.nupkg
