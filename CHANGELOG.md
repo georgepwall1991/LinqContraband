@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verify SHA-512 hashes of EF Core test metadata packages and SHA-256 hashes of downloaded link-check executables before use.
 - Add FsCheck fuzz coverage for scanner argument parsing and update Scorecard to recognize C# property tests.
 - Limit workflow token permissions, publish coverage as artifacts instead of pushing to master, and invoke NuGet publishing as a reusable workflow without Actions write permission.
-- Publish SLSA build provenance attestations for both NuGet packages (verify with `gh attestation verify <package>.nupkg --repo georgepwall1991/LinqContraband`), and drop the NuGet cache from the publishing job so a poisoned Actions cache cannot reach a release.
+- Publish SLSA build provenance attestations for both NuGet packages as nuget.org serves them, after checking their content matches the build (verify with `gh attestation verify <package>.nupkg --repo georgepwall1991/LinqContraband`), and drop the NuGet cache from the publishing job so a poisoned Actions cache cannot reach a release.
 - Pin the `upload-sarif` step inside the root `action.yml` to a commit hash, and trim `exclude` globs without `xargs`, which failed on quotes.
 - Audit every workflow, `action.yml` and the Dependabot config with zizmor on each change and weekly; document each deliberate exception inline. Scorecard now runs with job-scoped permissions instead of `read-all`.
 - Dependabot waits 7 days (14 for major versions) before proposing a new release.

@@ -36,8 +36,9 @@ dotnet nuget verify --all LinqContraband.X.Y.Z.nupkg
 ```
 
 Releases after 5.17.0 also publish a [SLSA build provenance attestation](https://github.com/georgepwall1991/LinqContraband/attestations)
-for both packages, signed by the GitHub Actions run that built them. It ties the exact package bytes to this repository,
-the `publish.yml` workflow and the release commit:
+for both packages, signed by the GitHub Actions run that built them. After pushing, that run downloads each package back
+from nuget.org (with nuget.org's repository signature added), checks its content matches the build, and attests those
+bytes. That ties the file you download to this repository, the `publish.yml` workflow and the release commit:
 
 ```bash
 gh attestation verify LinqContraband.X.Y.Z.nupkg --repo georgepwall1991/LinqContraband

@@ -35,8 +35,9 @@ is the sole collaborator because GitHub does not permit approving a PR authored 
   checkout credentials in `release.yml` (tag push) and `claude.yml` (requested fixes), neither of which uploads
   artifacts, and the fixed runner-temp `GITHUB_PATH` entry in `action.yml`.
 - `publish.yml` no longer restores the NuGet package cache, so an Actions cache entry written by another run cannot end
-  up inside a published package. It attests SLSA build provenance for both `.nupkg` files before pushing them
-  (`attestations: write` and OIDC only). See [verifying a package](security-and-authenticity.md).
+  up inside a published package. After pushing, it downloads both packages back from nuget.org, checks
+  their content matches the build, and attests SLSA build provenance for those signed bytes (`attestations: write` and
+  OIDC only), so the attestation matches what consumers download. See [verifying a package](security-and-authenticity.md).
 - The root `action.yml`, which other repositories run, pins `github/codeql-action/upload-sarif` to a commit hash.
 - Scorecard runs with an empty workflow-level grant and job-scoped read permissions instead of `read-all`.
 - Dependabot cooldown: 7 days for minor and patch releases, 14 for majors.
