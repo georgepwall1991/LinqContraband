@@ -101,6 +101,57 @@ namespace TestApp
     }
 
     [Fact]
+    public async Task ParameterlessClearMethod_DoesNotTrigger()
+    {
+        // Squidex: ISnapshotStore<T>.ClearAsync(CancellationToken ct) runs Set<T>().ExecuteDeleteAsync(ct).
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public interface ISnapshotStore
+    {
+        Task ClearAsync(System.Threading.CancellationToken ct = default);
+    }
+
+    public class SessionStore : ISnapshotStore
+    {
+        private readonly BlogDbContext db = new BlogDbContext();
+
+        async Task ISnapshotStore.ClearAsync(System.Threading.CancellationToken ct)
+        {
+            await db.Sessions.ExecuteDeleteAsync();
+            await db.Set<Category>().ExecuteDeleteAsync();
+        }
+
+        public int Clear() => db.Users.ExecuteDelete();
+        public Task<int> PurgeAsync() => db.Addresses.ExecuteDeleteAsync();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ClearMethodWithSomethingToFilterBy_StillTriggers()
+    {
+        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
+    public class SessionStore
+    {
+        private readonly BlogDbContext db = new BlogDbContext();
+
+        public Task<int> ClearAsync(string userId) => {|LC035:db.Sessions.ExecuteDeleteAsync()|};
+        public int Clear() => {|LC035:db.Sessions.ExecuteUpdate()|};
+        public int ClearCache() => {|LC035:db.Users.ExecuteDelete()|};
+        public int Delete() => {|LC035:db.Users.ExecuteDelete()|};
+        public int Clear(System.Threading.CancellationToken ct)
+        {
+            System.Func<int> work = () => {|LC035:db.Users.ExecuteDelete()|};
+            return work();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NamesThatDoNotSayTheWholeTable_StillTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + NamedIntentTypes + @"
