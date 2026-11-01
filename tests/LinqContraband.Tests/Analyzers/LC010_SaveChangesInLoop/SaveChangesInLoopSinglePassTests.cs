@@ -118,6 +118,23 @@ namespace Lookalike
                 return ""failed"";
             }
         }")]
+    [InlineData(@"foreach (var id in ids)
+        {
+            if ({|LC010:db.SaveChanges()|} > 0)
+                continue;
+            break;
+        }")]
+    [InlineData(@"foreach (var id in ids)
+        {
+            try
+            {
+                {|LC010:db.SaveChanges()|};
+                throw new InvalidOperationException();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }")]
     public Task SaveThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 }

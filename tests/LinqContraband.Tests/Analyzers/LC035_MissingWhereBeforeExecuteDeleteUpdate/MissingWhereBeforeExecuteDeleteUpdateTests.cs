@@ -447,59 +447,6 @@ namespace TestApp
     }
 
     [Fact]
-    public async Task ExecuteDelete_WithLanguageExtStyleFilter_ShouldNotTrigger()
-    {
-        // ErsatzTV filters with LanguageExt's `Filter(this IQueryable<T>, Expression<Func<T, bool>>)`.
-        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
-namespace TestApp
-{
-    public sealed class Playout { public int Id { get; set; } }
-
-    public static class QueryExtensions
-    {
-        public static IQueryable<T> Filter<T>(this IQueryable<T> source, System.Linq.Expressions.Expression<Func<T, bool>> predicate)
-            => System.Linq.Queryable.Where(source, predicate);
-    }
-
-    public sealed class Program
-    {
-        public async Task Run(DbContext db, int id)
-        {
-            await db.Set<Playout>().Filter(p => p.Id == id).ExecuteDeleteAsync();
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task ExecuteDelete_WithFilterTakingNoPredicateLambda_ShouldTrigger()
-    {
-        // A `Filter` that takes something other than a predicate lambda, such as a tenant name, is not a proven filter.
-        var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"
-namespace TestApp
-{
-    public sealed class Playout { public int Id { get; set; } }
-
-    public static class QueryExtensions
-    {
-        public static IQueryable<T> Filter<T>(this IQueryable<T> source, string tenant) => source;
-    }
-
-    public sealed class Program
-    {
-        public void Run(DbContext db)
-        {
-            var result = {|LC035:db.Set<Playout>().Filter(""all"").ExecuteDelete()|};
-        }
-    }
-}";
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task ExecuteDelete_WithProjectLocalPredicateWhereWithoutLambda_ShouldTrigger()
     {
         var test = @"using Microsoft.EntityFrameworkCore;" + EfMock + @"

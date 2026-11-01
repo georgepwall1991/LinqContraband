@@ -71,50 +71,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         await VerifyWithReferencedBuilderAsync(test);
     }
 
-    private const string PostConfiguration = @"
-    public class PostConfiguration : IEntityTypeConfiguration<Post>
-    {
-        public void Configure(EntityTypeBuilder<Post> builder)
-        {
-            builder.ToTable(""Post"");
-            builder.ManyToMany().UsingEntity<PostTag>(j => { });
-        }
-    }
-";
-
-    [Theory]
-    // ErsatzTV: CollectionConfiguration : IEntityTypeConfiguration<Collection> declares
-    // HasMany(...).WithMany(...).UsingEntity<CollectionItem>(...), and the DbContext applies it.
-    [InlineData("modelBuilder.ApplyConfigurationsFromAssembly(GetType().Assembly);")]
-    [InlineData("modelBuilder.ApplyConfiguration(new PostConfiguration());")]
-    public async Task TestInnocent_JoinEntityConfiguredInEntityTypeConfiguration_ShouldNotTrigger(string apply)
-    {
-        var test = Usings + SemanticMockAttributes + @"
-        public DbSet<Post> Posts { get; set; }
-        public DbSet<PostTag> PostTags { get; set; }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            " + apply + @"
-        }
-    }
-" + PostConfiguration + ManyToManyMock;
-
-        await VerifyWithReferencedBuilderAsync(test);
-    }
-
-    [Fact]
-    public async Task TestCrime_JoinEntityConfigurationNeverApplied_ShouldTrigger()
-    {
-        var test = Usings + SemanticMockAttributes + @"
-        public DbSet<Post> Posts { get; set; }
-        public DbSet<PostTag> {|LC011:PostTags|} { get; set; }
-    }
-" + PostConfiguration + ManyToManyMock;
-
-        await VerifyWithReferencedBuilderAsync(test);
-    }
-
     [Fact]
     public async Task TestCrime_JoinEntityNotUsedAsUsingEntityType_ShouldTrigger()
     {

@@ -296,7 +296,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         if (!TryGetConfiguredEntityType(configType, out var entityType))
             return;
 
-        var (hasKey, hasNoKey) = CheckConfigureMethod(configType, entityType, compilationModel, configuredEntities, cancellationToken);
+        var (hasKey, hasNoKey) = CheckConfigureMethod(configType, entityType, compilationModel, cancellationToken);
 
         if (hasKey)
             configuredEntities.Add(entityType);

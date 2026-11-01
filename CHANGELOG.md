@@ -9,9 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- LC007 and LC010 skip loops that cannot run the query or save twice: a `foreach` over a LanguageExt `Option<T>`, a body that always ends in `return`/`throw`/`break`, and a call on the path that leaves the loop (`await db.SaveChangesAsync(); return;`). An outer per-item loop still reports. Found in ErsatzTV (LC010 24 to 1, LC007 164 to 127).
-- LC011 treats the join entity of `UsingEntity<TJoin>(...)` declared inside an applied `IEntityTypeConfiguration<T>` as keyed, as it already did in `OnModelCreating` (ErsatzTV `CollectionItem`).
-- LC035 counts a `Filter(x => ...)` method taking an `Expression<Func<T, bool>>` as a filter (LanguageExt, ErsatzTV), and stays quiet on `ExecuteDelete` over a bare table inside a bare `Clear`/`Purge`/`Truncate`/`Wipe` method whose only parameters are cancellation tokens (Squidex snapshot stores, 7 to 0).
+- LC007 and LC010 skip loops that cannot run the query or save twice: a `foreach` over a LanguageExt `Option<T>`, a body that always ends in `return`/`throw`/`break`, and a call on the path that leaves the loop (`await db.SaveChangesAsync(); return;`). A `continue` in the statement that makes the call, or a `throw` that a `catch` inside the loop can handle, still counts as another pass. An outer per-item loop still reports. Found in ErsatzTV (LC010 24 to 1, LC007 164 to 127).
 
 ### Changed
 

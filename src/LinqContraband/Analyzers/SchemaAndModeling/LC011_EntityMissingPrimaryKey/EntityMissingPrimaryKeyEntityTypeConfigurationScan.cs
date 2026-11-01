@@ -46,7 +46,7 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
                 if (iface.TypeArguments.Length > 0 &&
                     iface.TypeArguments[0] is INamedTypeSymbol entityType)
                 {
-                    var (hasKey, hasNoKey) = CheckConfigureMethod(type, entityType, compilationModel, scan.ConfiguredEntities, cancellationToken);
+                    var (hasKey, hasNoKey) = CheckConfigureMethod(type, entityType, compilationModel, cancellationToken);
 
                     if (hasKey)
                         scan.ConfiguredEntities.Add(entityType);
@@ -64,7 +64,6 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
         INamedTypeSymbol configClass,
         INamedTypeSymbol entityType,
         CompilationModel compilationModel,
-        HashSet<INamedTypeSymbol> joinEntities,
         CancellationToken cancellationToken)
     {
         var configureMethod = configClass.GetMembers("Configure").FirstOrDefault() as IMethodSymbol;
@@ -80,8 +79,6 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
             var syntax = syntaxRef.GetSyntax(cancellationToken);
             var builderVariables = CollectConfigureBuilderParameters(configureMethod);
             var invocations = syntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
-            SemanticModel? semanticModel = null;
-            var semanticModelResolved = false;
 
             foreach (var invocation in invocations)
             {
@@ -89,17 +86,6 @@ public sealed partial class EntityMissingPrimaryKeyAnalyzer
 
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                     continue;
-
-                // builder.HasMany(...).WithMany(...).UsingEntity<CollectionItem>(...) inside an
-                // IEntityTypeConfiguration<Collection>: EF Core keys the join entity by convention with the
-                // composite of its two foreign keys, as it does when the call is in OnModelCreating.
-                if (memberAccess.Name is GenericNameSyntax { Identifier.Text: "UsingEntity", TypeArgumentList.Arguments.Count: 1 } usingEntity &&
-                    IsEntityFrameworkCoreMethod(invocation, syntax, compilationModel, ref semanticModel, ref semanticModelResolved, cancellationToken) &&
-                    compilationModel.FindType(usingEntity.TypeArgumentList.Arguments[0], cancellationToken) is { } joinEntity)
-                {
-                    joinEntities.Add(joinEntity);
-                    continue;
-                }
 
                 if (!TryResolveEntityTypeFromBuilderExpression(memberAccess.Expression, builderVariables, compilationModel, cancellationToken, out var configuredEntity) ||
                     !SymbolEqualityComparer.Default.Equals(configuredEntity, entityType))

@@ -96,7 +96,7 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
     // A `Where` taking anything else, such as a string reason, is not a proven filter.
     private static bool IsPredicateWhere(IInvocationOperation invocation)
     {
-        if (invocation.TargetMethod.Name is not ("Where" or "Filter"))
+        if (invocation.TargetMethod.Name != "Where")
             return false;
 
         foreach (var argument in invocation.Arguments)

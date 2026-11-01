@@ -133,6 +133,25 @@ namespace Lookalike
             if (user == null)
                 return;
         }")]
+    // The statement that runs the query can continue before the break.
+    [InlineData(@"foreach (var id in ids)
+        {
+            if (await {|LC007:db.Users.Where(u => u.Id == id).AnyAsync()|})
+                continue;
+            break;
+        }")]
+    // A catch inside the loop handles the throw, so the next item runs the query again.
+    [InlineData(@"foreach (var id in ids)
+        {
+            try
+            {
+                var user = await {|LC007:db.Users.FindAsync(id)|};
+                throw new InvalidOperationException(user.Id.ToString());
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }")]
     public Task QueryThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(SinglePassProgram(body));
 }

@@ -86,37 +86,8 @@ public sealed partial class MissingWhereBeforeExecuteDeleteUpdateAnalyzer
         if (!IsBareTable(invocation.GetInvocationReceiver()))
             return false;
 
-        if (IsParameterlessClearDelete(invocation))
-            return true;
-
         var tableNames = GetTableNames(invocation).ToList();
         return GetIntentNames(invocation.Syntax).Any(name => NameSaysWholeTable(name, tableNames));
-    }
-
-    /// <summary>
-    /// Squidex's <c>ISnapshotStore&lt;T&gt;.ClearAsync(CancellationToken ct)</c> runs
-    /// <c>db.Set&lt;T&gt;().ExecuteDeleteAsync(ct)</c>: a method named only for clearing (<c>Clear</c>, <c>Purge</c>,
-    /// <c>Truncate</c>, <c>Wipe</c>, with or without <c>Async</c>) that takes nothing but a cancellation token has
-    /// nothing to filter by, so deleting every row is its job. A <c>ClearAsync(string userId)</c> still reports.
-    /// </summary>
-    private static bool IsParameterlessClearDelete(IInvocationOperation invocation)
-    {
-        if (invocation.TargetMethod.Name is not ("ExecuteDelete" or "ExecuteDeleteAsync"))
-            return false;
-
-        var method = invocation.Syntax.Ancestors()
-            .FirstOrDefault(node => node is MethodDeclarationSyntax or LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax);
-        if (method is not MethodDeclarationSyntax declaration)
-            return false;
-
-        var words = StripAsync(SplitWords(declaration.Identifier.ValueText));
-        if (words.Count != 1 || !ClearVerbs.Contains(words[0]))
-            return false;
-
-        return invocation.SemanticModel?.GetDeclaredSymbol(declaration) is IMethodSymbol symbol &&
-               symbol.Parameters.All(parameter =>
-                   parameter.Type is { Name: "CancellationToken" } type &&
-                   type.ContainingNamespace?.ToString() == "System.Threading");
     }
 
     private static bool IsBareTable(IOperation? receiver)

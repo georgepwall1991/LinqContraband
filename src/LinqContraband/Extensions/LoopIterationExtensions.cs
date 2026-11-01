@@ -49,7 +49,9 @@ public static partial class AnalysisExtensions
     /// Every path that runs <paramref name="operation"/> then leaves <paramref name="loop"/> before another pass:
     /// the operation sits in a <c>return</c> or <c>throw</c>, or a later statement of a block it is in is a
     /// <c>return</c>, <c>throw</c>, <c>yield break</c> or a <c>break</c> out of this loop, with no <c>continue</c> or
-    /// <c>goto</c> in between (<c>if (match) { await db.SaveChangesAsync(); return; }</c>).
+    /// <c>goto</c> in between (<c>if (match) { await db.SaveChangesAsync(); return; }</c>). A statement that holds the
+    /// operation and can itself <c>continue</c> (<c>if (db.SaveChanges() &gt; 0) continue; break;</c>) and a <c>throw</c>
+    /// that a <c>catch</c> inside the loop may handle do not count as leaving.
     /// </summary>
     public static bool LeavesLoopAfter(this IOperation operation, ILoopOperation loop)
     {
@@ -71,8 +73,11 @@ public static partial class AnalysisExtensions
             if (IsNestedFunction(current))
                 return false;
 
-            if (current is ReturnStatementSyntax or ThrowStatementSyntax)
+            if (current is ReturnStatementSyntax)
                 return true;
+
+            if (current is ThrowStatementSyntax)
+                return !MayBeCaughtInsideLoop(current, loopSyntax);
 
             // A catch or finally block runs on a path the try body may not have taken; stop looking there.
             if (current is CatchClauseSyntax or FinallyClauseSyntax)
@@ -80,6 +85,10 @@ public static partial class AnalysisExtensions
 
             if (current is StatementSyntax statement && current.Parent is BlockSyntax block)
             {
+                // The statement holding the operation may branch back to the loop before reaching a later exit.
+                if (CanRestartOrJump(statement, loopSyntax))
+                    return false;
+
                 var index = block.Statements.IndexOf(statement);
                 for (var next = index + 1; next < block.Statements.Count; next++)
                 {
@@ -98,13 +107,30 @@ public static partial class AnalysisExtensions
 
     private static bool IsExitOf(StatementSyntax statement, SyntaxNode loopSyntax)
     {
-        if (statement is ReturnStatementSyntax or ThrowStatementSyntax)
+        if (statement is ReturnStatementSyntax)
             return true;
+
+        if (statement is ThrowStatementSyntax)
+            return !MayBeCaughtInsideLoop(statement, loopSyntax);
 
         if (statement is YieldStatementSyntax yieldStatement)
             return yieldStatement.IsKind(SyntaxKind.YieldBreakStatement);
 
         return statement is BreakStatementSyntax && ReferenceEquals(NearestBreakTarget(statement), loopSyntax);
+    }
+
+    /// <summary>A <c>try</c> with a <c>catch</c> between the throw and the loop may handle it and start another pass.</summary>
+    private static bool MayBeCaughtInsideLoop(SyntaxNode throwStatement, SyntaxNode loopSyntax)
+    {
+        for (SyntaxNode? child = throwStatement, current = throwStatement.Parent;
+             current != null && current != loopSyntax;
+             child = current, current = current.Parent)
+        {
+            if (current is TryStatementSyntax { Catches.Count: > 0 } tryStatement && child == tryStatement.Block)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool CanRestartOrJump(StatementSyntax statement, SyntaxNode loopSyntax)
