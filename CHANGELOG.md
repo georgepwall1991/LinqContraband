@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.18.0] - 2026-11-01
+
 ### Fixed
 
 - LC035 counts a `Filter(x => ...)` method taking an `Expression<Func<T, bool>>` as a filter (LanguageExt, ErsatzTV), and stays quiet on `ExecuteDelete` over a bare table inside a bare `Clear`/`Purge`/`Truncate`/`Wipe` method whose only parameters are cancellation tokens (Squidex snapshot stores, 7 to 0).
