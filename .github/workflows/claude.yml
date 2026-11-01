@@ -4,7 +4,9 @@ name: Claude
 # issue (e.g. "@claude review this" or "@claude fix the LC042 false positive"). Only the
 # repo owner, members and collaborators can trigger it, and it runs only when asked, so it
 # uses Claude only when you want it. Uses the same secret as claude-review.yml.
-on:
+# issue_comment and the review triggers run with repository secrets, so the job below
+# only starts for an explicit @claude from the owner, a member or a collaborator.
+on: # zizmor: ignore[dangerous-triggers]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -19,6 +21,7 @@ permissions:
 
 jobs:
   claude:
+    name: Claude on request
     if: >-
       (github.event_name == 'issue_comment' &&
        contains(github.event.comment.body, '@claude') &&
@@ -35,15 +38,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
+      contents: write        # push the branch for a requested fix
+      pull-requests: write   # open and comment on pull requests
+      issues: write          # reply on issues
+      id-token: write        # claude-code-action GitHub App token exchange (OIDC)
+      actions: read          # read CI results for the PR
     steps:
+      # Keeps checkout credentials so a requested fix can be pushed. The job uploads no
+      # artifacts.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: true # zizmor: ignore[artipacked]
 
       - uses: anthropics/claude-code-action@16f9f71ab9c490faf367f94dd294897edc25be33 # v1
         with:

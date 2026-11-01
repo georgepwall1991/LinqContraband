@@ -11,14 +11,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
     permissions:
-      actions: read
+      actions: read           # CodeQL reads the workflow run it belongs to
       contents: read
-      security-events: write
+      security-events: write  # upload the analysis to code scanning
 
     steps:
       - name: Checkout repository

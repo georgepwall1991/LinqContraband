@@ -18,6 +18,10 @@ The project is maintained by George Wall:
 The analyzer and scanner are distributed through NuGet, not as standalone ZIP installers or executable downloads. If a third-party page offers a ZIP,
 installer, or binary download that claims to be LinqContraband, treat it as untrusted.
 
+Releases after 5.17.0 carry a GitHub build provenance attestation for both packages. Check a downloaded package with
+`gh attestation verify <package>.nupkg --repo georgepwall1991/LinqContraband`; see
+[verifying a package](https://georgepwall1991.github.io/LinqContraband/security-and-authenticity/).
+
 ## Reporting Security Issues
 
 Report vulnerabilities privately using [GitHub's private reporting form](https://github.com/georgepwall1991/LinqContraband/security/advisories/new).

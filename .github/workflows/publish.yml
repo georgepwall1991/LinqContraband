@@ -37,10 +37,12 @@ permissions:
 
 jobs:
   build:
+    name: Build, attest and publish
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # NuGet Trusted Publishing (OIDC)
+      id-token: write       # NuGet Trusted Publishing and attestation signing (OIDC)
+      attestations: write   # store the build provenance attestation for the packages
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
@@ -61,14 +63,8 @@ jobs:
           9.0.x
           10.0.x
 
-    - name: Cache NuGet packages
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
+    # No NuGet package cache here: a release build restores from nuget.org so a
+    # poisoned Actions cache entry can never end up inside a published package.
     - name: Restore dependencies
       run: dotnet restore --locked-mode
 
@@ -85,6 +81,14 @@ jobs:
       run: |
         dotnet pack src/LinqContraband/LinqContraband.csproj -c Release --no-build --output .
         dotnet pack src/LinqContraband.Scan/LinqContraband.Scan.csproj -c Release --no-build --output .
+
+    # SLSA build provenance: ties each .nupkg to this repository, workflow and commit.
+    # Verify a downloaded package with
+    # `gh attestation verify LinqContraband.X.Y.Z.nupkg --repo georgepwall1991/LinqContraband`.
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: ./*.nupkg
 
     - name: Require NUGET_USER for Trusted Publishing
       env:

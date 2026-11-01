@@ -1,0 +1,42 @@
+name: Workflow security
+
+# Audits the GitHub Actions workflows, the root action.yml and the Dependabot config
+# with zizmor (https://docs.zizmor.sh): template injection, credential persistence,
+# cache poisoning, unpinned actions, dangerous triggers and excessive permissions.
+# Deliberate exceptions carry an inline `# zizmor: ignore[...]` with the reason.
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - ".github/**"
+      - "action.yml"
+  schedule:
+    - cron: '0 7 * * 1'  # Weekly Monday 7am UTC, so new audits catch existing workflows
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # read the workflows
+      actions: read           # online audits read workflow metadata
+      security-events: write  # upload the findings to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          version: 1.31.1
+          min-severity: low

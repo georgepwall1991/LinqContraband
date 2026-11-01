@@ -17,10 +17,11 @@ concurrency:
 
 jobs:
   deploy:
+    name: Build and deploy the docs site
     permissions:
       contents: read
-      pages: write
-      id-token: write
+      pages: write      # deploy to GitHub Pages
+      id-token: write   # Pages deployment token (OIDC)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
