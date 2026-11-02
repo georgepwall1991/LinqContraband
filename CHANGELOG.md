@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC007/LC010 single-pass loop arms (`OptionUnsafe`, a branch `yield break`, `for`/`do` exit paths, and a `goto` that skips the return) so dropping one of those names or syntax cases fails its own test. Rule docs list the newly pinned shapes. No analyzer behavior changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed

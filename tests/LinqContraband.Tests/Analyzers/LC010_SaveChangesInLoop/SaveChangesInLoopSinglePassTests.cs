@@ -8,7 +8,7 @@ namespace LinqContraband.Tests.Analyzers.LC010_SaveChangesInLoop;
 /// a body that always ends in <c>return</c>/<c>throw</c>/<c>break</c>, or a save followed by an exit
 /// (<c>SaveChanges(); return;</c>). ErsatzTV reported 23 of these.
 /// </summary>
-public class SaveChangesInLoopSinglePassTests
+public partial class SaveChangesInLoopSinglePassTests
 {
     private static string Program(string body) => @"
 using System;
@@ -44,11 +44,23 @@ namespace LanguageExt
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
+
+    public struct OptionUnsafe<A> : IEnumerable<A>
+    {
+        public IEnumerator<A> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
 }
 
 namespace Lookalike
 {
     public struct Option<A> : IEnumerable<A>
+    {
+        public IEnumerator<A> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
+
+    public struct OptionUnsafe<A> : IEnumerable<A>
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;

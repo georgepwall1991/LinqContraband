@@ -18,11 +18,23 @@ namespace LanguageExt
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
+
+    public struct OptionUnsafe<A> : IEnumerable<A>
+    {
+        public IEnumerator<A> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
 }
 
 namespace Lookalike
 {
     public struct Option<A> : IEnumerable<A>
+    {
+        public IEnumerator<A> GetEnumerator() => null;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
+
+    public struct OptionUnsafe<A> : IEnumerable<A>
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
