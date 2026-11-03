@@ -38,7 +38,7 @@ foreach (var user in db.Users.ToList())
 ```
 
 ### 3. Query materialization, aggregates, and set-based executors on proven EF sources
-LC007 reports materializers and executors such as `ToList`, `Count`, `Any`, `ExecuteDelete`, and `ExecuteUpdate` when the query origin is provably EF-backed.
+LC007 reports materializers and executors such as `ToList`, `Count`, `Any`, `ExecuteDelete`, and `ExecuteUpdate` when the query origin is provably EF-backed. Coverage pins leftover execution names the shipped `ToList`/`Count`/`Any`/`First`/`ExecuteDelete` fixtures do not isolate (`ToHashSet`/`ToHashSetAsync`, `ToDictionary`/`ToDictionaryAsync`, `ForEachAsync`, `LongCount`/`LongCountAsync`, `All`/`AllAsync`, `MinAsync`/`MaxAsync`/`AverageAsync`, `ExecuteUpdate`/`ExecuteUpdateAsync`). A lookalike `ForEachAsync` on a proven EF receiver still reports because the name gate is name-only.
 
 ```csharp
 foreach (var user in db.Users.ToList())
