@@ -38,7 +38,7 @@ foreach (var user in db.Users.ToList())
 ```
 
 ### 3. Query materialization, aggregates, and set-based executors on proven EF sources
-LC007 reports materializers and executors such as `ToList`, `Count`, `Any`, `ExecuteDelete`, and `ExecuteUpdate` when the query origin is provably EF-backed.
+LC007 reports materializers and executors such as `ToList`, `ToArray`, `Count`, `Any`, `First`/`Single`/`Last` (including leftover async twins), leftover aggregates (`Sum`/`Average`/`Min`/`Max` and leftover `SumAsync`), `ExecuteDelete`, and `ExecuteUpdate` when the query origin is provably EF-backed.
 
 ```csharp
 foreach (var user in db.Users.ToList())
