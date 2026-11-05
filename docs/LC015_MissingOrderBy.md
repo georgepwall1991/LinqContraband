@@ -114,8 +114,10 @@ db.Users.Where(x => x.Active).Skip(5);
 db.Users.Last();
 db.Users.LastOrDefault();
 await db.Users.LastAsync();                           // async terminal, EF requires an upstream OrderBy
+await db.Users.LastOrDefaultAsync();
 db.Users.ElementAt(5);                               // positional access (OFFSET/FETCH) needs ordering
 db.Users.ElementAtOrDefault(5);
+await db.Users.ElementAtOrDefaultAsync(5);
 db.Users.Select(x => x.Name).Chunk(10);
 db.Users.Take(10).OrderBy(u => u.Name);              // misplaced OrderBy
 db.Users.Skip(10).OrderBy(u => u.Name).Take(5);      // missing upstream order and misplaced OrderBy
