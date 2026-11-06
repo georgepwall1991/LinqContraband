@@ -101,6 +101,8 @@ LC001 reports local row-dependent helpers in positions that EF Core normally nee
 - Joins and grouping keys: `Join`, `GroupJoin`, `GroupBy`
 - Aggregate selectors: `Sum`, `Average`, `Min`, `Max`
 
+Coverage pins leftover hosts the shipped `Where`, static `ThenBy`, static `Join`, and aggregate-selector fixtures do not isolate (`OrderBy`/`OrderByDescending`, `ThenByDescending`, `GroupJoin`/`GroupBy`, standalone `Any`/`All`/`Count`/`LongCount`, `First*`/`Single*`/`Last*`, `SkipWhile`/`TakeWhile`). Nested `Any` still reports through an outer `Where` if `Any` itself is dropped. A lookalike `OrderByDescending` on an EF receiver still reports because the host check is name-only. `Select` stays a documented non-goal.
+
 It intentionally does not report top-level `Select` projection helpers. Modern EF Core can often run final projection code after the database query shape has already been translated.
 
 ## Safe Cases
