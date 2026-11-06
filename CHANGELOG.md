@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC001 translation-critical hosts (`OrderBy`/`OrderByDescending`, `ThenByDescending`, `GroupJoin`/`GroupBy`, standalone `Any`/`All`/`Count`/`LongCount`, `First*`/`Single*`/`Last*`, `SkipWhile`/`TakeWhile`) that the shipped `Where`/`ThenBy`/`Join` and aggregate-selector fixtures do not isolate. No analyzer behavior changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed
