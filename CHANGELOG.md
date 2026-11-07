@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC046 async query terminals (`AllAsync`, `AverageAsync`, `CountAsync`, `ExecuteUpdateAsync`, `FirstAsync`/`FirstOrDefaultAsync`, `ForEachAsync`, `LastAsync`/`LastOrDefaultAsync`, `LongCountAsync`, `MaxAsync`/`MinAsync`, `SingleAsync`/`SingleOrDefaultAsync`, `SumAsync`, `ToArrayAsync`, `ToHashSetAsync`) and leftover `ExecuteSqlAsync` that the shipped `ToListAsync`/`AnyAsync`/`ContainsAsync`/`ElementAt*`/`ToDictionaryAsync`/`LoadAsync`/`ExecuteDeleteAsync` and `ExecuteSqlRawAsync`/`ExecuteSqlInterpolatedAsync` fixtures do not isolate, so dropping one of those names fails its own test. A lookalike leftover name outside `Microsoft.EntityFrameworkCore` stays quiet. No analyzer behavior changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed

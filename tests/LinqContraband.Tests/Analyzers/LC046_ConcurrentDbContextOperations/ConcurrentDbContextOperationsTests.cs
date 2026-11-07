@@ -36,7 +36,7 @@ namespace Microsoft.EntityFrameworkCore
         public ValueTask<TEntity> FindAsync(params object[] keyValues) => default;
     }
 
-    public static class EntityFrameworkQueryableExtensions
+    public static partial class EntityFrameworkQueryableExtensions
     {
         public static Task<List<TEntity>> ToListAsync<TEntity>(
             this IQueryable<TEntity> source,
@@ -100,7 +100,7 @@ namespace Microsoft.EntityFrameworkCore
             params object[] parameters) where TEntity : class => source;
     }
 
-    public static class RelationalDatabaseFacadeExtensions
+    public static partial class RelationalDatabaseFacadeExtensions
     {
         public static Task<int> ExecuteSqlRawAsync(
             this Infrastructure.DatabaseFacade database,
