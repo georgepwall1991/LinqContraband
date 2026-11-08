@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC017 navigation-collection mutators (`AddRange`, `Remove`, `RemoveAll`, `RemoveAt`, `RemoveRange`, `RemoveWhere`, `Insert`, `InsertRange`) that the shipped `Add`/`Clear` write-path fixtures do not isolate, so dropping one of those names fails its own test. A leftover name on an unrelated collection still reports. No analyzer behavior changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed
