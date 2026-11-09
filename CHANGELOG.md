@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC009 in-memory wraps of attached-entity lookups (`Where`, `SkipWhile`, `TakeWhile`, `Reverse`, `ToHashSet`, `ToDictionary`, `ToLookup`, `MinBy`, `MaxBy`, `DistinctBy`) that the shipped `categories.First(...)` fixtures do not isolate, so dropping one of those names fails its own test. A leftover name on an unrelated collection still reports, as does `ToDictionary` with an `elementSelector`. No analyzer behavior changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed
