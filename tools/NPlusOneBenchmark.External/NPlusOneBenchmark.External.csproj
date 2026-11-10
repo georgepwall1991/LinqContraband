@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- A data-access library in a separate project. The benchmark corpus references it as
+         metadata, the way an application project sees an infrastructure project or a NuGet
+         repository package: the analyzer has no source for these methods. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <RunAnalyzers>false</RunAnalyzers>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    </ItemGroup>
+
+</Project>

@@ -11,6 +11,7 @@ dotnet build                                                        # ~20s
 dotnet test --no-build -f net10.0                                   # full suite, ~2 min
 dotnet test --no-build -f net10.0 --filter "FullyQualifiedName~LC044"
 dotnet run --project tools/RuleCatalogDocGenerator/RuleCatalogDocGenerator.csproj -- --check   # --write to regenerate docs/rule-catalog.md
+dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --check   # --write to regenerate tools/NPlusOneBenchmark/results.md
 dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --frameworks net8.0 net9.0 net10.0
 python3 scripts/release_info.py check                               # csproj Version has a CHANGELOG section
 scripts/check-links.sh _site      # docs + help-link check (links.yml); first: gem install github-pages && jekyll build -s docs -d _site/LinqContraband
@@ -24,6 +25,7 @@ These are the checks `.github/workflows/dotnet.yml` and `links.yml` run. Run the
 - `TreatWarningsAsErrors` is on. `EnforceExtendedAnalyzerRules` is on, so analyzers cannot use banned APIs (file IO, etc.).
 - `src/LinqContraband/Catalog/RuleCatalog*.cs` is the source of truth for every rule. Each rule needs the analyzer folder, tests, a sample under `samples/LinqContraband.Sample/Samples/`, and `docs/LCxxx_Name.md`. A rule without a fixer needs a written rationale in the catalog. `RuleCatalogIntegrityTests` enforces this.
 - Any code shape that newly reports must be added to that rule's fixer-coverage corpus in the same change (see `CONTRIBUTING.md`).
+- `tools/NPlusOneBenchmark` is the ground truth for N+1 work (LC007, LC010, LC045): each case is proven by counting round trips on SQLite. Regenerate `results.md` in any change that alters what those rules report, and add a case for every new shape (see its README).
 - `docs/analyzer-health.md` scores every rule and is the backlog for hardening work. Update its row and the suite test count when you change a rule.
 - `docs/` is the GitHub Pages site (Jekyll). `README.md` is packed into the nupkg as the NuGet readme.
 - Do not run CSharpier over existing files. Most of the codebase is not CSharpier-formatted, and a mass reformat would conflict with every open branch. Match the surrounding style instead.
