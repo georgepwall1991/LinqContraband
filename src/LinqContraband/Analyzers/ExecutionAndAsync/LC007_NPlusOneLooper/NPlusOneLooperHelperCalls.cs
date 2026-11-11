@@ -111,6 +111,8 @@ internal static partial class NPlusOneLooperAnalysis
             if (current is ILoopOperation loop &&
                 invocation.SharesOwningExecutableRoot(loop) &&
                 IsPerIterationInvocation(invocation, loop) &&
+                !loop.RunsAtMostOnce() &&
+                !invocation.LeavesLoopAfter(loop) &&
                 !IsBatchPollingOrRetryLoop(invocation, loop, cancellationToken) &&
                 !ConditionRunsQueryThroughHelper(loop, cache, cancellationToken) &&
                 !IsLoadOnceGuardedInLoop(invocation, loop))

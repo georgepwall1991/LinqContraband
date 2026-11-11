@@ -484,4 +484,59 @@ class Program
 
         await test.RunAsync();
     }
+
+    [Theory]
+    // The body always ends the loop.
+    [InlineData(@"foreach (var id in ids)
+        {
+            var user = Load(id);
+            Console.WriteLine(user.Id);
+            return user;
+        }
+
+        return null;")]
+    // The helper is called on the way out of the loop.
+    [InlineData(@"foreach (var id in ids)
+        {
+            if (id > 3)
+            {
+                var user = Load(id);
+                break;
+            }
+        }
+
+        return null;")]
+    [InlineData(@"foreach (var id in ids)
+        {
+            if (id > 3)
+                return Load(id);
+        }
+
+        return null;")]
+    public Task HelperCall_InLoopThatRunsItAtMostOnce_IsQuiet(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(SinglePassHelperProgram(body));
+
+    [Fact]
+    public Task HelperCall_InLoopThatCanContinue_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(
+            SinglePassHelperProgram(@"foreach (var id in ids)
+        {
+            if (id > 3)
+                continue;
+
+            var user = {|#0:Load(id)|};
+            if (user != null)
+                return user;
+        }
+
+        return null;"),
+            HelperCall(0, "Load", "Find"));
+
+    private static string SinglePassHelperProgram(string body) => HelperProgram(@"
+    User Run(int[] ids)
+    {
+        " + body + @"
+    }
+
+    private User Load(int id) => _db.Users.Find(id);");
 }

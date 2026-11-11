@@ -31,6 +31,8 @@ Findings:
   ...
 ```
 
+Because the scan builds every project of the solution, it also follows a loop's call into another project: a controller that loops over `ICustomerRepository.GetById` is an LC007 finding when the repository in the infrastructure project runs a query, and an LC010 finding when it saves. A build cannot see that, because a referenced project reaches the compiler without method bodies. `--no-cross-project` turns it off.
+
 `--fix` applies the rules' code fixes to your source files (through `dotnet format`), then reports what is left; `--rules LC009` fixes one rule at a time. `--html report.html` writes the whole report as one page you can share, with the code around every finding. In CI, `--fail-on warning` fails the build on findings, `--baseline <earlier.sarif>` fails only on new ones, and `--exclude 'tests/**'` leaves files out. In GitHub Actions the scan writes a job summary and annotates the pull request, and the repository is also an Action: `uses: georgepwall1991/LinqContraband@v5.12.0`.
 
 To keep the checks on in the editor and in CI, add the analyzer package: `dotnet add package LinqContraband`.

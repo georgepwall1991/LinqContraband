@@ -25,9 +25,14 @@ internal static partial class SarifReader
     /// <summary>
     /// Adds the unsuppressed LCxxx, EF1002 and EF1003 results in <paramref name="json"/> to <paramref name="findings"/> and their rule
     /// metadata to <paramref name="rules"/>. Results the code suppressed with <c>#pragma</c> or
-    /// <c>[SuppressMessage]</c> are skipped, matching what the build reports.
+    /// <c>[SuppressMessage]</c> are skipped, matching what the build reports. The analyzer's cross-project facts
+    /// go to <paramref name="crossProjectFacts"/> when it is given, and are dropped otherwise.
     /// </summary>
-    public static void Read(string json, ICollection<Finding> findings, IDictionary<string, RuleInfo> rules)
+    public static void Read(
+        string json,
+        ICollection<Finding> findings,
+        IDictionary<string, RuleInfo> rules,
+        ICollection<CrossProjectFact>? crossProjectFacts = null)
     {
         using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("runs", out var runs) || runs.ValueKind != JsonValueKind.Array)
@@ -43,6 +48,12 @@ internal static partial class SarifReader
             foreach (var result in results.EnumerateArray())
             {
                 var ruleId = GetString(result, "ruleId");
+                if (ruleId == CrossProjectJoin.FactRuleId)
+                {
+                    ReadCrossProjectFact(result, crossProjectFacts);
+                    continue;
+                }
+
                 if (!IsReportedRule(ruleId) || IsSuppressed(result))
                     continue;
 
@@ -54,6 +65,17 @@ internal static partial class SarifReader
                 findings.Add(new Finding(ruleId!, severity, message, path, line, column));
             }
         }
+    }
+
+    /// <summary>A fact for <see cref="CrossProjectJoin"/>, never a finding.</summary>
+    private static void ReadCrossProjectFact(JsonElement result, ICollection<CrossProjectFact>? facts)
+    {
+        if (facts is null || !TryGetLocation(result, out var path, out var line, out var column))
+            return;
+
+        var message = result.TryGetProperty("message", out var messageElement) ? GetString(messageElement, "text") : null;
+        if (message is not null && CrossProjectJoin.TryParse(message, path, line, column, out var fact))
+            facts.Add(fact);
     }
 
     private static void ReadRules(JsonElement run, IDictionary<string, RuleInfo> rules)

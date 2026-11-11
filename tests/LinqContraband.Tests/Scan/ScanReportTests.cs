@@ -87,6 +87,33 @@ public sealed class ScanReportTests
     }
 
     [Fact]
+    public void Reader_HandsCrossProjectFactsToTheJoin_AndNeverReportsThem()
+    {
+        var path = InRoot("src", "Orders.cs");
+        var log = CompilerLog(
+            Result("LC007", "warning", path, 12, 9),
+            Result("LCX001", "note", path, 20, 13).Replace("LCX001 message", "lcx1|L|7|a|M:I.Get|M:I.Get|foreach||Get|d"),
+            Result("LCX001", "note", path, 30, 5).Replace("LCX001 message", "lcx1|Q|M:Repo.Get|Find"),
+            Result("LCX001", "note", path, 31, 5).Replace("LCX001 message", "not a fact"));
+
+        var findings = new List<Finding>();
+        var rules = new Dictionary<string, RuleInfo>(StringComparer.Ordinal);
+        var facts = new List<CrossProjectFact>();
+        SarifReader.Read(log, findings, rules, facts);
+
+        Assert.Equal("LC007", Assert.Single(findings).RuleId);
+        Assert.DoesNotContain("LCX001", rules.Keys);
+        Assert.Equal(["L", "Q"], facts.Select(fact => fact.Kind));
+        Assert.Equal((path, 20, 13), (facts[0].Path, facts[0].Line, facts[0].Column));
+        Assert.Equal(["7", "a", "M:I.Get", "M:I.Get", "foreach", "", "Get", "d"], facts[0].Fields);
+
+        // A caller that does not ask for the facts gets the findings alone.
+        findings.Clear();
+        SarifReader.Read(log, findings, rules);
+        Assert.Single(findings);
+    }
+
+    [Fact]
     public void Reader_IgnoresLogsWithoutRunsOrLocations()
     {
         var findings = new List<Finding>();

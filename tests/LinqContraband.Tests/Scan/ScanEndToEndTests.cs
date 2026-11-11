@@ -219,6 +219,202 @@ public sealed class ScanEndToEndTests
     }
 
     /// <summary>
+    /// The layered shape no build-time analyzer can see across: the loop is in the application project, the interface
+    /// in an abstractions project and the repository that runs the query in a data project. Each compiler sees the
+    /// other projects as assemblies without bodies, so LC007 and LC010 are quiet during a build. The scan makes every
+    /// project log what its methods run, call and implement, and joins those facts.
+    /// </summary>
+    [Fact]
+    public void Scan_FollowsPerItemCallsIntoOtherProjects()
+    {
+        var directory = Directory.CreateTempSubdirectory("scan-cross-project-e2e-").FullName;
+        try
+        {
+            // Every analyzer diagnostic is an error here, which must not turn the exported facts into build errors.
+            File.WriteAllText(Path.Combine(directory, ".editorconfig"), """
+                root = true
+
+                [*.cs]
+                dotnet_analyzer_diagnostic.severity = error
+                """);
+
+            Directory.CreateDirectory(Path.Combine(directory, "Abstractions"));
+            File.WriteAllText(Path.Combine(directory, "Abstractions", "Abstractions.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "Abstractions", "Customers.cs"), """
+                namespace Shop.Abstractions;
+
+                public class Customer
+                {
+                    public int Id { get; set; }
+                }
+
+                public interface ICustomerRepository
+                {
+                    Customer GetById(int id);
+                    void Add(Customer customer);
+                    string Describe(int id);
+                }
+                """);
+
+            Directory.CreateDirectory(Path.Combine(directory, "Data"));
+            File.WriteAllText(Path.Combine(directory, "Data", "Data.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Abstractions/Abstractions.csproj" />
+                  </ItemGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "Data", "Repositories.cs"), """
+                using Microsoft.EntityFrameworkCore;
+                using Shop.Abstractions;
+
+                namespace Microsoft.EntityFrameworkCore
+                {
+                    public class DbContext
+                    {
+                        public int SaveChanges() => 0;
+                    }
+
+                    public class DbSet<T> where T : class
+                    {
+                        public T Find(params object[] keyValues) => null!;
+                        public void Add(T entity) { }
+                    }
+                }
+
+                namespace Shop.Data
+                {
+                    public class ShopContext : DbContext
+                    {
+                        public DbSet<Customer> Customers { get; } = new DbSet<Customer>();
+                    }
+
+                    public class CustomerRepository : ICustomerRepository
+                    {
+                        private readonly ShopContext _db = new ShopContext();
+
+                        public Customer GetById(int id) => _db.Customers.Find(id);
+
+                        public void Add(Customer customer)
+                        {
+                            _db.Customers.Add(customer);
+                            _db.SaveChanges();
+                        }
+
+                        public string Describe(int id) => id.ToString();
+                    }
+
+                    // Two calls away from the query, through the interface of another project.
+                    public class CustomerService
+                    {
+                        private readonly ICustomerRepository _customers;
+
+                        public CustomerService(ICustomerRepository customers) => _customers = customers;
+
+                        public Customer Load(int id) => _customers.GetById(id);
+                    }
+                }
+                """);
+
+            Directory.CreateDirectory(Path.Combine(directory, "App"));
+            File.WriteAllText(Path.Combine(directory, "App", "App.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Abstractions/Abstractions.csproj" />
+                    <ProjectReference Include="../Data/Data.csproj" />
+                  </ItemGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(directory, "App", "Importer.cs"), """
+                using System.Collections.Generic;
+                using System.Linq;
+                using Shop.Abstractions;
+                using Shop.Data;
+
+                namespace Shop.App;
+
+                public class Importer
+                {
+                    public void Run(ICustomerRepository customers, CustomerService service, List<int> ids)
+                    {
+                        foreach (var id in ids)
+                        {
+                            var customer = customers.GetById(id);
+                        }
+
+                        var loaded = ids.Select(id => service.Load(id)).ToList();
+
+                        foreach (var id in ids)
+                            customers.Add(new Customer { Id = id });
+
+                        // Runs no query, so it is not a finding.
+                        foreach (var id in ids)
+                            System.Console.WriteLine(customers.Describe(id));
+
+                #pragma warning disable LC007
+                        foreach (var id in ids)
+                        {
+                            var quiet = customers.GetById(id);
+                        }
+                #pragma warning restore LC007
+                    }
+                }
+                """);
+
+            var project = Path.Combine(directory, "App", "App.csproj");
+            var sarif = Path.Combine(directory, "out", "report.sarif");
+
+            var (exitCode, output, error) = Run([project, "--sarif", sarif, "--verbose"], BuiltAnalyzerPath());
+            var transcript = output + Environment.NewLine + error;
+
+            Assert.True(exitCode == ScanCommand.Success, transcript);
+            Assert.True(output.Contains("LinqContraband found 3 problems (2 rules, 1 file).", StringComparison.Ordinal), transcript);
+            Assert.DoesNotContain("LCX001", output.Split("LinqContraband found")[1]);
+
+            using (var document = JsonDocument.Parse(File.ReadAllText(sarif)))
+            {
+                var results = document.RootElement.GetProperty("runs")[0].GetProperty("results").EnumerateArray()
+                    .Select(result => (
+                        Rule: result.GetProperty("ruleId").GetString(),
+                        Line: result.GetProperty("locations")[0].GetProperty("physicalLocation").GetProperty("region").GetProperty("startLine").GetInt32(),
+                        Message: result.GetProperty("message").GetProperty("text").GetString()))
+                    .OrderBy(result => result.Line)
+                    .ToList();
+
+                Assert.Equal(
+                    [
+                        ("LC007", 14, "'GetById' runs 'Find' in another project on every iteration of the loop, causing N+1 database operations. Fetch data in bulk or eager load before the loop."),
+                        ("LC007", 17, "'Load' runs 'Find' in another project for every element 'Select' processes, causing N+1 database operations. Fetch data in bulk or eager load before iterating."),
+                        ("LC010", 20, "'Add' calls 'SaveChanges' in another project, so this saves once per item and causes N+1 database writes. Batch changes and save once after the loop."),
+                    ],
+                    results);
+            }
+
+            // The pass can be switched off, and then the scan reports what a build reports: nothing here.
+            var withoutPass = Run([project, "--sarif", sarif, "--no-restore", "--no-cross-project"], BuiltAnalyzerPath());
+            Assert.True(withoutPass.ExitCode == ScanCommand.Success, withoutPass.Output + withoutPass.Error);
+            Assert.Contains("LinqContraband found no EF Core query problems.", withoutPass.Output);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// <c>--fix</c> applies the code fix through dotnet format and then scans what is left; <c>--exclude</c> keeps a
     /// file as it was.
     /// </summary>

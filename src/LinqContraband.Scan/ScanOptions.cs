@@ -16,6 +16,9 @@ internal sealed record ScanOptions
 
     public bool NoRestore { get; init; }
 
+    /// <summary>Skip the pass that follows per-item calls into other projects of the solution.</summary>
+    public bool NoCrossProject { get; init; }
+
     /// <summary>How many files to list under "Most affected files".</summary>
     public int Top { get; init; } = 10;
 
@@ -90,6 +93,8 @@ internal sealed record ScanOptions
               --html <file>          Also write the report as one HTML page, with the code around each finding.
               --summary <file>       Also write the report as Markdown, for a pull request comment or a wiki.
               --no-github            In GitHub Actions, skip the job summary and the pull request annotations.
+              --no-cross-project     Do not follow a loop's call into another project of the solution. Without this,
+                                     the scan also reports N+1 queries and saves that cross a project boundary.
               --findings <n|all>     Findings to list under each rule, with the line of code. Default: 3
               --top <n>              Number of files to list under "Most affected files". Default: 10
           -v, --verbose              Show the full dotnet build output.
@@ -123,6 +128,9 @@ internal sealed record ScanOptions
                     break;
                 case "--no-restore":
                     options = options with { NoRestore = true };
+                    break;
+                case "--no-cross-project":
+                    options = options with { NoCrossProject = true };
                     break;
                 case "-o" or "--sarif":
                     if (!TryTakeValue(args, ref i, out var sarif, out error))

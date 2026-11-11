@@ -68,11 +68,7 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.RegisterCompilationStartAction(compilationContext =>
         {
-            var saveHelpers = new NPlusOneLooperHelperCache(
-                compilationContext.Compilation,
-                NPlusOneLooperAnalysis.MaxHelperDepth,
-                MatchSaveInHelper,
-                skipMemoizedHelpers: false);
+            var saveHelpers = CreateSaveHelperCache(compilationContext.Compilation);
             compilationContext.RegisterOperationAction(
                 operationContext => AnalyzeInvocation(operationContext, saveHelpers),
                 OperationKind.Invocation);

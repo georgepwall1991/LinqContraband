@@ -80,6 +80,54 @@ The report also includes EF Core's own EF1002 and EF1003 warnings about SQL inje
 Core 8 and later, LC018 and LC034 leave those calls to EF Core instead of reporting them twice, so the scan shows EF
 Core's diagnostic for them.
 
+## N+1 Queries Across Projects
+
+In a layered solution the loop, the repository interface and the query usually live in three projects. A build cannot
+connect them: the compiler sees a referenced project as an assembly without method bodies, so LC007 and LC010 stop at
+the project boundary. The scan builds every project of the solution, so it follows a loop's call from one project into
+another and reports the call:
+
+```csharp
+// Shop.Web
+foreach (var order in orders)
+    names.Add(_customers.GetById(order.CustomerId).Name);
+
+// Shop.Domain
+public interface ICustomerRepository { Customer GetById(int id); }
+
+// Shop.Infrastructure
+public Customer GetById(int id) => _db.Customers.Find(id);
+```
+
+```text
+  LC007  N+1 Problem: Database execution inside loop
+    src/Shop.Web/OrdersController.cs:31:19
+      'GetById' runs 'Find' in another project on every iteration of the loop, causing N+1 database operations. Fetch data in bulk or eager load before the loop.
+      31 | names.Add(_customers.GetById(order.CustomerId).Name);
+```
+
+A save works the same way: a loop that calls a repository whose `Add` calls `SaveChanges` in another project is an
+LC010 finding. The pass keeps to what the two rules already do inside one project:
+
+- The call must run once per item: in a loop, or in a lambda or method group that an in-memory operator such as
+  `Select` or `ForEach` runs per element. Batch, paging, polling, retry and single-pass loops stay quiet.
+- A call through an interface, or to an `abstract` or `virtual` method, is a finding only when every implementation in
+  the scanned projects runs a query (or saves). One in-memory or caching implementation, one the scan cannot read, no
+  implementation at all, or more than eight keeps it quiet. A decorator that forwards to the same interface method
+  counts as whatever it wraps.
+- Fakes and stubs in test projects (projects that reference xUnit, NUnit, MSTest or TUnit) are not counted as
+  implementations, so they do not hide the real repository.
+- A call is followed through up to four methods that hand it on to another project, such as controller to service to
+  repository. A method that looks in a cache before it calls on is not followed for queries.
+- `#pragma warning disable LC007`, `[SuppressMessage]`, `NoWarn` and an `.editorconfig` severity for LC007 or LC010
+  apply at the call in the loop, as they do to any other finding.
+
+Only projects the scan builds are followed, so a repository that comes from a NuGet package stays out of sight, and so
+does a project that failed to compile. A query another project returns as an `IQueryable` and the loop executes
+(`repository.Query().Count(...)`) is not followed yet. These findings exist only in the scan: the analyzer package
+reports one project at a time, so the IDE and a normal build do not show them, and `--fix` leaves them alone.
+`--no-cross-project` turns the pass off.
+
 ## Options
 
 | Option | Meaning |
@@ -98,6 +146,7 @@ Core's diagnostic for them.
 | `--html <file>` | Also write the report as one self-contained HTML page. |
 | `--summary <file>` | Also write the report as Markdown. |
 | `--no-github` | In GitHub Actions, skip the job summary and pull request annotations. |
+| `--no-cross-project` | Do not follow a loop's call into another project of the solution (see "N+1 Queries Across Projects"). |
 | `--findings <n>` | How many findings to list under each rule, with the line of code. `all` lists every finding, `0` none. Defaults to 3. |
 | `--top <n>` | How many files to list under "Most affected files". Defaults to 10. |
 | `-v`, `--verbose` | Show the full `dotnet build` output. |
