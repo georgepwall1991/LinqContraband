@@ -1324,6 +1324,7 @@ public sealed partial class MissingIncludeAnalyzer
                 )
             )
             {
+                CollectEntityMemberNavigationEvents(propertyReference, eventSyntax);
                 return;
             }
 
@@ -1371,6 +1372,91 @@ public sealed partial class MissingIncludeAnalyzer
                 return;
             }
 
+            AddNavigationAccess(propertyReference, origin, path, eventSyntax);
+        }
+
+        /// <summary>
+        /// Reading a computed property the entity declares itself runs its getter, so every
+        /// navigation the getter reads on <c>this</c> is read here, on the entity the property
+        /// is read from: <c>order.CustomerLabel</c> reads <c>order.Customer</c>. The access is
+        /// the member read in this method; the getter is not a place a caller can fix.
+        /// </summary>
+        private void CollectEntityMemberNavigationEvents(
+            IPropertyReferenceOperation propertyReference,
+            SyntaxNode? eventSyntax
+        )
+        {
+            var property = propertyReference.Property;
+            if (
+                property.IsStatic
+                || TryGetNavigationTarget(property, entityTypes, out _, out _)
+                || IsWriteTarget(propertyReference)
+                || propertyReference.SemanticModel?.Compilation is not { } compilation
+            )
+            {
+                return;
+            }
+
+            var reads = flowCache.GetEntityMemberReads(property, compilation, cancellationToken);
+            if (reads.IsEmpty)
+                return;
+
+            var instance = propertyReference.Instance?.UnwrapConversions();
+            if (instance is IConditionalAccessInstanceOperation)
+                instance = ResolveConditionalAccessReceiver(propertyReference)?.UnwrapConversions();
+
+            if (!TryResolveEntityOrigin(instance, out var origin))
+                return;
+
+            var ownerEntityType = origin.EntityType ?? entityType;
+            if (!IsPropertyOfEntity(property, ownerEntityType))
+                return;
+
+            var paths = new List<string>();
+            foreach (var read in reads)
+            {
+                if (
+                    !TryGetNavigationPath(
+                        read.Chain,
+                        ownerEntityType,
+                        entityTypes,
+                        out var relativePath,
+                        out var endsInCollection
+                    )
+                )
+                {
+                    continue;
+                }
+
+                // A getter that assigns a navigation may be supplying the value it then reads.
+                if (read.IsWrite)
+                    return;
+
+                if (endsInCollection && read.IsCollectionMutatorReceiver)
+                    continue;
+
+                if (!paths.Contains(relativePath))
+                    paths.Add(relativePath);
+            }
+
+            foreach (var relativePath in paths)
+            {
+                AddNavigationAccess(
+                    propertyReference,
+                    origin,
+                    CombineNavigationPath(origin.NavigationPrefix, relativePath),
+                    eventSyntax
+                );
+            }
+        }
+
+        private void AddNavigationAccess(
+            IPropertyReferenceOperation propertyReference,
+            EntityOrigin origin,
+            string path,
+            SyntaxNode? eventSyntax
+        )
+        {
             var accessId = nextAccessId++;
             var access = new NavigationAccess(path, propertyReference.Syntax);
             GetAccessDetachment(

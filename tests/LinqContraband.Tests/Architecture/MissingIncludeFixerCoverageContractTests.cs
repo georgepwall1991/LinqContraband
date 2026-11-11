@@ -143,6 +143,12 @@ public sealed class MissingIncludeFixerCoverageContractTests
         new object[] { "LocalFunctionGroupCallback", @"        var orders = db.Orders.ToList();
         string Label(Order o) => o.Customer.Address.City;
         var cities = orders.Select(Label).ToList();" },
+        new object[] { "ComputedEntityProperty", @"        var orders = db.Orders.ToList();
+        foreach (var o in orders) System.Console.WriteLine(o.CustomerLabel);" },
+        new object[] { "ComputedEntityPropertyNestedPath", @"        var orders = db.Orders.Include(o => o.Customer).ToList();
+        foreach (var o in orders) System.Console.WriteLine(o.ShippingCity);" },
+        new object[] { "ComputedEntityPropertyOnElement", @"        var order = db.Orders.First();
+        System.Console.WriteLine(order.CustomerLabel);" },
         new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
         new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }
@@ -380,6 +386,8 @@ namespace TestNamespace
         public Customer Customer { get; set; }
         public Customer @event { get; set; }
         public List<OrderItem> Items { get; set; }
+        public string CustomerLabel => Id + "" for "" + Customer.Name;
+        public string ShippingCity { get { return Customer.Address.City; } }
     }
 
     public class Customer

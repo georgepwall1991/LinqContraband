@@ -22,6 +22,10 @@ public sealed partial class MissingIncludeAnalyzer
     {
         private readonly ConditionalWeakTable<IOperation, FlowGraphHolder> graphs = new();
         private readonly ConditionalWeakTable<IOperation, FlowScopeIndex> scopes = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<
+            IPropertySymbol,
+            ImmutableArray<EntityMemberRead>
+        > entityMemberReads = new(SymbolEqualityComparer.Default);
         private readonly ConditionalWeakTable<ControlFlowGraph, BlockOrdinalIndex> blockOrdinals =
             new();
         private readonly ConditionalWeakTable<
@@ -47,6 +51,25 @@ public sealed partial class MissingIncludeAnalyzer
                 // an equivalent graph, so reuse it instead of re-creating one.
                 return graphs.TryGetValue(executableRoot, out var raced) ? raced : holder;
             }
+        }
+
+        /// <summary>
+        /// What each computed entity property reads on <c>this</c>. Symbols only: a cached
+        /// operation would keep the semantic model of the entity's file alive.
+        /// </summary>
+        public ImmutableArray<EntityMemberRead> GetEntityMemberReads(
+            IPropertySymbol property,
+            Compilation compilation,
+            System.Threading.CancellationToken cancellationToken
+        )
+        {
+            if (entityMemberReads.TryGetValue(property, out var cached))
+                return cached;
+
+            return entityMemberReads.GetOrAdd(
+                property,
+                FindEntityMemberReads(property, compilation, cancellationToken)
+            );
         }
 
         public FlowScopeIndex GetScope(IOperation executableRoot)
