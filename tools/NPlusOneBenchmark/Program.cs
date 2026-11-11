@@ -67,7 +67,19 @@ internal static class Program
             .ToArray();
 
         var rendered = Report.Render(results);
-        var resultsPath = Path.Combine(FindRepoRoot(), "tools", "NPlusOneBenchmark", "results.md");
+        var repoRoot = FindRepoRoot();
+        var resultsPath = Path.Combine(repoRoot, "tools", "NPlusOneBenchmark", "results.md");
+
+        // The documentation site publishes the summary. It is regenerated and checked with the results
+        // file, so the numbers a reader sees are the ones this run measured.
+        var pagePath = Path.Combine(repoRoot, Report.PagePath.Replace('/', Path.DirectorySeparatorChar));
+        var committedPage = File.Exists(pagePath) ? File.ReadAllText(pagePath) : "";
+        var renderedPage = Report.ReplacePageSection(committedPage, Report.RenderPageSection(results));
+        if (renderedPage == null)
+        {
+            Console.Error.WriteLine($"{Report.PagePath} must contain one \"{Report.PageStartMarker}\" line followed by one \"{Report.PageEndMarker}\" line.");
+            return 2;
+        }
 
         Console.WriteLine();
         Console.WriteLine(Report.Summarize(results));
@@ -76,6 +88,12 @@ internal static class Program
         {
             File.WriteAllText(resultsPath, rendered);
             Console.WriteLine($"Wrote {resultsPath}");
+            if (!string.Equals(committedPage, renderedPage, StringComparison.Ordinal))
+            {
+                File.WriteAllText(pagePath, renderedPage);
+                Console.WriteLine($"Wrote {pagePath}");
+            }
+
             return 0;
         }
 
@@ -89,7 +107,13 @@ internal static class Program
                 return 1;
             }
 
-            Console.WriteLine("results.md is up to date.");
+            if (!string.Equals(committedPage, renderedPage, StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine($"The benchmark summary in {Report.PagePath} is out of date. Run: {Report.WriteCommand}");
+                return 1;
+            }
+
+            Console.WriteLine($"results.md and the summary in {Report.PagePath} are up to date.");
             return 0;
         }
 
