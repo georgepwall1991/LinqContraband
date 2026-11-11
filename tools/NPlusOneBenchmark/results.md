@@ -8,23 +8,23 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 52 | 50.0% |
-| False positives on proven safe cases | 48 | 9 | 18.8% |
+| Recall on proven N+1 cases | 104 | 67 | 64.4% |
+| False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
 
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Query | 67 | 29 | 43.3% |
+| Query | 67 | 42 | 62.7% |
 | LazyLoad | 20 | 16 | 80.0% |
-| Save | 17 | 7 | 41.2% |
+| Save | 17 | 9 | 52.9% |
 
 ## Recall by how the database call is reached
 
 | Reached through | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
 | Direct | 37 | 34 | 91.9% |
-| Lambda | 20 | 5 | 25.0% |
+| Lambda | 20 | 20 | 100.0% |
 | Helper | 13 | 9 | 69.2% |
 | QueryableHelper | 6 | 2 | 33.3% |
 | Interface | 9 | 0 | 0.0% |
@@ -53,19 +53,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - L15_EntitiesReturnedByRepository (LazyLoad, CrossMethod)
 - L17_StreamedQueryLoop (LazyLoad, Direct)
 - Q13_CompiledQueryPerElement (Query, Direct)
-- Q20_SelectLambdaFirst (Query, Lambda)
-- Q21_ListForEachLambda (Query, Lambda)
-- Q22_InMemoryWhereWithQueryPredicate (Query, Lambda)
-- Q23_ToDictionaryValueQuery (Query, Lambda)
-- Q24_WhenAllOverSelect (Query, Lambda)
-- Q25_ParallelForEach (Query, Lambda)
-- Q26_DeferredSelectEnumeratedLater (Query, Lambda)
-- Q27_InMemorySumOfQueries (Query, Lambda)
-- Q28_InMemoryOrderByQueryKey (Query, Lambda)
-- Q29_StringJoinOverSelect (Query, Lambda)
-- Q30_AsyncSelectAwaitedInLoop (Query, Lambda)
-- Q31_QuerySyntaxOverList (Query, Lambda)
-- Q32_ArrayConvertAll (Query, Lambda)
 - Q44_HelperChainFourDeep (Query, Helper)
 - Q48_MethodGroupInSelect (Query, Helper)
 - Q51_HelperReturnsQueryable (Query, QueryableHelper)
@@ -90,7 +77,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - Q86_ExternalRepositoryQueryable (Query, CrossProject)
 - Q87_ExternalRepositoryInSelect (Query, CrossProject)
 - Q88_ExternalStaticHelper (Query, CrossProject)
-- W04_SaveInListForEachLambda (Save, Lambda)
 - W05_HelperThatSaves (Save, Helper)
 - W06_SealedRepositoryThatSaves (Save, Helper)
 - W07_UnitOfWorkCommitPerElement (Save, Interface)
@@ -98,7 +84,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - W09_ExecuteSqlPerElement (Save, Direct)
 - W12_ExternalRepositoryAddAndSave (Save, CrossProject)
 - W13_MediatorCommandPerElement (Save, Mediator)
-- W14_SaveInSelectLambda (Save, Lambda)
 - W16_GenericInterfaceRepositoryAdd (Save, Interface)
 
 ## Every case
@@ -143,19 +128,19 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Q16_DoWhileCursor | Query | Direct | 4 → 7 | N+1 | LC007 |
 | Q17_QueryInsideSwitchInLoop | Query | Direct | 7 → 13 | N+1 | LC007 |
 | Q18_AwaitForeachInnerQuery | Query | Direct | 7 → 13 | N+1 | LC007 |
-| Q20_SelectLambdaFirst | Query | Lambda | 4 → 7 | N+1 |  |
-| Q21_ListForEachLambda | Query | Lambda | 4 → 7 | N+1 |  |
-| Q22_InMemoryWhereWithQueryPredicate | Query | Lambda | 4 → 7 | N+1 |  |
-| Q23_ToDictionaryValueQuery | Query | Lambda | 4 → 7 | N+1 |  |
-| Q24_WhenAllOverSelect | Query | Lambda | 4 → 7 | N+1 |  |
-| Q25_ParallelForEach | Query | Lambda | 4 → 7 | N+1 |  |
-| Q26_DeferredSelectEnumeratedLater | Query | Lambda | 4 → 7 | N+1 |  |
-| Q27_InMemorySumOfQueries | Query | Lambda | 7 → 13 | N+1 |  |
-| Q28_InMemoryOrderByQueryKey | Query | Lambda | 4 → 7 | N+1 |  |
-| Q29_StringJoinOverSelect | Query | Lambda | 4 → 7 | N+1 |  |
-| Q30_AsyncSelectAwaitedInLoop | Query | Lambda | 4 → 7 | N+1 |  |
-| Q31_QuerySyntaxOverList | Query | Lambda | 7 → 13 | N+1 |  |
-| Q32_ArrayConvertAll | Query | Lambda | 4 → 7 | N+1 |  |
+| Q20_SelectLambdaFirst | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q21_ListForEachLambda | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q22_InMemoryWhereWithQueryPredicate | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q23_ToDictionaryValueQuery | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q24_WhenAllOverSelect | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q25_ParallelForEach | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q26_DeferredSelectEnumeratedLater | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q27_InMemorySumOfQueries | Query | Lambda | 7 → 13 | N+1 | LC007 |
+| Q28_InMemoryOrderByQueryKey | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q29_StringJoinOverSelect | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q30_AsyncSelectAwaitedInLoop | Query | Lambda | 4 → 7 | N+1 | LC007 |
+| Q31_QuerySyntaxOverList | Query | Lambda | 7 → 13 | N+1 | LC007 |
+| Q32_ArrayConvertAll | Query | Lambda | 4 → 7 | N+1 | LC007 |
 | Q40_StaticHelper | Query | Helper | 4 → 7 | N+1 | LC007 |
 | Q41_InstanceHelper | Query | Helper | 4 → 7 | N+1 | LC007 |
 | Q42_ExtensionMethodHelper | Query | Helper | 4 → 7 | N+1 | LC007 |
@@ -240,10 +225,11 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S46_CompiledQueryCalledOnce | Query | Direct | 1 → 1 | safe |  |
 | S47_InMemorySelectAfterInclude | LazyLoad | Lambda | 1 → 1 | safe |  |
 | S48_RemoveRangeSaveOnce | Save | Direct | 2 → 2 | safe |  |
+| S49_DelegateLambdaInsideTranslatedQuery | Query | Lambda | 1 → 1 | safe |  |
 | W01_AddAndSaveInForeach | Save | Direct | 4 → 7 | N+1 | LC010 |
 | W02_UpdateAndSaveInForLoop | Save | Direct | 6 → 9 | N+1 | LC010 |
 | W03_SaveChangesAsyncInForeach | Save | Direct | 3 → 5 | N+1 | LC010 |
-| W04_SaveInListForEachLambda | Save | Lambda | 6 → 9 | N+1 |  |
+| W04_SaveInListForEachLambda | Save | Lambda | 6 → 9 | N+1 | LC010 |
 | W05_HelperThatSaves | Save | Helper | 5 → 9 | N+1 |  |
 | W06_SealedRepositoryThatSaves | Save | Helper | 7 → 13 | N+1 |  |
 | W07_UnitOfWorkCommitPerElement | Save | Interface | 4 → 7 | N+1 |  |
@@ -253,7 +239,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | W11_ExecuteDeletePerElement | Save | Direct | 13 → 25 | N+1 | LC007 |
 | W12_ExternalRepositoryAddAndSave | Save | CrossProject | 4 → 7 | N+1 |  |
 | W13_MediatorCommandPerElement | Save | Mediator | 4 → 7 | N+1 |  |
-| W14_SaveInSelectLambda | Save | Lambda | 6 → 9 | N+1 |  |
+| W14_SaveInSelectLambda | Save | Lambda | 6 → 9 | N+1 | LC010 |
 | W15_WhileQueueSaveEach | Save | Direct | 5 → 9 | N+1 | LC010 |
 | W16_GenericInterfaceRepositoryAdd | Save | Interface | 7 → 13 | N+1 |  |
 | W17_RemoveAndSaveInForeach | Save | Direct | 13 → 25 | N+1 | LC010 |

@@ -83,6 +83,32 @@ LC007 stays quiet on a helper call when:
 
 The code fix is not offered for helper calls.
 
+### 5. Lambdas that run once per element
+A lambda passed to an in-memory operator is a loop written as an expression. LC007 reports a database execution, or a call to a helper that runs one, directly inside it:
+
+```csharp
+var customers = ids.Select(id => db.Customers.First(c => c.Id == id)).ToList();
+
+orders.ForEach(order => order.LineCount = db.OrderLines.Count(l => l.OrderId == order.Id));
+
+var withOrders = customers.Where(c => db.Orders.Any(o => o.CustomerId == c.Id)).ToList();
+
+var counts = await Task.WhenAll(ids.Select(id => db.Orders.CountAsync(o => o.CustomerId == id)));
+
+Parallel.ForEach(ids, id => Process(db.Customers.Find(id)));
+```
+
+This covers the `System.Linq.Enumerable` and `ParallelEnumerable` operators that take a delegate (`Select`, `SelectMany`, `Where`, `Any`, `All`, `Count`, `First`, `Single`, `Last`, `Sum`, `Min`, `Max`, `Average`, `OrderBy`, `ThenBy`, `GroupBy`, `ToDictionary`, `ToLookup`, `TakeWhile`, `SkipWhile`, `Zip`, the accumulator of `Aggregate`, and their variants, including query syntax over an in-memory collection), `List<T>` and `Array` methods such as `ForEach`, `ConvertAll`, `Find`, `FindAll`, `Exists` and `RemoveAll`, and the body of `Parallel.ForEach`, `Parallel.ForEachAsync` and `Parallel.For`.
+
+LC007 stays quiet on a lambda when:
+- it is an expression tree, or sits inside one: `db.Customers.Where(c => db.Orders.Any(o => o.CustomerId == c.Id))` and `db.Customers.Where(c => ids.Any(id => db.Orders.Any(o => o.CustomerId == id)))` are one query each, because the provider translates the whole predicate;
+- the operator is not one of the above, even if it shares a name with one (an `Option<T>.Select`, a cache factory, `Task.Run`, `new Lazy<T>(...)`), or the lambda is only stored in a delegate variable;
+- another lambda sits between the operator and the query, such as a cache factory inside a `Select`;
+- it is the result selector of `Aggregate`, which runs once;
+- the operator walks `Chunk(...)` batches (`ids.Chunk(500).Select(batch => db.Customers.Where(c => batch.Contains(c.Id)).ToList())`), which is one query per batch.
+
+The code fix is not offered inside lambdas.
+
 ## What LC007 Intentionally Ignores
 - Plain LINQ-to-Objects or `AsQueryable()` sources
 - `AsEnumerable()` aggregates over already in-memory collections
@@ -90,7 +116,7 @@ The code fix is not offered for helper calls.
 - Ambiguous `IQueryable` provenance through parameters, fields, properties, or multi-assignment locals
 - Query construction inside loops when no execution method is invoked
 - `Reference(...)` and `Collection(...)` access without `Load`, `LoadAsync`, or `Query()` execution
-- Invocations nested inside lambdas or local functions declared in the loop body (a call to such a local function from the loop is a helper call, see above)
+- Invocations nested inside local functions or other lambdas declared in the loop body, such as a cache factory (a call to such a local function from the loop is a helper call, and a lambda that an in-memory operator runs per element is reported, see above)
 - Loop-source materialization that happens once before iteration, such as the `db.Users.ToList()` part of a `foreach`
 - `while`, `do` and `for` loops that run until the database says they are done, as long as the loop condition does not walk an item source of its own (see below)
 - Load-once guards that run the query at most once (see below)
@@ -205,7 +231,7 @@ LC007 offers a fixer only for conservative, analyzer-proven explicit-loading cas
 
 - It rewrites unconditional strongly-typed `Reference(...).Load/LoadAsync` and `Collection(...).Load/LoadAsync` inside `foreach` or `await foreach` loops to eager loading with `Include(...)`.
 - It updates the loop source query and removes the per-item load statement.
-- It does not offer a fix for helper-method calls, string-based navigation access, `Find`, aggregates, `Query().Count()`, filtered navigation queries, conditional loads, or control-flow-heavy loops.
+- It does not offer a fix for helper-method calls, per-element lambdas, string-based navigation access, `Find`, aggregates, `Query().Count()`, filtered navigation queries, conditional loads, or control-flow-heavy loops.
 
 ## Example Fix
 

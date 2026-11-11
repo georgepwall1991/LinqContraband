@@ -59,6 +59,41 @@ public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         Description,
         helpLinkUri: HelpLinkUri);
 
+    private static readonly LocalizableString PerElementLambdaMessageFormat =
+        "Executing '{0}' inside the lambda passed to '{1}' runs it once per element, causing N+1 database operations. Fetch data in bulk or eager load before iterating.";
+
+    /// <summary>
+    /// LC007 reported on a database execution inside a lambda that an in-memory operator runs once per element
+    /// (<c>ids.Select(id => db.Users.Find(id))</c>). Like <see cref="HelperCallRule"/>, it shares LC007's ID and
+    /// stays out of <see cref="SupportedDiagnostics"/>.
+    /// </summary>
+    public static readonly DiagnosticDescriptor PerElementLambdaRule = new(
+        DiagnosticId,
+        Title,
+        PerElementLambdaMessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description,
+        helpLinkUri: HelpLinkUri);
+
+    private static readonly LocalizableString PerElementLambdaHelperCallMessageFormat =
+        "'{0}' runs '{1}' once per element inside the lambda passed to '{2}', causing N+1 database operations. Fetch data in bulk or eager load before iterating.";
+
+    /// <summary>
+    /// <see cref="HelperCallRule"/> for a helper called from a per-element lambda
+    /// (<c>ids.Select(id => Load(id))</c>). It shares LC007's ID and stays out of <see cref="SupportedDiagnostics"/>.
+    /// </summary>
+    public static readonly DiagnosticDescriptor PerElementLambdaHelperCallRule = new(
+        DiagnosticId,
+        Title,
+        PerElementLambdaHelperCallMessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description,
+        helpLinkUri: HelpLinkUri);
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
@@ -91,10 +126,13 @@ public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         properties[NPlusOneLooperDiagnosticProperties.FixerEligible] = match.FixerEligible ? "true" : "false";
 
         context.ReportDiagnostic(
-            Diagnostic.Create(
-                Rule,
-                invocation.Syntax.GetLocation(),
-                properties.ToImmutable(),
-                match.MethodName));
+            match.OperatorName == null
+                ? Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), properties.ToImmutable(), match.MethodName)
+                : Diagnostic.Create(
+                    PerElementLambdaRule,
+                    invocation.Syntax.GetLocation(),
+                    properties.ToImmutable(),
+                    match.MethodName,
+                    match.OperatorName));
     }
 }

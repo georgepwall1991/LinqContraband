@@ -8,16 +8,24 @@ namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
 
 internal sealed class NPlusOneHelperCallMatch
 {
-    public NPlusOneHelperCallMatch(string helperName, string queryMethodName, string loopKind)
+    public NPlusOneHelperCallMatch(
+        string helperName,
+        string queryMethodName,
+        string loopKind,
+        string? operatorName = null)
     {
         HelperName = helperName;
         QueryMethodName = queryMethodName;
         LoopKind = loopKind;
+        OperatorName = operatorName;
     }
 
     public string HelperName { get; }
     public string QueryMethodName { get; }
     public string LoopKind { get; }
+
+    /// <summary>The per-element operator whose lambda calls the helper, or null when a loop calls it.</summary>
+    public string? OperatorName { get; }
 }
 
 /// <summary>
@@ -36,18 +44,30 @@ internal static partial class NPlusOneLooperAnalysis
         CancellationToken cancellationToken)
     {
         var helper = GetAnalyzableHelper(invocation);
-        if (helper == null || invocation.FindEnclosingLoop() == null)
+        if (helper == null)
+            return null;
+
+        var inLoop = invocation.FindEnclosingLoop() != null;
+        if (!inLoop && FindPerElementOperator(invocation, out _) == null)
             return null;
 
         var queryMethodName = GetHelperExecution(helper, MaxHelperDepth, cache, cancellationToken);
         if (queryMethodName.Length == 0)
             return null;
 
-        var loop = FindPerIterationLoopForHelperCall(invocation, cache, cancellationToken);
-        if (loop == null)
-            return null;
+        var loop = inLoop ? FindPerIterationLoopForHelperCall(invocation, cache, cancellationToken) : null;
+        if (loop != null)
+            return new NPlusOneHelperCallMatch(helper.Name, queryMethodName, loop.GetLoopKind());
 
-        return new NPlusOneHelperCallMatch(helper.Name, queryMethodName, loop.GetLoopKind());
+        // A helper called from a lambda that an in-memory operator runs once per element.
+        var perElementOperator = FindPerElementOperator(invocation, out _);
+        return perElementOperator != null
+            ? new NPlusOneHelperCallMatch(
+                helper.Name,
+                queryMethodName,
+                NPlusOneLooperDiagnosticProperties.LambdaLoopKind,
+                perElementOperator.TargetMethod.Name)
+            : null;
     }
 
     /// <summary>

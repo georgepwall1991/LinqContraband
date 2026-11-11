@@ -97,7 +97,55 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         {
             context.ReportDiagnostic(
                 Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+            return;
         }
+
+        if (IsInsidePerElementLambda(invocation))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invocation.Syntax.GetLocation(), method.Name));
+        }
+    }
+
+    /// <summary>
+    /// A save inside a lambda that an in-memory operator runs once per element (<c>items.ForEach(...)</c>,
+    /// <c>items.Select(...)</c>, <c>Parallel.ForEach(...)</c>) is a save per item, unless the context it saves
+    /// belongs to the element: a local the lambda declares, or the lambda's own parameter.
+    /// </summary>
+    private static bool IsInsidePerElementLambda(IInvocationOperation invocation)
+    {
+        if (NPlusOneLooperAnalysis.FindPerElementOperator(invocation, out var lambda) == null ||
+            lambda == null ||
+            invocation.Instance == null)
+        {
+            return false;
+        }
+
+        foreach (var operation in invocation.Instance.DescendantsAndSelf())
+        {
+            switch (operation)
+            {
+                case IParameterReferenceOperation parameterReference
+                    when SymbolEqualityComparer.Default.Equals(parameterReference.Parameter.ContainingSymbol, lambda.Symbol):
+                    return false;
+                case ILocalReferenceOperation localReference
+                    when IsDeclaredInside(localReference.Local, lambda):
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsDeclaredInside(ILocalSymbol local, IAnonymousFunctionOperation lambda)
+    {
+        foreach (var reference in local.DeclaringSyntaxReferences)
+        {
+            if (reference.SyntaxTree == lambda.Syntax.SyntaxTree && lambda.Syntax.Span.Contains(reference.Span))
+                return true;
+        }
+
+        return false;
     }
 
     private void AnalyzeMethodReference(OperationAnalysisContext context)

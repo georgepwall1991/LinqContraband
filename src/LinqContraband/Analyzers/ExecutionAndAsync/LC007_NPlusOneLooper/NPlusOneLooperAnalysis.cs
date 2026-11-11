@@ -21,17 +21,25 @@ internal static class NPlusOneLooperDiagnosticProperties
     public const string EfQueryMaterializer = "EfQueryMaterializer";
     public const string EfSetBasedExecutor = "EfSetBasedExecutor";
     public const string HelperCall = "HelperCall";
+
+    /// <summary>The <see cref="LoopKind"/> of an execution inside a per-element lambda rather than a loop statement.</summary>
+    public const string LambdaLoopKind = "lambda";
 }
 
 internal sealed class NPlusOneLoopMatch
 {
-    public NPlusOneLoopMatch(string patternKind, string methodName, string loopKind, bool fixerEligible)
+    public NPlusOneLoopMatch(
+        string patternKind, string methodName, string loopKind, bool fixerEligible, string? operatorName = null)
     {
         PatternKind = patternKind;
         MethodName = methodName;
         LoopKind = loopKind;
         FixerEligible = fixerEligible;
+        OperatorName = operatorName;
     }
+
+    /// <summary>The in-memory operator whose lambda runs the execution per element, or null inside a loop statement.</summary>
+    public string? OperatorName { get; }
 
     public string PatternKind { get; }
     public string MethodName { get; }
@@ -46,13 +54,22 @@ internal static partial class NPlusOneLooperAnalysis
         cancellationToken.ThrowIfCancellationRequested();
 
         var loop = FindPerIterationLoop(invocation, cancellationToken);
-        if (loop == null)
+        var perElementOperator = loop == null ? FindPerElementOperator(invocation, out _) : null;
+        if (loop == null && perElementOperator == null)
             return null;
 
         if (!TryMatchDatabaseExecution(invocation, cancellationToken, out var match))
             return null;
 
-        return new NPlusOneLoopMatch(match.PatternKind, match.MethodName, loop.GetLoopKind(), match.FixerEligible);
+        // The code fix rewrites a foreach over an EF query; it has no rewrite for a lambda.
+        return loop != null
+            ? new NPlusOneLoopMatch(match.PatternKind, match.MethodName, loop.GetLoopKind(), match.FixerEligible)
+            : new NPlusOneLoopMatch(
+                match.PatternKind,
+                match.MethodName,
+                NPlusOneLooperDiagnosticProperties.LambdaLoopKind,
+                fixerEligible: false,
+                perElementOperator!.TargetMethod.Name);
     }
 
     private static ILoopOperation? FindPerIterationLoop(IInvocationOperation invocation, CancellationToken cancellationToken)
