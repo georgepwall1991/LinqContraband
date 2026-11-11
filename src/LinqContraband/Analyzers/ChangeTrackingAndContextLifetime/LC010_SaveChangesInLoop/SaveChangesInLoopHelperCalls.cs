@@ -35,18 +35,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
         if (saveMethodName.Length == 0)
             return;
 
-        var loop = FindSaveExecutionLoop(invocation);
-        while (loop != null &&
-               (loop.RunsAtMostOnce() ||
-                invocation.LeavesLoopAfter(loop) ||
-                NPlusOneLooperAnalysis.IsBatchLoop(loop, context.CancellationToken)))
-            loop = FindEnclosingLoopOutsideSameRoot(invocation, loop);
-
-        if (loop == null && lambda == null)
-            NPlusOneLooperAnalysis.FindPerElementOperator(invocation, out lambda);
-
-        var perItemScope = loop?.Syntax ?? lambda?.Syntax;
-        if (perItemScope == null || UsesPerItemState(invocation, perItemScope, lambda))
+        if (!IsPerItemCall(invocation, lambda, context.CancellationToken, out _, out _))
             return;
 
         context.ReportDiagnostic(
@@ -56,6 +45,73 @@ public sealed partial class SaveChangesInLoopAnalyzer
                 ImmutableDictionary<string, string?>.Empty.Add(HelperCallProperty, "true"),
                 invocation.TargetMethod.Name,
                 saveMethodName));
+    }
+
+    /// <summary>
+    /// The call runs once per item of a loop or per-element lambda that is not a batch or single-pass loop, and it
+    /// does not work on state that exists once per item.
+    /// </summary>
+    private static bool IsPerItemCall(
+        IInvocationOperation invocation,
+        IAnonymousFunctionOperation? lambda,
+        CancellationToken cancellationToken,
+        out string loopKind,
+        out string? operatorName)
+    {
+        loopKind = string.Empty;
+        operatorName = null;
+
+        var loop = FindSaveExecutionLoop(invocation);
+        while (loop != null &&
+               (loop.RunsAtMostOnce() ||
+                invocation.LeavesLoopAfter(loop) ||
+                NPlusOneLooperAnalysis.IsBatchLoop(loop, cancellationToken)))
+            loop = FindEnclosingLoopOutsideSameRoot(invocation, loop);
+
+        IInvocationOperation? perElementOperator = null;
+        if (loop == null)
+            perElementOperator = NPlusOneLooperAnalysis.FindPerElementOperator(invocation, out lambda);
+
+        var perItemScope = loop?.Syntax ?? lambda?.Syntax;
+        if (perItemScope == null || UsesPerItemState(invocation, perItemScope, lambda))
+            return false;
+
+        loopKind = loop != null ? loop.GetLoopKind() : NPlusOneLooperDiagnosticProperties.LambdaLoopKind;
+        operatorName = loop != null ? null : perElementOperator?.TargetMethod.Name;
+        return true;
+    }
+
+    /// <summary>
+    /// The loop or per-element operator that would make LC010 report this call if its target saved. Used by the
+    /// scanner's cross-project pass, which learns what the target does from another project.
+    /// </summary>
+    internal static bool TryGetPerItemCallSite(
+        IInvocationOperation invocation,
+        CancellationToken cancellationToken,
+        out string loopKind,
+        out string? operatorName)
+    {
+        loopKind = string.Empty;
+        operatorName = null;
+
+        IAnonymousFunctionOperation? lambda = null;
+        if (invocation.FindEnclosingLoop() == null &&
+            NPlusOneLooperAnalysis.FindPerElementOperator(invocation, out lambda) == null)
+        {
+            return false;
+        }
+
+        return IsPerItemCall(invocation, lambda, cancellationToken, out loopKind, out operatorName);
+    }
+
+    /// <summary>The helper summaries LC010 uses: what each source method saves once per call.</summary>
+    internal static NPlusOneLooperHelperCache CreateSaveHelperCache(Compilation compilation)
+    {
+        return new NPlusOneLooperHelperCache(
+            compilation,
+            NPlusOneLooperAnalysis.MaxHelperDepth,
+            MatchSaveInHelper,
+            skipMemoizedHelpers: false);
     }
 
     /// <summary>

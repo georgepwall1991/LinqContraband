@@ -94,7 +94,7 @@ For an interface, the implementations are the concrete classes and structs of th
 LC007 stays quiet on a helper call when:
 - it goes through an interface or a virtual method and the implementations disagree: one of them reads a list, a dictionary or a cache, is memoized, or has no source to read. An in-memory or caching implementation means the loop may never reach the database;
 - the interface, or the receiver's class, is not declared in the project being analyzed (`IComparer<T>`, a contract from another project), has no implementation here, or has more than eight;
-- the helper exists only as metadata, or its source belongs to another project;
+- the helper exists only as metadata, or its source belongs to another project (the scanner follows those, see "Helpers in another project" below);
 - the query sits in a lambda or local function the helper only declares, such as a cache factory `_cache.GetOrCreateAsync(key, _ => db.Customers.FirstAsync(...))`;
 - the helper is memoized: it calls a cache API (`TryGetValue`, `ContainsKey`, `GetOrAdd`, `GetOrCreate`, any `*Cache*` type), assigns with `??=` or reads with `??` a field or property, or returns early from an `if` that reads a field or property of its own type before the query;
 - the helper's query is inside a loop of its own (reported there once, or exempt there as a batch loop);
@@ -102,6 +102,9 @@ LC007 stays quiet on a helper call when:
 - the query source is a parameter (`IQueryable<T>`, `DbSet<T>` or a `List<T>`), which LC007 cannot prove is EF-backed.
 
 The code fix is not offered for helper calls.
+
+#### Helpers in another project
+A build compiles one project at a time and sees a referenced project as an assembly without method bodies, so LC007 cannot follow a call into another project in the IDE or in `dotnet build`. The [scanner](/LinqContraband/ef-core-query-scanner/) builds the whole solution and can: `dnx LinqContraband.Scan` reports a per-item call as LC007 when its target, in any project of the solution, runs a query. That covers a method or static helper of another project, an interface declared in one project and implemented in another (when every implementation outside test projects runs a query), and a service that calls on into a repository, up to four methods deep. The message reads `'GetById' runs 'Find' in another project on every iteration of the loop`. The loop exemptions on this page, `#pragma warning disable LC007` and the configured severity apply at the call site.
 
 #### Queries a helper returns
 A repository that hands out an `IQueryable` moves the query's root out of sight. LC007 reads a method or property of the project whose type is `IQueryable<T>` or `DbSet<T>` and treats its result as EF-backed when every `return` is:

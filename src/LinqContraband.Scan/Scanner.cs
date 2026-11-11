@@ -19,25 +19,33 @@ internal static class Scanner
 
         try
         {
-            var targetsPath = ScanTargets.Write(workDirectory, analyzerAssemblyPath, logDirectory);
+            var targetsPath = ScanTargets.Write(workDirectory, analyzerAssemblyPath, logDirectory, crossProjectFacts: !options.NoCrossProject);
 
             var (exitCode, output) = RunDotnet(BuildArguments(options, target, targetsPath), rootDirectory, onBuildOutput);
 
             var findings = new List<Finding>();
             var rules = new Dictionary<string, RuleInfo>(StringComparer.Ordinal);
+            var crossProjectFacts = new List<CrossProjectFact>();
             var logs = Directory.GetFiles(logDirectory, "*.sarif");
             var unreadable = 0;
             foreach (var log in logs)
             {
                 try
                 {
-                    SarifReader.Read(File.ReadAllText(log), findings, rules);
+                    SarifReader.Read(File.ReadAllText(log), findings, rules, crossProjectFacts);
                 }
                 catch (JsonException)
                 {
                     // A compiler that crashed mid-write leaves a truncated log; report the others.
                     unreadable++;
                 }
+            }
+
+            // Per-item calls whose target runs its query, or saves, in another project of the solution.
+            foreach (var finding in CrossProjectJoin.Resolve(crossProjectFacts))
+            {
+                findings.Add(finding);
+                rules.TryAdd(finding.RuleId, CrossProjectJoin.Rules[finding.RuleId]);
             }
 
             var reportRoot = FindRepositoryRoot(rootDirectory) ?? rootDirectory;

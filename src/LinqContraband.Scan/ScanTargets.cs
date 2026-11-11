@@ -17,6 +17,12 @@ internal static class ScanTargets
     public const string GlobalConfigFileName = "LinqContraband.Scan.globalconfig";
 
     /// <summary>
+    /// The global option that makes the analyzer log, in every project, the facts <see cref="CrossProjectJoin"/>
+    /// needs: what each method runs, calls and implements. A test keeps it equal to the key the analyzer reads.
+    /// </summary>
+    public const string CrossProjectFactsOption = "linqcontraband_scan.cross_project_facts";
+
+    /// <summary>
     /// Every LinqContraband rule, in catalog order, and EF Core's EF1002 and EF1003, which the report includes.
     /// A test keeps the LinqContraband part equal to the rule catalog.
     /// </summary>
@@ -35,10 +41,10 @@ internal static class ScanTargets
     /// Writes the targets file and the global config it passes to the compiler into <paramref name="workDirectory"/>
     /// and returns the targets file's path.
     /// </summary>
-    public static string Write(string workDirectory, string analyzerAssemblyPath, string errorLogDirectory)
+    public static string Write(string workDirectory, string analyzerAssemblyPath, string errorLogDirectory, bool crossProjectFacts = false)
     {
         var globalConfigPath = Path.Combine(workDirectory, GlobalConfigFileName);
-        File.WriteAllText(globalConfigPath, GlobalConfig());
+        File.WriteAllText(globalConfigPath, GlobalConfig(crossProjectFacts));
 
         var targetsPath = Path.Combine(workDirectory, TargetsFileName);
         File.WriteAllText(targetsPath, Create(analyzerAssemblyPath, errorLogDirectory, globalConfigPath));
@@ -74,14 +80,17 @@ internal static class ScanTargets
     /// so a repository that raises every analyzer diagnostic to <c>error</c> does not fail the scan build on the
     /// findings, and the projects that depend on it are still built and scanned. The repository's own settings for a
     /// rule id still win: an <c>.editorconfig</c> entry always beats a global config, and the lowest global level
-    /// loses to any global config the repository has.
+    /// loses to any global config the repository has. With <paramref name="crossProjectFacts"/> it also switches on
+    /// the analyzer's cross-project fact export.
     /// </summary>
-    public static string GlobalConfig()
+    public static string GlobalConfig(bool crossProjectFacts = false)
     {
         var text = new System.Text.StringBuilder();
         text.AppendLine("# Written by linqcontraband-scan for one scan and deleted afterwards.");
         text.AppendLine("is_global = true");
         text.AppendLine("global_level = -1000");
+        if (crossProjectFacts)
+            text.AppendLine(CrossProjectFactsOption + " = true");
         foreach (var rule in ReportedRules)
             text.AppendLine($"dotnet_diagnostic.{rule}.severity = default");
         return text.ToString();
