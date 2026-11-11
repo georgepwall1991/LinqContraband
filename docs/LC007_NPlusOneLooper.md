@@ -98,10 +98,28 @@ LC007 stays quiet on a helper call when:
 - the query sits in a lambda or local function the helper only declares, such as a cache factory `_cache.GetOrCreateAsync(key, _ => db.Customers.FirstAsync(...))`;
 - the helper is memoized: it calls a cache API (`TryGetValue`, `ContainsKey`, `GetOrAdd`, `GetOrCreate`, any `*Cache*` type), assigns with `??=` or reads with `??` a field or property, or returns early from an `if` that reads a field or property of its own type before the query;
 - the helper's query is inside a loop of its own (reported there once, or exempt there as a batch loop);
-- the helper only builds and returns an `IQueryable`. Executing that result in the loop (`Children(id).Count()`) is not traced back into the helper;
+- the helper only builds and returns an `IQueryable`: calling it runs nothing. Executing its result in the loop is reported as a direct execution, see "Queries a helper returns" below;
 - the query source is a parameter (`IQueryable<T>`, `DbSet<T>` or a `List<T>`), which LC007 cannot prove is EF-backed.
 
 The code fix is not offered for helper calls.
+
+#### Queries a helper returns
+A repository that hands out an `IQueryable` moves the query's root out of sight. LC007 reads a method or property of the project whose type is `IQueryable<T>` or `DbSet<T>` and treats its result as EF-backed when every `return` is:
+
+```csharp
+foreach (var customer in customers)
+{
+    var open = _orders.Query().Count(o => o.CustomerId == customer.Id);
+    // LC007: Executing 'Count' inside a loop
+}
+
+public class OrderRepository
+{
+    public IQueryable<Order> Query() => _db.Orders.AsNoTracking();
+}
+```
+
+This is followed two members deep (`Recent()` returning `Query().Where(...)`), through an interface or virtual method when every implementation in the project agrees, and into expression-bodied or block-bodied property getters that are not overridable. It stays quiet when any `return` is in-memory (`_list.AsQueryable()`), a parameter, or otherwise unprovable, and for auto-properties, which have no body to read.
 
 ### 5. Lambdas that run once per element
 A lambda passed to an in-memory operator is a loop written as an expression. LC007 reports a database execution, or a call to a helper that runs one, directly inside it:

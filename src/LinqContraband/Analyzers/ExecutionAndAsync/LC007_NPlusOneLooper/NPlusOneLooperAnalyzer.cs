@@ -102,7 +102,7 @@ public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.RegisterCompilationStartAction(compilationContext =>
         {
-            var helperCache = new NPlusOneLooperHelperCache(compilationContext.Compilation, NPlusOneLooperAnalysis.MaxHelperDepth);
+            var helperCache = NPlusOneLooperHelperCache.For(compilationContext.Compilation);
             compilationContext.RegisterOperationAction(
                 operationContext => AnalyzeInvocation(operationContext, helperCache),
                 OperationKind.Invocation);

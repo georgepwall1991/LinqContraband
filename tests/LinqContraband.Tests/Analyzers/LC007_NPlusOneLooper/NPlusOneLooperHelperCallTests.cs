@@ -312,15 +312,14 @@ sealed class SealedRepository : RepositoryBase
     [Fact]
     public async Task HelperCall_QueryBuilderHelper_IsQuiet()
     {
-        // A helper that only builds an IQueryable runs no query itself. Executing its result in the loop is not
-        // followed back into the helper either: LC007 does not trace provenance through return values.
+        // A helper that only builds an IQueryable runs no query itself, so calling it is not a helper execution.
+        // Executing its result in the loop is reported as a direct execution (see the returned-query tests).
         var test = HelperProgram(@"
     void Run(int[] ids)
     {
         foreach (var id in ids)
         {
             var query = Children(id);
-            var count = Children(id).Count();
         }
     }
 
