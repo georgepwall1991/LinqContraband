@@ -96,11 +96,13 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         // One save per batch (a Chunk(...) loop, or a loop that pages, drains or polls the database) is how large
         // jobs keep the change tracker small. It still reports when an outer per-item loop repeats the batches.
         // A loop whose body runs at most once (a LanguageExt Option, or a body that always returns) saves once, and
-        // so does a save on the path that leaves the loop (`SaveChanges(); return;`).
+        // so does a save on the path that leaves the loop (`SaveChanges(); return;`). A save every N passes
+        // (`if (++pending % 1000 == 0) db.SaveChanges();`) is a batch save written with a counter.
         while (loop != null &&
                (loop.RunsAtMostOnce() ||
                 invocation.LeavesLoopAfter(loop) ||
-                NPlusOneLooperAnalysis.IsBatchLoop(loop, context.CancellationToken)))
+                NPlusOneLooperAnalysis.IsBatchLoop(loop, context.CancellationToken) ||
+                IsPeriodicFlush(invocation, loop)))
             loop = FindEnclosingLoopOutsideSameRoot(invocation, loop);
 
         if (loop != null)

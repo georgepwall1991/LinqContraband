@@ -65,7 +65,8 @@ public sealed partial class SaveChangesInLoopAnalyzer
         while (loop != null &&
                (loop.RunsAtMostOnce() ||
                 invocation.LeavesLoopAfter(loop) ||
-                NPlusOneLooperAnalysis.IsBatchLoop(loop, cancellationToken)))
+                NPlusOneLooperAnalysis.IsBatchLoop(loop, cancellationToken) ||
+                IsPeriodicFlush(invocation, loop)))
             loop = FindEnclosingLoopOutsideSameRoot(invocation, loop);
 
         IInvocationOperation? perElementOperator = null;

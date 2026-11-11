@@ -9,7 +9,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
 | Recall on proven N+1 cases | 104 | 87 | 83.7% |
-| False positives on proven safe cases | 49 | 8 | 16.3% |
+| False positives on proven safe cases | 49 | 7 | 14.3% |
 
 ## Recall by kind
 
@@ -40,7 +40,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - S13_MemoizedLookupOverFixedTable (Query, Direct): LC007
 - S14_FindOnAlreadyTrackedEntities (Query, Direct): LC007
 - S17_LazyReadOnSingleEntity (LazyLoad, Direct): LC045
-- S23_PeriodicFlush (Save, Direct): LC010
 - S24_LoopOverEnumValues (Query, Direct): LC007
 - S26_NavigationFixedUpBySecondQuery (LazyLoad, Direct): LC045
 - S36_LazyContextPrincipalsPreloaded (LazyLoad, Direct): LC045
@@ -178,7 +177,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S20_SubqueryInsideServerQuery | Query | Lambda | 1 → 1 | safe |  |
 | S21_CorrelatedCountInProjection | Query | Lambda | 1 → 1 | safe |  |
 | S22_InterfaceBackedByPreloadedData | Query | Interface | 2 → 2 | safe |  |
-| S23_PeriodicFlush | Save | Direct | 2 → 2 | safe | LC010 |
+| S23_PeriodicFlush | Save | Direct | 2 → 2 | safe |  |
 | S24_LoopOverEnumValues | Query | Direct | 3 → 3 | safe | LC007 |
 | S25_ExplicitLoadOnSingleEntity | Query | Direct | 2 → 2 | safe |  |
 | S26_NavigationFixedUpBySecondQuery | LazyLoad | Direct | 2 → 2 | safe | LC045 |
