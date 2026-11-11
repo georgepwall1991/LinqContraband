@@ -8,14 +8,14 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 67 | 64.4% |
+| Recall on proven N+1 cases | 104 | 75 | 72.1% |
 | False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
 
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Query | 67 | 42 | 62.7% |
+| Query | 67 | 50 | 74.6% |
 | LazyLoad | 20 | 16 | 80.0% |
 | Save | 17 | 9 | 52.9% |
 
@@ -27,8 +27,8 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Lambda | 20 | 20 | 100.0% |
 | Helper | 13 | 9 | 69.2% |
 | QueryableHelper | 6 | 2 | 33.3% |
-| Interface | 9 | 0 | 0.0% |
-| Virtual | 3 | 0 | 0.0% |
+| Interface | 9 | 6 | 66.7% |
+| Virtual | 3 | 2 | 66.7% |
 | Delegate | 3 | 0 | 0.0% |
 | Mediator | 3 | 0 | 0.0% |
 | CrossMethod | 5 | 2 | 40.0% |
@@ -59,15 +59,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - Q53_QueryableParameter (Query, QueryableHelper)
 - Q55_RepositoryReturnsQueryable (Query, QueryableHelper)
 - Q56_QueryablePropertyOnService (Query, QueryableHelper)
-- Q60_InterfaceRepository (Query, Interface)
-- Q61_ServiceOverInterfaceRepository (Query, Interface)
-- Q62_GenericInterfaceRepository (Query, Interface)
-- Q63_InterfaceInSelectLambda (Query, Interface)
-- Q64_AsyncInterfaceRepository (Query, Interface)
-- Q65_InterfaceFieldInjected (Query, Interface)
 - Q66_InterfaceWithDisagreeingImplementations (Query, Interface)
-- Q70_VirtualRepositoryMethod (Query, Virtual)
-- Q71_AbstractMethodOneImplementation (Query, Virtual)
 - Q75_LocalFuncDelegate (Query, Delegate)
 - Q76_CallbackPassedToIterator (Query, Delegate)
 - Q77_DelegateParameter (Query, Delegate)
@@ -158,15 +150,15 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Q54_DbSetParameter | Query | QueryableHelper | 4 → 7 | N+1 | LC007 |
 | Q55_RepositoryReturnsQueryable | Query | QueryableHelper | 4 → 7 | N+1 |  |
 | Q56_QueryablePropertyOnService | Query | QueryableHelper | 6 → 9 | N+1 |  |
-| Q60_InterfaceRepository | Query | Interface | 4 → 7 | N+1 |  |
-| Q61_ServiceOverInterfaceRepository | Query | Interface | 4 → 7 | N+1 |  |
-| Q62_GenericInterfaceRepository | Query | Interface | 13 → 25 | N+1 |  |
-| Q63_InterfaceInSelectLambda | Query | Interface | 4 → 7 | N+1 |  |
-| Q64_AsyncInterfaceRepository | Query | Interface | 4 → 7 | N+1 |  |
-| Q65_InterfaceFieldInjected | Query | Interface | 4 → 7 | N+1 |  |
+| Q60_InterfaceRepository | Query | Interface | 4 → 7 | N+1 | LC007 |
+| Q61_ServiceOverInterfaceRepository | Query | Interface | 4 → 7 | N+1 | LC007 |
+| Q62_GenericInterfaceRepository | Query | Interface | 13 → 25 | N+1 | LC007 |
+| Q63_InterfaceInSelectLambda | Query | Interface | 4 → 7 | N+1 | LC007 |
+| Q64_AsyncInterfaceRepository | Query | Interface | 4 → 7 | N+1 | LC007 |
+| Q65_InterfaceFieldInjected | Query | Interface | 4 → 7 | N+1 | LC007 |
 | Q66_InterfaceWithDisagreeingImplementations | Query | Interface | 7 → 13 | N+1 |  |
-| Q70_VirtualRepositoryMethod | Query | Virtual | 6 → 9 | N+1 |  |
-| Q71_AbstractMethodOneImplementation | Query | Virtual | 6 → 9 | N+1 |  |
+| Q70_VirtualRepositoryMethod | Query | Virtual | 6 → 9 | N+1 | LC007 |
+| Q71_AbstractMethodOneImplementation | Query | Virtual | 6 → 9 | N+1 | LC007 |
 | Q72_GenericSetHelper | Query | Helper | 6 → 9 | N+1 | LC007 |
 | Q75_LocalFuncDelegate | Query | Delegate | 4 → 7 | N+1 |  |
 | Q76_CallbackPassedToIterator | Query | Delegate | 4 → 7 | N+1 |  |

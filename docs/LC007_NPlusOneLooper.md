@@ -70,10 +70,30 @@ private Task<Customer?> GetCustomerAsync(int id, CancellationToken ct) =>
     _db.Customers.FirstOrDefaultAsync(c => c.Id == id, ct);
 ```
 
-This covers ordinary and static methods, extension methods and local functions whose source is in the project being analyzed, followed up to three calls deep (loop → `A` → `B` → `C` running the query). The helper's execution must be one LC007 would report if it were written in the loop: `Find`, an explicit load, or a materializer or executor on a provably EF-backed source such as `_db.Customers` or `db.Set<T>()`. The loop exemptions below (batch, drain, polling, retry, `Chunk`, level-by-level loops) apply at the call site exactly as they do to a direct query, and a `while`, `do` or `for` loop whose condition runs a query through a helper (`while (await HasPendingAsync())`) counts as a drain loop.
+This covers ordinary and static methods, extension methods, local functions and (see below) interface and virtual methods whose source is in the project being analyzed, followed up to three calls deep (loop → `A` → `B` → `C` running the query). The helper's execution must be one LC007 would report if it were written in the loop: `Find`, an explicit load, or a materializer or executor on a provably EF-backed source such as `_db.Customers` or `db.Set<T>()`. The loop exemptions below (batch, drain, polling, retry, `Chunk`, level-by-level loops) apply at the call site exactly as they do to a direct query, and a `while`, `do` or `for` loop whose condition runs a query through a helper (`while (await HasPendingAsync())`) counts as a drain loop.
+
+A call through an interface, or to an `abstract` or `virtual` method, is followed into every implementation the project declares, and reported when all of them run a query:
+
+```csharp
+foreach (var order in orders)
+{
+    var customer = _customers.GetById(order.CustomerId);
+    // LC007: 'GetById' runs 'FirstOrDefault' on every iteration of the loop
+}
+
+public interface ICustomerRepository { Customer? GetById(int id); }
+
+public class CustomerRepository : ICustomerRepository
+{
+    public Customer? GetById(int id) => _db.Customers.FirstOrDefault(c => c.Id == id);
+}
+```
+
+For an interface, the implementations are the concrete classes and structs of the project that implement it, generic ones included (`IRepository<T>` and `EfRepository<T>`). For a class method they are the receiver's class and the classes derived from it, so `dbReader.Read(id)` is judged on `DbReader` and its subclasses even when a sibling `FakeReader` does not query. A decorator that forwards to the same interface method (logging, metrics) counts as whatever it wraps. Implementations in other projects, such as test doubles, are out of sight and are not counted.
 
 LC007 stays quiet on a helper call when:
-- the helper is overridable: `virtual`, `abstract` or interface dispatch, unless the method or its type is `sealed` or `static`, since an override might not query;
+- it goes through an interface or a virtual method and the implementations disagree: one of them reads a list, a dictionary or a cache, is memoized, or has no source to read. An in-memory or caching implementation means the loop may never reach the database;
+- the interface, or the receiver's class, is not declared in the project being analyzed (`IComparer<T>`, a contract from another project), has no implementation here, or has more than eight;
 - the helper exists only as metadata, or its source belongs to another project;
 - the query sits in a lambda or local function the helper only declares, such as a cache factory `_cache.GetOrCreateAsync(key, _ => db.Customers.FirstAsync(...))`;
 - the helper is memoized: it calls a cache API (`TryGetValue`, `ContainsKey`, `GetOrAdd`, `GetOrCreate`, any `*Cache*` type), assigns with `??=` or reads with `??` a field or property, or returns early from an `if` that reads a field or property of its own type before the query;
