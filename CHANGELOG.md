@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.19.0] - 2026-11-11
+
 ### Added
 
 - `LinqContraband.Scan` follows a loop's call into another project of the solution and reports it as LC007 or LC010: `foreach (var order in orders) { _customers.GetById(order.CustomerId); }` in the web project, `ICustomerRepository` in the domain project and `_db.Customers.Find(id)` in the infrastructure project is now one LC007 finding on the call in the loop, and a repository whose `Add` calls `SaveChanges` in another project is an LC010 finding. A build cannot see this, because the compiler gets a referenced project without method bodies; in a scan build the analyzer logs what each method runs, calls and implements, and the scanner joins those facts across projects. It covers methods, static and extension helpers, generic repositories, per-element lambdas and method groups, interface and virtual calls when every implementation outside test projects agrees (at most eight), forwarding decorators, and a service between the loop and the repository, up to four methods deep. In-memory and caching implementations, NuGet package code, and the batch, retry and single-pass loops the rules exempt stay quiet; `#pragma`, `[SuppressMessage]`, `NoWarn` and `.editorconfig` severities for LC007 and LC010 apply at the call site. `--no-cross-project` turns the pass off. The analyzer package itself reports nothing new and exports nothing outside a scan.

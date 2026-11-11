@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.18.0</Version>
+        <Version>5.19.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>False-positive fixes from scanning more large open-source apps: LC007 and LC010 skip loops that cannot run their query or save twice (a foreach over a LanguageExt Option, a body that always returns, throws or breaks, a call followed by an exit); LC011 keys UsingEntity join entities declared in applied IEntityTypeConfiguration classes; LC035 accepts Filter(predicate) and parameterless Clear/Purge/Truncate/Wipe methods that delete a whole table. Both packages now carry SLSA build provenance attestations (gh attestation verify), and the release workflows are audited with zizmor. New coverage tests pin previously untested shapes for LC002, LC004, LC013, LC014, LC016, LC017, LC025, LC031, LC032, LC035, LC039, LC040, LC041, LC042, LC045, LC048, LC049, LC050, LC051, LC055, LC062, LC063 and the scanner, with no behavior change.</PackageReleaseNotes>
+        <PackageReleaseNotes>Cross-layer N+1 detection. LC007 and LC010 now report a query or save inside a lambda that an in-memory operator runs once per element (Select, Where, ForEach, Parallel.ForEach, Task.WhenAll over a Select), and follow a loop's call into same-project helpers, method groups, interfaces and virtual methods when every implementation agrees; LC007 also treats a query returned by a same-project method as EF-backed, and LC010 reports a repository or unit of work that saves for every item. LC045 reports navigation reads in a foreach over a DbSet, in a mapper passed as a method group and in a computed property the entity declares. LinqContraband.Scan follows a per-item call into another project of the solution. Fewer false positives: retry loops that return the query or save, a save every N items, loops over a list fixed in the source (an inline array, enum values) and reference navigations to a table preloaded with Load() stay quiet. A new benchmark of 154 cases, each proven by counting database round trips on SQLite, scores the N+1 rules in CI: 88 of 105 proven N+1 cases are reported and 3 of 49 proven safe cases.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
