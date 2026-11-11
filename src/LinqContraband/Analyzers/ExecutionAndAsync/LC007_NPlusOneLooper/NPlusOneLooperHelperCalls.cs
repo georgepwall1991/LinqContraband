@@ -163,11 +163,12 @@ internal static partial class NPlusOneLooperAnalysis
                 continue;
 
             string? found = null;
-            if (TryMatchDatabaseExecution(call, cancellationToken, out var match))
-            {
+            if (cache.MatchExecution != null)
+                found = cache.MatchExecution(call, cancellationToken);
+            else if (TryMatchDatabaseExecution(call, cancellationToken, out var match))
                 found = match.MethodName;
-            }
-            else if (depth > 1)
+
+            if (found == null && depth > 1)
             {
                 var nested = GetCallExecution(call, depth - 1, helper, cache, cancellationToken);
                 if (nested.Length > 0)
@@ -181,7 +182,7 @@ internal static partial class NPlusOneLooperAnalysis
             }
         }
 
-        if (queryMethodName == null || IsMemoized(root, firstExecutionStart))
+        if (queryMethodName == null || (cache.SkipMemoizedHelpers && IsMemoized(root, firstExecutionStart)))
             return NPlusOneLooperHelperCache.NoExecution;
 
         return queryMethodName;

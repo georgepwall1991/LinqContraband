@@ -30,6 +30,9 @@ public sealed partial class SaveChangesInLoopFixer : CodeFixProvider
         if (root is null) return;
 
         var diagnostic = context.Diagnostics.First();
+        if (diagnostic.Properties.ContainsKey(SaveChangesInLoopAnalyzer.HelperCallProperty))
+            return;
+
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
         var node = root.FindNode(diagnosticSpan);

@@ -3,8 +3,12 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace LinqContraband.Analyzers.LC007_NPlusOneLooper;
+
+/// <summary>The name of the execution a call performs (<c>SaveChanges</c>), or null when it performs none.</summary>
+internal delegate string? HelperExecutionMatcher(IInvocationOperation call, CancellationToken cancellationToken);
 
 /// <summary>
 /// Per-compilation memo of what each source helper method executes, so a helper called from many loops (or from
@@ -22,15 +26,30 @@ internal sealed class NPlusOneLooperHelperCache
     private readonly ConcurrentDictionary<ISymbol, bool> returnsEfQuery = new(SymbolEqualityComparer.Default);
     private NPlusOneLooperSourceTypeIndex? sourceTypes;
 
-    public NPlusOneLooperHelperCache(Compilation compilation, int maxDepth)
+    public NPlusOneLooperHelperCache(
+        Compilation compilation,
+        int maxDepth,
+        HelperExecutionMatcher? matchExecution = null,
+        bool skipMemoizedHelpers = true)
     {
         Compilation = compilation;
+        MatchExecution = matchExecution;
+        SkipMemoizedHelpers = skipMemoizedHelpers;
         summariesByDepth = new ConcurrentDictionary<IMethodSymbol, string>[maxDepth];
         for (var i = 0; i < maxDepth; i++)
             summariesByDepth[i] = new ConcurrentDictionary<IMethodSymbol, string>(SymbolEqualityComparer.Default);
     }
 
     public Compilation Compilation { get; }
+
+    /// <summary>
+    /// What counts as an execution inside a helper body. Null means LC007's database executions; LC010 passes its
+    /// own matcher to summarize helpers that save.
+    /// </summary>
+    public HelperExecutionMatcher? MatchExecution { get; }
+
+    /// <summary>Whether a helper that consults a cache or remembered state before executing has no execution.</summary>
+    public bool SkipMemoizedHelpers { get; }
 
     /// <summary>
     /// The one cache of a compilation, shared by every caller that only has an operation in hand and kept alive

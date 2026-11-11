@@ -165,6 +165,18 @@ internal static partial class NPlusOneLooperAnalysis
     }
 
     /// <summary>
+    /// The execution (by the cache's matcher) that a call performs once per call through the helpers it reaches,
+    /// or an empty string. Used by LC010 to find helpers that save.
+    /// </summary>
+    internal static string GetExecutionThroughHelpers(
+        IInvocationOperation call,
+        NPlusOneLooperHelperCache cache,
+        CancellationToken cancellationToken)
+    {
+        return GetCallExecution(call, MaxHelperDepth, caller: null, cache, cancellationToken);
+    }
+
+    /// <summary>
     /// The query method a call runs once per call, through every body it can reach, or
     /// <see cref="NPlusOneLooperHelperCache.NoExecution"/>. An implementation that is the caller itself
     /// (<paramref name="caller"/>, a decorator forwarding to its own interface method, or plain recursion) has no

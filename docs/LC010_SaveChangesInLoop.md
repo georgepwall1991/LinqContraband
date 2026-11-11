@@ -55,6 +55,26 @@ It also does not report when the saved `DbContext` local is created inside the l
 
 LC010 also reports a save directly inside a lambda that an in-memory operator runs once per element: `items.ForEach(item => { ...; db.SaveChanges(); })`, `items.Select(item => db.SaveChanges())`, `await Task.WhenAll(items.Select(item => db.SaveChangesAsync()))` and the body of `Parallel.ForEach`. The operators are the ones LC007 treats as per-element (listed on the LC007 page). It stays quiet when each element saves a context of its own (a context the lambda declares, or the lambda's own parameter, as in `contexts.ForEach(c => c.SaveChanges())`), when the operator walks `Chunk(...)` batches, and for lambdas that are not per element, such as `Task.Run(() => db.SaveChanges())` or the result selector of `Aggregate`. The fixer leaves a save inside a lambda alone, because moving it out would change what each element sees.
 
+LC010 also follows the call into a helper that saves. A repository whose `Add` saves, or a unit of work whose `Commit` runs for every item, is the same N+1 write with the save one call away:
+
+```csharp
+foreach (var line in lines)
+{
+    _auditLog.Add(new AuditEntry(line));   // LC010: 'Add' calls 'SaveChanges', so this saves once per item
+}
+
+public class AuditLog
+{
+    public void Add(AuditEntry entry)
+    {
+        _db.Audit.Add(entry);
+        _db.SaveChanges();
+    }
+}
+```
+
+The helper must be declared in the project being analyzed. Helpers are followed three calls deep, and a call through an interface or to an `abstract` or `virtual` method is followed when every implementation in the project saves (the same rules as [LC007](/LinqContraband/LC007_NPlusOneLooper.html) uses for queries). The report is on the call in the loop, or in a per-element lambda, and the loop exemptions on this page apply to it. It stays quiet when the helper saves a context it declares itself (`using var db = factory.CreateDbContext(); ...; db.SaveChanges();`), when the object the helper is called on is created, declared or iterated per item (`new Importer(db).Run(item)`, `handler.Save()` on the loop variable), when a context declared per item is passed in, and when one implementation does not save. The fixer does not move a helper call.
+
 A save once per batch stays quiet, because saving every few hundred rows is how large jobs keep the change tracker small. That covers a `foreach` over `Chunk(...)` (`foreach (var batch in users.Chunk(1000)) { db.Users.AddRange(batch); db.SaveChanges(); }`) and a `while`, `do` or `for` loop whose query LC007 treats as one query per batch: keyset or `Skip(page * size).Take(size)` paging, drain loops and polling loops, the same loops LC007 exempts. A batch loop inside an outer per-item loop still reports, and so does a counted loop that walks an array (`i < ids.Length`).
 
 Retry loops that catch an exception and exit immediately after a successful save stay quiet when control cannot continue an enclosing per-item loop. A `break`-guarded retry nested inside an outer per-item loop still reports, and `break` statements that exit only a nested `switch` do not suppress LC010. A success path that `return`s from the method stays quiet.
