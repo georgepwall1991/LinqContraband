@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC045 whole-table `Load()` wraps (`AsSplitQuery`, `AsSingleQuery`, `OrderByDescending`, `TagWith`, `TagWithCallSite`) that the shipped `Include.Load` and `OrderBy.AsTracking.Load` fixtures do not isolate, plus `await LoadAsync().ConfigureAwait(false)`, a context property of `this`, and a `Load` on `this` itself. A leftover lookalike wrap still reports. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
