@@ -9,8 +9,9 @@ namespace LinqContraband.Tests.Analyzers.LC007_NPlusOneLooper;
 
 /// <summary>
 /// The most common hidden N+1 is a loop that calls a helper in the same project which runs the query. LC007 reads
-/// statically bound source helpers up to three calls deep and reports the call in the loop, but stays quiet on cache
-/// factories, memoized helpers, overridable methods, metadata-only helpers, query builders and drain loops.
+/// source helpers up to three calls deep and reports the call in the loop, but stays quiet on cache factories,
+/// memoized helpers, metadata-only helpers, query builders and drain loops. Interface and virtual calls are covered
+/// by the dispatch tests.
 /// </summary>
 public partial class NPlusOneLooperTests
 {
@@ -304,36 +305,6 @@ sealed class SealedRepository : RepositoryBase
         _current = await _db.Users.FirstOrDefaultAsync(u => u.Id == id);
         return _current;
     }");
-
-        await VerifyCS.VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
-    public async Task HelperCall_OverridableOrInterfaceDispatch_IsQuiet()
-    {
-        var test = HelperProgram(@"
-    void Run(int[] ids, Repository repository, IRepository contract)
-    {
-        foreach (var id in ids)
-        {
-            var a = repository.Get(id);
-            var b = contract.Get(id);
-            var c = Virtual(id);
-        }
-    }
-
-    protected virtual User Virtual(int id) => _db.Users.Find(id);
-}
-
-interface IRepository
-{
-    User Get(int id);
-}
-
-class Repository : IRepository
-{
-    private readonly MyDbContext _db = new MyDbContext();
-    public virtual User Get(int id) => _db.Users.Find(id);");
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }

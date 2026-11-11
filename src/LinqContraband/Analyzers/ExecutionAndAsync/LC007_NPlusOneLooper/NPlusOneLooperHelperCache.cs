@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
 
@@ -15,6 +16,7 @@ internal sealed class NPlusOneLooperHelperCache
 
     private readonly ConcurrentDictionary<IMethodSymbol, string>[] summariesByDepth;
     private readonly ConcurrentDictionary<SyntaxTree, SemanticModel?> semanticModels = new();
+    private NPlusOneLooperSourceTypeIndex? sourceTypes;
 
     public NPlusOneLooperHelperCache(Compilation compilation, int maxDepth)
     {
@@ -34,6 +36,18 @@ internal sealed class NPlusOneLooperHelperCache
     public string StoreSummary(IMethodSymbol method, int depth, string queryMethodName)
     {
         return summariesByDepth[depth - 1].GetOrAdd(method, queryMethodName);
+    }
+
+    /// <summary>The compilation's concrete types by interface and base class, built on first use.</summary>
+    public NPlusOneLooperSourceTypeIndex GetSourceTypes(CancellationToken cancellationToken)
+    {
+        var index = Volatile.Read(ref sourceTypes);
+        if (index != null)
+            return index;
+
+        // Two threads may both build it; the index is immutable once built, so either copy will do.
+        index = new NPlusOneLooperSourceTypeIndex(Compilation, cancellationToken);
+        return Interlocked.CompareExchange(ref sourceTypes, index, null) ?? index;
     }
 
     /// <summary>

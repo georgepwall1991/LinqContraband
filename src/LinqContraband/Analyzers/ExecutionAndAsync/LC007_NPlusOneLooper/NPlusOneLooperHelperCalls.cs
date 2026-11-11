@@ -30,9 +30,10 @@ internal sealed class NPlusOneHelperCallMatch
 
 /// <summary>
 /// A loop that calls a helper method which runs the query is the most common hidden N+1. When a loop calls a method
-/// whose source is in this compilation and whose target is fixed at compile time (not an override that might not
-/// query), LC007 looks into its body, up to <see cref="MaxHelperDepth"/> calls deep, for a database execution it
-/// would report if it were written in the loop, and reports the call.
+/// whose source is in this compilation, LC007 looks into its body, up to <see cref="MaxHelperDepth"/> calls deep,
+/// for a database execution it would report if it were written in the loop, and reports the call. An interface,
+/// abstract or virtual call is followed into every implementation declared here (see <c>GetHelperTargets</c>) and
+/// reported only when all of them run a query.
 /// </summary>
 internal static partial class NPlusOneLooperAnalysis
 {
@@ -43,27 +44,24 @@ internal static partial class NPlusOneLooperAnalysis
         NPlusOneLooperHelperCache cache,
         CancellationToken cancellationToken)
     {
-        var helper = GetAnalyzableHelper(invocation);
-        if (helper == null)
-            return null;
-
         var inLoop = invocation.FindEnclosingLoop() != null;
         if (!inLoop && FindPerElementOperator(invocation, out _) == null)
             return null;
 
-        var queryMethodName = GetHelperExecution(helper, MaxHelperDepth, cache, cancellationToken);
+        var queryMethodName = GetCallExecution(invocation, MaxHelperDepth, caller: null, cache, cancellationToken);
         if (queryMethodName.Length == 0)
             return null;
 
+        var helperName = invocation.TargetMethod.Name;
         var loop = inLoop ? FindPerIterationLoopForHelperCall(invocation, cache, cancellationToken) : null;
         if (loop != null)
-            return new NPlusOneHelperCallMatch(helper.Name, queryMethodName, loop.GetLoopKind());
+            return new NPlusOneHelperCallMatch(helperName, queryMethodName, loop.GetLoopKind());
 
         // A helper called from a lambda that an in-memory operator runs once per element.
         var perElementOperator = FindPerElementOperator(invocation, out _);
         return perElementOperator != null
             ? new NPlusOneHelperCallMatch(
-                helper.Name,
+                helperName,
                 queryMethodName,
                 NPlusOneLooperDiagnosticProperties.LambdaLoopKind,
                 perElementOperator.TargetMethod.Name)
@@ -117,49 +115,11 @@ internal static partial class NPlusOneLooperAnalysis
             if (TryMatchDatabaseExecution(call, cancellationToken, out _))
                 return true;
 
-            var helper = GetAnalyzableHelper(call);
-            if (helper != null && GetHelperExecution(helper, MaxHelperDepth, cache, cancellationToken).Length > 0)
+            if (GetCallExecution(call, MaxHelperDepth, caller: null, cache, cancellationToken).Length > 0)
                 return true;
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// The method a call statically binds to, when LC007 can read its body: an ordinary method, extension method or
-    /// local function declared in source. Abstract, interface and overridable methods are skipped, since an override
-    /// might not query, unless the method or its type is sealed or static.
-    /// </summary>
-    private static IMethodSymbol? GetAnalyzableHelper(IInvocationOperation invocation)
-    {
-        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
-        method = method.OriginalDefinition;
-        method = method.PartialImplementationPart ?? method;
-
-        if (method.MethodKind is not (MethodKind.Ordinary or MethodKind.LocalFunction) ||
-            method.IsAbstract ||
-            method.IsExtern ||
-            method.DeclaringSyntaxReferences.Length == 0)
-        {
-            return null;
-        }
-
-        if (method.MethodKind == MethodKind.Ordinary)
-        {
-            var containingType = method.ContainingType;
-            if (containingType == null || containingType.TypeKind == TypeKind.Interface)
-                return null;
-
-            if ((method.IsVirtual || method.IsOverride) &&
-                !method.IsSealed &&
-                !containingType.IsSealed &&
-                !containingType.IsStatic)
-            {
-                return null;
-            }
-        }
-
-        return method;
     }
 
     /// <summary>
@@ -209,13 +169,9 @@ internal static partial class NPlusOneLooperAnalysis
             }
             else if (depth > 1)
             {
-                var callee = GetAnalyzableHelper(call);
-                if (callee != null && !SymbolEqualityComparer.Default.Equals(callee, helper))
-                {
-                    var nested = GetHelperExecution(callee, depth - 1, cache, cancellationToken);
-                    if (nested.Length > 0)
-                        found = nested;
-                }
+                var nested = GetCallExecution(call, depth - 1, helper, cache, cancellationToken);
+                if (nested.Length > 0)
+                    found = nested;
             }
 
             if (found != null)
