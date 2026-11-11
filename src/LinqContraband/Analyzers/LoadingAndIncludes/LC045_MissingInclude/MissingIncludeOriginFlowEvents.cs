@@ -1176,28 +1176,7 @@ public sealed partial class MissingIncludeAnalyzer
             IOperation callSite
         )
         {
-            if (
-                targetMethod.MethodKind != MethodKind.Ordinary
-                || targetMethod.DeclaredAccessibility != Accessibility.Private
-                || targetMethod.IsAbstract
-                || targetMethod.PartialImplementationPart != null
-                || callSite.SemanticModel is not { } semanticModel
-            )
-            {
-                return null;
-            }
-
-            foreach (var reference in targetMethod.DeclaringSyntaxReferences)
-            {
-                if (reference.SyntaxTree != callSite.Syntax.SyntaxTree)
-                    continue;
-
-                var declaration = reference.GetSyntax(cancellationToken);
-                if (semanticModel.GetOperation(declaration, cancellationToken) is { } body)
-                    return body;
-            }
-
-            return null;
+            return FindSameFilePrivateMethodBody(targetMethod, callSite, cancellationToken);
         }
 
 

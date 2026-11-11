@@ -285,8 +285,35 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var context = new OriginFlowContext(
+        return TryCollectCallbackNavigationAccesses(
+            graph,
             callback,
+            callback.Body.Syntax,
+            callbackParameter,
+            entityType,
+            entityTypes,
+            flowCache,
+            cancellationToken,
+            out accesses
+        );
+    }
+
+    private static bool TryCollectCallbackNavigationAccesses(
+        ControlFlowGraph graph,
+        IOperation callbackRoot,
+        SyntaxNode callbackBody,
+        IParameterSymbol callbackParameter,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        MissingIncludeFlowCache flowCache,
+        CancellationToken cancellationToken,
+        out List<NavigationAccess> accesses
+    )
+    {
+        accesses = null!;
+        var context = new OriginFlowContext(
+            callbackRoot,
+            callbackBody,
             callbackParameter,
             entityType,
             entityTypes,

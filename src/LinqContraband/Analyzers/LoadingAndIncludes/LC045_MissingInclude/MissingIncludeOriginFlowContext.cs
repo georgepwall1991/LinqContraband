@@ -98,8 +98,13 @@ public sealed partial class MissingIncludeAnalyzer
             this.cancellationToken = cancellationToken;
         }
 
+        /// <summary>
+        /// A per-element callback analysed on its own: a lambda, or the body of a method handed
+        /// over as a method group. <paramref name="callbackParameter"/> is the element.
+        /// </summary>
         public OriginFlowContext(
-            IAnonymousFunctionOperation callback,
+            IOperation callbackRoot,
+            SyntaxNode callbackBody,
             IParameterSymbol callbackParameter,
             INamedTypeSymbol entityType,
             HashSet<INamedTypeSymbol> entityTypes,
@@ -108,10 +113,10 @@ public sealed partial class MissingIncludeAnalyzer
         )
         {
             this.flowCache = flowCache;
-            scope = flowCache.GetScope(callback);
-            executableRoot = callback;
+            scope = flowCache.GetScope(callbackRoot);
+            executableRoot = callbackRoot;
             rootCallbackParameter = callbackParameter;
-            activationSyntax = callback.Body.Syntax;
+            activationSyntax = callbackBody;
             returnsCollection = false;
             this.entityType = entityType;
             this.entityTypes = entityTypes;
@@ -201,7 +206,7 @@ public sealed partial class MissingIncludeAnalyzer
                 if (
                     blockOrdinal < 0
                     && flowEvent.Kind == FlowEventKind.Materialize
-                    && executableRoot is IAnonymousFunctionOperation
+                    && rootCallbackParameter != null
                 )
                 {
                     blockOrdinal = blockIndex.FindFirstBlockInside(activationSyntax);

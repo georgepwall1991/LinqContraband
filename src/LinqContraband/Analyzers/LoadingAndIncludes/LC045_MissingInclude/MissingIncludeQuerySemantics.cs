@@ -25,6 +25,36 @@ public sealed partial class MissingIncludeAnalyzer
     )
     {
         callback = null!;
+        if (
+            !TryGetSupportedCollectionCallbackValue(
+                invocation,
+                materializer,
+                resultLocal,
+                out var callbackValue
+            )
+            || TryGetInlineAnonymousFunction(callbackValue) is not { } anonymous
+            || anonymous.Symbol.Parameters.Length != 1
+        )
+        {
+            return false;
+        }
+
+        callback = anonymous;
+        return true;
+    }
+
+    /// <summary>
+    /// The delegate argument of a per-element operator over the materialized collection, whatever
+    /// form it takes: a lambda, a method group, or a delegate held in a variable.
+    /// </summary>
+    private static bool TryGetSupportedCollectionCallbackValue(
+        IInvocationOperation invocation,
+        IInvocationOperation materializer,
+        ILocalSymbol? resultLocal,
+        out IOperation callbackValue
+    )
+    {
+        callbackValue = null!;
         var compilation = invocation.SemanticModel?.Compilation;
         if (compilation == null)
             return false;
@@ -120,18 +150,13 @@ public sealed partial class MissingIncludeAnalyzer
             return false;
         }
 
-        var callbackValue = invocation
+        var value = invocation
             .Arguments.FirstOrDefault(argument => argument.Parameter?.Ordinal == callbackOrdinal)
             ?.Value;
-        if (
-            TryGetInlineAnonymousFunction(callbackValue) is not { } anonymous
-            || anonymous.Symbol.Parameters.Length != 1
-        )
-        {
+        if (value == null)
             return false;
-        }
 
-        callback = anonymous;
+        callbackValue = value;
         return true;
     }
 

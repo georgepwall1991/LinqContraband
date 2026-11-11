@@ -135,6 +135,14 @@ public sealed class MissingIncludeFixerCoverageContractTests
         foreach (var o in orders) RenderShape(o);" },
         new object[] { "CollectionCallee", @"        var orders = db.Orders.ToList();
         RenderAll(orders);" },
+        new object[] { "MethodGroupCallback", @"        var orders = db.Orders.ToList();
+        orders.ForEach(RenderShape);" },
+        new object[] { "MethodGroupSelector", @"        var orders = db.Orders.ToList();
+        var names = orders.Select(LabelShape).ToList();" },
+        new object[] { "MethodGroupOverInlineMaterializer", @"        var names = db.Orders.ToList().Select(LabelShape).ToList();" },
+        new object[] { "LocalFunctionGroupCallback", @"        var orders = db.Orders.ToList();
+        string Label(Order o) => o.Customer.Address.City;
+        var cities = orders.Select(Label).ToList();" },
         new object[] { "AwaitForeachBridge", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "AwaitForeachTernary", @"        await foreach (var o in db.Orders.AsAsyncEnumerable()) { var s = o.Id > 0 ? o.Customer.Name : """"; System.Console.WriteLine(s); }" },
         new object[] { "AwaitForeachNestedPath", @"        await foreach (var o in db.Orders.Include(x => x.Customer).AsAsyncEnumerable()) System.Console.WriteLine(o.Customer.Address.City);" }
@@ -273,6 +281,7 @@ public sealed class MissingIncludeFixerCoverageContractTests
         // A shape may call a private helper; declare one the corpus can use.
         const string helper =
             "\n    private void RenderShape(Order o) => System.Console.WriteLine(o.Customer.Name);\n"
+            + "    private static string LabelShape(Order o) => o.Customer.Name;\n"
             + "    private void RenderAll(System.Collections.Generic.List<Order> all)\n"
             + "    {\n        foreach (var o in all) System.Console.WriteLine(o.Customer.Name);\n    }\n";
         return Usings
