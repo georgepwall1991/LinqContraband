@@ -6,9 +6,9 @@ This is a deliberately harsh health audit for the **63 analyzers** in `RuleCatal
 
 Release metadata:
 
-- Package version: 5.18.0
-- Base audited commit: fd9841730ca922ed7d25fea769d2be4082ea4601
-- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.18.0-final`
+- Package version: 5.19.0
+- Base audited commit: 9405e812e071878a71401aec40bba6420d8e54d3
+- Pack verification: `dotnet pack src/LinqContraband/LinqContraband.csproj -c Release -o /tmp/linqcontraband-5.19.0-final`
 
 The 2026-10-05 supply-chain hardening adds three scanner argument-parser fuzz properties (1,000 generated cases each), bringing the net10.0 suite to **5,950 tests**. No rule scores changed. See [security hardening](security-hardening.md) for alert coverage and remaining process gates.
 
@@ -37,6 +37,8 @@ Harsh calibration notes:
 Priority is a planning signal: `High` means the analyzer is important and has meaningful health gaps, `Medium` means useful follow-up work is warranted, and `Low` means no immediate work is needed.
 
 ## Scorecard
+
+> The 2026-11-11 5.19.0 release ships cross-layer N+1 detection for LC007, LC010 and LC045 (per-element lambdas, same-project helpers and method groups, interface and virtual dispatch, returned queries, helper saves, computed entity members), the cross-project pass in `LinqContraband.Scan`, the N+1 benchmark and the four false-positive fixes it led to, with the full local net10.0 suite at **6,598 tests**.
 
 > The 2026-11-11 LC007/LC010 list fixed in source pass: LC007 and LC010 treat a `foreach` over an inline array, a collection built from an initializer alone, or the values of an enum as a fixed number of round trips, not an N+1, and look at the next loop out, and adds 28 tests, raising the full local net10.0 suite to **6,598 tests**.
 
@@ -2008,9 +2010,9 @@ The N+1 benchmark's safe cases `S24_LoopOverEnumValues` (`foreach (var status in
 
 ## Verification Baseline
 
-Package version: **5.18.0**
+Package version: **5.19.0**
 
-Base audited commit: master at `fd9841730ca922ed7d25fea769d2be4082ea4601` (5.18.0 release-preparation base). 5.18.0 fixes false positives found by scan round 5 in LC007 and LC010 (loops that cannot run their query or save twice), LC011 (`UsingEntity<TJoin>` join entities in applied entity type configurations) and LC035 (`Filter` predicates and parameterless whole-table clears), pins previously untested operator and name arms across 22 rules and the scanner, and hardens the release pipeline: zizmor workflow audits, SLSA build provenance for both packages as nuget.org serves them, no NuGet cache in the publishing job, a pinned `upload-sarif` in the reusable action, and Dependabot cooldowns. 5.17.0 was audited at `5b3eda84697d190855e173c6df026eb458a81e22` and fixes false positives in LC001, LC006, LC007, LC009, LC010, LC021, LC023, LC031, LC040, LC061, LC062 and LC063, makes LC022 stay quiet on nested collection materializers on EF Core 8+ and report `ToDictionary` as untranslatable, makes LC059 report conditional `connection?.Dispose()` on the context's connection, and makes LC060 follow interface-typed locals filled only from in-memory collections. 5.16.0 was audited at `c8d2d7b69066e9a45005e3f0af6f8ee2c2a0d9e9` and adds LC060 (async EF operators on in-memory queries), LC061 (uncached compiled query), LC062 (blocking on an EF Core async call) and LC063 (user transaction under a retrying execution strategy), and fixes false positives found by scanning real apps in LC001, LC004, LC008, LC011, LC016, LC020, LC022, LC024, LC035 and LC039. 5.15.0 was audited at `56238ce7399ad2f456d687c32ddffaa3bfef1c99` and adds LC057 (Min/Max/Average on an empty query), LC058 (TransactionScope without async flow) and LC059 (disposed context connection), makes LC007 follow same-project helper methods, fixes false positives found by scanning real apps in LC002, LC007, LC008, LC009, LC011, LC015 and LC035, fixes an LC035 build hang, and stops LinqContraband.Scan failing on repositories that raise every analyzer diagnostic to an error.
+Base audited commit: master at `9405e812e071878a71401aec40bba6420d8e54d3` (5.19.0 release-preparation base). 5.19.0 adds cross-layer N+1 detection: LC007 and LC010 report a query or save in a lambda that an in-memory operator runs per element and follow a loop's call into same-project helpers, method groups, interfaces and virtual methods; LC007 treats a query returned by a same-project member as EF-backed; LC045 reports navigation reads in a `foreach` over a `DbSet`, in a mapper passed as a method group and in a computed entity property; `LinqContraband.Scan` follows a per-item call into another project. It also adds the N+1 benchmark (`tools/NPlusOneBenchmark`, 154 cases proven by round-trip counts on SQLite: recall 88 of 105, false positives 3 of 49) and the false-positive fixes it led to in LC007, LC010 and LC045 (retry loops that return the result, a save every N items, lists fixed in the source, preloaded reference navigations). 5.18.0 was audited at `fd9841730ca922ed7d25fea769d2be4082ea4601` and fixes false positives found by scan round 5 in LC007 and LC010 (loops that cannot run their query or save twice), LC011 (`UsingEntity<TJoin>` join entities in applied entity type configurations) and LC035 (`Filter` predicates and parameterless whole-table clears), pins previously untested operator and name arms across 22 rules and the scanner, and hardens the release pipeline: zizmor workflow audits, SLSA build provenance for both packages as nuget.org serves them, no NuGet cache in the publishing job, a pinned `upload-sarif` in the reusable action, and Dependabot cooldowns. 5.17.0 was audited at `5b3eda84697d190855e173c6df026eb458a81e22` and fixes false positives in LC001, LC006, LC007, LC009, LC010, LC021, LC023, LC031, LC040, LC061, LC062 and LC063, makes LC022 stay quiet on nested collection materializers on EF Core 8+ and report `ToDictionary` as untranslatable, makes LC059 report conditional `connection?.Dispose()` on the context's connection, and makes LC060 follow interface-typed locals filled only from in-memory collections. 5.16.0 was audited at `c8d2d7b69066e9a45005e3f0af6f8ee2c2a0d9e9` and adds LC060 (async EF operators on in-memory queries), LC061 (uncached compiled query), LC062 (blocking on an EF Core async call) and LC063 (user transaction under a retrying execution strategy), and fixes false positives found by scanning real apps in LC001, LC004, LC008, LC011, LC016, LC020, LC022, LC024, LC035 and LC039. 5.15.0 was audited at `56238ce7399ad2f456d687c32ddffaa3bfef1c99` and adds LC057 (Min/Max/Average on an empty query), LC058 (TransactionScope without async flow) and LC059 (disposed context connection), makes LC007 follow same-project helper methods, fixes false positives found by scanning real apps in LC002, LC007, LC008, LC009, LC011, LC015 and LC035, fixes an LC035 build hang, and stops LinqContraband.Scan failing on repositories that raise every analyzer diagnostic to an error.
 
 Architecture tests enforce the rule quality contract for public package metadata, code-fix provider exports, documentation drift, repository layout, and `samples/LinqContraband.Sample/sample-diagnostics.json` sample expectations.
 
@@ -2089,7 +2091,13 @@ Latest verification (2026-08-13, EnsureUsing fixer crash for 5.7.59):
 Latest verification (2026-08-29, LC048 lost-update risk for 5.8.0):
 85 focused LC048 net10.0 tests pass; the full local net10.0 suite passes 3,269 tests.
 
-Current verification (2026-11-01, 5.18.0: scan round 5 false-positive fixes for LC007/LC010/LC011/LC035, coverage pins for LC002/LC004/LC013/LC014/LC016/LC017/LC025/LC031/LC032/LC035/LC039/LC040/LC041/LC042/LC045/LC048/LC049/LC050/LC051/LC055/LC062/LC063 and the scanner, and release-pipeline hardening, with 6,308 full net10.0 tests):
+Current verification (2026-11-11, 5.19.0: cross-layer N+1 detection for LC007/LC010/LC045, the cross-project pass in `LinqContraband.Scan`, the N+1 benchmark and its false-positive fixes, with 6,598 full net10.0 tests):
+
+- Each change landed in its own PR (#721 to #736) with focused tests, the full net10.0 suite, the benchmark check, the doc generator check, the sample verifier on net8.0, net9.0 and net10.0 and, for docs changes, the link check; the per-pass sections above record the evidence.
+- GitHub Actions could not run for the later PRs (an account billing lock), so those merged on the local checks. The release is still gated on CI: `release.yml` tags and publishes only after **Build and Test** passes on `master`, which runs the suite on net8.0, net9.0 and net10.0.
+- The release branch was re-verified on the merged master: full suite, benchmark check, doc generator check and sample verifier.
+
+Previous verification (2026-11-01, 5.18.0: scan round 5 false-positive fixes for LC007/LC010/LC011/LC035, coverage pins for LC002/LC004/LC013/LC014/LC016/LC017/LC025/LC031/LC032/LC035/LC039/LC040/LC041/LC042/LC045/LC048/LC049/LC050/LC051/LC055/LC062/LC063 and the scanner, and release-pipeline hardening, with 6,308 full net10.0 tests):
 
 - Each change landed in its own PR (#703 to #708) with focused tests, CI on net8.0, net9.0 and net10.0, the doc generator check, the link check and the zizmor audit; the per-pass sections above record the evidence.
 - The release branch was re-verified on the merged master: full suite, doc generator check and sample verifier.
@@ -2424,3 +2432,5 @@ Final verification (2026-11-11, LC010 save every N items pass): the full local n
 Final verification (2026-11-11, LC045 preloaded principals pass): the full local net10.0 suite passes 6,570 tests.
 
 Final verification (2026-11-11, LC007/LC010 list fixed in source pass): the full local net10.0 suite passes 6,598 tests.
+
+Final verification (2026-11-11, 5.19.0: the changes above): the full local net10.0 suite passes 6,598 tests.
