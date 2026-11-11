@@ -100,6 +100,7 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         // (`if (++pending % 1000 == 0) db.SaveChanges();`) is a batch save written with a counter.
         while (loop != null &&
                (loop.RunsAtMostOnce() ||
+                loop.IteratesItemsFixedInSource(context.CancellationToken) ||
                 invocation.LeavesLoopAfter(loop) ||
                 NPlusOneLooperAnalysis.IsBatchLoop(loop, context.CancellationToken) ||
                 IsPeriodicFlush(invocation, loop)))

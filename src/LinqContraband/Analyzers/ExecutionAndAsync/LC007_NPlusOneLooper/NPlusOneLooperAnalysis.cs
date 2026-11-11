@@ -81,6 +81,7 @@ internal static partial class NPlusOneLooperAnalysis
                 invocation.SharesOwningExecutableRoot(loop) &&
                 IsPerIterationInvocation(invocation, loop) &&
                 !loop.RunsAtMostOnce() &&
+                !loop.IteratesItemsFixedInSource(cancellationToken) &&
                 !invocation.LeavesLoopAfter(loop) &&
                 !IsBatchPollingOrRetryLoop(invocation, loop, cancellationToken) &&
                 !IsLoadOnceGuardedInLoop(invocation, loop))

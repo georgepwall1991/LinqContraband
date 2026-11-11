@@ -195,4 +195,36 @@ namespace Lookalike
         }")]
     public Task SaveThatCanRunAgain_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
+    [Theory]
+    // A list written in the source, or the values of an enum: the code fixes the number of saves.
+    [InlineData(@"foreach (var id in new[] { 1, 2, 3 })
+        {
+            db.SaveChanges();
+        }")]
+    [InlineData(@"foreach (var day in Enum.GetValues(typeof(DayOfWeek)))
+        {
+            await db.SaveChangesAsync();
+        }")]
+    [InlineData(@"var wanted = new[] { 1, 2, 3 };
+        foreach (var id in wanted)
+        {
+            db.SaveChanges();
+        }")]
+    public Task SaveInALoopOverAListWrittenInTheSource_IsQuiet(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    [Theory]
+    [InlineData(@"foreach (var id in ids)
+        {
+            foreach (var attempt in new[] { 1, 2 })
+            {
+                {|LC010:db.SaveChanges()|};
+            }
+        }")]
+    [InlineData(@"foreach (var id in new List<int>(ids) { 0 })
+        {
+            {|LC010:db.SaveChanges()|};
+        }")]
+    public Task SaveInAFixedListInsideAPerItemLoop_StillReports(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(Program(body));
 }

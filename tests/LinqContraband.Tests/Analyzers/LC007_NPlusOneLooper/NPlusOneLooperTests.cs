@@ -250,7 +250,7 @@ class Program
     void Main()
     {
         var db = new MyDbContext();
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var users = {|#0:db.Set<User>().Where(u => u.Id == id).ToList()|};
         }
@@ -273,7 +273,7 @@ class Program
         var db = new MyDbContext();
         var query = db.Users.Where(u => u.Id > 0);
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var any = {|#0:query.Any(u => u.Id == id)|};
         }
@@ -295,7 +295,7 @@ class Program
     {
         var db = new MyDbContext();
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = {|#0:db.Users.Where(u => u.Id == id).AsEnumerable().Count()|};
         }
@@ -317,7 +317,7 @@ class Program
     {
         var db = new MyDbContext();
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             foreach (var user in {|#0:db.Users.Where(u => u.Id == id).ToList()|})
             {
