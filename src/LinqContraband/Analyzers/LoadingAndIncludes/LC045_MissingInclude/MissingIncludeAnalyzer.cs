@@ -171,6 +171,7 @@ public sealed partial class MissingIncludeAnalyzer : DiagnosticAnalyzer
             context.Compilation,
             context.CancellationToken
         );
+        AddPreloadedReferencePrefixes(query, invocation, entityTypes);
         ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
     }
 

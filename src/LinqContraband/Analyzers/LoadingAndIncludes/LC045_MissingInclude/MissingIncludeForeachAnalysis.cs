@@ -103,6 +103,7 @@ public sealed partial class MissingIncludeAnalyzer
             context.Compilation,
             context.CancellationToken
         );
+        AddPreloadedReferencePrefixes(query, forEach, entityTypes);
         ReportMissingIncludeDiagnostics(context, query.QuerySource, query, accesses);
     }
 
