@@ -669,3 +669,15 @@ public static class S48_RemoveRangeSaveOnce
         db.SaveChanges();
     }
 }
+
+[Safe(Kind.Query, Via.Lambda)]
+public static class S49_DelegateLambdaInsideTranslatedQuery
+{
+    public static List<Customer> Run(ShopDb db)
+    {
+        // `c.Orders.Any(...)` takes a delegate, but the whole predicate is one expression tree: one query.
+        return db.Customers
+            .Where(c => c.Orders.Any(o => db.OrderLines.Count(l => l.OrderId == o.Id) > 1))
+            .ToList();
+    }
+}

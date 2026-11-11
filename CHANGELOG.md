@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- An N+1 benchmark (`tools/NPlusOneBenchmark`) with 152 cases. Each case runs against SQLite at two data sizes and counts as an N+1 only if the larger database cost it more round trips; LC007, LC010 and LC045 are then scored on the same sources. CI fails when `tools/NPlusOneBenchmark/results.md` is out of date, so every change in N+1 detection shows up as a diff of gained and lost cases. No analyzer behaviour changes.
+- An N+1 benchmark (`tools/NPlusOneBenchmark`) with 153 cases. Each case runs against SQLite at two data sizes and counts as an N+1 only if the larger database cost it more round trips; LC007, LC010 and LC045 are then scored on the same sources. CI fails when `tools/NPlusOneBenchmark/results.md` is out of date, so every change in N+1 detection shows up as a diff of gained and lost cases. No analyzer behaviour changes.
+
+### Fixed
+
+- LC007 and LC010 report a query or save inside a lambda that an in-memory operator runs once per element: `ids.Select(id => db.Customers.First(c => c.Id == id))`, `orders.ForEach(...)`, `customers.Where(c => db.Orders.Any(...))` over a list, `Task.WhenAll(ids.Select(...))`, `Parallel.ForEach`, `Array.ConvertAll`, query syntax over an in-memory collection, and a same-project helper called from such a lambda. Expression-tree lambdas and lambdas nested inside one (a single translated query), cache factories, `Task.Run`, delegates stored in variables, the result selector of `Aggregate`, `Chunk(...)` batches and, for LC010, a context owned by the element stay quiet. On the N+1 benchmark this takes lambda cases from 5 of 20 to 20 of 20 and overall recall from 50.0% to 64.4%, with no new false positives. No code fix is offered inside a lambda.
 
 ## [5.18.0] - 2026-11-01
 

@@ -28,11 +28,19 @@ public sealed partial class NPlusOneLooperAnalyzer
         properties[NPlusOneLooperDiagnosticProperties.FixerEligible] = "false";
 
         context.ReportDiagnostic(
-            Diagnostic.Create(
-                HelperCallRule,
-                invocation.Syntax.GetLocation(),
-                properties.ToImmutable(),
-                match.HelperName,
-                match.QueryMethodName));
+            match.OperatorName == null
+                ? Diagnostic.Create(
+                    HelperCallRule,
+                    invocation.Syntax.GetLocation(),
+                    properties.ToImmutable(),
+                    match.HelperName,
+                    match.QueryMethodName)
+                : Diagnostic.Create(
+                    PerElementLambdaHelperCallRule,
+                    invocation.Syntax.GetLocation(),
+                    properties.ToImmutable(),
+                    match.HelperName,
+                    match.QueryMethodName,
+                    match.OperatorName));
     }
 }

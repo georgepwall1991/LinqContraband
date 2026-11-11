@@ -345,6 +345,7 @@
         "Samples/LC036_DbContextCapturedAcrossThreads/DbContextCapturedAcrossThreadsSample.cs"
       ],
       "ruleIds": [
+        "LC007",
         "LC009",
         "LC031",
         "LC036"
