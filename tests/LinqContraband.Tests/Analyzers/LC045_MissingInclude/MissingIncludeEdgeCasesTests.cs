@@ -216,6 +216,24 @@ namespace TestNamespace
         public List<OrderItem> Items { get; set; }
         public List<OrderItem> OtherItems { get; set; }
         public OrderSummary Summary { get; set; }
+
+        // Computed members: what the entity's own code reads when a caller reads the member.
+        public string CustomerLabel => Id + "" for "" + Customer.Name;
+        public string ShippingCity { get { return Customer.Address.City; } }
+        public int ItemCount { get => Items.Count; }
+        public string StatusLabel => ""Status: "" + Status;
+        public string NavigationName => nameof(Customer);
+        public virtual string OverridableLabel => Customer.Name;
+        public string SelfLoadingLabel { get { EnsureCustomer(); return Customer.Name; } }
+        public string DefaultingLabel { get { if (Customer == null) Customer = new Customer(); return Customer.Name; } }
+        public string HandsItselfOutLabel { get { Registry.Touch(this); return Customer.Name; } }
+        public static string SharedLabel => ""shared"";
+        private void EnsureCustomer() { }
+    }
+
+    public static class Registry
+    {
+        public static void Touch(object entity) { }
     }
 
     public class SpecialOrder : OrderBase
@@ -230,6 +248,7 @@ namespace TestNamespace
         public string Name { get; set; }
         public Address Address { get; set; }
         public Customer GetDetached() => new Customer { Address = new Address() };
+        public string CityLabel => Name + "" in "" + Address.City;
     }
 
     public class Address
