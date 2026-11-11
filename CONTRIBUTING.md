@@ -96,7 +96,7 @@ Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `Rul
 ```bash
 dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --write
 ```
-Commit `tools/NPlusOneBenchmark/results.md` with the change. Its diff lists every case gained or lost. See [tools/NPlusOneBenchmark/README.md](tools/NPlusOneBenchmark/README.md) for how the ground truth works and how to add a case.
+Commit `tools/NPlusOneBenchmark/results.md` with the change. Its diff lists every case gained or lost. The same command updates the summary tables published on `docs/ef-core-n-plus-one-query-detector.md`; commit that file too. See [tools/NPlusOneBenchmark/README.md](tools/NPlusOneBenchmark/README.md) for how the ground truth works and how to add a case.
 
 ### Quick Summary
 

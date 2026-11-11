@@ -17,11 +17,13 @@ A round trip is one SQL command, except that one `SaveChanges` call counts as on
 
 ```bash
 dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj              # print the report
-dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --check   # fail if results.md is stale (CI runs this)
-dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --write   # regenerate results.md
+dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --check   # fail if results.md or the published summary is stale (CI runs this)
+dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --write   # regenerate both
 ```
 
 When a change to an analyzer alters what the benchmark reports, `--check` fails. Regenerate `results.md` and commit it with the change: the diff shows every case that was gained or lost, which is the review evidence for an N+1 change.
+
+`--write` also rewrites the summary tables on the documentation site's [N+1 page](../../docs/ef-core-n-plus-one-query-detector.md), between its `n-plus-one-benchmark` markers, and `--check` fails when they differ. The published numbers are therefore always the ones the last run measured. The prose around the markers is written by hand: reread it when a change moves a whole row, for example the first delegate case that is reported.
 
 ## The corpus
 
