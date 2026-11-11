@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using LinqContraband.Extensions;
 using Microsoft.CodeAnalysis;
@@ -15,7 +16,10 @@ internal sealed class NPlusOneLooperHelperCache
     internal const string NoExecution = "";
 
     private readonly ConcurrentDictionary<IMethodSymbol, string>[] summariesByDepth;
+    private static readonly ConditionalWeakTable<Compilation, NPlusOneLooperHelperCache> Caches = new();
+
     private readonly ConcurrentDictionary<SyntaxTree, SemanticModel?> semanticModels = new();
+    private readonly ConcurrentDictionary<ISymbol, bool> returnsEfQuery = new(SymbolEqualityComparer.Default);
     private NPlusOneLooperSourceTypeIndex? sourceTypes;
 
     public NPlusOneLooperHelperCache(Compilation compilation, int maxDepth)
@@ -27,6 +31,26 @@ internal sealed class NPlusOneLooperHelperCache
     }
 
     public Compilation Compilation { get; }
+
+    /// <summary>
+    /// The one cache of a compilation, shared by every caller that only has an operation in hand and kept alive
+    /// exactly as long as the compilation is.
+    /// </summary>
+    public static NPlusOneLooperHelperCache For(Compilation compilation)
+    {
+        return Caches.GetValue(compilation, c => new NPlusOneLooperHelperCache(c, NPlusOneLooperAnalysis.MaxHelperDepth));
+    }
+
+    /// <summary>Whether a method or property was already judged to return, on every path, a provably EF query.</summary>
+    public bool TryGetReturnsEfQuery(ISymbol member, out bool returnsQuery)
+    {
+        return returnsEfQuery.TryGetValue(member, out returnsQuery);
+    }
+
+    public bool StoreReturnsEfQuery(ISymbol member, bool returnsQuery)
+    {
+        return returnsEfQuery.GetOrAdd(member, returnsQuery);
+    }
 
     public bool TryGetSummary(IMethodSymbol method, int depth, out string queryMethodName)
     {

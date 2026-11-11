@@ -11,7 +11,8 @@ internal static partial class NPlusOneLooperAnalysis
     private static QueryProvenance AnalyzeQueryProvenance(
         IOperation? operation,
         IOperation? analysisScope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int returnedQueryDepth = MaxReturnedQueryDepth)
     {
         if (operation == null || analysisScope == null)
             return QueryProvenance.None;
@@ -39,6 +40,9 @@ internal static partial class NPlusOneLooperAnalysis
                     if (IsAsQueryableInvocation(invocation))
                         return QueryProvenance.Ambiguous;
 
+                    if (ReturnsEfQuery(invocation, returnedQueryDepth, cancellationToken))
+                        return QueryProvenance.Proven;
+
                     current = invocation.GetInvocationReceiver();
                     continue;
 
@@ -47,7 +51,11 @@ internal static partial class NPlusOneLooperAnalysis
                         return QueryProvenance.Proven;
 
                     if (propertyReference.Type.IsIQueryable())
-                        return QueryProvenance.Ambiguous;
+                    {
+                        return ReturnsEfQuery(propertyReference, returnedQueryDepth, cancellationToken)
+                            ? QueryProvenance.Proven
+                            : QueryProvenance.Ambiguous;
+                    }
 
                     return QueryProvenance.None;
 
