@@ -160,7 +160,7 @@ The code fix is not offered inside lambdas.
 - Loop-source materialization that happens once before iteration, such as the `db.Users.ToList()` part of a `foreach`
 - `while`, `do` and `for` loops that run until the database says they are done, as long as the loop condition does not walk an item source of its own (see below)
 - Load-once guards that run the query at most once (see below)
-- Loops that cannot run the query twice: a `foreach` over a LanguageExt `Option<T>` (zero or one value, the library's "if present" idiom), a body whose last statement is a `return`, `throw`, `break` or `yield break` with no `continue` or `goto` in it, and a query on a path that leaves the loop, such as `if (match) return await db.Users.FirstAsync(...);` or a query followed in its block by `return`/`break`. An outer per-item loop around them still reports, as does a `break` that only leaves a `switch`.
+- Loops that cannot run the query twice: a `foreach` over a LanguageExt `Option<T>` (zero or one value, the library's "if present" idiom) or over the sequence form of an `Option<T>` or `Either<L, R>` (`maybeList.RightToSeq()`, `option.ToSeq()`), a body whose last statement is a `return`, `throw`, `break` or `yield break` with no `continue` or `goto` in it, and a query on a path that leaves the loop, such as `if (match) return await db.Users.FirstAsync(...);` or a query followed in its block by `return`/`break`. An outer per-item loop around them still reports, as does a `break` that only leaves a `switch`.
 
 ### Batch, polling and retry loops
 

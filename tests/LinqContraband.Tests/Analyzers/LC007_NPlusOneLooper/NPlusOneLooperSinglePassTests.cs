@@ -17,6 +17,14 @@ namespace LanguageExt
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+        public IEnumerable<A> ToSeq() => null;
+        public IEnumerable<A> Rest() => null;
+    }
+
+    public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToList() => null;
     }
 }
 
@@ -26,6 +34,11 @@ namespace Lookalike
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    }
+
+    public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
     }
 }
 ";
@@ -38,6 +51,22 @@ namespace Lookalike
         {
             var users = await db.Users.Where(u => u.ParentId == id).ToListAsync();
             Handle(users);
+        }")]
+    // The sequence form of an Option or Either holds the same zero or one value (ErsatzTV's RightToSeq idiom).
+    [InlineData(@"LanguageExt.Either<string, int> maybeId = default;
+        foreach (var id in maybeId.RightToSeq())
+        {
+            Handle(await db.Users.Where(u => u.ParentId == id).ToListAsync());
+        }")]
+    [InlineData(@"LanguageExt.Either<int, string> maybeId = default;
+        foreach (var id in maybeId.LeftToList())
+        {
+            Handle(await db.Users.Where(u => u.ParentId == id).ToListAsync());
+        }")]
+    [InlineData(@"LanguageExt.Option<int> maybeId = default;
+        foreach (var id in maybeId.ToSeq())
+        {
+            Handle(await db.Users.Where(u => u.ParentId == id).ToListAsync());
         }")]
     [InlineData(@"foreach (var id in ids)
         {
@@ -89,6 +118,17 @@ namespace Lookalike
     // Only LanguageExt's Option is known to hold at most one value.
     [InlineData(@"Lookalike.Option<int> maybeId = default;
         foreach (var id in maybeId)
+        {
+            Handle(await {|LC007:db.Users.Where(u => u.ParentId == id).ToListAsync()|});
+        }")]
+    // Only LanguageExt's Either, and only its known single-value projections.
+    [InlineData(@"Lookalike.Either<string, int> maybeId = default;
+        foreach (var id in maybeId.RightToSeq())
+        {
+            Handle(await {|LC007:db.Users.Where(u => u.ParentId == id).ToListAsync()|});
+        }")]
+    [InlineData(@"LanguageExt.Option<int> maybeId = default;
+        foreach (var id in maybeId.Rest())
         {
             Handle(await {|LC007:db.Users.Where(u => u.ParentId == id).ToListAsync()|});
         }")]

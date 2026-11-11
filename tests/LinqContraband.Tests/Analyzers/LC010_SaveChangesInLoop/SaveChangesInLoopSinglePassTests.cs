@@ -18,7 +18,7 @@ using Microsoft.EntityFrameworkCore;
 
 class Program
 {
-    async Task<string> Run(AppDbContext db, List<int> ids, LanguageExt.Option<int> maybeId, Lookalike.Option<int> otherId)
+    async Task<string> Run(AppDbContext db, List<int> ids, LanguageExt.Option<int> maybeId, Lookalike.Option<int> otherId, LanguageExt.Either<string, int> eitherId, Lookalike.Either<string, int> otherEither)
     {
         " + body + @"
         return null;
@@ -43,6 +43,14 @@ namespace LanguageExt
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+        public IEnumerable<A> ToSeq() => null;
+        public IEnumerable<A> Rest() => null;
+    }
+
+    public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToList() => null;
     }
 }
 
@@ -53,6 +61,11 @@ namespace Lookalike
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
+
+    public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
+    }
 }
 ";
 
@@ -61,6 +74,14 @@ namespace Lookalike
         {
             Console.WriteLine(id);
             await db.SaveChangesAsync();
+        }")]
+    [InlineData(@"foreach (var id in eitherId.RightToSeq())
+        {
+            await db.SaveChangesAsync();
+        }")]
+    [InlineData(@"foreach (var id in maybeId.ToSeq())
+        {
+            db.SaveChanges();
         }")]
     [InlineData(@"foreach (var id in ids)
         {
@@ -90,6 +111,14 @@ namespace Lookalike
 
     [Theory]
     [InlineData(@"foreach (var id in otherId)
+        {
+            {|LC010:db.SaveChanges()|};
+        }")]
+    [InlineData(@"foreach (var id in otherEither.RightToSeq())
+        {
+            {|LC010:db.SaveChanges()|};
+        }")]
+    [InlineData(@"foreach (var id in maybeId.Rest())
         {
             {|LC010:db.SaveChanges()|};
         }")]
