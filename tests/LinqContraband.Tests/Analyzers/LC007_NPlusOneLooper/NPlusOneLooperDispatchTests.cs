@@ -40,6 +40,33 @@ class Repository : IRepository
             HelperCall(0, "Get", "Find"));
 
     [Fact]
+    public Task Dispatch_InterfaceMethodGroupInSelect_Reports() =>
+        VerifyCS.VerifyAnalyzerAsync(
+            HelperProgram(@"
+    void Run(int[] ids, IRepository repository)
+    {
+        var users = ids.Select({|#0:repository.Get|}).ToList();
+    }
+}
+" + InterfaceRepository.TrimEnd().TrimEnd('}')),
+            PerElementLambdaHelperCall(0, "Get", "Find", "Select"));
+
+    [Fact]
+    public Task Dispatch_InterfaceMethodGroup_WhenAnImplementationIsInMemory_IsQuiet() =>
+        VerifyCS.VerifyAnalyzerAsync(
+            HelperProgram(@"
+    void Run(int[] ids, IRepository repository)
+    {
+        var users = ids.Select(repository.Get).ToList();
+    }
+}
+" + InterfaceRepository + @"
+class CachedRepository : IRepository
+{
+    private readonly Dictionary<int, User> _users = new Dictionary<int, User>();
+    public User Get(int id) => _users[id];"));
+
+    [Fact]
     public Task Dispatch_InterfaceWhoseImplementationsAllQuery_Reports() =>
         VerifyCS.VerifyAnalyzerAsync(
             HelperProgram(@"

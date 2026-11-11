@@ -63,6 +63,24 @@ class Program
                 "    private User Load(int id) => db.Users.Find(id);"),
             PerElementLambdaHelperCall(0, "Load", "Find", "Select"));
 
+    [Fact]
+    public Task PerElementOperator_GivenHelperMethodGroup_ReportsMethodGroup() =>
+        VerifyCS.VerifyAnalyzerAsync(
+            LambdaProgram(
+                @"var found = ids.Select({|#0:Load|}).ToList();
+        var loaded = idArray.Select({|#1:this.Load|}).ToArray();
+        Parallel.ForEach(ids, {|#2:Touch|});
+        Func<int, User> stored = Load;
+        var later = Task.Run(Count);
+        var names = ids.Select(Describe).ToList();",
+                @"    private User Load(int id) => db.Users.Find(id);
+    private void Touch(int id) => db.Users.Find(id);
+    private int Count() => db.Users.Count();
+    private static string Describe(int id) => id.ToString();"),
+            PerElementLambdaHelperCall(0, "Load", "Find", "Select"),
+            PerElementLambdaHelperCall(1, "Load", "Find", "Select"),
+            PerElementLambdaHelperCall(2, "Touch", "Find", "ForEach"));
+
     [Theory]
     // An expression-tree lambda is translated into the one query that contains it.
     [InlineData("var parents = db.Users.Where(u => db.Users.Any(x => x.ParentId == u.Id)).ToList();")]

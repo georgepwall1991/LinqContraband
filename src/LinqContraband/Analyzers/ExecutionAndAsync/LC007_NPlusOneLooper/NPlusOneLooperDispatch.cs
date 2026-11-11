@@ -22,14 +22,29 @@ internal static partial class NPlusOneLooperAnalysis
         NPlusOneLooperHelperCache cache,
         CancellationToken cancellationToken)
     {
-        var method = invocation.TargetMethod.ReducedFrom ?? invocation.TargetMethod;
+        return GetHelperTargets(
+            invocation.TargetMethod,
+            invocation.IsVirtual,
+            invocation.Instance?.Type,
+            cache,
+            cancellationToken);
+    }
+
+    private static ImmutableArray<IMethodSymbol> GetHelperTargets(
+        IMethodSymbol method,
+        bool isVirtual,
+        ITypeSymbol? receiverType,
+        NPlusOneLooperHelperCache cache,
+        CancellationToken cancellationToken)
+    {
+        method = method.ReducedFrom ?? method;
         method = method.OriginalDefinition;
         method = method.PartialImplementationPart ?? method;
 
         if (method.MethodKind is not (MethodKind.Ordinary or MethodKind.LocalFunction) || method.IsExtern)
             return ImmutableArray<IMethodSymbol>.Empty;
 
-        if (!invocation.IsVirtual)
+        if (!isVirtual)
         {
             return method.IsAbstract || method.DeclaringSyntaxReferences.Length == 0
                 ? ImmutableArray<IMethodSymbol>.Empty
@@ -42,7 +57,7 @@ internal static partial class NPlusOneLooperAnalysis
 
         return containingType.TypeKind == TypeKind.Interface
             ? GetInterfaceImplementations(method, containingType, cache, cancellationToken)
-            : GetOverrides(method, invocation.Instance?.Type as INamedTypeSymbol ?? containingType, cache, cancellationToken);
+            : GetOverrides(method, receiverType as INamedTypeSymbol ?? containingType, cache, cancellationToken);
     }
 
     private static ImmutableArray<IMethodSymbol> GetInterfaceImplementations(
@@ -189,8 +204,18 @@ internal static partial class NPlusOneLooperAnalysis
         NPlusOneLooperHelperCache cache,
         CancellationToken cancellationToken)
     {
+        return GetExecution(GetHelperTargets(call, cache, cancellationToken), depth, caller, cache, cancellationToken);
+    }
+
+    private static string GetExecution(
+        ImmutableArray<IMethodSymbol> targets,
+        int depth,
+        IMethodSymbol? caller,
+        NPlusOneLooperHelperCache cache,
+        CancellationToken cancellationToken)
+    {
         string? queryMethodName = null;
-        foreach (var target in GetHelperTargets(call, cache, cancellationToken))
+        foreach (var target in targets)
         {
             if (caller != null && SymbolEqualityComparer.Default.Equals(target, caller))
                 continue;

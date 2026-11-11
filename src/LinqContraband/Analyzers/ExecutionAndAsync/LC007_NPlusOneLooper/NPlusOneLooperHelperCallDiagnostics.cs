@@ -17,9 +17,20 @@ public sealed partial class NPlusOneLooperAnalyzer
         NPlusOneLooperHelperCache helperCache)
     {
         var match = NPlusOneLooperAnalysis.AnalyzeHelperCall(invocation, helperCache, context.CancellationToken);
-        if (match == null)
-            return;
+        if (match != null)
+            ReportHelperCall(context, invocation.Syntax, match);
+    }
 
+    private static void AnalyzeMethodReference(OperationAnalysisContext context, NPlusOneLooperHelperCache helperCache)
+    {
+        var methodReference = (IMethodReferenceOperation)context.Operation;
+        var match = NPlusOneLooperAnalysis.AnalyzeHelperMethodGroup(methodReference, helperCache, context.CancellationToken);
+        if (match != null)
+            ReportHelperCall(context, methodReference.Syntax, match);
+    }
+
+    private static void ReportHelperCall(OperationAnalysisContext context, SyntaxNode syntax, NPlusOneHelperCallMatch match)
+    {
         var properties = ImmutableDictionary.CreateBuilder<string, string?>();
         properties[NPlusOneLooperDiagnosticProperties.PatternKind] = NPlusOneLooperDiagnosticProperties.HelperCall;
         properties[NPlusOneLooperDiagnosticProperties.MethodName] = match.QueryMethodName;
@@ -31,13 +42,13 @@ public sealed partial class NPlusOneLooperAnalyzer
             match.OperatorName == null
                 ? Diagnostic.Create(
                     HelperCallRule,
-                    invocation.Syntax.GetLocation(),
+                    syntax.GetLocation(),
                     properties.ToImmutable(),
                     match.HelperName,
                     match.QueryMethodName)
                 : Diagnostic.Create(
                     PerElementLambdaHelperCallRule,
-                    invocation.Syntax.GetLocation(),
+                    syntax.GetLocation(),
                     properties.ToImmutable(),
                     match.HelperName,
                     match.QueryMethodName,

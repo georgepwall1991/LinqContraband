@@ -78,11 +78,11 @@ public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
         helpLinkUri: HelpLinkUri);
 
     private static readonly LocalizableString PerElementLambdaHelperCallMessageFormat =
-        "'{0}' runs '{1}' once per element inside the lambda passed to '{2}', causing N+1 database operations. Fetch data in bulk or eager load before iterating.";
+        "'{0}' runs '{1}' for every element '{2}' processes, causing N+1 database operations. Fetch data in bulk or eager load before iterating.";
 
     /// <summary>
-    /// <see cref="HelperCallRule"/> for a helper called from a per-element lambda
-    /// (<c>ids.Select(id => Load(id))</c>). It shares LC007's ID and stays out of <see cref="SupportedDiagnostics"/>.
+    /// <see cref="HelperCallRule"/> for a helper called from a per-element lambda, or passed to the operator as a
+    /// method group (<c>ids.Select(id => Load(id))</c>, <c>ids.Select(Load)</c>). It shares LC007's ID and stays out of <see cref="SupportedDiagnostics"/>.
     /// </summary>
     public static readonly DiagnosticDescriptor PerElementLambdaHelperCallRule = new(
         DiagnosticId,
@@ -106,6 +106,9 @@ public sealed partial class NPlusOneLooperAnalyzer : DiagnosticAnalyzer
             compilationContext.RegisterOperationAction(
                 operationContext => AnalyzeInvocation(operationContext, helperCache),
                 OperationKind.Invocation);
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeMethodReference(operationContext, helperCache),
+                OperationKind.MethodReference);
         });
     }
 
