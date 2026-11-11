@@ -52,7 +52,8 @@ namespace Microsoft.EntityFrameworkCore
         public Type ElementType => typeof(T);
         public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
         public IQueryProvider Provider => null;
-        public IEnumerator<T> GetEnumerator() => null;
+        // Explicit, as in EF Core: `foreach` over a DbSet goes through a conversion to IEnumerable<T>.
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
 
@@ -665,6 +666,58 @@ class Program
 " + MockNamespace;
 
         await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Customer", "Order"));
+    }
+
+    // EF Core's DbSet<T> implements GetEnumerator explicitly, so each of these loops reaches the set
+    // through a conversion to IEnumerable<T>. The conversion runs nothing: the loop enumerates the query.
+    [Theory]
+    [InlineData("db.Orders")]
+    [InlineData("db.Set<Order>()")]
+    [InlineData("(IEnumerable<Order>)db.Orders")]
+    [InlineData("(IEnumerable<Order>)db.Orders.Where(order => order.Id > 0)")]
+    public async Task TestCrime_ForeachOverDbSetThroughEnumerableConversion_TriggersDiagnostic(string source)
+    {
+        var test = Usings + @"
+class Program
+{
+    int Main()
+    {
+        var db = new MyDbContext();
+        var items = 0;
+        foreach (var order in " + source + @")
+            items += {|#0:order.Items|}.Count;
+
+        return items;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test, Diagnostic(0, "Items", "Order"));
+    }
+
+    [Theory]
+    [InlineData("db.Orders.Include(order => order.Items)")]
+    [InlineData("(IEnumerable<Order>)db.Orders.Include(order => order.Items)")]
+    // Not a conversion: an in-memory list is not a query.
+    [InlineData("(IEnumerable<Order>)new List<Order>()")]
+    public async Task TestInnocent_ForeachOverEnumerableConversion_WithIncludeOrWithoutQuery_NoDiagnostic(string source)
+    {
+        var test = Usings + @"
+class Program
+{
+    int Main()
+    {
+        var db = new MyDbContext();
+        var items = 0;
+        foreach (var order in " + source + @")
+            items += order.Items.Count;
+
+        return items;
+    }
+}
+" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
     [Fact]

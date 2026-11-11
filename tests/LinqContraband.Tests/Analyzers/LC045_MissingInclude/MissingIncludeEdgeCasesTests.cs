@@ -115,7 +115,8 @@ namespace Microsoft.EntityFrameworkCore
         public Type ElementType => typeof(T);
         public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
         public IQueryProvider Provider => null;
-        public IEnumerator<T> GetEnumerator() => null;
+        // Explicit, as in EF Core: `foreach` over a DbSet goes through a conversion to IEnumerable<T>.
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
 
