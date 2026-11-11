@@ -11,15 +11,21 @@ public static partial class AnalysisExtensions
     /// The loop's body runs at most once, so work inside it is not repeated per item:
     /// <list type="bullet">
     /// <item>a <c>foreach</c> over a LanguageExt <c>Option&lt;T&gt;</c>, which holds zero or one value
-    /// (<c>foreach (var user in maybeUser) { ... }</c> is that library's idiom for "if present");</item>
+    /// (<c>foreach (var user in maybeUser) { ... }</c> is that library's idiom for "if present"), or over the
+    /// sequence form of an <c>Option&lt;T&gt;</c> or <c>Either&lt;L, R&gt;</c>
+    /// (<c>foreach (var list in maybeList.RightToSeq()) { ... }</c>), which holds the same zero or one value;</item>
     /// <item>a loop whose body ends in a top-level <c>return</c>, <c>throw</c>, <c>break</c> or <c>yield break</c>
     /// and contains no <c>continue</c> or <c>goto</c> that could start another pass.</item>
     /// </list>
     /// </summary>
     public static bool RunsAtMostOnce(this ILoopOperation loop)
     {
-        if (loop is IForEachLoopOperation forEach && IsZeroOrOneValueContainer(forEach.Collection.UnwrapConversions().Type))
-            return true;
+        if (loop is IForEachLoopOperation forEach)
+        {
+            var collection = forEach.Collection.UnwrapConversions();
+            if (IsZeroOrOneValueContainer(collection.Type) || IsZeroOrOneValueSequence(collection))
+                return true;
+        }
 
         var body = loop.Syntax switch
         {
@@ -204,5 +210,25 @@ public static partial class AnalysisExtensions
     {
         return type is INamedTypeSymbol { Arity: 1, Name: "Option" or "OptionUnsafe" } named &&
                named.ContainingNamespace is { Name: "LanguageExt", ContainingNamespace.IsGlobalNamespace: true };
+    }
+
+    /// <summary>
+    /// <c>option.ToSeq()</c>, <c>either.RightToSeq()</c> and their list, array and enumerable forms: the zero or one
+    /// value of a LanguageExt <c>Option&lt;T&gt;</c> or <c>Either&lt;L, R&gt;</c> as a sequence.
+    /// </summary>
+    private static bool IsZeroOrOneValueSequence(IOperation collection)
+    {
+        if (collection is not IInvocationOperation { Instance: { } receiver, Arguments.Length: 0 } invocation)
+            return false;
+
+        var receiverType = receiver.UnwrapConversions().Type;
+        if (IsZeroOrOneValueContainer(receiverType))
+            return invocation.TargetMethod.Name is "ToSeq" or "ToList" or "ToArray" or "AsEnumerable";
+
+        return receiverType is INamedTypeSymbol { Arity: 2, Name: "Either" or "EitherUnsafe" } named &&
+               named.ContainingNamespace is { Name: "LanguageExt", ContainingNamespace.IsGlobalNamespace: true } &&
+               invocation.TargetMethod.Name is "RightToSeq" or "LeftToSeq" or "RightToList" or "LeftToList" or
+                   "RightToArray" or "LeftToArray" or "RightAsEnumerable" or "LeftAsEnumerable" or
+                   "ToSeq" or "ToList" or "ToArray" or "AsEnumerable";
     }
 }
