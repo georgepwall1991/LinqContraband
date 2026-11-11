@@ -200,4 +200,86 @@ namespace System.Threading
         }")]
     public Task PerItemLoop_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(LoopProgram(body));
+
+    private static string ReturningLoopProgram(string body) => Usings + @"
+class Program
+{
+    async Task<int> Run(MyDbContext db, int[] ids)
+    {
+        " + body + @"
+    }
+}
+" + MockNamespace;
+
+    [Theory]
+    // The query is the value the attempt returns, so a success leaves the method.
+    [InlineData(@"for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return db.Users.Count();
+            }
+            catch (InvalidOperationException) when (attempt < 3)
+            {
+            }
+        }")]
+    [InlineData(@"while (true)
+        {
+            try
+            {
+                return (await db.Users.ToListAsync()).Count;
+            }
+            catch (TimeoutException)
+            {
+                await Task.Yield();
+            }
+        }")]
+    // The return sits deeper in the try than its first level.
+    [InlineData(@"var attempt = 0;
+        do
+        {
+            try
+            {
+                if (attempt >= 0)
+                {
+                    return db.Users.Count();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+        while (++attempt < 3);
+        return -1;")]
+    public Task RetryLoopThatReturnsTheQuery_IsQuiet(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(ReturningLoopProgram(body));
+
+    [Theory]
+    // A foreach walks items: a lookup that throws moves on to the next one.
+    [InlineData(@"foreach (var id in ids)
+        {
+            try
+            {
+                return {|LC007:db.Users.Count(u => u.Id == id)|};
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+        return 0;")]
+    // The count is added up per item: nothing leaves the loop after a success.
+    [InlineData(@"var total = 0;
+        for (var i = 0; i < ids.Length; i++)
+        {
+            try
+            {
+                total += {|LC007:db.Users.Count(u => u.Id == ids[i])|};
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+        return total;")]
+    public Task LoopWithCatchThatIsNotARetry_StillReports(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(ReturningLoopProgram(body));
 }

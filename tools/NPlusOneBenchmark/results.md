@@ -9,7 +9,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
 | Recall on proven N+1 cases | 104 | 87 | 83.7% |
-| False positives on proven safe cases | 49 | 9 | 18.4% |
+| False positives on proven safe cases | 49 | 8 | 16.3% |
 
 ## Recall by kind
 
@@ -37,7 +37,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 ## False positives
 
 - S09_FirstMatchThenBreak (Query, Direct): LC007
-- S10_RetryLoop (Query, Direct): LC007
 - S13_MemoizedLookupOverFixedTable (Query, Direct): LC007
 - S14_FindOnAlreadyTrackedEntities (Query, Direct): LC007
 - S17_LazyReadOnSingleEntity (LazyLoad, Direct): LC045
@@ -166,7 +165,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S07_AddRangeSaveOnce | Save | Direct | 2 → 2 | safe |  |
 | S08_ForeachOverQuery | Query | Direct | 1 → 1 | safe |  |
 | S09_FirstMatchThenBreak | Query | Direct | 1 → 1 | safe | LC007 |
-| S10_RetryLoop | Query | Direct | 1 → 1 | safe | LC007 |
+| S10_RetryLoop | Query | Direct | 1 → 1 | safe |  |
 | S11_PagingLoop | Query | Direct | 1 → 1 | safe |  |
 | S12_ChunkedBatches | Query | Direct | 2 → 2 | safe |  |
 | S13_MemoizedLookupOverFixedTable | Query | Direct | 4 → 4 | safe | LC007 |

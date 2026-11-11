@@ -2892,6 +2892,86 @@ class Program
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
 
+    [Theory]
+    [InlineData(@"for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return db.SaveChanges();
+            }
+            catch (Exception) when (attempt < 3)
+            {
+            }
+        }")]
+    [InlineData(@"while (true)
+        {
+            try
+            {
+                return await db.SaveChangesAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                await Task.Yield();
+            }
+        }")]
+    [InlineData(@"var attempt = 0;
+        do
+        {
+            try
+            {
+                if (attempt >= 0)
+                {
+                    return db.SaveChanges();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+        while (++attempt < 3);
+        return -1;")]
+    public async Task TestInnocent_RetryLoopThatReturnsTheSave_ShouldNotTrigger(string body)
+    {
+        // The save is the value the attempt returns, so a success leaves the method.
+        var test = Usings + @"
+class Program
+{
+    async Task<int> Main(MyDbContext db)
+    {
+        " + body + @"
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TestCrime_SaveInsideTryCatchWithoutASuccessExit_ShouldTriggerLC010()
+    {
+        // A catch alone is not a retry: nothing leaves the loop after the save succeeds.
+        var test = Usings + @"
+class Program
+{
+    int Main(MyDbContext db, List<int> items)
+    {
+        foreach (var item in items)
+        {
+            try
+            {
+                {|LC010:db.SaveChanges()|};
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        return 0;
+    }
+}" + MockNamespace;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
     [Fact]
     public async Task TestInnocent_SaveChangesInsideRetryLoopWithBreakAfterSuccess_ShouldNotTrigger()
     {

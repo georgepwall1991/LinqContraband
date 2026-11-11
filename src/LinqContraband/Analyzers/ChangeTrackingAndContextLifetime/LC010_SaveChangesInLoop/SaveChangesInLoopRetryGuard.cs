@@ -69,6 +69,9 @@ public sealed partial class SaveChangesInLoopAnalyzer
         InvocationExpressionSyntax invocationSyntax,
         SyntaxNode loopSyntax)
     {
+        if (IsReturnedValue(tryBlock, invocationSyntax))
+            return RetrySuccessExitKind.Return;
+
         var containingStatement = invocationSyntax
             .AncestorsAndSelf()
             .OfType<StatementSyntax>()
@@ -94,6 +97,27 @@ public sealed partial class SaveChangesInLoopAnalyzer
         }
 
         return RetrySuccessExitKind.None;
+    }
+
+    /// <summary>
+    /// The save is the value the attempt returns (<c>return db.SaveChanges();</c>), so a success leaves the
+    /// method. A save inside a lambda or local function runs wherever that is called, not at the return.
+    /// </summary>
+    private static bool IsReturnedValue(BlockSyntax tryBlock, InvocationExpressionSyntax invocationSyntax)
+    {
+        foreach (var ancestor in invocationSyntax.Ancestors())
+        {
+            if (ancestor == tryBlock ||
+                ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
+            {
+                return false;
+            }
+
+            if (ancestor is StatementSyntax)
+                return ancestor is ReturnStatementSyntax;
+        }
+
+        return false;
     }
 
     private static bool BreakTargetsLoop(BreakStatementSyntax breakStatement, SyntaxNode loopSyntax)
