@@ -16,9 +16,13 @@ public sealed partial class MissingIncludeAnalyzer
             INamedTypeSymbol entityType,
             INamedTypeSymbol contextType,
             HashSet<string> includedPrefixes,
-            bool ignoresAutoIncludes
+            bool ignoresAutoIncludes,
+            ISymbol? contextInstance,
+            bool isNoTracking
         )
         {
+            ContextInstance = contextInstance;
+            IsNoTracking = isNoTracking;
             QuerySource = querySource;
             EntityType = entityType;
             ContextType = contextType;
@@ -31,6 +35,15 @@ public sealed partial class MissingIncludeAnalyzer
         public INamedTypeSymbol ContextType { get; }
         public HashSet<string> IncludedPrefixes { get; }
         public bool IgnoresAutoIncludes { get; }
+
+        /// <summary>
+        /// The local, parameter, field or property that holds the context the query runs on, or the
+        /// context type itself for a query written inside the context. Null when it is anything else.
+        /// </summary>
+        public ISymbol? ContextInstance { get; }
+
+        /// <summary>The chain opts out of tracking, so the change tracker does not fix its entities up.</summary>
+        public bool IsNoTracking { get; }
     }
 
     private static bool TryAnalyzeQueryChain(
@@ -98,6 +111,7 @@ public sealed partial class MissingIncludeAnalyzer
         var semanticModel = querySource.SemanticModel;
         IncludePath? currentIncludePath = null;
         var ignoresAutoIncludes = false;
+        var isNoTracking = false;
 
         // Root-first order so each ThenInclude sees the Include path it extends.
         if (chain != null)
@@ -108,6 +122,12 @@ public sealed partial class MissingIncludeAnalyzer
                 var methodName = invocation.TargetMethod.Name;
                 if (methodName == "IgnoreAutoIncludes")
                     ignoresAutoIncludes = true;
+
+                // The last one in the chain decides.
+                if (methodName is "AsNoTracking" or "AsNoTrackingWithIdentityResolution")
+                    isNoTracking = true;
+                else if (methodName == "AsTracking")
+                    isNoTracking = false;
 
                 if (methodName != "Include" && methodName != "ThenInclude")
                     continue;
@@ -137,7 +157,9 @@ public sealed partial class MissingIncludeAnalyzer
             entityType,
             contextType,
             includedPrefixes,
-            ignoresAutoIncludes
+            ignoresAutoIncludes,
+            GetContextInstance(current),
+            isNoTracking
         );
         return true;
     }

@@ -46,6 +46,8 @@ namespace Microsoft.EntityFrameworkCore
         public void Dispose() { }
         public int SaveChanges() => 0;
         public EntityEntry<T> Entry<T>(T entity) where T : class => null;
+        public DbSet<T> Set<T>() where T : class => null;
+        public ChangeTracking.ChangeTracker ChangeTracker => null;
     }
 
     public class ModelBuilder
@@ -142,6 +144,10 @@ namespace Microsoft.EntityFrameworkCore
             System.Linq.Expressions.Expression<Func<TPreviousProperty, TProperty>> navigationPropertyPath)
             => null;
 
+        public static void Load<T>(this IQueryable<T> source) { }
+        public static Task LoadAsync<T>(
+            this IQueryable<T> source,
+            System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
         public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsTracking<T>(this IQueryable<T> source) => source;
         public static IQueryable<T> AsSplitQuery<T>(this IQueryable<T> source) => source;
@@ -184,6 +190,11 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
 {
     using System.Threading;
     using System.Threading.Tasks;
+
+    public class ChangeTracker
+    {
+        public void Clear() { }
+    }
 
     public class ReferenceEntry<TEntity, TProperty> where TEntity : class
     {

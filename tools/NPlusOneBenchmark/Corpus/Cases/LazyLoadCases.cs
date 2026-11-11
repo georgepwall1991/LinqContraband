@@ -278,3 +278,22 @@ public static class L20_IncludeCoversOnlyFirstLevel
         return value;
     }
 }
+
+/// <summary>
+/// The other direction of S36. Loading every order first fills <c>customer.Orders</c> by fix-up, but
+/// EF Core does not mark a collection loaded that way, so the proxy still queries once per customer.
+/// </summary>
+[NPlusOne(Kind.LazyLoad, Via.Direct)]
+public static class L21_DependentsPreloadedCollectionRead
+{
+    public static int Run(LazyShopDb db)
+    {
+        db.Orders.Load();
+
+        var total = 0;
+        foreach (var customer in db.Customers.ToList())
+            total += customer.Orders.Count;
+
+        return total;
+    }
+}

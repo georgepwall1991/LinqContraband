@@ -8,22 +8,22 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 87 | 83.7% |
-| False positives on proven safe cases | 49 | 7 | 14.3% |
+| Recall on proven N+1 cases | 105 | 88 | 83.8% |
+| False positives on proven safe cases | 49 | 5 | 10.2% |
 
 ## Recall by kind
 
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
 | Query | 67 | 54 | 80.6% |
-| LazyLoad | 20 | 19 | 95.0% |
+| LazyLoad | 21 | 20 | 95.2% |
 | Save | 17 | 14 | 82.4% |
 
 ## Recall by how the database call is reached
 
 | Reached through | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Direct | 37 | 35 | 94.6% |
+| Direct | 38 | 36 | 94.7% |
 | Lambda | 20 | 20 | 100.0% |
 | Helper | 13 | 12 | 92.3% |
 | QueryableHelper | 6 | 5 | 83.3% |
@@ -41,8 +41,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - S14_FindOnAlreadyTrackedEntities (Query, Direct): LC007
 - S17_LazyReadOnSingleEntity (LazyLoad, Direct): LC045
 - S24_LoopOverEnumValues (Query, Direct): LC007
-- S26_NavigationFixedUpBySecondQuery (LazyLoad, Direct): LC045
-- S36_LazyContextPrincipalsPreloaded (LazyLoad, Direct): LC045
 
 ## Missed N+1 cases
 
@@ -88,6 +86,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | L18_NestedLoopOverLazyCollection | LazyLoad | Direct | 3 → 4 | N+1 | LC045 |
 | L19_AnonymousProjectionOverList | LazyLoad | Lambda | 6 → 9 | N+1 | LC045 |
 | L20_IncludeCoversOnlyFirstLevel | LazyLoad | Direct | 6 → 9 | N+1 | LC045 |
+| L21_DependentsPreloadedCollectionRead | LazyLoad | Direct | 5 → 8 | N+1 | LC045 |
 | Q01_ForeachFirstById | Query | Direct | 4 → 7 | N+1 | LC007 |
 | Q02_ForeachChildListPerParent | Query | Direct | 4 → 7 | N+1 | LC007 |
 | Q03_ForLoopCount | Query | Direct | 4 → 7 | N+1 | LC007 |
@@ -180,7 +179,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S23_PeriodicFlush | Save | Direct | 2 → 2 | safe |  |
 | S24_LoopOverEnumValues | Query | Direct | 3 → 3 | safe | LC007 |
 | S25_ExplicitLoadOnSingleEntity | Query | Direct | 2 → 2 | safe |  |
-| S26_NavigationFixedUpBySecondQuery | LazyLoad | Direct | 2 → 2 | safe | LC045 |
+| S26_NavigationFixedUpBySecondQuery | LazyLoad | Direct | 2 → 2 | safe |  |
 | S27_SetBasedExecuteUpdate | Save | Direct | 1 → 1 | safe |  |
 | S28_ComposeInLoopExecuteOnce | Query | Direct | 1 → 1 | safe |  |
 | S29_InterfaceCallOutsideLoop | Query | Interface | 1 → 1 | safe |  |
@@ -190,7 +189,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S33_LoadOnceInsideLoop | Query | Direct | 2 → 2 | safe |  |
 | S34_ReturnOnFirstIteration | Query | Direct | 2 → 2 | safe |  |
 | S35_LazyContextScalarOnly | LazyLoad | Direct | 1 → 1 | safe |  |
-| S36_LazyContextPrincipalsPreloaded | LazyLoad | Direct | 2 → 2 | safe | LC045 |
+| S36_LazyContextPrincipalsPreloaded | LazyLoad | Direct | 2 → 2 | safe |  |
 | S37_ExternalRepositoryCalledOnce | Query | CrossProject | 1 → 1 | safe |  |
 | S38_PureHelperInLoop | Query | Helper | 1 → 1 | safe |  |
 | S39_EntityPassedToHelperAfterInclude | LazyLoad | CrossMethod | 1 → 1 | safe |  |
