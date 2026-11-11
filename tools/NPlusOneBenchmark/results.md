@@ -8,7 +8,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 85 | 81.7% |
+| Recall on proven N+1 cases | 104 | 86 | 82.7% |
 | False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
@@ -16,7 +16,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
 | Query | 67 | 54 | 80.6% |
-| LazyLoad | 20 | 17 | 85.0% |
+| LazyLoad | 20 | 18 | 90.0% |
 | Save | 17 | 14 | 82.4% |
 
 ## Recall by how the database call is reached
@@ -31,7 +31,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Virtual | 3 | 3 | 100.0% |
 | Delegate | 3 | 0 | 0.0% |
 | Mediator | 3 | 0 | 0.0% |
-| CrossMethod | 5 | 2 | 40.0% |
+| CrossMethod | 5 | 3 | 60.0% |
 | CrossProject | 5 | 0 | 0.0% |
 
 ## False positives
@@ -49,7 +49,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 ## Missed N+1 cases
 
 - L07_EntityMemberReadsNavigation (LazyLoad, CrossMethod)
-- L09_MapperMethodGroup (LazyLoad, CrossMethod)
 - L15_EntitiesReturnedByRepository (LazyLoad, CrossMethod)
 - Q13_CompiledQueryPerElement (Query, Direct)
 - Q44_HelperChainFourDeep (Query, Helper)
@@ -80,7 +79,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | L06_EntityPassedToHelper | LazyLoad | CrossMethod | 4 → 7 | N+1 | LC045 |
 | L07_EntityMemberReadsNavigation | LazyLoad | CrossMethod | 4 → 7 | N+1 |  |
 | L08_TwoLevelReferenceChain | LazyLoad | Direct | 7 → 10 | N+1 | LC045 |
-| L09_MapperMethodGroup | LazyLoad | CrossMethod | 4 → 7 | N+1 |  |
+| L09_MapperMethodGroup | LazyLoad | CrossMethod | 4 → 7 | N+1 | LC045 |
 | L10_NavigationInCondition | LazyLoad | Direct | 4 → 7 | N+1 | LC045 |
 | L11_AsyncMaterializeThenLoop | LazyLoad | Direct | 6 → 9 | N+1 | LC045 |
 | L12_ForLoopIndexer | LazyLoad | Direct | 4 → 7 | N+1 | LC045 |

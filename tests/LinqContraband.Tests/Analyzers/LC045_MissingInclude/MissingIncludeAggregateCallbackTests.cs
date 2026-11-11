@@ -181,10 +181,11 @@ public partial class MissingIncludeEdgeCasesTests
     }
 
     [Fact]
-    public async Task TestInnocent_MethodGroupCallbackIsNotInline_StaysQuiet()
+    public async Task TestInnocent_MethodGroupCallbackWithAReplaceableBody_StaysQuiet()
     {
-        // Only an inline lambda can be proved effect-free; a method group could load the
-        // navigation itself, so it stays a boundary.
+        // A method group is analysed only when its body is certain to be the one that runs (a
+        // private method in this file or a local function). An overridable method could load
+        // the navigation itself, so it stays a boundary.
         await VerifyOriginFlowAsync(
             @"
     void Main()
@@ -194,7 +195,7 @@ public partial class MissingIncludeEdgeCasesTests
         var count = orders.Count(HasCustomer);
     }
 
-    bool HasCustomer(Order order) => order.Customer != null;
+    protected virtual bool HasCustomer(Order order) => order.Customer != null;
 "
         );
     }

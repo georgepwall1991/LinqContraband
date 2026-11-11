@@ -69,23 +69,13 @@ public sealed partial class MissingIncludeAnalyzer
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (
-                    operation is not IInvocationOperation invocation
-                    || !TryGetSupportedCollectionCallback(
+                    operation is IInvocationOperation invocation
+                    && TryCollectCollectionCallbackAccesses(
+                        executableRoot,
                         invocation,
                         materializer,
                         resultLocal,
-                        out var callback
-                    )
-                )
-                {
-                    continue;
-                }
-
-                if (
-                    TryCollectOriginAwareNavigationAccesses(
-                        executableRoot,
-                        callback,
-                        callback.Symbol.Parameters[0],
+                        requireActiveCollection: false,
                         entityType,
                         entityTypes,
                         flowCache,
@@ -126,32 +116,12 @@ public sealed partial class MissingIncludeAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             if (
                 operation is not IInvocationOperation invocation
-                || !TryGetSupportedCollectionCallback(
+                || !TryCollectCollectionCallbackAccesses(
+                    executableRoot,
                     invocation,
                     materializer,
                     resultLocal,
-                    out var callback
-                )
-                || !IsMaterializedCollectionActiveAtInvocation(
-                    executableRoot,
-                    materializer,
-                    resultLocal,
-                    entityType,
-                    entityTypes,
-                    invocation,
-                    flowCache,
-                    cancellationToken
-                )
-            )
-            {
-                continue;
-            }
-
-            if (
-                TryCollectOriginAwareNavigationAccesses(
-                    executableRoot,
-                    callback,
-                    callback.Symbol.Parameters[0],
+                    requireActiveCollection: true,
                     entityType,
                     entityTypes,
                     flowCache,
@@ -160,28 +130,112 @@ public sealed partial class MissingIncludeAnalyzer
                 )
             )
             {
-                // The callback ran in its own graph, so a fix-up loop that already wrote the
-                // navigation on every element has to be applied to its reads from out here.
-                var satisfied = GetCollectionSatisfiedPathsAtInvocation(
-                    executableRoot,
-                    materializer,
-                    resultLocal,
-                    entityType,
-                    entityTypes,
-                    invocation,
-                    flowCache,
-                    cancellationToken
-                );
+                continue;
+            }
 
-                foreach (var callbackAccess in callbackAccesses)
-                {
-                    if (!IsCoveredByCollectionWrite(callbackAccess, satisfied))
-                        accesses.Add(callbackAccess);
-                }
+            // The callback ran in its own graph, so a fix-up loop that already wrote the
+            // navigation on every element has to be applied to its reads from out here.
+            var satisfied = GetCollectionSatisfiedPathsAtInvocation(
+                executableRoot,
+                materializer,
+                resultLocal,
+                entityType,
+                entityTypes,
+                invocation,
+                flowCache,
+                cancellationToken
+            );
+
+            foreach (var callbackAccess in callbackAccesses)
+            {
+                if (!IsCoveredByCollectionWrite(callbackAccess, satisfied))
+                    accesses.Add(callbackAccess);
             }
         }
 
         return accesses;
+    }
+
+    /// <summary>
+    /// The navigation reads the callback of a per-element operator over the materialized
+    /// collection performs on its element. The callback is a lambda, or a method group whose body
+    /// is certain (see <see cref="TryGetMethodGroupCallback"/>).
+    /// </summary>
+    private static bool TryCollectCollectionCallbackAccesses(
+        IOperation executableRoot,
+        IInvocationOperation invocation,
+        IInvocationOperation materializer,
+        ILocalSymbol? resultLocal,
+        bool requireActiveCollection,
+        INamedTypeSymbol entityType,
+        HashSet<INamedTypeSymbol> entityTypes,
+        MissingIncludeFlowCache flowCache,
+        CancellationToken cancellationToken,
+        out List<NavigationAccess> accesses
+    )
+    {
+        accesses = null!;
+        MethodGroupCallback methodGroup = default;
+        if (
+            !TryGetSupportedCollectionCallback(
+                invocation,
+                materializer,
+                resultLocal,
+                out var lambda
+            )
+            && !TryGetMethodGroupCallback(
+                invocation,
+                materializer,
+                resultLocal,
+                executableRoot,
+                entityType,
+                flowCache,
+                cancellationToken,
+                out methodGroup
+            )
+        )
+        {
+            return false;
+        }
+
+        if (
+            requireActiveCollection
+            && !IsMaterializedCollectionActiveAtInvocation(
+                executableRoot,
+                materializer,
+                resultLocal!,
+                entityType,
+                entityTypes,
+                invocation,
+                flowCache,
+                cancellationToken
+            )
+        )
+        {
+            return false;
+        }
+
+        return lambda != null
+            ? TryCollectOriginAwareNavigationAccesses(
+                executableRoot,
+                lambda,
+                lambda.Symbol.Parameters[0],
+                entityType,
+                entityTypes,
+                flowCache,
+                cancellationToken,
+                out accesses
+            )
+            : TryCollectOriginAwareNavigationAccesses(
+                executableRoot,
+                methodGroup,
+                invocation.SemanticModel,
+                entityType,
+                entityTypes,
+                flowCache,
+                cancellationToken,
+                out accesses
+            );
     }
 
     private static bool IsCoveredByCollectionWrite(
