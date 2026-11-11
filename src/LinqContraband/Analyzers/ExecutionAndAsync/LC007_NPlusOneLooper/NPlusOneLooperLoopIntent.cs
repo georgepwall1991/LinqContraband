@@ -501,7 +501,9 @@ internal static partial class NPlusOneLooperAnalysis
     }
 
     /// <summary>
-    /// The execution sits in a <c>try</c> with a <c>catch</c>, and the <c>try</c> leaves the loop after it succeeds.
+    /// The execution sits in a <c>try</c> with a <c>catch</c>, and the <c>try</c> leaves the loop after it succeeds:
+    /// a <c>break</c> or <c>return</c> follows it, or it is the value a <c>return</c> hands back
+    /// (<c>return db.Orders.Count();</c>).
     /// </summary>
     private static bool IsCatchGuardedRetryAttempt(IInvocationOperation invocation, ILoopOperation loop)
     {
@@ -512,7 +514,11 @@ internal static partial class NPlusOneLooperAnalysis
             {
                 var statement = (IOperation)invocation;
                 while (statement.Parent != null && statement.Parent != tryOperation.Body)
+                {
                     statement = statement.Parent;
+                    if (statement is IReturnOperation)
+                        return true;
+                }
 
                 var statements = tryOperation.Body.Operations;
                 var index = statements.IndexOf(statement);

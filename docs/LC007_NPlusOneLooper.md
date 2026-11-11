@@ -192,7 +192,7 @@ A `while`, `do` or `for` loop counts as one of these when:
 - the query result decides when the loop stops: the execution sits in the loop condition, or its result (or a local computed from it, such as `hasMore = batch.Count == size`) is read by the condition or by an `if` that breaks out of the loop or returns;
 - the loop condition itself queries the database (`while (await db.Jobs.AnyAsync(...))`);
 - the loop body waits with `Task.Delay` or `Thread.Sleep`, or the condition waits on `PeriodicTimer.WaitForNextTickAsync`; or
-- the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds; or
+- the execution sits in a `try` with a `catch`, and the `try` breaks out of the loop or returns after it succeeds, or returns the query's result directly (`try { return await db.Orders.CountAsync(ct); } catch (TimeoutException) when (attempt < 3) { }`); or
 - the query pages by a counter the loop advances: its `Skip(...)` reads the counter (`Skip(page * size)`, or an `offset` the body increases) and its `Take(...)` reads more than one row; or
 - the loop is a batch drain loop (`while` or `do` only): another query in the same iteration is bounded by `Take(n)` with `n` other than 0 or 1, and its result ends the loop as in the first point, such as the row count an `ExecuteDelete` returns or the length, count or emptiness of the materialized batch. Every query in that iteration, including the delete or update that works on the batch, then runs once per batch.
 
