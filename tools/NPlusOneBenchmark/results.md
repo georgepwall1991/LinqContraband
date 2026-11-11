@@ -8,14 +8,14 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 83 | 79.8% |
+| Recall on proven N+1 cases | 104 | 84 | 80.8% |
 | False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
 
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Query | 67 | 53 | 79.1% |
+| Query | 67 | 54 | 80.6% |
 | LazyLoad | 20 | 16 | 80.0% |
 | Save | 17 | 14 | 82.4% |
 
@@ -25,7 +25,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | --- | ---: | ---: | ---: |
 | Direct | 37 | 34 | 91.9% |
 | Lambda | 20 | 20 | 100.0% |
-| Helper | 13 | 11 | 84.6% |
+| Helper | 13 | 12 | 92.3% |
 | QueryableHelper | 6 | 5 | 83.3% |
 | Interface | 9 | 8 | 88.9% |
 | Virtual | 3 | 3 | 100.0% |
@@ -54,7 +54,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - L17_StreamedQueryLoop (LazyLoad, Direct)
 - Q13_CompiledQueryPerElement (Query, Direct)
 - Q44_HelperChainFourDeep (Query, Helper)
-- Q48_MethodGroupInSelect (Query, Helper)
 - Q53_QueryableParameter (Query, QueryableHelper)
 - Q66_InterfaceWithDisagreeingImplementations (Query, Interface)
 - Q75_LocalFuncDelegate (Query, Delegate)
@@ -133,7 +132,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Q45_ConcreteRepository | Query | Helper | 4 → 7 | N+1 | LC007 |
 | Q46_SealedRepository | Query | Helper | 7 → 13 | N+1 | LC007 |
 | Q47_AsyncHelper | Query | Helper | 4 → 7 | N+1 | LC007 |
-| Q48_MethodGroupInSelect | Query | Helper | 7 → 13 | N+1 |  |
+| Q48_MethodGroupInSelect | Query | Helper | 7 → 13 | N+1 | LC007 |
 | Q49_LoopInsideHelperCalledOnce | Query | Direct | 4 → 7 | N+1 | LC007 |
 | Q50_StaticHelperInAnotherClass | Query | Helper | 7 → 13 | N+1 | LC007 |
 | Q51_HelperReturnsQueryable | Query | QueryableHelper | 4 → 7 | N+1 | LC007 |

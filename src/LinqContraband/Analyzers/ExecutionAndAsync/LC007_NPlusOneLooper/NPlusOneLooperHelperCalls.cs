@@ -69,6 +69,35 @@ internal static partial class NPlusOneLooperAnalysis
     }
 
     /// <summary>
+    /// A helper passed as a method group to a per-element operator (<c>ids.Select(repository.Load)</c>) runs once
+    /// per element, exactly like <c>ids.Select(id => repository.Load(id))</c>.
+    /// </summary>
+    public static NPlusOneHelperCallMatch? AnalyzeHelperMethodGroup(
+        IMethodReferenceOperation methodReference,
+        NPlusOneLooperHelperCache cache,
+        CancellationToken cancellationToken)
+    {
+        var perElementOperator = FindPerElementOperatorTakingDelegate(methodReference);
+        if (perElementOperator == null)
+            return null;
+
+        var targets = GetHelperTargets(
+            methodReference.Method,
+            methodReference.IsVirtual,
+            methodReference.Instance?.Type,
+            cache,
+            cancellationToken);
+        var queryMethodName = GetExecution(targets, MaxHelperDepth, caller: null, cache, cancellationToken);
+        return queryMethodName.Length == 0
+            ? null
+            : new NPlusOneHelperCallMatch(
+                methodReference.Method.Name,
+                queryMethodName,
+                NPlusOneLooperDiagnosticProperties.LambdaLoopKind,
+                perElementOperator.TargetMethod.Name);
+    }
+
+    /// <summary>
     /// The same loop walk as a direct execution, with one more exemption: a <c>while</c>, <c>do</c> or <c>for</c>
     /// whose condition runs a query, directly or through a helper, is a drain loop and runs once per batch.
     /// </summary>

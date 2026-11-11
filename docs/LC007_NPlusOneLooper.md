@@ -138,9 +138,11 @@ Parallel.ForEach(ids, id => Process(db.Customers.Find(id)));
 
 This covers the `System.Linq.Enumerable` and `ParallelEnumerable` operators that take a delegate (`Select`, `SelectMany`, `Where`, `Any`, `All`, `Count`, `First`, `Single`, `Last`, `Sum`, `Min`, `Max`, `Average`, `OrderBy`, `ThenBy`, `GroupBy`, `ToDictionary`, `ToLookup`, `TakeWhile`, `SkipWhile`, `Zip`, the accumulator of `Aggregate`, and their variants, including query syntax over an in-memory collection), `List<T>` and `Array` methods such as `ForEach`, `ConvertAll`, `Find`, `FindAll`, `Exists` and `RemoveAll`, and the body of `Parallel.ForEach`, `Parallel.ForEachAsync` and `Parallel.For`.
 
+A helper passed as a method group is the same loop without the lambda, so it is reported on the method group: `ids.Select(LoadCustomer)`, `orderIds.Select(repository.CountLines)` and `Parallel.ForEach(ids, Refresh)`, through an interface or virtual method under the same rule as a call.
+
 LC007 stays quiet on a lambda when:
 - it is an expression tree, or sits inside one: `db.Customers.Where(c => db.Orders.Any(o => o.CustomerId == c.Id))` and `db.Customers.Where(c => ids.Any(id => db.Orders.Any(o => o.CustomerId == id)))` are one query each, because the provider translates the whole predicate;
-- the operator is not one of the above, even if it shares a name with one (an `Option<T>.Select`, a cache factory, `Task.Run`, `new Lazy<T>(...)`), or the lambda is only stored in a delegate variable;
+- the operator is not one of the above, even if it shares a name with one (an `Option<T>.Select`, a cache factory, `Task.Run`, `new Lazy<T>(...)`), or the lambda or method group is only stored in a delegate variable;
 - another lambda sits between the operator and the query, such as a cache factory inside a `Select`;
 - it is the result selector of `Aggregate`, which runs once;
 - the operator walks `Chunk(...)` batches (`ids.Chunk(500).Select(batch => db.Customers.Where(c => batch.Contains(c.Id)).ToList())`), which is one query per batch.

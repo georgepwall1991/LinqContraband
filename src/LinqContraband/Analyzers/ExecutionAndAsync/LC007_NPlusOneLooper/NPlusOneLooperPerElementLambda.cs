@@ -47,10 +47,16 @@ internal static partial class NPlusOneLooperAnalysis
                 return null;
         }
 
-        if (lambda == null)
-            return null;
+        return lambda == null ? null : FindPerElementOperatorTakingDelegate(lambda);
+    }
 
-        var passedAs = lambda.Parent;
+    /// <summary>
+    /// The in-memory operator call that takes <paramref name="delegateValue"/> (a lambda, or a method group such as
+    /// <c>ids.Select(repository.Load)</c>) as the delegate it runs once per element, or null.
+    /// </summary>
+    internal static IInvocationOperation? FindPerElementOperatorTakingDelegate(IOperation delegateValue)
+    {
+        var passedAs = delegateValue.Parent;
         while (passedAs is IDelegateCreationOperation or IConversionOperation)
             passedAs = passedAs.Parent;
 
