@@ -15,7 +15,7 @@ class Program
     {
         var users = new List<User>().AsQueryable();
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = users.Count(u => u.Id == id);
         }
@@ -36,7 +36,7 @@ class Program
     {
         var users = new List<User>();
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = users.AsEnumerable().Count(u => u.Id == id);
         }
@@ -55,7 +55,7 @@ class Program
 {
     void Main(IQueryable<User> query)
     {
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = query.Count(u => u.Id == id);
         }
@@ -76,7 +76,7 @@ class Program
 
     void Main()
     {
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = _db.AmbiguousUsers.Count(u => u.Id == id);
         }
@@ -99,7 +99,7 @@ class Program
         IQueryable<User> query = db.Users;
         query = db.Users.Where(u => u.Id > 10);
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var count = query.Count(u => u.Id == id);
         }
@@ -119,7 +119,7 @@ class Program
     void Main()
     {
         var db = new MyDbContext();
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var query = db.Users.Where(u => u.Id == id);
         }
@@ -141,7 +141,7 @@ class Program
         var db = new MyDbContext();
         var users = db.Users.ToList();
 
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             var single = users.Single(u => u.Id == id);
             var sum = users.Sum(u => u.Id);
@@ -183,7 +183,7 @@ class Program
     void Main()
     {
         var db = new MyDbContext();
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in Enumerable.Range(1, 3))
         {
             Func<int> countUsers = () => db.Users.Count(u => u.Id == id);
         }

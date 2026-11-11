@@ -64,6 +64,7 @@ internal static partial class NPlusOneLooperAnalysis
             parameter.Type.TypeKind != TypeKind.Delegate ||
             !IsPerElementOperator(call.TargetMethod.ReducedFrom ?? call.TargetMethod, parameter) ||
             IsOverChunkBatches(call) ||
+            GetSequenceSource(call)?.IsSequenceFixedInSource() == true ||
             IsInsideExpressionTree(call))
         {
             return null;

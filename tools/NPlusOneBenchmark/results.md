@@ -9,7 +9,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
 | Recall on proven N+1 cases | 105 | 88 | 83.8% |
-| False positives on proven safe cases | 49 | 5 | 10.2% |
+| False positives on proven safe cases | 49 | 3 | 6.1% |
 
 ## Recall by kind
 
@@ -36,11 +36,9 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 ## False positives
 
-- S09_FirstMatchThenBreak (Query, Direct): LC007
 - S13_MemoizedLookupOverFixedTable (Query, Direct): LC007
 - S14_FindOnAlreadyTrackedEntities (Query, Direct): LC007
 - S17_LazyReadOnSingleEntity (LazyLoad, Direct): LC045
-- S24_LoopOverEnumValues (Query, Direct): LC007
 
 ## Missed N+1 cases
 
@@ -162,7 +160,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S06_AddInLoopSaveOnce | Save | Direct | 2 → 2 | safe |  |
 | S07_AddRangeSaveOnce | Save | Direct | 2 → 2 | safe |  |
 | S08_ForeachOverQuery | Query | Direct | 1 → 1 | safe |  |
-| S09_FirstMatchThenBreak | Query | Direct | 1 → 1 | safe | LC007 |
+| S09_FirstMatchThenBreak | Query | Direct | 1 → 1 | safe |  |
 | S10_RetryLoop | Query | Direct | 1 → 1 | safe |  |
 | S11_PagingLoop | Query | Direct | 1 → 1 | safe |  |
 | S12_ChunkedBatches | Query | Direct | 2 → 2 | safe |  |
@@ -177,7 +175,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | S21_CorrelatedCountInProjection | Query | Lambda | 1 → 1 | safe |  |
 | S22_InterfaceBackedByPreloadedData | Query | Interface | 2 → 2 | safe |  |
 | S23_PeriodicFlush | Save | Direct | 2 → 2 | safe |  |
-| S24_LoopOverEnumValues | Query | Direct | 3 → 3 | safe | LC007 |
+| S24_LoopOverEnumValues | Query | Direct | 3 → 3 | safe |  |
 | S25_ExplicitLoadOnSingleEntity | Query | Direct | 2 → 2 | safe |  |
 | S26_NavigationFixedUpBySecondQuery | LazyLoad | Direct | 2 → 2 | safe |  |
 | S27_SetBasedExecuteUpdate | Save | Direct | 1 → 1 | safe |  |

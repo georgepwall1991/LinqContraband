@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -49,6 +50,87 @@ public static partial class AnalysisExtensions
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The loop walks a list whose length the source code fixes, so the work inside it does not grow with the
+    /// data: <c>foreach (var role in new[] { "Admin", "User" })</c> or
+    /// <c>foreach (var status in Enum.GetValues&lt;Status&gt;())</c>. See <see cref="IsSequenceFixedInSource"/>.
+    /// </summary>
+    public static bool IteratesItemsFixedInSource(this ILoopOperation loop, CancellationToken cancellationToken = default)
+    {
+        return loop is IForEachLoopOperation forEach && forEach.Collection.IsSequenceFixedInSource(cancellationToken);
+    }
+
+    /// <summary>
+    /// The sequence is written out where it is used: an array with an initializer (<c>new[] { a, b }</c>), a
+    /// collection built from added items alone (<c>new List&lt;int&gt; { 1, 2 }</c>, with no constructor argument or
+    /// member initializer that could carry data), or the values or names of an enum, also behind <c>Cast&lt;T&gt;()</c>. A local counts when
+    /// its one assignment in the method is such an array or enum call: an array cannot grow afterwards, a list can.
+    /// </summary>
+    public static bool IsSequenceFixedInSource(this IOperation sequence, CancellationToken cancellationToken = default)
+    {
+        var current = UnwrapEnumCast(sequence.UnwrapConversions());
+        if (IsInlineArrayOrEnumValues(current))
+            return true;
+
+        if (current is IObjectCreationOperation { Arguments.Length: 0, Initializer: { } initializer })
+            return IsListOfAddedItems(initializer);
+
+        if (current is not ILocalReferenceOperation localReference ||
+            localReference.FindOwningExecutableRoot() is not { } executableRoot)
+        {
+            return false;
+        }
+
+        var assignments = LocalAssignmentCache.GetAssignments(executableRoot, localReference.Local, cancellationToken);
+        return assignments.Count == 1 &&
+               assignments[0].SpanStart < localReference.Syntax.SpanStart &&
+               IsInlineArrayOrEnumValues(UnwrapEnumCast(assignments[0].Value.UnwrapConversions()));
+    }
+
+    /// <summary>
+    /// <c>{ 1, 2, 3 }</c>: one <c>Add</c> per item written. A member initializer (<c>{ Items = ids }</c>) can hand
+    /// the object any amount of data.
+    /// </summary>
+    private static bool IsListOfAddedItems(IObjectOrCollectionInitializerOperation initializer)
+    {
+        foreach (var item in initializer.Initializers)
+        {
+            if (item is not IInvocationOperation { TargetMethod.Name: "Add" })
+                return false;
+        }
+
+        return true;
+    }
+
+    private static IOperation UnwrapEnumCast(IOperation sequence)
+    {
+        while (sequence is IInvocationOperation { TargetMethod.Name: "Cast" or "OfType" } cast &&
+               (cast.TargetMethod.ReducedFrom ?? cast.TargetMethod).ContainingType is
+               {
+                   Name: "Enumerable",
+                   ContainingNamespace: { Name: "Linq", ContainingNamespace.Name: "System" }
+               } &&
+               cast.GetInvocationReceiver() is { } receiver)
+        {
+            sequence = receiver;
+        }
+
+        return sequence;
+    }
+
+    private static bool IsInlineArrayOrEnumValues(IOperation sequence)
+    {
+        return sequence is IArrayCreationOperation { Initializer: not null } ||
+               sequence is IInvocationOperation
+               {
+                   TargetMethod:
+                   {
+                       Name: "GetValues" or "GetNames",
+                       ContainingType.SpecialType: SpecialType.System_Enum
+                   }
+               };
     }
 
     /// <summary>

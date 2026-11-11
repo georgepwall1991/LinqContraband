@@ -64,6 +64,7 @@ public sealed partial class SaveChangesInLoopAnalyzer
         var loop = FindSaveExecutionLoop(invocation);
         while (loop != null &&
                (loop.RunsAtMostOnce() ||
+                loop.IteratesItemsFixedInSource(cancellationToken) ||
                 invocation.LeavesLoopAfter(loop) ||
                 NPlusOneLooperAnalysis.IsBatchLoop(loop, cancellationToken) ||
                 IsPeriodicFlush(invocation, loop)))

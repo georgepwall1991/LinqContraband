@@ -212,7 +212,8 @@ class Program
     void Main()
     {
         using var db = new MyDbContext();
-        foreach (var item in new List<int> { 1, 2, 3 })
+        var items = new List<int> { 1, 2, 3 };
+        foreach (var item in items)
         {
             if (item == 2)
                 break;
