@@ -77,6 +77,28 @@ In the IDE and in a build the helper must be declared in the project being analy
 
 A save once per batch stays quiet, because saving every few hundred rows is how large jobs keep the change tracker small. That covers a `foreach` over `Chunk(...)` (`foreach (var batch in users.Chunk(1000)) { db.Users.AddRange(batch); db.SaveChanges(); }`) and a `while`, `do` or `for` loop whose query LC007 treats as one query per batch: keyset or `Skip(page * size).Take(size)` paging, drain loops and polling loops, the same loops LC007 exempts. A batch loop inside an outer per-item loop still reports, and so does a counted loop that walks an array (`i < ids.Length`).
 
+A save every N items stays quiet for the same reason, when it is written with a counter or a buffer that lives across the loop's passes:
+
+```csharp
+var pending = 0;
+foreach (var row in rows)
+{
+    db.Audit.Add(new AuditEntry(row));
+    if (++pending % 1000 == 0)
+        await db.SaveChangesAsync(ct);     // quiet: one save per thousand rows
+}
+
+await db.SaveChangesAsync(ct);             // the rest
+```
+
+LC010 accepts three guards, on the save itself or on a call to a helper that saves:
+
+- `counter % n == k`, where the counter is an integer local (or the `for` loop's own variable) that the loop only advances by one: `++pending % 1000 == 0`, `(i + 1) % batchSize == 0`, `i > 0 && i % 500 == 0`. A constant `n` must be greater than 1.
+- `counter >= n` (or `>`, `==`) with `counter = 0;` in the same branch: after the reset the guard needs `n` more before it holds again, so the counter may count rows instead of passes (`rows += group.Count`).
+- `buffer.Count >= n` with `buffer.Clear();` (or `buffer = new List<T>();`) in the same branch.
+
+It still reports a guard that reads the item (`if (order.Id % 2 == 0)`, `if (group.Count >= 10)` on the loop variable), a threshold without a reset (it holds on every pass once it is reached), `% 1`, `!=`, a guard joined with `||`, a counter that another loop steps or that changes by anything but one under a modulo guard, and a counter or buffer declared inside an outer per-item loop, which starts again for every outer item. LC010 does not check that the counter is stepped on every pass, and it does not read a guard-clause form (`if (++pending % 1000 != 0) continue;`) or a save inside a local function, a delegate or a per-element lambda.
+
 Retry loops that catch an exception and exit immediately after a successful save stay quiet when control cannot continue an enclosing per-item loop. A `break`-guarded retry nested inside an outer per-item loop still reports, and `break` statements that exit only a nested `switch` do not suppress LC010. A success path that `return`s from the method stays quiet, whether the `return` follows the save or returns it (`try { return await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) when (attempt < 3) { }`).
 
 A save that cannot run twice in the loop stays quiet: a `foreach` over a LanguageExt `Option<T>` (zero or one value) or over the sequence form of an `Option<T>` or `Either<L, R>` (`maybeList.RightToSeq()`), a loop body that always ends in `return`, `throw` or `break`, and a save followed in its block by an exit (`await db.SaveChangesAsync(); return;`). A `continue` before the exit, an exit inside a `catch`, or an outer per-item loop still reports.
