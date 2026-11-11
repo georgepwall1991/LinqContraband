@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- N+1 detection benchmark. Every corpus case runs against SQLite at two data sizes, and a
+         case counts as N+1 only when its database round trips grow with the data. The same sources
+         are then analyzed with the LinqContraband analyzers, giving measured recall and false
+         positives. See README.md in this folder. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>NPlusOneBenchmark</RootNamespace>
+        <!-- The corpus is also compiled in-process by Roslyn 4.14, so it must not depend on
+             implicit usings or on language features newer than C# 13. -->
+        <ImplicitUsings>disable</ImplicitUsings>
+        <LangVersion>13.0</LangVersion>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <!-- The corpus is deliberately bad code; analyzers run on it through the benchmark itself. -->
+        <RunAnalyzers>false</RunAnalyzers>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\LinqContraband\LinqContraband.csproj" />
+        <ProjectReference Include="..\NPlusOneBenchmark.External\NPlusOneBenchmark.External.csproj" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+        <!-- The analyzer assembly also holds the code fixers, so loading its types needs Workspaces. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+        <!-- EF Core's SQLite provider pulls SQLitePCLRaw 2.1.11, which has a known vulnerability (GHSA-2m69-gcr7-jv3q). -->
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The corpus sources travel with the assembly so the analysis pass reads exactly what ran. -->
+        <EmbeddedResource Include="Corpus\**\*.cs" LogicalName="Corpus/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+</Project>

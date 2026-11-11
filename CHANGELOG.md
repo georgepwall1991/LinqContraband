@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An N+1 benchmark (`tools/NPlusOneBenchmark`) with 152 cases. Each case runs against SQLite at two data sizes and counts as an N+1 only if the larger database cost it more round trips; LC007, LC010 and LC045 are then scored on the same sources. CI fails when `tools/NPlusOneBenchmark/results.md` is out of date, so every change in N+1 detection shows up as a diff of gained and lost cases. No analyzer behaviour changes.
+
 ## [5.18.0] - 2026-11-01
 
 ### Fixed

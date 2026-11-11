@@ -52,6 +52,11 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
+      - name: Verify N+1 benchmark results
+        run: |
+          dotnet run --no-build --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --check
+          sed -n '/^## Summary/,/^## False positives/p' tools/NPlusOneBenchmark/results.md | sed '$d' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify Sample Diagnostics
         run: dotnet run --project tools/SampleDiagnosticsVerifier/SampleDiagnosticsVerifier.csproj --configuration Release -- --frameworks net8.0 net9.0 net10.0
 

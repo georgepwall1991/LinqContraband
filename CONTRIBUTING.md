@@ -52,6 +52,9 @@ src/LinqContraband/
 tools/
     RuleCatalogDocGenerator/
         Program.cs
+    NPlusOneBenchmark/
+        Corpus/Cases/
+        results.md
 
 tests/LinqContraband.Tests/
     Analyzers/
@@ -86,6 +89,14 @@ CI runs the same tool with `--check` and fails if any of them is stale.
 Docs pages never type the number of rules: use `{{ site.data.rules | size }}`, or leave the number out of front matter and copy-paste snippets. `DiscoverabilityMetadataTests` fails on a hard-coded count.
 
 Each rule's `helpLinkUri` (the link an IDE opens from a diagnostic) must be `RuleCatalog.DocumentationSiteUri` plus the docs page name, for example `RuleCatalog.DocumentationSiteUri + "LC001_LocalMethod.html"`. The README is also the NuGet package readme, so keep rule write-ups in `docs/LCxxx_Name.md` rather than in the README.
+
+### N+1 benchmark
+
+`tools/NPlusOneBenchmark` measures how much real N+1 code LC007, LC010 and LC045 report. Each corpus case runs against SQLite at two data sizes, and counts as an N+1 only if the larger database cost it more round trips; the analyzers then run over the same sources. Any change that alters what those rules report on the corpus makes CI fail until the results are regenerated:
+```bash
+dotnet run --project tools/NPlusOneBenchmark/NPlusOneBenchmark.csproj -- --write
+```
+Commit `tools/NPlusOneBenchmark/results.md` with the change. Its diff lists every case gained or lost. See [tools/NPlusOneBenchmark/README.md](tools/NPlusOneBenchmark/README.md) for how the ground truth works and how to add a case.
 
 ### Quick Summary
 
