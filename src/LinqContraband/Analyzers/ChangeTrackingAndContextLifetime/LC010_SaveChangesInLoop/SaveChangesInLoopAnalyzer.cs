@@ -39,28 +39,59 @@ public sealed partial class SaveChangesInLoopAnalyzer : DiagnosticAnalyzer
         Description,
         helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC010_SaveChangesInLoop.html");
 
+    private static readonly LocalizableString HelperCallMessageFormat =
+        "'{0}' calls '{1}', so this saves once per item and causes N+1 database writes. Batch changes and save once after the loop.";
+
+    /// <summary>
+    /// LC010 reported on a per-item call to a helper that saves. It shares LC010's ID and stays out of
+    /// <see cref="SupportedDiagnostics"/> (the host accepts any diagnostic whose ID a supported descriptor
+    /// declares), so tests and tools keep resolving LC010 to a single descriptor.
+    /// </summary>
+    public static readonly DiagnosticDescriptor HelperCallRule = new(
+        DiagnosticId,
+        Title,
+        HelperCallMessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        true,
+        Description,
+        helpLinkUri: RuleCatalog.DocumentationSiteUri + "LC010_SaveChangesInLoop.html");
+
+    /// <summary>Set on a diagnostic reported on a helper call, which the code fix does not move.</summary>
+    internal const string HelperCallProperty = "HelperCall";
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
-        context.RegisterOperationAction(AnalyzeMethodReference, OperationKind.MethodReference);
+        context.RegisterCompilationStartAction(compilationContext =>
+        {
+            var saveHelpers = new NPlusOneLooperHelperCache(
+                compilationContext.Compilation,
+                NPlusOneLooperAnalysis.MaxHelperDepth,
+                MatchSaveInHelper,
+                skipMemoizedHelpers: false);
+            compilationContext.RegisterOperationAction(
+                operationContext => AnalyzeInvocation(operationContext, saveHelpers),
+                OperationKind.Invocation);
+            compilationContext.RegisterOperationAction(AnalyzeMethodReference, OperationKind.MethodReference);
+        });
     }
 
-    private void AnalyzeInvocation(OperationAnalysisContext context)
+    private void AnalyzeInvocation(OperationAnalysisContext context, NPlusOneLooperHelperCache saveHelpers)
     {
         var invocation = (IInvocationOperation)context.Operation;
         var method = invocation.TargetMethod;
 
-        // 1. Check method name
-        if (method.Name != "SaveChanges" && method.Name != "SaveChangesAsync")
+        // Anything but DbContext.SaveChanges[Async] may be a helper that saves.
+        if ((method.Name != "SaveChanges" && method.Name != "SaveChangesAsync") ||
+            !method.ContainingType.IsDbContext())
+        {
+            AnalyzeHelperCall(context, invocation, saveHelpers);
             return;
-
-        // 2. Check containing type (DbContext)
-        if (!method.ContainingType.IsDbContext())
-            return;
+        }
 
         // 3. Check if inside a loop in the same executable body.
         // A local function or lambda declared inside a loop is not necessarily executed per iteration.

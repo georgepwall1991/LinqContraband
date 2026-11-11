@@ -8,7 +8,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 78 | 75.0% |
+| Recall on proven N+1 cases | 104 | 83 | 79.8% |
 | False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
@@ -17,7 +17,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | --- | ---: | ---: | ---: |
 | Query | 67 | 53 | 79.1% |
 | LazyLoad | 20 | 16 | 80.0% |
-| Save | 17 | 9 | 52.9% |
+| Save | 17 | 14 | 82.4% |
 
 ## Recall by how the database call is reached
 
@@ -25,10 +25,10 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | --- | ---: | ---: | ---: |
 | Direct | 37 | 34 | 91.9% |
 | Lambda | 20 | 20 | 100.0% |
-| Helper | 13 | 9 | 69.2% |
+| Helper | 13 | 11 | 84.6% |
 | QueryableHelper | 6 | 5 | 83.3% |
-| Interface | 9 | 6 | 66.7% |
-| Virtual | 3 | 2 | 66.7% |
+| Interface | 9 | 8 | 88.9% |
+| Virtual | 3 | 3 | 100.0% |
 | Delegate | 3 | 0 | 0.0% |
 | Mediator | 3 | 0 | 0.0% |
 | CrossMethod | 5 | 2 | 40.0% |
@@ -66,14 +66,9 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - Q86_ExternalRepositoryQueryable (Query, CrossProject)
 - Q87_ExternalRepositoryInSelect (Query, CrossProject)
 - Q88_ExternalStaticHelper (Query, CrossProject)
-- W05_HelperThatSaves (Save, Helper)
-- W06_SealedRepositoryThatSaves (Save, Helper)
-- W07_UnitOfWorkCommitPerElement (Save, Interface)
-- W08_GenericRepositoryAddSaves (Save, Virtual)
 - W09_ExecuteSqlPerElement (Save, Direct)
 - W12_ExternalRepositoryAddAndSave (Save, CrossProject)
 - W13_MediatorCommandPerElement (Save, Mediator)
-- W16_GenericInterfaceRepositoryAdd (Save, Interface)
 
 ## Every case
 
@@ -219,10 +214,10 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | W02_UpdateAndSaveInForLoop | Save | Direct | 6 → 9 | N+1 | LC010 |
 | W03_SaveChangesAsyncInForeach | Save | Direct | 3 → 5 | N+1 | LC010 |
 | W04_SaveInListForEachLambda | Save | Lambda | 6 → 9 | N+1 | LC010 |
-| W05_HelperThatSaves | Save | Helper | 5 → 9 | N+1 |  |
-| W06_SealedRepositoryThatSaves | Save | Helper | 7 → 13 | N+1 |  |
-| W07_UnitOfWorkCommitPerElement | Save | Interface | 4 → 7 | N+1 |  |
-| W08_GenericRepositoryAddSaves | Save | Virtual | 4 → 7 | N+1 |  |
+| W05_HelperThatSaves | Save | Helper | 5 → 9 | N+1 | LC010 |
+| W06_SealedRepositoryThatSaves | Save | Helper | 7 → 13 | N+1 | LC010 |
+| W07_UnitOfWorkCommitPerElement | Save | Interface | 4 → 7 | N+1 | LC010 |
+| W08_GenericRepositoryAddSaves | Save | Virtual | 4 → 7 | N+1 | LC010 |
 | W09_ExecuteSqlPerElement | Save | Direct | 6 → 9 | N+1 |  |
 | W10_ExecuteUpdatePerElement | Save | Direct | 6 → 9 | N+1 | LC007 |
 | W11_ExecuteDeletePerElement | Save | Direct | 13 → 25 | N+1 | LC007 |
@@ -230,5 +225,5 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | W13_MediatorCommandPerElement | Save | Mediator | 4 → 7 | N+1 |  |
 | W14_SaveInSelectLambda | Save | Lambda | 6 → 9 | N+1 | LC010 |
 | W15_WhileQueueSaveEach | Save | Direct | 5 → 9 | N+1 | LC010 |
-| W16_GenericInterfaceRepositoryAdd | Save | Interface | 7 → 13 | N+1 |  |
+| W16_GenericInterfaceRepositoryAdd | Save | Interface | 7 → 13 | N+1 | LC010 |
 | W17_RemoveAndSaveInForeach | Save | Direct | 13 → 25 | N+1 | LC010 |
