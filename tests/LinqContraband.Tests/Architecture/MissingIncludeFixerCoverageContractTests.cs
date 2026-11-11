@@ -53,6 +53,8 @@ public sealed class MissingIncludeFixerCoverageContractTests
         foreach (var o in orders) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "InlineMaterializer", @"        foreach (var o in db.Orders.ToList()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "DirectDbSetForeach", @"        foreach (var o in db.Orders) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "ForeachOverQueryCastToEnumerable", @"        foreach (var o in (IEnumerable<Order>)db.Orders.Where(x => x.Id > 0)) System.Console.WriteLine(o.Customer.Name);" },
+        new object[] { "ForeachOverSetMethod", @"        foreach (var o in db.Set<Order>()) System.Console.WriteLine(o.Customer.Name);" },
         new object[] { "ElementMaterializer", @"        var order = db.Orders.First();
         System.Console.WriteLine(order.Customer.Name);" },
         new object[] { "ElementExtraction", @"        var orders = db.Orders.ToList();
@@ -325,7 +327,8 @@ namespace Microsoft.EntityFrameworkCore
         public Type ElementType => typeof(T);
         public System.Linq.Expressions.Expression Expression => System.Linq.Expressions.Expression.Constant(this);
         public IQueryProvider Provider => null;
-        public IEnumerator<T> GetEnumerator() => null;
+        // Explicit, as in EF Core: `foreach` over a DbSet goes through a conversion to IEnumerable<T>.
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
     }
 

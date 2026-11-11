@@ -8,7 +8,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 104 | 84 | 80.8% |
+| Recall on proven N+1 cases | 104 | 85 | 81.7% |
 | False positives on proven safe cases | 49 | 9 | 18.4% |
 
 ## Recall by kind
@@ -16,14 +16,14 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
 | Query | 67 | 54 | 80.6% |
-| LazyLoad | 20 | 16 | 80.0% |
+| LazyLoad | 20 | 17 | 85.0% |
 | Save | 17 | 14 | 82.4% |
 
 ## Recall by how the database call is reached
 
 | Reached through | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Direct | 37 | 34 | 91.9% |
+| Direct | 37 | 35 | 94.6% |
 | Lambda | 20 | 20 | 100.0% |
 | Helper | 13 | 12 | 92.3% |
 | QueryableHelper | 6 | 5 | 83.3% |
@@ -51,7 +51,6 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - L07_EntityMemberReadsNavigation (LazyLoad, CrossMethod)
 - L09_MapperMethodGroup (LazyLoad, CrossMethod)
 - L15_EntitiesReturnedByRepository (LazyLoad, CrossMethod)
-- L17_StreamedQueryLoop (LazyLoad, Direct)
 - Q13_CompiledQueryPerElement (Query, Direct)
 - Q44_HelperChainFourDeep (Query, Helper)
 - Q53_QueryableParameter (Query, QueryableHelper)
@@ -89,7 +88,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | L14_InMemoryWhereOnCollection | LazyLoad | Lambda | 4 → 7 | N+1 | LC045 |
 | L15_EntitiesReturnedByRepository | LazyLoad | CrossMethod | 4 → 7 | N+1 |  |
 | L16_ListPassedToAnotherMethod | LazyLoad | CrossMethod | 4 → 7 | N+1 | LC045 |
-| L17_StreamedQueryLoop | LazyLoad | Direct | 7 → 13 | N+1 |  |
+| L17_StreamedQueryLoop | LazyLoad | Direct | 7 → 13 | N+1 | LC045 |
 | L18_NestedLoopOverLazyCollection | LazyLoad | Direct | 3 → 4 | N+1 | LC045 |
 | L19_AnonymousProjectionOverList | LazyLoad | Lambda | 6 → 9 | N+1 | LC045 |
 | L20_IncludeCoversOnlyFirstLevel | LazyLoad | Direct | 6 → 9 | N+1 | LC045 |

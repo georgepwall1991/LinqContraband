@@ -53,6 +53,13 @@ public sealed partial class MissingIncludeAnalyzer
         {
             querySource = forEach.Collection;
         }
+        else if (collection.Type.IsIQueryable())
+        {
+            // `foreach (var o in db.Orders)`: EF Core's DbSet<T> implements GetEnumerator
+            // explicitly, so the compiler converts the set to IEnumerable<T> for the loop. The
+            // conversion runs nothing; the loop still enumerates the query.
+            querySource = collection;
+        }
         else if (
             IsWidenedQueryableLocal(collection, forEach.Collection.Type, context.CancellationToken)
         )
