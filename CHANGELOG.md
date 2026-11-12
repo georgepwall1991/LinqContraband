@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin LC007/LC010 `Enum.GetValues<T>()` / `Enum.GetNames<T>()` (the advertised 5.19.0 example, which the shipped `GetValues(typeof)` fixtures do not isolate) and a list held in a local with no later mutation (which the shipped `AddRange` crime case does not isolate). A lookalike `GetValues`/`GetNames` off `System.Enum` still reports. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added

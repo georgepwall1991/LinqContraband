@@ -1,3 +1,6 @@
+using LinqContraband.Analyzers.LC010_SaveChangesInLoop;
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC010_SaveChangesInLoop.SaveChangesInLoopAnalyzer>;
 
@@ -214,6 +217,26 @@ namespace Lookalike
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 
     [Theory]
+    [InlineData(@"foreach (var day in Enum.GetValues<DayOfWeek>())
+        {
+            await db.SaveChangesAsync();
+        }")]
+    [InlineData(@"foreach (var name in Enum.GetNames<DayOfWeek>())
+        {
+            db.SaveChanges();
+        }")]
+    public Task SaveInALoopOverGenericEnumValues_IsQuiet(string body) =>
+        VerifySaveOnNet80Async(body);
+
+    [Fact]
+    public Task SaveInALoopOverAListHeldInALocal_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"var wanted = new List<int> { 1, 2, 3 };
+        foreach (var id in wanted)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Theory]
     [InlineData(@"foreach (var id in ids)
         {
             foreach (var attempt in new[] { 1, 2 })
@@ -227,4 +250,19 @@ namespace Lookalike
         }")]
     public Task SaveInAFixedListInsideAPerItemLoop_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    // Enum.GetValues<T>() / GetNames<T>() are .NET 5+. The default VerifyCS
+    // references do not declare them, so those shapes compile as an error
+    // (MissingMethodException = diagnostic/compile mismatch) unless we raise
+    // the harness to Net80.
+    private static Task VerifySaveOnNet80Async(string body)
+    {
+        var test = new CSharpAnalyzerTest<SaveChangesInLoopAnalyzer, DefaultVerifier>
+        {
+            TestCode = Program(body),
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+        };
+
+        return test.RunAsync();
+    }
 }

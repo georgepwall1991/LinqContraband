@@ -1,3 +1,6 @@
+using LinqContraband.Analyzers.LC007_NPlusOneLooper;
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperAnalyzer>;
 
@@ -21,6 +24,12 @@ class Wanted : System.Collections.Generic.IEnumerable<int>
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
 }
 
+class StatusList
+{
+    public static Status[] GetValues() => null;
+    public static string[] GetNames() => null;
+}
+
 class Program
 {
     void Run(MyDbContext db, int[] ids, int first, int second, int count)
@@ -29,6 +38,21 @@ class Program
     }
 }
 " + MockNamespace;
+
+    // Enum.GetValues<T>() / GetNames<T>() are .NET 5+. The default VerifyCS
+    // references do not declare them, so those shapes compile as an error
+    // (MissingMethodException = diagnostic/compile mismatch) unless we raise
+    // the harness to Net80.
+    private static Task VerifyFixedSourceOnNet80Async(string body)
+    {
+        var test = new CSharpAnalyzerTest<NPlusOneLooperAnalyzer, DefaultVerifier>
+        {
+            TestCode = FixedSourceProgram(body),
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+        };
+
+        return test.RunAsync();
+    }
 
     [Theory]
     [InlineData("new[] { 1, 2, 3 }")]
@@ -61,6 +85,37 @@ class Program
         {
             var found = db.Users.Count(u => u.Id == name.Length);
         }"));
+
+    [Theory]
+    [InlineData(@"foreach (var status in Enum.GetValues<Status>())
+        {
+            var found = db.Users.Count(u => u.Id == (int)status);
+        }")]
+    [InlineData(@"foreach (var name in Enum.GetNames<Status>())
+        {
+            var found = db.Users.Count(u => u.Id == name.Length);
+        }")]
+    public Task LoopOverGenericEnumValues_IsQuiet(string body) =>
+        VerifyFixedSourceOnNet80Async(body);
+
+    [Theory]
+    [InlineData(@"var statuses = Enum.GetValues<Status>();
+        foreach (var status in statuses)
+        {
+            var found = db.Users.Count(u => u.Id == (int)status);
+        }")]
+    [InlineData(@"var names = Enum.GetNames<Status>();
+        foreach (var name in names)
+        {
+            var found = db.Users.Count(u => u.Id == name.Length);
+        }")]
+    public Task LoopOverALocalThatHoldsGenericEnumValues_IsQuiet(string body) =>
+        VerifyFixedSourceOnNet80Async(body);
+
+    [Fact]
+    public Task PerElementLambdaOverGenericEnumValues_IsQuiet() =>
+        VerifyFixedSourceOnNet80Async(
+            @"var counts = Enum.GetValues<Status>().Select(status => db.Users.Count(u => u.Id == (int)status)).ToList();");
 
     [Theory]
     // A local that only ever holds the list.
@@ -127,4 +182,29 @@ class Program
     public Task PerElementLambdaOverData_StillReports() =>
         VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(
             @"var users = ids.Select(id => {|LC007:db.Users.First(u => u.Id == id)|}).ToList();"));
+
+    [Theory]
+    // A list in a local can grow after it is declared, even when this method never mutates it.
+    // The inline form (`foreach (var id in new List<int> { 1, 2, 3 })`) stays quiet; the local does not.
+    [InlineData(@"var wanted = new List<int> { 1, 2, 3 };
+        foreach (var id in wanted)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }")]
+    [InlineData(@"var wanted = new HashSet<int> { first, second };
+        foreach (var id in wanted)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }")]
+    public Task LoopOverAListHeldInALocal_StillReports(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(body));
+
+    [Theory]
+    [InlineData("StatusList.GetValues()")]
+    [InlineData("StatusList.GetNames()")]
+    public Task LoopOverLookalikeEnumValues_StillReports(string source) =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var status in " + source + @")
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == status.ToString().Length)|};
+        }"));
 }
