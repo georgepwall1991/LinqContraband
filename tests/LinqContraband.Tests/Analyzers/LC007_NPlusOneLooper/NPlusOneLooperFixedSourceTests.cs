@@ -11,18 +11,23 @@ namespace LinqContraband.Tests.Analyzers.LC007_NPlusOneLooper;
 public partial class NPlusOneLooperTests
 {
     private static string FixedSourceProgram(string body) => Usings + @"
+using System.Collections.Immutable;
+
 enum Status { Draft, Paid, Shipped }
 
 class Wanted : System.Collections.Generic.IEnumerable<int>
 {
     public int[] Items { get; set; }
     public void Add(int item) { }
+    public static Wanted Create(params int[] items) => null;
     public System.Collections.Generic.IEnumerator<int> GetEnumerator() => null;
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
 }
 
 class Program
 {
+    private static readonly int[] Roles = { 1, 2, 3 };
+
     void Run(MyDbContext db, int[] ids, int first, int second, int count)
     {
         " + body + @"
@@ -127,4 +132,28 @@ class Program
     public Task PerElementLambdaOverData_StillReports() =>
         VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(
             @"var users = ids.Select(id => {|LC007:db.Users.First(u => u.Id == id)|}).ToList();"));
+
+    // Documented non-goals of IsSequenceFixedInSource: still report. Pinning them
+    // as crime cases stops a later widening from going quiet without a test.
+
+    [Fact]
+    public Task LoopOverImmutableArrayCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in ImmutableArray.Create(1, 2, 3))
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
+
+    [Fact]
+    public Task LoopOverLookalikeCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in Wanted.Create(1, 2, 3))
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
+
+    [Fact]
+    public Task LoopOverAStaticReadonlyArrayField_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in Roles)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
 }
