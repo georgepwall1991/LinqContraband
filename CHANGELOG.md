@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin LC007/LC010 documented fixed-source non-goals that still report: `ImmutableArray.Create(...)`, a `static readonly` array field, and (LC010) a `for` loop with a constant bound. A lookalike `Create` on another type still reports. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added

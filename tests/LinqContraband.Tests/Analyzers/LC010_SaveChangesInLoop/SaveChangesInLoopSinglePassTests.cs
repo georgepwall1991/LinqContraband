@@ -13,11 +13,14 @@ public class SaveChangesInLoopSinglePassTests
     private static string Program(string body) => @"
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 class Program
 {
+    private static readonly int[] Roles = { 1, 2, 3 };
+
     async Task<string> Run(AppDbContext db, List<int> ids, LanguageExt.Option<int> maybeId, Lookalike.Option<int> otherId, LanguageExt.Either<string, int> eitherId, Lookalike.Either<string, int> otherEither)
     {
         " + body + @"
@@ -227,4 +230,29 @@ namespace Lookalike
         }")]
     public Task SaveInAFixedListInsideAPerItemLoop_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    // Documented non-goals of IsSequenceFixedInSource / IteratesItemsFixedInSource:
+    // still report. Pinning them as crime cases stops a later widening from going
+    // quiet without a test.
+
+    [Fact]
+    public Task SaveInALoopOverImmutableArrayCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"foreach (var id in ImmutableArray.Create(1, 2, 3))
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Fact]
+    public Task SaveInALoopOverAStaticReadonlyArrayField_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"foreach (var id in Roles)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Fact]
+    public Task SaveInAConstantBoundForLoop_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"for (var i = 0; i < 3; i++)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
 }
