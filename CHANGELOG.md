@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LanguageExt sequence forms that LC007 and LC010 stay quiet on (`option.ToList()` / `ToArray()` / `AsEnumerable()`, `either.LeftToSeq()` / `RightToList()` / the array and enumerable forms, `either.ToSeq()`, and `EitherUnsafe.RightToSeq()`) so dropping one of those names fails its own test. A lookalike leftover name still reports. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
