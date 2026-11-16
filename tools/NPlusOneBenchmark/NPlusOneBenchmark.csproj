@@ -24,7 +24,7 @@
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
         <!-- The analyzer assembly also holds the code fixers, so loading its types needs Workspaces. -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.15" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
         <!-- EF Core's SQLite provider pulls SQLitePCLRaw 2.1.11, which has a known vulnerability (GHSA-2m69-gcr7-jv3q). -->
         <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
