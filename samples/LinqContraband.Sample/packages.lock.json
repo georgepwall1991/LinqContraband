@@ -276,9 +276,23 @@
       },
       "System.Linq.AsyncEnumerable": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "/nBxJB12smtMOHstnssA8NBP93sihSUg5ohhjvvfGxjzcRjcWArz6aWo8njwqvZPtQXaSpUmgr2evfWG+/0S/Q=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "CBvHk40xhUft2CHzyjk3XYsTUaUWAltA5ohFQvwDQGmX8cWFMGqO7iyRRNX/NY9Zj+ZNumLytfep7KDm37lJxg==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "11.0.0",
+          "Microsoft.Bcl.Memory": "11.0.0"
+        }
+      },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "Uw3pD0oeX6kNS+pa8U9VaqUh3tcdQeY/cUILF89zDLeYgvfat0pzIi9kjK1nkA9u+3R7ZtAY9GsU1cgqVS+u4A=="
+      },
+      "Microsoft.Bcl.Memory": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "fDc1TyuzrRiOYC/236zhciksJFvjR8EtvT1wO1oSeBWfn9P1/FQ7eo+8DH0q1B/d+kk4k4dZMVwyaAsVilRWXQ=="
       },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
@@ -498,9 +512,23 @@
       },
       "System.Linq.AsyncEnumerable": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "/nBxJB12smtMOHstnssA8NBP93sihSUg5ohhjvvfGxjzcRjcWArz6aWo8njwqvZPtQXaSpUmgr2evfWG+/0S/Q=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "CBvHk40xhUft2CHzyjk3XYsTUaUWAltA5ohFQvwDQGmX8cWFMGqO7iyRRNX/NY9Zj+ZNumLytfep7KDm37lJxg==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "11.0.0",
+          "Microsoft.Bcl.Memory": "11.0.0"
+        }
+      },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "Uw3pD0oeX6kNS+pa8U9VaqUh3tcdQeY/cUILF89zDLeYgvfat0pzIi9kjK1nkA9u+3R7ZtAY9GsU1cgqVS+u4A=="
+      },
+      "Microsoft.Bcl.Memory": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "fDc1TyuzrRiOYC/236zhciksJFvjR8EtvT1wO1oSeBWfn9P1/FQ7eo+8DH0q1B/d+kk4k4dZMVwyaAsVilRWXQ=="
       },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
