@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin LC007/LC010 leftover span-backed sequences that the 5.19.0 list-fixed-in-source pass did not probe: `(ReadOnlySpan<int>)[1, 2, 3]`, `(Span<int>)[1, 2, 3]`, a local whose only assignment is a span collection expression, `stackalloc int[] { 1, 2, 3 }`, `stackalloc int[count]`, and a spread of data (`(ReadOnlySpan<int>)[..ids]`). Draft #742 owns array/list collection-expression pins; this does not restage them. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
