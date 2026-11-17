@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC010 save-every-N-items arms that the 5.19.0 pass did not isolate: integer counter types besides `int`/`long` (`byte`, `sbyte`, `short`, `ushort`, `uint`, `ulong`), leftover `% 1` divisor types (`1L`, `1u`), the swapped threshold `if (size < pending)` with a reset, `if (BatchSize == pending)` with a reset, and `buffer.Count == n` with `Clear()`. A lookalike `double` counter still reports. `% (byte)1` compiles as `int` after conversion and does not isolate; `% 1UL` is a leftover FN and is not locked. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
