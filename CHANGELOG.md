@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC035 named-intent plurals that the shipped `Person`/`Series`/`Leaf`/`Criterion`/`Radius`/`Medium`/`Knife`/`Quiz` fixtures do not isolate: irregular `Child`/`Man`/`Mouse`/`Goose`/`Tooth`/`Foot`, invariant `Species`/`Sheep`/`Fish`/`Deer`/`News`, and classical `Loaf`/`Scarf` (including the regular `Scarfs` spelling), `Cactus`/`Bacterium`/`Phenomenon`/`Whiz`. A leftover plural on the wrong table still reports. `Woman`/`Women` is not isolatable (`Woman` matches `Man` first). Invariant `Data` shares `WholeSetNouns` and classical `Datum` and is not locked. Remaining classical leftovers stay unpinned. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added

@@ -10,7 +10,8 @@ namespace LinqContraband.Tests.Analyzers.LC035_MissingWhereBeforeExecuteDeleteUp
 /// Dropping a leftover whole-set noun, <c>Truncate</c>, handler suffix or generic
 /// entry point fails only that name's quiet pin. A lookalike <c>ExecuteUpdateAsync</c>
 /// still stays quiet so a later edit that treats every matching name as EF is visible.
-/// Leftover irregular/classical plurals stay unpinned.
+/// Leftover irregular/classical/invariant plurals are pinned in
+/// <c>MissingWhereBeforeExecuteDeleteUpdateLeftoverPluralCoverageTests</c>.
 /// </summary>
 public partial class MissingWhereBeforeExecuteDeleteUpdateTests
 {
