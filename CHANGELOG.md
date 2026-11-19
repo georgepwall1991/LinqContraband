@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC035 classical plurals that the shipped `Leaf`/`Knife`/`Radius`/`Medium`/`Criterion`/`Quiz` fixtures do not isolate: `Thief`/`Sheaf`/`Half`/`Calf`/`Shelf`/`Wolf`/`Self`/`Elf`/`Wife`/`Life`, `Hoof` (including the regular `Hoofs` spelling), `Dwarf`, `Fungus` (including `Funguses`), `Curriculum` (including `Curriculums`) and `Stratum`. A leftover plural on the wrong table still reports. Regular-only spellings of listed non-`AlsoRegular` words are not locked as positives. Remaining similar leftovers stay unpinned. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
