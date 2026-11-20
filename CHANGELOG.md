@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC007 load-once `ElementPreservingOperators` wraps (`SkipWhile`, `TakeWhile`, `SkipLast`, `TakeLast`, `AsTracking`, `AsSingleQuery`, `IgnoreAutoIncludes`, `TagWithCallSite`) that the shipped `Where`/`First` fixtures do not isolate, so dropping one of those names fails its own test. A leftover lookalike name on the EF receiver still reports. `AsQueryable` and `AsAsyncEnumerable` stay unpinned. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
