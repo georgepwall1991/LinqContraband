@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC035 similar plurals that the shipped `Leaf`/`Knife`/`Radius`/`Medium`/`Criterion`/`Quiz` fixtures do not isolate: the regular `Dwarfs` spelling, `Wharf` (including `Wharfs`), `Nucleus` (including `Nucleuses`), `Stimulus` (including `Stimuluses`), `Alumnus` (including `Alumnuses`), `Syllabus` (including `Syllabuses`), `Focus` (including `Focuses`) and `Memorandum` (including `Memorandums`). A leftover plural on the wrong table still reports. Does not restage leftover irregular/classical plural files. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
