@@ -141,6 +141,8 @@ Parallel.ForEach(ids, id => Process(db.Customers.Find(id)));
 
 This covers the `System.Linq.Enumerable` and `ParallelEnumerable` operators that take a delegate (`Select`, `SelectMany`, `Where`, `Any`, `All`, `Count`, `First`, `Single`, `Last`, `Sum`, `Min`, `Max`, `Average`, `OrderBy`, `ThenBy`, `GroupBy`, `ToDictionary`, `ToLookup`, `TakeWhile`, `SkipWhile`, `Zip`, the accumulator of `Aggregate`, and their variants, including query syntax over an in-memory collection), `List<T>` and `Array` methods such as `ForEach`, `ConvertAll`, `Find`, `FindAll`, `Exists` and `RemoveAll`, and the body of `Parallel.ForEach`, `Parallel.ForEachAsync` and `Parallel.For`.
 
+Coverage pins leftover per-element operators that the shipped `Select`/`Where`/`ForEach`/`ToDictionary`/`Sum`/`OrderByDescending`/`ConvertAll`/`Exists`/`Parallel.ForEach` fixtures do not isolate (`SelectMany`, `Any`, `All`, `Count`, `LongCount`, `First`/`FirstOrDefault`, `Last`/`LastOrDefault`, `Single`/`SingleOrDefault`, `Min`/`Max`/`Average`, `MinBy`/`MaxBy`, `OrderBy`, `ThenBy`/`ThenByDescending`, `GroupBy`, `ToLookup`, `DistinctBy`, `TakeWhile`/`SkipWhile`, the accumulator of `Aggregate`, `Zip`, `ForAll`, `List.Find`/`FindAll`/`FindIndex`/`FindLast`/`FindLastIndex`/`TrueForAll`/`RemoveAll`, `Parallel.For` and `Parallel.ForEachAsync`). A leftover name on an unrelated collection stays quiet. Does not restage leftover load-once wrap or leftover execution-method files.
+
 A helper passed as a method group is the same loop without the lambda, so it is reported on the method group: `ids.Select(LoadCustomer)`, `orderIds.Select(repository.CountLines)` and `Parallel.ForEach(ids, Refresh)`, through an interface or virtual method under the same rule as a call.
 
 LC007 stays quiet on a lambda when:

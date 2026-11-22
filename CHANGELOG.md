@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC007 per-element operator names that the shipped `Select`/`Where`/`ForEach`/`ToDictionary`/`Sum`/`OrderByDescending`/`ConvertAll`/`Exists`/`Parallel.ForEach` fixtures do not isolate: `SelectMany`, `Any`, `All`, `Count`, `LongCount`, `First`/`FirstOrDefault`, `Last`/`LastOrDefault`, `Single`/`SingleOrDefault`, `Min`/`Max`/`Average`, `MinBy`/`MaxBy`, `OrderBy`, `ThenBy`/`ThenByDescending`, `GroupBy`, `ToLookup`, `DistinctBy`, `TakeWhile`/`SkipWhile`, the accumulator of `Aggregate`, `Zip`, `ForAll`, `List.Find`/`FindAll`/`FindIndex`/`FindLast`/`FindLastIndex`/`TrueForAll`/`RemoveAll`, `Parallel.For` and `Parallel.ForEachAsync`. A leftover name on an unrelated collection stays quiet. Does not restage leftover load-once wrap or leftover execution-method files. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
