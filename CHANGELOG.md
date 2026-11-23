@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC056 EF composing names that the shipped `Include`/`CountAsync`/`FirstOrDefaultAsync` fixtures and leftover `ExecuteDelete`/`ExecuteUpdate` pins do not isolate: `ThenInclude`, `AnyAsync`, `AllAsync`, `AverageAsync`, `ContainsAsync`, `LongCountAsync`, `ElementAtAsync`/`ElementAtOrDefaultAsync`, `FirstAsync`, `LastAsync`/`LastOrDefaultAsync`, `MaxAsync`/`MinAsync`, `SingleAsync`/`SingleOrDefaultAsync` and `SumAsync`. A leftover name on an unrelated queryable stays quiet. Does not restage leftover pass-through or leftover ExecuteDelete/ExecuteUpdate files. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
