@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC045 collection-mutator names that the shipped `Items.Add` fixtures do not isolate: `AddRange`, `Remove`, `RemoveRange` and `Clear`. A leftover name on a reference navigation still reports. Does not restage leftover preload wrap names. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
