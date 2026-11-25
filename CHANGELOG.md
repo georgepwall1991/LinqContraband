@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC021 chain-operator names that the shipped deleted-rows fixtures do not isolate: `OrderByDescending`, `ThenBy`, `ThenByDescending`, `SkipWhile`, `TakeWhile`, `Distinct`, `Reverse`, `AsQueryable`, `AsNoTracking`, `AsNoTrackingWithIdentityResolution`, `AsTracking`, `Include`, `ThenInclude`, `AsSplitQuery`, `AsSingleQuery`, `TagWith`, `TagWithCallSite`, `IgnoreAutoIncludes`, `FromSql` and `FromSqlInterpolated`. A lookalike `AsNoTracking` still keeps the fix. Dropping one of those names would offer an unsafe fix on restore/purge queries. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
