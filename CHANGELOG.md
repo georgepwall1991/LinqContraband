@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC024 translatable-operator, aggregate, EF8 terminal and `System.Convert` names that the shipped fixtures do not isolate: `ThenBy`, `ThenByDescending`, `Distinct().Count()`, `All`, `LastOrDefault` after `OrderBy`, `SingleOrDefault`, `ElementAt`, `ElementAtOrDefault`, `ToArray`, and `Convert.ToByte`/`ToDecimal`/`ToDouble`/`ToInt16`/`ToInt64`/`ToString` inside an aggregate selector. A lookalike `ThenBy` still reports. Dropping one of those names would flag a query EF Core already translates, or miss a user helper that shares the name. No analyzer behavior changes.
+
 ## [5.19.0] - 2026-11-11
 
 ### Added
