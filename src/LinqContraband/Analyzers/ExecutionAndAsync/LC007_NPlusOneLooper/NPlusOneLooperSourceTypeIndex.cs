@@ -18,6 +18,9 @@ internal sealed class NPlusOneLooperSourceTypeIndex
     private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> derived =
         new(SymbolEqualityComparer.Default);
 
+    private readonly Dictionary<ITypeSymbol, List<INamedTypeSymbol>> handlers =
+        new(SymbolEqualityComparer.Default);
+
     public NPlusOneLooperSourceTypeIndex(Compilation compilation, CancellationToken cancellationToken)
     {
         var pending = new Stack<INamespaceOrTypeSymbol>();
@@ -57,21 +60,47 @@ internal sealed class NPlusOneLooperSourceTypeIndex
             : ImmutableArray<INamedTypeSymbol>.Empty;
     }
 
+    /// <summary>
+    /// Concrete source types implementing a generic interface whose name contains <c>Handler</c> with the request
+    /// type as its first type argument (<c>IRequestHandler&lt;GetCustomer, Customer&gt;</c>), in declaration order.
+    /// </summary>
+    public IReadOnlyList<INamedTypeSymbol> GetHandlers(ITypeSymbol requestType)
+    {
+        return handlers.TryGetValue(requestType, out var types)
+            ? types
+            : ImmutableArray<INamedTypeSymbol>.Empty;
+    }
+
+    internal static bool IsHandlerInterfaceFor(INamedTypeSymbol @interface, ITypeSymbol? requestType)
+    {
+        return @interface.TypeArguments.Length > 0 &&
+               @interface.Name.Contains("Handler") &&
+               (requestType == null ||
+                SymbolEqualityComparer.Default.Equals(@interface.TypeArguments[0], requestType));
+    }
+
     private void Add(INamedTypeSymbol type)
     {
         if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct) || type.IsAbstract)
             return;
 
         foreach (var @interface in type.AllInterfaces)
+        {
             AddTo(implementers, @interface.OriginalDefinition, type);
+            if (IsHandlerInterfaceFor(@interface, requestType: null) &&
+                @interface.TypeArguments[0] is INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } request)
+            {
+                AddTo(handlers, request, type);
+            }
+        }
 
         for (var baseType = type.BaseType; baseType != null; baseType = baseType.BaseType)
             AddTo(derived, baseType.OriginalDefinition, type);
     }
 
-    private static void AddTo(
-        Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> map,
-        INamedTypeSymbol key,
+    private static void AddTo<TKey>(
+        Dictionary<TKey, List<INamedTypeSymbol>> map,
+        TKey key,
         INamedTypeSymbol type)
     {
         if (!map.TryGetValue(key, out var types))

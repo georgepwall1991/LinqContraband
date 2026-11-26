@@ -120,7 +120,7 @@ The benchmark has 154 cases: 105 proven N+1 and 49 proven safe.
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Proven N+1 cases that are reported (recall) | 105 | 88 | 83.8% |
+| Proven N+1 cases that are reported (recall) | 105 | 91 | 86.7% |
 | Proven safe cases that are reported (false positives) | 49 | 3 | 6.1% |
 
 Recall depends on what sits between the loop and the database call:
@@ -134,7 +134,7 @@ Recall depends on what sits between the loop and the database call:
 | Through an interface | 9 | 8 | 88.9% |
 | Through a virtual or abstract method | 3 | 3 | 100.0% |
 | Through a delegate | 3 | 0 | 0.0% |
-| Through a mediator | 3 | 0 | 0.0% |
+| Through a mediator | 3 | 3 | 100.0% |
 | On entities that come from, or go to, another method | 5 | 4 | 80.0% |
 | Through another project (in a build) | 5 | 0 | 0.0% |
 
@@ -142,8 +142,8 @@ Recall depends on what sits between the loop and the database call:
 
 How to read the numbers:
 
-- The rules do not follow a delegate held in a variable or parameter, a mediator's `Send`, or, in a build, a call into
-  another project. The scanner covers most of the cross-project cases.
+- The rules do not follow a delegate held in a variable or parameter or, in a build, a call into another project. A
+  mediator's `Send` is followed to the request's handler when the handler is in the same project. The scanner covers most of the cross-project cases.
 - The safe cases are the loops a pattern matcher gets wrong: batching, paging, retries, memoized lookups. The few that
   are reported are reported on purpose, for example a `Find` per item that happens to hit entities the context already
   tracks.

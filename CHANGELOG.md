@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LC007 and LC010 follow a mediator call in a loop or a per-element lambda to the request's handler: `foreach (var id in ids) names.Add(await mediator.Send(new GetCustomerName(id)));` reports when the project's handler for `GetCustomerName` runs a query (LC007) or saves (LC010). `Send`, `SendAsync` and `InvokeAsync` (MediatR, Wolverine, hand-written mediators) are followed when the request's static type is a concrete class or struct and the project declares one to eight handlers for it (a type implementing a generic `*Handler*` interface whose first type argument is the request), all of which query or save. `Publish`, a request typed as an interface, and handlers in another project are not followed. N+1 benchmark recall 88 to 91 of 105 (mediator cases 0 to 3 of 3), false positives unchanged at 3 of 49.
+
 ### Changed
 
 - Coverage tests pin leftover names and shapes the shipped fixtures did not isolate, so dropping one entry from a rule's name list now fails a test named after it: LC001 translation-critical hosts, LC007 execution and terminal names, per-element operators and load-once wraps, LC007 and LC010 fixed-source non-goals (`ImmutableArray.Create`, a `static readonly` array field, a constant-bound `for`), generic `Enum.GetValues<T>()`, collection expressions, spans, `stackalloc` and leftover LanguageExt `Either`/`EitherUnsafe` sequence forms, LC009 attached-entity wraps, LC010 periodic-flush counter types, LC015 pagination and sort names, LC017 collection mutators, LC021 deleted-rows chain operators, LC024 group operators and `Convert` names, LC035 irregular, classical and similar plurals, LC045 preload wraps and collection mutators, LC046 async sinks and LC056 composing operators. No analyzer behavior changes; 366 tests (folded from the Cursor test-pin drafts #712 to #760).

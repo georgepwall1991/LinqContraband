@@ -8,16 +8,16 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 
 | Measure | Cases | Reported | Rate |
 | --- | ---: | ---: | ---: |
-| Recall on proven N+1 cases | 105 | 88 | 83.8% |
+| Recall on proven N+1 cases | 105 | 91 | 86.7% |
 | False positives on proven safe cases | 49 | 3 | 6.1% |
 
 ## Recall by kind
 
 | Kind | Proven N+1 | Reported | Recall |
 | --- | ---: | ---: | ---: |
-| Query | 67 | 54 | 80.6% |
+| Query | 67 | 56 | 83.6% |
 | LazyLoad | 21 | 20 | 95.2% |
-| Save | 17 | 14 | 82.4% |
+| Save | 17 | 15 | 88.2% |
 
 ## Recall by how the database call is reached
 
@@ -30,7 +30,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Interface | 9 | 8 | 88.9% |
 | Virtual | 3 | 3 | 100.0% |
 | Delegate | 3 | 0 | 0.0% |
-| Mediator | 3 | 0 | 0.0% |
+| Mediator | 3 | 3 | 100.0% |
 | CrossMethod | 5 | 4 | 80.0% |
 | CrossProject | 5 | 0 | 0.0% |
 
@@ -50,15 +50,12 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 - Q75_LocalFuncDelegate (Query, Delegate)
 - Q76_CallbackPassedToIterator (Query, Delegate)
 - Q77_DelegateParameter (Query, Delegate)
-- Q80_MediatorSendPerElement (Query, Mediator)
-- Q81_MediatorSendInSelect (Query, Mediator)
 - Q85_ExternalRepositoryFind (Query, CrossProject)
 - Q86_ExternalRepositoryQueryable (Query, CrossProject)
 - Q87_ExternalRepositoryInSelect (Query, CrossProject)
 - Q88_ExternalStaticHelper (Query, CrossProject)
 - W09_ExecuteSqlPerElement (Save, Direct)
 - W12_ExternalRepositoryAddAndSave (Save, CrossProject)
-- W13_MediatorCommandPerElement (Save, Mediator)
 
 ## Every case
 
@@ -146,8 +143,8 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | Q75_LocalFuncDelegate | Query | Delegate | 4 → 7 | N+1 |  |
 | Q76_CallbackPassedToIterator | Query | Delegate | 4 → 7 | N+1 |  |
 | Q77_DelegateParameter | Query | Delegate | 4 → 7 | N+1 |  |
-| Q80_MediatorSendPerElement | Query | Mediator | 4 → 7 | N+1 |  |
-| Q81_MediatorSendInSelect | Query | Mediator | 4 → 7 | N+1 |  |
+| Q80_MediatorSendPerElement | Query | Mediator | 4 → 7 | N+1 | LC007 |
+| Q81_MediatorSendInSelect | Query | Mediator | 4 → 7 | N+1 | LC007 |
 | Q85_ExternalRepositoryFind | Query | CrossProject | 4 → 7 | N+1 |  |
 | Q86_ExternalRepositoryQueryable | Query | CrossProject | 4 → 7 | N+1 |  |
 | Q87_ExternalRepositoryInSelect | Query | CrossProject | 4 → 7 | N+1 |  |
@@ -213,7 +210,7 @@ Every case ran against SQLite with 3 and then 6 customers. A case is a proven N+
 | W10_ExecuteUpdatePerElement | Save | Direct | 6 → 9 | N+1 | LC007 |
 | W11_ExecuteDeletePerElement | Save | Direct | 13 → 25 | N+1 | LC007 |
 | W12_ExternalRepositoryAddAndSave | Save | CrossProject | 4 → 7 | N+1 |  |
-| W13_MediatorCommandPerElement | Save | Mediator | 4 → 7 | N+1 |  |
+| W13_MediatorCommandPerElement | Save | Mediator | 4 → 7 | N+1 | LC010 |
 | W14_SaveInSelectLambda | Save | Lambda | 6 → 9 | N+1 | LC010 |
 | W15_WhileQueueSaveEach | Save | Direct | 5 → 9 | N+1 | LC010 |
 | W16_GenericInterfaceRepositoryAdd | Save | Interface | 7 → 13 | N+1 | LC010 |
