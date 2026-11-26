@@ -37,6 +37,9 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.Extensions.*"
         update-types: ["version-update:semver-major"]
+      # 11.x supports net10.0 and later only; the sample also builds net8/net9.
+      - dependency-name: "System.Linq.AsyncEnumerable"
+        update-types: ["version-update:semver-major"]
     groups:
       # One PR for all EF Core and Microsoft.Extensions patch/minor bumps.
       ef-core:
