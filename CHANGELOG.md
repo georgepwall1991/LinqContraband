@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.20.0] - 2026-11-26
+
 ### Added
 
 - LC007 and LC010 follow a mediator call in a loop or a per-element lambda to the request's handler: `foreach (var id in ids) names.Add(await mediator.Send(new GetCustomerName(id)));` reports when the project's handler for `GetCustomerName` runs a query (LC007) or saves (LC010). `Send`, `SendAsync` and `InvokeAsync` (MediatR, Wolverine, hand-written mediators) are followed when the request's static type is a concrete class or struct and the project declares one to eight handlers for it (a type implementing a generic `*Handler*` interface whose first type argument is the request), all of which query or save. `Publish`, a request typed as an interface, and handlers in another project are not followed. N+1 benchmark recall 88 to 91 of 105 (mediator cases 0 to 3 of 3), false positives unchanged at 3 of 49.
