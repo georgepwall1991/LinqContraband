@@ -22,6 +22,10 @@ internal static partial class NPlusOneLooperAnalysis
         NPlusOneLooperHelperCache cache,
         CancellationToken cancellationToken)
     {
+        var handlers = GetMediatorHandlerTargets(invocation, cache, cancellationToken);
+        if (!handlers.IsEmpty)
+            return handlers;
+
         return GetHelperTargets(
             invocation.TargetMethod,
             invocation.IsVirtual,

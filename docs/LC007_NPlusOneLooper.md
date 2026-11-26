@@ -91,6 +91,13 @@ public class CustomerRepository : ICustomerRepository
 
 For an interface, the implementations are the concrete classes and structs of the project that implement it, generic ones included (`IRepository<T>` and `EfRepository<T>`). For a class method they are the receiver's class and the classes derived from it, so `dbReader.Read(id)` is judged on `DbReader` and its subclasses even when a sibling `FakeReader` does not query. A decorator that forwards to the same interface method (logging, metrics) counts as whatever it wraps. Implementations in other projects, such as test doubles, are out of sight and are not counted.
 
+A mediator call is followed to the request's handler rather than into the mediator. `mediator.Send(new GetCustomerName(id))` (MediatR's `Send`, a `SendAsync`, or Wolverine's `InvokeAsync`) in a loop or a per-element lambda is reported when the project declares between one and eight handlers for the request's type and every one of them runs a query. A handler is a concrete type implementing a generic interface whose name contains `Handler` and whose first type argument is the request type (`IRequestHandler<GetCustomerName, string>`); its methods that take the request are what run. The request's static type must be a concrete class or struct, so a request typed as `IRequest<T>` is not followed. `Publish` (notifications, which may have no handler or many) and other method names are not followed, and neither are handlers in another project.
+
+```csharp
+foreach (var id in customerIds)
+    names.Add(await mediator.Send(new GetCustomerName(id)));   // LC007: each Send runs GetCustomerNameHandler's query
+```
+
 LC007 stays quiet on a helper call when:
 - it goes through an interface or a virtual method and the implementations disagree: one of them reads a list, a dictionary or a cache, is memoized, or has no source to read. An in-memory or caching implementation means the loop may never reach the database;
 - the interface, or the receiver's class, is not declared in the project being analyzed (`IComparer<T>`, a contract from another project), has no implementation here, or has more than eight;
