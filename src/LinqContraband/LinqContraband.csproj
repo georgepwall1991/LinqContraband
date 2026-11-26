@@ -9,7 +9,7 @@
         <NoWarn>$(NoWarn);RS1038;RS2008</NoWarn>
 
         <!-- NuGet Metadata -->
-        <Version>5.19.0</Version>
+        <Version>5.20.0</Version>
         <PackageId>LinqContraband</PackageId>
         <Title>LinqContraband — EF Core LINQ performance analyzer</Title>
         <Authors>George Wall</Authors>
@@ -18,7 +18,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/LinqContraband</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageProjectUrl>https://georgepwall1991.github.io/LinqContraband/</PackageProjectUrl>
-        <PackageReleaseNotes>Cross-layer N+1 detection. LC007 and LC010 now report a query or save inside a lambda that an in-memory operator runs once per element (Select, Where, ForEach, Parallel.ForEach, Task.WhenAll over a Select), and follow a loop's call into same-project helpers, method groups, interfaces and virtual methods when every implementation agrees; LC007 also treats a query returned by a same-project method as EF-backed, and LC010 reports a repository or unit of work that saves for every item. LC045 reports navigation reads in a foreach over a DbSet, in a mapper passed as a method group and in a computed property the entity declares. LinqContraband.Scan follows a per-item call into another project of the solution. Fewer false positives: retry loops that return the query or save, a save every N items, loops over a list fixed in the source (an inline array, enum values) and reference navigations to a table preloaded with Load() stay quiet. A new benchmark of 154 cases, each proven by counting database round trips on SQLite, scores the N+1 rules in CI: 88 of 105 proven N+1 cases are reported and 3 of 49 proven safe cases.</PackageReleaseNotes>
+        <PackageReleaseNotes>Mediator-aware N+1 detection. LC007 and LC010 follow a mediator call in a loop or per-element lambda (MediatR Send, SendAsync, Wolverine InvokeAsync, a hand-written mediator) to the handlers the project declares for the request's type, and report it when every handler queries (LC007) or saves (LC010); N+1 benchmark recall rises from 88 to 91 of 105 with false positives unchanged. Coverage tests pin leftover rule names for LC001, LC007, LC009, LC010, LC015, LC017, LC021, LC024, LC035, LC045, LC046 and LC056, with no behavior change. Dependencies: EF Core 9.0.23/10.0.15, test tooling, Actions pins.</PackageReleaseNotes>
         <PackageTags>efcore;entity-framework-core;EntityFrameworkCore;LINQ;IQueryable;NPlusOne;client-side-evaluation;AsNoTracking;DbContext;query-performance;roslyn;roslyn-analyzer;analyzers;static-analysis;performance;sql;csharp;dotnet</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageIcon>icon.png</PackageIcon>
