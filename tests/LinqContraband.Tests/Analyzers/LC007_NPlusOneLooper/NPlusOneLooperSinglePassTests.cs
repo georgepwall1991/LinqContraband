@@ -18,13 +18,31 @@ namespace LanguageExt
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
         public IEnumerable<A> ToSeq() => null;
+        public IEnumerable<A> ToList() => null;
+        public IEnumerable<A> ToArray() => null;
+        public IEnumerable<A> AsEnumerable() => null;
         public IEnumerable<A> Rest() => null;
     }
 
     public struct Either<L, R>
     {
         public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToSeq() => null;
+        public IEnumerable<R> RightToList() => null;
         public IEnumerable<L> LeftToList() => null;
+        public IEnumerable<R> RightToArray() => null;
+        public IEnumerable<L> LeftToArray() => null;
+        public IEnumerable<R> RightAsEnumerable() => null;
+        public IEnumerable<L> LeftAsEnumerable() => null;
+        public IEnumerable<R> ToSeq() => null;
+        public IEnumerable<R> ToList() => null;
+        public IEnumerable<R> ToArray() => null;
+        public IEnumerable<R> AsEnumerable() => null;
+    }
+
+    public struct EitherUnsafe<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
     }
 }
 
@@ -34,9 +52,16 @@ namespace Lookalike
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+        public IEnumerable<A> ToList() => null;
     }
 
     public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToSeq() => null;
+    }
+
+    public struct EitherUnsafe<L, R>
     {
         public IEnumerable<R> RightToSeq() => null;
     }

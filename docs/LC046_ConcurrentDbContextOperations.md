@@ -56,6 +56,7 @@ For direct overlap, LC046 reports the second proven overlapping EF Core invocati
 operation as an additional location. It recognises async query terminals, including `ContainsAsync`, `ElementAtAsync`, and
 `ElementAtOrDefaultAsync`, plus `FindAsync`, `SaveChangesAsync`, `LoadAsync`, `ExecuteUpdateAsync`,
 `ExecuteDeleteAsync`, and relational `ExecuteSql*Async` commands.
+Coverage pins leftover query terminals the shipped `ToListAsync`/`AnyAsync`/`ContainsAsync`/`ElementAt*`/`ToDictionaryAsync`/`LoadAsync`/`ExecuteDeleteAsync` fixtures do not isolate (`AllAsync`, `AverageAsync`, `CountAsync`, `ExecuteUpdateAsync`, `FirstAsync`/`FirstOrDefaultAsync`, `ForEachAsync`, `LastAsync`/`LastOrDefaultAsync`, `LongCountAsync`, `MaxAsync`/`MinAsync`, `SingleAsync`/`SingleOrDefaultAsync`, `SumAsync`, `ToArrayAsync`, `ToHashSetAsync`) and leftover `ExecuteSqlAsync`. A lookalike leftover name outside `Microsoft.EntityFrameworkCore` stays quiet.
 
 For direct overlap, the analyzer also follows a source-visible local function when its body consists of one direct
 return of a recognised EF Core async invocation. A parameterless helper may use a stable context captured from

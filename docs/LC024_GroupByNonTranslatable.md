@@ -61,7 +61,7 @@ LC024 applies to fluent `GroupBy(...).Select(...)`, fluent `GroupBy(..., (key, g
 
 ### EF Core 8 and later
 
-EF Core 8 and 9 translate more of the group than older versions: element accessors (`g.First()`, `g.OrderByDescending(f => f.Version).FirstOrDefault()`, `g.FirstOrDefault(p)`, `Last` after an `OrderBy`, `Single`, `ElementAt`), a filtered sub-sequence (`g.Where(p)`), and the group's rows (`g.ToList()`, `g.ToArray()`) all produce SQL (checked with `ToQueryString()` on SQLite). When the project references EF Core 8 or later and a relational provider (not Cosmos), LC024 stays quiet on those shapes, as long as their predicates and selectors call no methods. The "latest row per group" query `GroupBy(f => f.CorrelationId).Select(g => g.OrderByDescending(f => f.Version).First())` is the common case. With EF Core 7 or older, or when the EF Core version cannot be read, they still report. A local helper over the group (`Pick(g)`), a method inside the chain's lambdas, passing `g` to a constructor, and `g.Last()` with no `OrderBy` in the chain (EF Core rejects it) still report on every version.
+EF Core 8 and 9 translate more of the group than older versions: element accessors (`g.First()`, `g.OrderByDescending(f => f.Version).FirstOrDefault()`, `g.FirstOrDefault(p)`, `Last`/`LastOrDefault` after an `OrderBy`, `Single`/`SingleOrDefault`, `ElementAt`/`ElementAtOrDefault`), a filtered sub-sequence (`g.Where(p)`), and the group's rows (`g.ToList()`, `g.ToArray()`) all produce SQL (checked with `ToQueryString()` on SQLite). When the project references EF Core 8 or later and a relational provider (not Cosmos), LC024 stays quiet on those shapes, as long as their predicates and selectors call no methods. The "latest row per group" query `GroupBy(f => f.CorrelationId).Select(g => g.OrderByDescending(f => f.Version).First())` is the common case. With EF Core 7 or older, or when the EF Core version cannot be read, they still report. A local helper over the group (`Pick(g)`), a method inside the chain's lambdas, passing `g` to a constructor, and `g.Last()` with no `OrderBy` in the chain (EF Core rejects it) still report on every version.
 
 ### Translatable aggregate chains
 
@@ -69,9 +69,11 @@ EF Core 9 translates aggregates that filter or project the group before collapsi
 
 ```csharp
 g.Any()                                 // EXISTS / COUNT(*) > 0
+g.All(o => o.Amount > 0)                // NOT EXISTS of the inverted predicate
 g.Where(o => o.Amount > 0).Count()      // COUNT over a filtered set
 g.Select(o => o.Amount).Sum()           // SUM(Amount) — same as g.Sum(o => o.Amount)
 g.Distinct().Count()                    // COUNT(DISTINCT ...)
+g.OrderBy(o => o.Id).ThenBy(o => o.Amount).Count()
 ```
 
 The exemption follows an aggregate whose receiver chain roots at the grouping parameter through translatable operators (`Where`, `Select`, `OrderBy`/`OrderByDescending`/`ThenBy`/`ThenByDescending`, `Distinct`), as well as the direct forms `g.Count()`, `g.Sum(...)`, `Enumerable.Count(g)`, `Enumerable.Sum(g, ...)`.

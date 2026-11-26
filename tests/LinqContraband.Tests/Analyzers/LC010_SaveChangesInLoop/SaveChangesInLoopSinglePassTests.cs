@@ -1,3 +1,6 @@
+using LinqContraband.Analyzers.LC010_SaveChangesInLoop;
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC010_SaveChangesInLoop.SaveChangesInLoopAnalyzer>;
 
@@ -8,16 +11,19 @@ namespace LinqContraband.Tests.Analyzers.LC010_SaveChangesInLoop;
 /// a body that always ends in <c>return</c>/<c>throw</c>/<c>break</c>, or a save followed by an exit
 /// (<c>SaveChanges(); return;</c>). ErsatzTV reported 23 of these.
 /// </summary>
-public class SaveChangesInLoopSinglePassTests
+public partial class SaveChangesInLoopSinglePassTests
 {
     private static string Program(string body) => @"
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 class Program
 {
+    private static readonly int[] Roles = { 1, 2, 3 };
+
     async Task<string> Run(AppDbContext db, List<int> ids, LanguageExt.Option<int> maybeId, Lookalike.Option<int> otherId, LanguageExt.Either<string, int> eitherId, Lookalike.Either<string, int> otherEither)
     {
         " + body + @"
@@ -44,13 +50,31 @@ namespace LanguageExt
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
         public IEnumerable<A> ToSeq() => null;
+        public IEnumerable<A> ToList() => null;
+        public IEnumerable<A> ToArray() => null;
+        public IEnumerable<A> AsEnumerable() => null;
         public IEnumerable<A> Rest() => null;
     }
 
     public struct Either<L, R>
     {
         public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToSeq() => null;
+        public IEnumerable<R> RightToList() => null;
         public IEnumerable<L> LeftToList() => null;
+        public IEnumerable<R> RightToArray() => null;
+        public IEnumerable<L> LeftToArray() => null;
+        public IEnumerable<R> RightAsEnumerable() => null;
+        public IEnumerable<L> LeftAsEnumerable() => null;
+        public IEnumerable<R> ToSeq() => null;
+        public IEnumerable<R> ToList() => null;
+        public IEnumerable<R> ToArray() => null;
+        public IEnumerable<R> AsEnumerable() => null;
+    }
+
+    public struct EitherUnsafe<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
     }
 }
 
@@ -60,9 +84,16 @@ namespace Lookalike
     {
         public IEnumerator<A> GetEnumerator() => null;
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+        public IEnumerable<A> ToList() => null;
     }
 
     public struct Either<L, R>
+    {
+        public IEnumerable<R> RightToSeq() => null;
+        public IEnumerable<L> LeftToSeq() => null;
+    }
+
+    public struct EitherUnsafe<L, R>
     {
         public IEnumerable<R> RightToSeq() => null;
     }
@@ -214,6 +245,26 @@ namespace Lookalike
         VerifyCS.VerifyAnalyzerAsync(Program(body));
 
     [Theory]
+    [InlineData(@"foreach (var day in Enum.GetValues<DayOfWeek>())
+        {
+            await db.SaveChangesAsync();
+        }")]
+    [InlineData(@"foreach (var name in Enum.GetNames<DayOfWeek>())
+        {
+            db.SaveChanges();
+        }")]
+    public Task SaveInALoopOverGenericEnumValues_IsQuiet(string body) =>
+        VerifySaveOnNet80Async(body);
+
+    [Fact]
+    public Task SaveInALoopOverAListHeldInALocal_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"var wanted = new List<int> { 1, 2, 3 };
+        foreach (var id in wanted)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Theory]
     [InlineData(@"foreach (var id in ids)
         {
             foreach (var attempt in new[] { 1, 2 })
@@ -227,4 +278,44 @@ namespace Lookalike
         }")]
     public Task SaveInAFixedListInsideAPerItemLoop_StillReports(string body) =>
         VerifyCS.VerifyAnalyzerAsync(Program(body));
+
+    // Enum.GetValues<T>() / GetNames<T>() are .NET 5+. The default VerifyCS
+    // references do not declare them, so those shapes compile as an error
+    // (MissingMethodException = diagnostic/compile mismatch) unless we raise
+    // the harness to Net80.
+    private static Task VerifySaveOnNet80Async(string body)
+    {
+        var test = new CSharpAnalyzerTest<SaveChangesInLoopAnalyzer, DefaultVerifier>
+        {
+            TestCode = Program(body),
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+        };
+
+        return test.RunAsync();
+    }
+
+    // Documented non-goals of IsSequenceFixedInSource / IteratesItemsFixedInSource:
+    // still report. Pinning them as crime cases stops a later widening from going
+    // quiet without a test.
+
+    [Fact]
+    public Task SaveInALoopOverImmutableArrayCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"foreach (var id in ImmutableArray.Create(1, 2, 3))
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Fact]
+    public Task SaveInALoopOverAStaticReadonlyArrayField_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"foreach (var id in Roles)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
+
+    [Fact]
+    public Task SaveInAConstantBoundForLoop_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(Program(@"for (var i = 0; i < 3; i++)
+        {
+            {|LC010:db.SaveChanges()|};
+        }"));
 }
