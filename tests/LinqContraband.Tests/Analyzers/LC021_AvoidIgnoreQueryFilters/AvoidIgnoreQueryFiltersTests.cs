@@ -8,7 +8,7 @@ using FixTest = Microsoft.CodeAnalysis.CSharp.Testing.CSharpCodeFixTest<
 
 namespace LinqContraband.Tests.Analyzers.LC021_AvoidIgnoreQueryFilters;
 
-public class AvoidIgnoreQueryFiltersTests
+public partial class AvoidIgnoreQueryFiltersTests
 {
     private const string EFCoreMock = @"
 using System;

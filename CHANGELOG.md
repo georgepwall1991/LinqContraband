@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover names and shapes the shipped fixtures did not isolate, so dropping one entry from a rule's name list now fails a test named after it: LC001 translation-critical hosts, LC007 execution and terminal names, per-element operators and load-once wraps, LC007 and LC010 fixed-source non-goals (`ImmutableArray.Create`, a `static readonly` array field, a constant-bound `for`), generic `Enum.GetValues<T>()`, collection expressions, spans, `stackalloc` and leftover LanguageExt `Either`/`EitherUnsafe` sequence forms, LC009 attached-entity wraps, LC010 periodic-flush counter types, LC015 pagination and sort names, LC017 collection mutators, LC021 deleted-rows chain operators, LC024 group operators and `Convert` names, LC035 irregular, classical and similar plurals, LC045 preload wraps and collection mutators, LC046 async sinks and LC056 composing operators. No analyzer behavior changes; 366 tests (folded from the Cursor test-pin drafts #712 to #760).
+
 ## [5.19.0] - 2026-11-11
 
 ### Added

@@ -47,6 +47,9 @@ Use `AsAsyncEnumerable()` for an asynchronous pipeline. If the filter matters fo
 ### Severity: `Warning`
 
 1. Find a LINQ operator that EF Core translates around its source: any `Queryable` operator except `AsQueryable`, `Cast`, and an identity `Select(x => x)`, plus EF Core's `Include`, `ThenInclude`, async element and aggregate operators (`FirstOrDefaultAsync`, `CountAsync`, `AnyAsync`, ...), and `ExecuteDelete` / `ExecuteUpdate`.
+
+Coverage pins leftover EF composing names that the shipped `Include`/`CountAsync`/`FirstOrDefaultAsync` fixtures and leftover `ExecuteDelete`/`ExecuteUpdate` pins do not isolate (`ThenInclude`, `AnyAsync`, `AllAsync`, `AverageAsync`, `ContainsAsync`, `LongCountAsync`, `ElementAtAsync`/`ElementAtOrDefaultAsync`, `FirstAsync`, `LastAsync`/`LastOrDefaultAsync`, `MaxAsync`/`MinAsync`, `SingleAsync`/`SingleOrDefaultAsync`, `SumAsync`). A leftover name on an unrelated queryable stays quiet. Does not restage leftover pass-through files.
+
 2. Walk back through operators that leave the SQL unchanged: `AsNoTracking`, `AsNoTrackingWithIdentityResolution`, `AsTracking`, `IgnoreQueryFilters`, `IgnoreAutoIncludes`, `TagWith`, `TagWithCallSite`, `AsSplitQuery`, `AsSingleQuery`, and `AsQueryable`.
 3. Report when the walk reaches `FromSql`, `FromSqlRaw`, `FromSqlInterpolated`, `Database.SqlQuery` or `Database.SqlQueryRaw` whose SQL, a constant or the text before the first interpolation hole, starts with `EXEC` or `EXECUTE` after whitespace and SQL comments. EF Core skips the same whitespace and comments before its own check.
 

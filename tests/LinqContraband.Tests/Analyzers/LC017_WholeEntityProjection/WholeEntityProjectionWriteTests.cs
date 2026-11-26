@@ -43,6 +43,7 @@ class RichEntity
     public decimal Price { get; set; }
     public int Quantity { get; set; }
     public List<Tag> Tags { get; set; }
+    public HashSet<Tag> UniqueTags { get; set; }
     public Owner Owner { get; set; }
     public void Archive() { }
 }

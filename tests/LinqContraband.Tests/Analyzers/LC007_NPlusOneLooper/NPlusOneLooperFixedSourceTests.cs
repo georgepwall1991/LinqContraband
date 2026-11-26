@@ -1,3 +1,6 @@
+using LinqContraband.Analyzers.LC007_NPlusOneLooper;
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.XUnit.AnalyzerVerifier<
     LinqContraband.Analyzers.LC007_NPlusOneLooper.NPlusOneLooperAnalyzer>;
 
@@ -11,24 +14,50 @@ namespace LinqContraband.Tests.Analyzers.LC007_NPlusOneLooper;
 public partial class NPlusOneLooperTests
 {
     private static string FixedSourceProgram(string body) => Usings + @"
+using System.Collections.Immutable;
+
 enum Status { Draft, Paid, Shipped }
 
 class Wanted : System.Collections.Generic.IEnumerable<int>
 {
     public int[] Items { get; set; }
     public void Add(int item) { }
+    public static Wanted Create(params int[] items) => null;
     public System.Collections.Generic.IEnumerator<int> GetEnumerator() => null;
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
 }
 
+class StatusList
+{
+    public static Status[] GetValues() => null;
+    public static string[] GetNames() => null;
+}
+
 class Program
 {
+    private static readonly int[] Roles = { 1, 2, 3 };
+
     void Run(MyDbContext db, int[] ids, int first, int second, int count)
     {
         " + body + @"
     }
 }
 " + MockNamespace;
+
+    // Enum.GetValues<T>() / GetNames<T>() are .NET 5+. The default VerifyCS
+    // references do not declare them, so those shapes compile as an error
+    // (MissingMethodException = diagnostic/compile mismatch) unless we raise
+    // the harness to Net80.
+    private static Task VerifyFixedSourceOnNet80Async(string body)
+    {
+        var test = new CSharpAnalyzerTest<NPlusOneLooperAnalyzer, DefaultVerifier>
+        {
+            TestCode = FixedSourceProgram(body),
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+        };
+
+        return test.RunAsync();
+    }
 
     [Theory]
     [InlineData("new[] { 1, 2, 3 }")]
@@ -61,6 +90,37 @@ class Program
         {
             var found = db.Users.Count(u => u.Id == name.Length);
         }"));
+
+    [Theory]
+    [InlineData(@"foreach (var status in Enum.GetValues<Status>())
+        {
+            var found = db.Users.Count(u => u.Id == (int)status);
+        }")]
+    [InlineData(@"foreach (var name in Enum.GetNames<Status>())
+        {
+            var found = db.Users.Count(u => u.Id == name.Length);
+        }")]
+    public Task LoopOverGenericEnumValues_IsQuiet(string body) =>
+        VerifyFixedSourceOnNet80Async(body);
+
+    [Theory]
+    [InlineData(@"var statuses = Enum.GetValues<Status>();
+        foreach (var status in statuses)
+        {
+            var found = db.Users.Count(u => u.Id == (int)status);
+        }")]
+    [InlineData(@"var names = Enum.GetNames<Status>();
+        foreach (var name in names)
+        {
+            var found = db.Users.Count(u => u.Id == name.Length);
+        }")]
+    public Task LoopOverALocalThatHoldsGenericEnumValues_IsQuiet(string body) =>
+        VerifyFixedSourceOnNet80Async(body);
+
+    [Fact]
+    public Task PerElementLambdaOverGenericEnumValues_IsQuiet() =>
+        VerifyFixedSourceOnNet80Async(
+            @"var counts = Enum.GetValues<Status>().Select(status => db.Users.Count(u => u.Id == (int)status)).ToList();");
 
     [Theory]
     // A local that only ever holds the list.
@@ -127,4 +187,53 @@ class Program
     public Task PerElementLambdaOverData_StillReports() =>
         VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(
             @"var users = ids.Select(id => {|LC007:db.Users.First(u => u.Id == id)|}).ToList();"));
+
+    [Theory]
+    // A list in a local can grow after it is declared, even when this method never mutates it.
+    // The inline form (`foreach (var id in new List<int> { 1, 2, 3 })`) stays quiet; the local does not.
+    [InlineData(@"var wanted = new List<int> { 1, 2, 3 };
+        foreach (var id in wanted)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }")]
+    [InlineData(@"var wanted = new HashSet<int> { first, second };
+        foreach (var id in wanted)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }")]
+    public Task LoopOverAListHeldInALocal_StillReports(string body) =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(body));
+
+    [Theory]
+    [InlineData("StatusList.GetValues()")]
+    [InlineData("StatusList.GetNames()")]
+    public Task LoopOverLookalikeEnumValues_StillReports(string source) =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var status in " + source + @")
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == status.ToString().Length)|};
+        }"));
+
+    // Documented non-goals of IsSequenceFixedInSource: still report. Pinning them
+    // as crime cases stops a later widening from going quiet without a test.
+
+    [Fact]
+    public Task LoopOverImmutableArrayCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in ImmutableArray.Create(1, 2, 3))
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
+
+    [Fact]
+    public Task LoopOverLookalikeCreate_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in Wanted.Create(1, 2, 3))
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
+
+    [Fact]
+    public Task LoopOverAStaticReadonlyArrayField_StillReports() =>
+        VerifyCS.VerifyAnalyzerAsync(FixedSourceProgram(@"foreach (var id in Roles)
+        {
+            var found = {|LC007:db.Users.Count(u => u.Id == id)|};
+        }"));
 }
