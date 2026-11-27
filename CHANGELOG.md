@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC007 and LC010 mediator-dispatch names and shapes the shipped `Send` fixtures did not isolate: Wolverine `InvokeAsync`, a bodiless `SendAsync`, a struct request, a `*Handler*` interface that is not `IRequestHandler`, an `Execute` method on that interface, nine handlers for one request, and a lookalike `InvokeAsync` whose request has only an `IProcessor<T>`. No analyzer behavior change.
+
 ## [5.20.0] - 2026-11-26
 
 ### Added
