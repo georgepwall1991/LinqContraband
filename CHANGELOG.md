@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage tests pin leftover LC037 `ExecuteSqlRawAsync` construction the shipped `FromSqlRaw`/`ExecuteSqlRaw`/`SqlQueryRaw` fixtures and the quiet direct-interpolation `ExecuteSqlRawAsync` rows do not isolate. Dropping that leftover sink name now fails a test named after it. No analyzer behavior change.
+
 ## [5.20.0] - 2026-11-26
 
 ### Added
